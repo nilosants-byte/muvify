@@ -1,0 +1,55 @@
+﻿name: Deploy
+
+on:
+  push:
+    branches: ["main", "staging"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'staging' && 'staging' || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:generate
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.REGISTRY_USER || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+      - name: Deploy via SSH
+        if: ${{ secrets.DEPLOY_HOST != '' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            export APP_IMAGE=ghcr.io/${{ github.repository }}:${{ github.sha }}
+            PREV_IMAGE=$(docker inspect -f '{{.Config.Image}}' $(docker compose -f docker-compose.prod.yml ps -q app) 2>/dev/null || true)
+            docker compose -f docker-compose.prod.yml pull app
+            docker compose -f docker-compose.prod.yml up -d app
+            sleep 10
+            if ! docker compose -f docker-compose.prod.yml exec -T app node -e "require('http').get('http://localhost:3000/health',res=>process.exit(res.statusCode===200?0:1)).on('error',()=>process.exit(1))"; then
+              echo "Healthcheck falhou. Fazendo rollback..."
+              if [ -n "$PREV_IMAGE" ]; then
+                export APP_IMAGE=$PREV_IMAGE
+                docker compose -f docker-compose.prod.yml up -d app
+              fi
+              exit 1
+            fi

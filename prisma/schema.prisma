@@ -1,0 +1,887 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+enum UserRole {
+  CLIENT
+  PROVIDER
+  ADMIN
+}
+
+enum CrefValidationStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+}
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+enum PaymentStatus {
+  PENDING_AUTH
+  AUTHORIZING
+  AUTHORIZED
+  CAPTURED
+  CANCELED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARD
+  CREDIT_CARD
+  DEBIT_CARD
+  PIX
+}
+
+enum ServiceOfferKind {
+  PRESENTIAL
+  ONLINE_CONSULTANCY
+  ONLINE_CONSULTANCY_SPECIALIZED
+  COMBO
+}
+
+enum OfferBillingCycle {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+}
+
+enum ConsultancyRequestStatus {
+  OPEN
+  RESPONDED
+  ACCEPTED
+  REFUSED
+  EXPIRED_REFUNDED
+  ARCHIVED
+}
+
+enum ConsultancyContractStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  DELIVERED
+  REFUNDED_EXPIRED
+  ARCHIVED
+}
+
+enum ConsultancyPaymentStatus {
+  PENDING
+  CAPTURED
+  REFUNDED
+  FAILED
+}
+
+enum ConsultancyPaymentMethod {
+  CREDIT_CARD
+  DEBIT_CARD
+  PIX
+}
+
+enum CameraFacing {
+  FRONT
+  BACK
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+  UNKNOWN
+}
+
+enum BankAccountType {
+  CHECKING
+  SAVINGS
+}
+
+enum AnamnesisStatus {
+  DRAFT
+  COMPLETED
+}
+
+enum ProviderServiceMode {
+  PRESENTIAL_ONLY
+  HOME_VISIT_ONLY
+  BOTH
+}
+
+enum FinancialStudentType {
+  PRESENTIAL
+  ONLINE
+  APP
+  BOTH
+}
+
+enum FinancialExpenseCategory {
+  GYM
+  TRANSPORT
+  EQUIPMENT
+  MARKETING
+  OTHER
+}
+
+enum NotificationPreferenceType {
+  BOOKINGS
+  PAYMENTS
+  MARKETING
+  CONSULTANCY
+  SYSTEM
+}
+
+enum SupportTicketStatus {
+  OPEN
+  ANSWERED
+}
+model User {
+  id              String            @id @default(uuid())
+  name            String
+  email           String            @unique
+  password        String
+  phone           String?
+  photoUrl        String?
+  recoveryEmailEncrypted String?
+  role            UserRole          @default(CLIENT)
+  emailVerifiedAt DateTime?
+  mpCustomerId                String?
+  mpDefaultCardId             String?
+  termsAcceptedAt             DateTime?
+  privacyPolicyAcceptedAt     DateTime?
+  termsVersion                String?
+  customerPaymentMethods CustomerPaymentMethod[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  providerProfile ProviderProfile?
+  bookings        Booking[]         @relation("ClientBookings")
+  reviews         Review[]
+  favorites       Favorite[]
+  completionEvidences CompletionEvidence[]
+  consultancyRequestsSent ConsultancyRequest[] @relation("ClientConsultancyRequests")
+  consultancyContracts ConsultancyContract[] @relation("ClientConsultancyContracts")
+  sessions        Session[]
+  pushDevices     PushDevice[]
+  notifications   UserNotification[]
+  passwordResetTokens PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  anamnesisProfile ClientAnamnesis?
+  physicalAssessments ProviderStudentAssessment[] @relation("AssessmentClient")
+  trainingPlanCompletions TrainingPlanCompletion[]
+  chatMessages        BookingMessage[]
+  notificationPreferences NotificationPreference[]
+  supportTicketsSubmitted SupportTicket[] @relation("SupportTicketRequester")
+  supportTicketsResponded SupportTicket[] @relation("SupportTicketResponder")
+}
+model ProviderProfile {
+  id               String             @id @default(uuid())
+  userId           String             @unique
+  displayName      String
+  bio              String
+  experienceYears  Int
+  priceCents       Int
+  serviceRadiusKm  Int?
+  latitude         Float?
+  longitude        Float?
+  serviceMode      ProviderServiceMode @default(BOTH)
+  fixedLocations   Json?
+  excludedLocations Json?
+  averageRating    Float              @default(0)
+  totalReviews     Int                @default(0)
+  photoUrl         String?
+  presentationVideoUrl String?
+  mpAccountId      String?
+  crefNumber       String?
+  crefDocumentUrl  String?
+  credentialDocuments Json?
+  crefValidatedAt  DateTime?
+  crefValidationStatus CrefValidationStatus @default(PENDING)
+  crefRejectionReason String? @db.VarChar(300)
+  crefReviewedAt DateTime?
+  crefReviewedByUserId String?
+  specialties      Json?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryLinks    ProviderCategory[]
+  availabilities   Availability[]
+  bookings         Booking[]          @relation("ProviderBookings")
+  reviews          Review[]
+  favoritedBy      Favorite[]
+  serviceOffers    ProviderServiceOffer[]
+  onlineConsultancySetting OnlineConsultancySetting?
+  trainingPlans    TrainingPlan[]
+  exercises        Exercise[]
+  consultancyRequestsReceived ConsultancyRequest[] @relation("ProviderConsultancyRequests")
+  consultancyContracts ConsultancyContract[] @relation("ProviderConsultancyContracts")
+  bankAccount ProviderBankAccount?
+  calendarEvents ProviderCalendarEvent[]
+  studentAssessments ProviderStudentAssessment[]
+  trainingPlanCompletions TrainingPlanCompletion[]
+  financialStudents   FinancialStudent[]
+  financialIncomes    FinancialIncome[]
+  financialExpenses   FinancialExpense[]
+  financialGoals      FinancialGoal[]
+  financialClassSessions FinancialClassSession[]
+  manualBlocks        ProviderManualBlock[]
+  @@index([displayName])
+  @@index([serviceMode, averageRating])
+  @@index([latitude, longitude])
+  @@index([crefValidatedAt, averageRating, totalReviews])
+}
+model ServiceCategory {
+  id          String             @id @default(uuid())
+  name        String             @unique
+  description String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  providers   ProviderCategory[]
+  bookings    Booking[]
+}
+model ProviderCategory {
+  providerId String
+  categoryId String
+  provider   ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  category   ServiceCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  @@id([providerId, categoryId])
+}
+model Availability {
+  id         String           @id @default(uuid())
+  providerId String
+  weekday    Int
+  startTime  String
+  endTime    String
+  isActive   Boolean          @default(true)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  provider   ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  @@index([providerId, weekday])
+}
+model Booking {
+  id            String           @id @default(uuid())
+  clientId      String
+  providerId    String
+  categoryId    String
+  scheduledAt   DateTime
+  priceCents    Int
+  currency      String           @default("BRL")
+  notes           String?
+  sessionLocation String?
+  status        BookingStatus    @default(PENDING)
+  attendanceCode            String?
+  attendanceCodeGeneratedAt DateTime?
+  attendanceCodeExpiresAt   DateTime?
+  attendanceCodeValidatedAt DateTime?
+  clientConfirmedAt   DateTime?
+  providerConfirmedAt DateTime?
+  completedAt         DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  client        User             @relation("ClientBookings", fields: [clientId], references: [id], onDelete: Cascade)
+  provider      ProviderProfile  @relation("ProviderBookings", fields: [providerId], references: [id], onDelete: Cascade)
+  category      ServiceCategory  @relation(fields: [categoryId], references: [id])
+  review        Review?
+  payment       Payment?
+  completionEvidences CompletionEvidence[]
+  chatMessages        BookingMessage[]
+  @@index([clientId, scheduledAt])
+  @@index([providerId, scheduledAt])
+  @@index([providerId, status])
+  @@index([clientId, status])
+  @@index([status, scheduledAt])
+}
+model Review {
+  id          String           @id @default(uuid())
+  bookingId   String           @unique
+  userId      String
+  providerId  String
+  rating      Int
+  comment     String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  booking     Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider    ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  @@index([providerId, rating])
+}
+
+
+
+
+model Favorite {
+  id          String           @id @default(uuid())
+  userId      String
+  providerId  String
+  createdAt   DateTime         @default(now())
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider    ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  @@unique([userId, providerId])
+  @@index([providerId])
+}
+
+model Session {
+  id               String   @id @default(uuid())
+  userId           String
+  refreshTokenHash String   @unique
+  createdAt        DateTime @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model Payment {
+  id                    String        @id @default(uuid())
+  bookingId             String        @unique
+  amountCents           Int
+  currency              String        @default("BRL")
+  method                PaymentMethod @default(CARD)
+  status                PaymentStatus @default(PENDING_AUTH)
+  mpPaymentId           String?       @unique
+  mpCardToken           String?
+  mpChargeId            String?
+  authorizedAt          DateTime?
+  capturedAt            DateTime?
+  canceledAt            DateTime?
+  refundedAt            DateTime?
+  failureReason         String?
+  attempts              Int           @default(0)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  booking               Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  @@index([status, authorizedAt])
+  @@index([mpCardToken])
+}
+
+model CustomerPaymentMethod {
+  id                    String   @id @default(uuid())
+  userId                String
+  mpCustomerId          String
+  mpCardId              String   @unique
+  nickname              String
+  brand                 String
+  last4                 String
+  funding               String?
+  expMonth              Int?
+  expYear               Int?
+  isDefault             Boolean  @default(false)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@index([userId, isDefault])
+}
+
+model CompletionEvidence {
+  id           String       @id @default(uuid())
+  bookingId    String
+  userId       String
+  cameraFacing CameraFacing
+  mimeType     String
+  imageBase64  String
+  capturedAt   DateTime     @default(now())
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  booking      Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, userId])
+  @@index([bookingId])
+  @@index([userId])
+}
+
+model PushDevice {
+  id         String         @id @default(uuid())
+  userId     String
+  token      String         @unique
+  platform   DevicePlatform @default(UNKNOWN)
+  appVersion String?
+  deviceName String?
+  isActive   Boolean        @default(true)
+  invalidAt  DateTime?
+  lastSeenAt DateTime       @default(now())
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, isActive])
+}
+
+model UserNotification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+model SupportTicket {
+  id               String             @id @default(uuid())
+  userId           String
+  subject          String?
+  message          String
+  status           SupportTicketStatus @default(OPEN)
+  adminResponse    String?            @db.VarChar(300)
+  respondedAt      DateTime?
+  respondedByUserId String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  user             User               @relation("SupportTicketRequester", fields: [userId], references: [id], onDelete: Cascade)
+  respondedBy      User?              @relation("SupportTicketResponder", fields: [respondedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([respondedByUserId, respondedAt])
+}
+
+model PushNotificationQueue {
+  id          String    @id @default(uuid())
+  messages    Json
+  attempts    Int       @default(0)
+  nextRetryAt DateTime  @default(now())
+  failedAt    DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([nextRetryAt, failedAt])
+}
+
+model ProviderBankAccount {
+  id             String          @id @default(uuid())
+  providerId     String          @unique
+  bankName       String
+  accountType    BankAccountType
+  agency         String
+  accountNumber  String
+  accountDigit   String
+  holderName     String
+  holderDocument String
+  pixKey         String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  provider       ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, updatedAt])
+}
+
+model OnlineConsultancySetting {
+  id                  String          @id @default(uuid())
+  providerId          String          @unique
+  enabled             Boolean         @default(false)
+  responseSlaDays     Int             @default(7)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  provider            ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+}
+
+model ProviderServiceOffer {
+  id              String           @id @default(uuid())
+  providerId      String
+  kind            ServiceOfferKind
+  title           String
+  billingCycle    OfferBillingCycle
+  daysPerWeek     Int?
+  comboPresentialDaysPerWeek Int?
+  comboOnlineDaysPerWeek Int?
+  priceCents      Int
+  basePriceUpdatedAt DateTime      @default(now())
+  isPromotion     Boolean          @default(false)
+  promotionPriceCents Int?
+  promotionEndsAt DateTime?
+  promotionLabel  String?
+  acceptsPix      Boolean          @default(true)
+  acceptsDebitCard Boolean         @default(true)
+  acceptsCreditCard Boolean        @default(true)
+  maxCreditInstallments Int        @default(1)
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  provider        ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  quotedRequests  ConsultancyRequest[] @relation("QuotedConsultancyOffer")
+  contracts       ConsultancyContract[]
+
+  @@index([providerId, isActive])
+  @@index([isPromotion, isActive])
+}
+
+model TrainingPlan {
+  id            String           @id @default(uuid())
+  providerId    String
+  contractId    String?
+  title         String
+  description   String?
+  isPrebuilt    Boolean          @default(true)
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  provider      ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  contract      ConsultancyContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  exercises     TrainingPlanExercise[]
+  completions   TrainingPlanCompletion[]
+
+  @@index([providerId, isPrebuilt, isActive])
+  @@index([contractId])
+}
+
+model TrainingPlanExercise {
+  id              String    @id @default(uuid())
+  trainingPlanId  String
+  exerciseId      String?
+  sortOrder       Int       @default(0)
+  name            String
+  repetitionsSets String
+  load            String
+  restSeconds     Int?
+  restLabel       String?
+  demoVideoUrl    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  trainingPlan    TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+  exercise        Exercise?    @relation(fields: [exerciseId], references: [id], onDelete: SetNull)
+
+  @@index([trainingPlanId, sortOrder])
+}
+
+enum ExerciseMediaType {
+  YOUTUBE
+  VIDEO
+  IMAGE
+  GIF
+}
+
+model Exercise {
+  id          String             @id @default(uuid())
+  providerId  String?
+  name        String
+  category    String
+  description String?
+  defaultRepetitionsSets String?
+  defaultRestLabel String?
+  mediaUrl    String?
+  mediaType   ExerciseMediaType?
+  isPrebuilt  Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  provider    ProviderProfile?   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  trainingPlanExercises TrainingPlanExercise[]
+
+  @@index([providerId, category])
+  @@index([isPrebuilt, category])
+}
+
+model ConsultancyRequest {
+  id                 String                   @id @default(uuid())
+  providerId         String
+  clientId           String
+  trainingNeedText   String?
+  limitationText     String?
+  extraInfoText      String?
+  providerResponseText String?
+  status             ConsultancyRequestStatus @default(OPEN)
+  quotedOfferId      String?
+  respondedAt        DateTime?
+  clientDecisionAt   DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  provider           ProviderProfile          @relation("ProviderConsultancyRequests", fields: [providerId], references: [id], onDelete: Cascade)
+  client             User                     @relation("ClientConsultancyRequests", fields: [clientId], references: [id], onDelete: Cascade)
+  quotedOffer        ProviderServiceOffer?    @relation("QuotedConsultancyOffer", fields: [quotedOfferId], references: [id], onDelete: SetNull)
+  contract           ConsultancyContract?
+
+  @@index([providerId, status, createdAt])
+  @@index([clientId, status, createdAt])
+}
+
+model ConsultancyContract {
+  id                String                   @id @default(uuid())
+  requestId         String                   @unique
+  providerId        String
+  clientId          String
+  offerId           String
+  status            ConsultancyContractStatus @default(PENDING_PAYMENT)
+  paymentMethod     ConsultancyPaymentMethod?
+  paymentInstallments Int                  @default(1)
+  paymentStatus     ConsultancyPaymentStatus @default(PENDING)
+  mpPaymentId           String?             @unique
+  mpRefundId            String?
+  paymentAmountCents Int
+  providerAmountCents Int
+  platformAmountCents Int
+  paymentCapturedAt DateTime?
+  deliveryDeadlineAt DateTime
+  deliveredAt       DateTime?
+  refundedAt        DateTime?
+  refundReason      String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  request           ConsultancyRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  provider          ProviderProfile          @relation("ProviderConsultancyContracts", fields: [providerId], references: [id], onDelete: Cascade)
+  client            User                     @relation("ClientConsultancyContracts", fields: [clientId], references: [id], onDelete: Cascade)
+  offer             ProviderServiceOffer     @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  trainingPlans     TrainingPlan[]
+  trainingPlanCompletions TrainingPlanCompletion[]
+
+  @@index([providerId, status, deliveryDeadlineAt])
+  @@index([clientId, status, createdAt])
+}
+
+model ProviderCalendarEvent {
+  id          String          @id @default(uuid())
+  providerId  String
+  title       String
+  description String?
+  startsAt    DateTime
+  endsAt      DateTime
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  provider    ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, startsAt])
+  @@index([providerId, endsAt])
+}
+
+model ClientAnamnesis {
+  id          String         @id @default(uuid())
+  clientId    String         @unique
+  status      AnamnesisStatus @default(DRAFT)
+  answers     Json?
+  completedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  client      User           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+model ProviderStudentAssessment {
+  id             String          @id @default(uuid())
+  providerId     String
+  clientId       String
+  weight         String?
+  height         String?
+  imc            String?
+  bodyFatPercent String?
+  muscleMass     String?
+  circumferences String?
+  waist          String?
+  hip            String?
+  chest          String?
+  arm            String?
+  thigh          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  provider       ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  client         User            @relation("AssessmentClient", fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, clientId])
+  @@index([clientId, updatedAt])
+  @@index([providerId, updatedAt])
+}
+
+model FinancialStudent {
+  id                String               @id @default(uuid())
+  providerId        String
+  name              String
+  monthlyValueCents Int
+  type              FinancialStudentType
+  weeklyFrequency   Int                  @default(3)
+  isActive          Boolean              @default(true)
+  notes             String?
+  location          String?
+  weeklySchedule    Json?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  provider          ProviderProfile      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  incomes           FinancialIncome[]
+  classSessions     FinancialClassSession[]
+
+  @@index([providerId, isActive])
+}
+
+model FinancialIncome {
+  id          String           @id @default(uuid())
+  providerId  String
+  studentId   String?
+  description String
+  amountCents Int
+  source      String           @default("MANUAL")
+  paidAt      DateTime
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  provider    ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  student     FinancialStudent? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([providerId, paidAt])
+}
+
+model FinancialExpense {
+  id          String                  @id @default(uuid())
+  providerId  String
+  description String
+  amountCents Int
+  category    FinancialExpenseCategory @default(OTHER)
+  paidAt      DateTime
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  provider    ProviderProfile         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, paidAt])
+}
+
+model FinancialGoal {
+  id                  String          @id @default(uuid())
+  providerId          String
+  month               String
+  targetRevenueCents  Int?
+  targetStudents      Int?
+  targetWeeklyClasses Int?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  provider            ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, month])
+  @@index([providerId, month])
+}
+
+model FinancialClassSession {
+  id         String           @id @default(uuid())
+  providerId String
+  studentId  String?
+  date       DateTime
+  notes      String?
+  createdAt  DateTime         @default(now())
+  provider   ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  student    FinancialStudent? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([providerId, date])
+}
+
+model ProviderManualBlock {
+  id         String          @id @default(uuid())
+  providerId String
+  date       String
+  startTime  String
+  endTime    String
+  label      String
+  location   String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  provider   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, date])
+}
+
+model TrainingPlanCompletion {
+  id             String              @id @default(uuid())
+  clientId       String
+  providerId     String
+  trainingPlanId String
+  contractId     String?
+  notes          String?
+  completedAt    DateTime            @default(now())
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  client         User                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  provider       ProviderProfile     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  trainingPlan   TrainingPlan        @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+  contract       ConsultancyContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@index([providerId, completedAt])
+  @@index([clientId, completedAt])
+  @@index([trainingPlanId, completedAt])
+}
+
+
+model BookingMessage {
+  id        String    @id @default(uuid())
+  bookingId String
+  senderId  String?
+  isSystem  Boolean   @default(false)
+  content   String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  sender    User?    @relation(fields: [senderId], references: [id])
+
+  @@index([bookingId, createdAt])
+}
+
+model NotificationPreference {
+  id        String                     @id @default(uuid())
+  userId    String
+  type      NotificationPreferenceType
+  enabled   Boolean                    @default(true)
+  createdAt DateTime                   @default(now())
+  updatedAt DateTime                   @updatedAt
+  user      User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@index([userId])
+}
+
+model DataRetentionExecutionLog {
+  id           String   @id @default(uuid())
+  dryRun       Boolean  @default(true)
+  status       String
+  triggeredBy  String   @default("SYSTEM")
+  startedAt    DateTime
+  finishedAt   DateTime?
+  durationMs   Int?
+  summary      Json?
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+}
+
+model PaymentAuditLog {
+  id                    String   @id @default(uuid())
+  paymentId             String?
+  consultancyContractId String?
+  fromStatus            String?
+  toStatus              String
+  triggeredBy           String
+  metadata              Json?
+  createdAt             DateTime @default(now())
+
+  @@index([paymentId, createdAt])
+  @@index([consultancyContractId, createdAt])
+}

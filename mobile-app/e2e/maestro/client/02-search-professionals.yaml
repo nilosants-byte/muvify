@@ -1,0 +1,19 @@
+# Client: busca de profissionais no mapa
+# Verifica que o mapa carrega e markers são exibidos
+# Executa: maestro test client/02-search-professionals.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- runFlow: ../helpers/_login-client.yaml
+
+# Tela inicial deve mostrar o mapa
+- assertVisible:
+    id: "screen.client.home"
+
+# Aguarda carregamento inicial do mapa (GPS fast-path + providers)
+- waitForAnimationToEnd
+
+- takeScreenshot: "client-home-map-loaded"

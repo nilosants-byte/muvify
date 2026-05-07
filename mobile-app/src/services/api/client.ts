@@ -1,0 +1,2198 @@
+﻿import { Platform } from "react-native";
+
+export type UserRole = "CLIENT" | "PROVIDER" | "ADMIN";
+export type PaymentMethod = "CARD" | "CREDIT_CARD" | "DEBIT_CARD" | "PIX";
+export type ProviderServiceMode = "PRESENTIAL_ONLY" | "HOME_VISIT_ONLY" | "BOTH";
+
+export type ProviderFixedLocation = {
+  id: string;
+  name: string;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  radiusKm?: number | null;
+};
+
+export type AuthUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  phone?: string | null;
+  photoUrl?: string | null;
+  emailVerifiedAt?: string | null;
+  createdAt?: string;
+  providerProfile?: {
+    id: string;
+    displayName: string;
+    bio: string;
+    photoUrl?: string | null;
+    experienceYears: number;
+    priceCents: number;
+    serviceRadiusKm?: number | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    serviceMode?: ProviderServiceMode | null;
+    fixedLocations?: ProviderFixedLocation[] | null;
+    excludedLocations?: string[] | null;
+    specialties?: string[] | null;
+    categoryLinks?: Array<{
+      categoryId: string;
+      category?: Category;
+    }>;
+    bankAccount?: ProviderBankAccount | null;
+  } | null;
+};
+
+export type AuthResponse = {
+  user: AuthUser;
+  accessToken: string;
+  refreshToken: string;
+};
+
+export type ForgotPasswordResponse = {
+  message: string;
+  resetToken?: string;
+};
+
+export type ForgotPasswordChannel = "EMAIL";
+
+export type Category = {
+  id: string;
+  name: string;
+  description?: string | null;
+};
+
+export type ProviderSummary = {
+  id: string;
+  displayName: string;
+  bio: string;
+  photoUrl?: string | null;
+  specialties?: string[] | null;
+  age?: number | null;
+  experienceYears: number;
+  priceCents: number;
+  avgRating?: number;
+  reviewCount?: number;
+  averageRating?: number;
+  totalReviews?: number;
+  serviceRadiusKm?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  serviceMode?: ProviderServiceMode | null;
+  fixedLocations?: ProviderFixedLocation[] | null;
+  excludedLocations?: string[] | null;
+  distanceKm?: number;
+};
+
+export type ProviderCategoryLink = {
+  categoryId: string;
+  category?: Category;
+};
+
+export type ProviderReview = {
+  id: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+  user?: {
+    id: string;
+    name?: string;
+  };
+};
+
+export type ProviderDetail = ProviderSummary & {
+  presentationVideoUrl?: string | null;
+  user?: {
+    id: string;
+    name?: string;
+    email?: string;
+    phone?: string | null;
+  };
+  categoryLinks?: ProviderCategoryLink[];
+  availabilities?: Availability[];
+  reviews?: ProviderReview[];
+};
+
+export type ProviderSchedulePreviewDay = {
+  date: string;
+  weekday: number;
+  label: string;
+  availableSlots: string[];
+  occupiedSlots: string[];
+};
+
+export type ProviderSchedulePreview = {
+  providerId: string;
+  timezone: string;
+  days: ProviderSchedulePreviewDay[];
+};
+
+export type Booking = {
+  id: string;
+  status: "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED";
+  scheduledAt: string;
+  priceCents?: number;
+  currency?: string;
+  notes?: string | null;
+  sessionLocation?: string | null;
+  providerId: string;
+  clientId: string;
+  categoryId: string;
+  clientConfirmedAt?: string | null;
+  providerConfirmedAt?: string | null;
+  completedAt?: string | null;
+  attendanceCodeValidatedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  category?: Category;
+  provider?: {
+    id: string;
+    displayName?: string;
+    photoUrl?: string | null;
+    user?: {
+      id: string;
+      name?: string;
+      phone?: string | null;
+    };
+  };
+  client?: {
+    id: string;
+    name?: string;
+    email?: string;
+    phone?: string | null;
+    photoUrl?: string | null;
+  };
+  payment?: PaymentStatusResponse;
+};
+
+export type CompletionProofInput = {
+  imageBase64: string;
+  mimeType: "image/jpeg" | "image/jpg" | "image/png" | "image/webp";
+  cameraFacing: "FRONT" | "BACK";
+};
+
+export type AttendanceCodeResponse = {
+  bookingId: string;
+  available: boolean;
+  releaseAt?: string;
+  code?: string | null;
+  generatedAt?: string | null;
+  expiresAt?: string | null;
+  validated: boolean;
+  validatedAt?: string | null;
+  qrToken?: string | null;
+  qrDeepLink?: string | null;
+};
+
+export type ServiceOfferKind =
+  | "PRESENTIAL"
+  | "ONLINE_CONSULTANCY"
+  | "ONLINE_CONSULTANCY_SPECIALIZED"
+  | "COMBO";
+
+export type OfferBillingCycle =
+  | "DAILY"
+  | "WEEKLY"
+  | "MONTHLY"
+  | "QUARTERLY"
+  | "SEMIANNUAL"
+  | "ANNUAL";
+
+export type ConsultancyPaymentMethod = "CREDIT_CARD" | "DEBIT_CARD" | "PIX";
+
+export type ProviderServiceOffer = {
+  id: string;
+  providerId: string;
+  kind: ServiceOfferKind;
+  title: string;
+  billingCycle: OfferBillingCycle;
+  daysPerWeek?: number | null;
+  comboPresentialDaysPerWeek?: number | null;
+  comboOnlineDaysPerWeek?: number | null;
+  priceCents: number;
+  basePriceUpdatedAt: string;
+  isPromotion: boolean;
+  promotionPriceCents?: number | null;
+  promotionEndsAt?: string | null;
+  isPromotionActive?: boolean;
+  effectivePriceCents?: number;
+  kindDescription?: string | null;
+  basePriceChangeLockedUntil?: string;
+  promotionLabel?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type PromotionFeedItem = {
+  offerId: string;
+  providerId: string;
+  providerName: string;
+  providerPhotoUrl?: string | null;
+  specialty: string;
+  itemInPromotion: string;
+  promotionalPriceCents: number;
+  basePriceCents?: number;
+  promotionEndsAt?: string | null;
+  kind: ServiceOfferKind;
+  billingCycle: OfferBillingCycle;
+  daysPerWeek?: number | null;
+  comboPresentialDaysPerWeek?: number | null;
+  comboOnlineDaysPerWeek?: number | null;
+};
+
+export type ProviderConsultancyCatalog = {
+  provider: {
+    id: string;
+    displayName: string;
+    photoUrl?: string | null;
+    specialties: string[];
+  };
+  onlineConsultancyEnabled: boolean;
+  offers: ProviderServiceOffer[];
+  prebuiltPlanPreviews: Array<{
+    id: string;
+    title: string;
+    description?: string | null;
+    exerciseCount: number;
+  }>;
+};
+
+export type ConsultancyRequest = {
+  id: string;
+  providerId: string;
+  clientId: string;
+  trainingNeedText?: string | null;
+  limitationText?: string | null;
+  extraInfoText?: string | null;
+  providerResponseText?: string | null;
+  status:
+    | "OPEN"
+    | "RESPONDED"
+    | "ACCEPTED"
+    | "REFUSED"
+    | "EXPIRED_REFUNDED"
+    | "ARCHIVED";
+  quotedOfferId?: string | null;
+  respondedAt?: string | null;
+  clientDecisionAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  provider?: {
+    id: string;
+    displayName: string;
+    photoUrl?: string | null;
+    user?: {
+      id: string;
+      name?: string;
+    };
+  };
+  client?: {
+    id: string;
+    name?: string;
+    email?: string;
+  };
+  quotedOffer?: ProviderServiceOffer | null;
+  contract?: ConsultancyContract | null;
+};
+
+export type ConsultancyContract = {
+  id: string;
+  requestId: string;
+  providerId: string;
+  clientId: string;
+  offerId: string;
+  status: "PENDING_PAYMENT" | "ACTIVE" | "DELIVERED" | "REFUNDED_EXPIRED" | "ARCHIVED";
+  paymentMethod?: ConsultancyPaymentMethod | null;
+  paymentStatus: "PENDING" | "CAPTURED" | "REFUNDED" | "FAILED";
+  paymentAmountCents: number;
+  providerAmountCents: number;
+  platformAmountCents: number;
+  deliveryDeadlineAt: string;
+  deliveredAt?: string | null;
+  refundedAt?: string | null;
+  offer?: ProviderServiceOffer;
+  provider?: {
+    id: string;
+    displayName: string;
+    photoUrl?: string | null;
+  };
+  trainingPlans?: TrainingPlan[];
+};
+
+export type TrainingPlanExercise = {
+  id: string;
+  sortOrder: number;
+  name: string;
+  repetitionsSets: string;
+  load: string;
+  restSeconds?: number | null;
+  restLabel?: string | null;
+  demoVideoUrl?: string | null;
+  exerciseId?: string | null;
+  exercise?: {
+    id: string;
+    name: string;
+    category: string;
+    description?: string | null;
+    mediaUrl?: string | null;
+    mediaType?: ExerciseMediaType | null;
+  } | null;
+};
+
+export type TrainingPlan = {
+  id: string;
+  providerId: string;
+  contractId?: string | null;
+  title: string;
+  description?: string | null;
+  isPrebuilt: boolean;
+  isActive: boolean;
+  exercises: TrainingPlanExercise[];
+};
+
+export type MyTrainingResponse = {
+  locked: boolean;
+  waitingDelivery: Array<{
+    contractId: string;
+    providerName: string;
+    deliveryDeadlineAt: string;
+    status: "PENDING_PAYMENT" | "ACTIVE" | "DELIVERED" | "REFUNDED_EXPIRED" | "ARCHIVED";
+  }>;
+  contracts: ConsultancyContract[];
+};
+
+export type Favorite = {
+  id: string;
+  userId: string;
+  providerId: string;
+  provider?: ProviderSummary & {
+    user?: {
+      id: string;
+      name?: string;
+      phone?: string | null;
+    };
+  };
+};
+
+export type Availability = {
+  id: string;
+  weekday: number;
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
+};
+
+export type ProviderAccountStatus = {
+  hasAccount: boolean;
+  accountId?: string;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+};
+
+export type ProviderBankAccount = {
+  id: string;
+  providerId: string;
+  bankName: string;
+  accountType: "CHECKING" | "SAVINGS";
+  agency: string;
+  accountNumber: string;
+  accountDigit: string;
+  holderName: string;
+  holderDocument: string;
+  pixKey?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProviderCredentialsDocument = {
+  id?: string;
+  name: string;
+  uri: string;
+  mimeType?: string | null;
+  createdAt?: string;
+};
+
+export type ProviderCredentials = {
+  providerId: string;
+  crefNumber?: string | null;
+  crefDocumentUrl?: string | null;
+  credentials: ProviderCredentialsDocument[];
+  crefValidatedAt?: string | null;
+  crefValidationStatus?: "PENDING" | "IN_REVIEW" | "APPROVED" | "REJECTED";
+  crefRejectionReason?: string | null;
+  crefReviewedAt?: string | null;
+};
+
+export type AdminDashboardOverview = {
+  summary: {
+    activeUsers: number;
+    totalUsers: number;
+    totalProviders: number;
+    totalClients: number;
+  };
+  rankings: {
+    byRegion: Array<{ label: string; bookingsCount: number }>;
+    byCity: Array<{ label: string; bookingsCount: number }>;
+    byNeighborhood: Array<{ label: string; bookingsCount: number }>;
+  };
+  newUsersChart: {
+    month: number;
+    year: number;
+    total: number;
+    data: Array<{
+      day: number;
+      date: string;
+      usersCount: number;
+    }>;
+  };
+};
+
+export type AdminCrefQueueItem = ProviderCredentials & {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string | null;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminSupportTicket = {
+  id: string;
+  subject?: string | null;
+  message: string;
+  status: "OPEN" | "ANSWERED";
+  adminResponse?: string | null;
+  respondedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: UserRole;
+  };
+  respondedBy?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
+};
+
+export type AdminChatAuditSessionSummary = {
+  bookingId: string;
+  chatStartedAt: string;
+  chatLastMessageAt: string;
+  messageCount: number;
+  bookingScheduledAt: string;
+  sessionLocation?: string | null;
+  priceCents: number;
+  currency: string;
+  serviceType: string;
+  client: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  provider: {
+    profileId: string;
+    userId: string;
+    name: string;
+    email: string;
+  };
+};
+
+export type AdminChatAuditSessionListResponse = {
+  items: AdminChatAuditSessionSummary[];
+  nextCursor: string | null;
+};
+
+export type AdminChatAuditMessage = {
+  id: string;
+  senderId: string | null;
+  senderName: string | null;
+  senderEmail: string | null;
+  isSystem: boolean;
+  content: string;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export type AdminChatAuditSessionMessagesResponse = {
+  session: AdminChatAuditSessionSummary;
+  messages: AdminChatAuditMessage[];
+  nextCursor: string | null;
+};
+
+export const PROFESSIONAL_SPECIALTIES = [
+  "Hipertrofia",
+  "Emagrecimento",
+  "Corrida",
+  "Alongamento",
+  "Reabilitação e Lesão",
+  "LPO (Levantamento de Peso Olímpico)",
+  "Fisiculturismo",
+  "Grupos Especiais",
+  "Saúde da Mulher",
+  "Treino Intervalado (HIIT)",
+] as const;
+
+export type AnamnesisGoal =
+  | "EMAGRECIMENTO"
+  | "HIPERTROFIA"
+  | "CONDICIONAMENTO_FISICO"
+  | "REABILITACAO"
+  | "PERFORMANCE_ESPORTIVA"
+  | "SAUDE_GERAL";
+
+export type AnamnesisAnswers = {
+  personalData?: {
+    fullName?: string;
+    birthDate?: string;
+    age?: string;
+    sex?: string;
+    weightKg?: string;
+    heightM?: string;
+    phone?: string;
+    email?: string;
+    fullAddress?: string;
+    emergencyContact?: string;
+  };
+  objectives?: {
+    selected?: AnamnesisGoal[];
+    other?: string;
+    mainObjective?: string;
+    targetTimeframe?: string;
+  };
+  healthHistory?: {
+    hasDiagnosedDisease?: boolean;
+    diagnosedDiseaseDetails?: string;
+    hadSurgery?: boolean;
+    surgeryDetails?: string;
+    hasInjuries?: boolean;
+    injuriesDetails?: string;
+    hasCurrentPain?: boolean;
+    currentPainDetails?: string;
+    hasCardiacProblems?: boolean;
+    hasHypertension?: boolean;
+    hasDiabetes?: boolean;
+    hasRespiratoryProblems?: boolean;
+  };
+  medicationAndSupplements?: {
+    usesMedication?: boolean;
+    medicationDetails?: string;
+    usesSupplements?: boolean;
+    supplementsDetails?: string;
+    usedHormones?: boolean;
+    hormonesDetails?: string;
+  };
+  familyHistory?: {
+    hasCardiacDisease?: boolean;
+    hasHypertension?: boolean;
+    hasDiabetes?: boolean;
+    hasObesity?: boolean;
+    hasOrthopedicProblems?: boolean;
+    other?: string;
+  };
+  activityHistory?: {
+    hasTrainedBefore?: boolean;
+    trainingDuration?: string;
+    weeklyFrequency?: string;
+    hadProfessionalSupport?: boolean;
+    practicedModalities?: string;
+    stopReason?: string;
+  };
+  lifestyle?: {
+    sleepHours?: string;
+    sleepQuality?: "BOA" | "REGULAR" | "RUIM";
+    stressLevel?: "BAIXO" | "MODERADO" | "ALTO";
+    alcoholConsumption?: "NAO" | "SOCIAL" | "FREQUENTE";
+    smokes?: boolean;
+    workRoutine?: "SEDENTARIA" | "MODERADAMENTE_ATIVA" | "MUITO_ATIVA";
+  };
+  nutrition?: {
+    mealsPerDay?: string;
+    followsDiet?: boolean;
+    dietDetails?: string;
+    waterIntake?: string;
+    hasBingeEating?: boolean;
+    avoidedFoods?: string;
+  };
+  limitations?: {
+    physicalLimitations?: string;
+    restrictedExercises?: string;
+  };
+  behavior?: {
+    trainingMotivation?: string;
+    biggestConsistencyDifficulty?: string;
+    quitBeforeReason?: string;
+  };
+  imageAuthorization?: {
+    allowImageUse?: boolean;
+  };
+  parq?: {
+    hasHeartCondition?: boolean;
+    chestPainDuringExercise?: boolean;
+    chestPainAtRestLastMonth?: boolean;
+    dizzinessOrFainting?: boolean;
+    jointProblemsWithExercise?: boolean;
+    usesCardiacMedication?: boolean;
+    hasOtherExerciseRestriction?: boolean;
+  };
+  responsibilityTermAccepted?: boolean;
+};
+
+export type ClientAnamnesisProfile = {
+  id: string | null;
+  clientId: string;
+  status: "DRAFT" | "COMPLETED";
+  answers: AnamnesisAnswers | null;
+  completedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type SecurityRecoveryEmailResponse = {
+  recoveryEmail: string;
+  accountEmail: string;
+  custom: boolean;
+};
+
+export type ProviderStudent = {
+  clientId: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  profilePhotoUrl: string | null;
+  age?: number | null;
+  contractedValueCents?: number | null;
+  totalBookings: number;
+  totalContracts: number;
+  lastActivityAt: string;
+};
+
+export type ProviderDashboardStudentsResponse = {
+  providerId: string;
+  services: Array<{
+    serviceKind:
+      | "PRESENTIAL"
+      | "ONLINE_CONSULTANCY"
+      | "ONLINE_CONSULTANCY_SPECIALIZED"
+      | "COMBO";
+    serviceLabel: string;
+    totalStudents: number;
+    students: ProviderStudent[];
+  }>;
+};
+
+export type ProviderStudentPhysicalAssessment = {
+  id: string | null;
+  providerId: string;
+  clientId: string;
+  weight: string | null;
+  height: string | null;
+  imc: string | null;
+  bodyFatPercent: string | null;
+  muscleMass: string | null;
+  circumferences: string | null;
+  waist: string | null;
+  hip: string | null;
+  chest: string | null;
+  arm: string | null;
+  thigh: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type ProviderStudentManagementDetail = {
+  student: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    profilePhotoUrl: string | null;
+    memberSince: string;
+  };
+  anamnesis: {
+    id: string | null;
+    status: "DRAFT" | "COMPLETED";
+    completedAt: string | null;
+    answers: AnamnesisAnswers | null;
+  };
+  physicalAssessment: ProviderStudentPhysicalAssessment;
+  serviceSummary: {
+    presentialBookings: number;
+    onlineConsultancyContracts: number;
+    specializedConsultancyContracts: number;
+    comboContracts: number;
+  };
+};
+
+export type ProviderAccountCreate = {
+  accountId: string;
+  onboardingUrl: string;
+};
+
+export type PaymentStatusResponse = {
+  id: string;
+  method: PaymentMethod;
+  status:
+    | "PENDING_AUTH"
+    | "AUTHORIZING"
+    | "AUTHORIZED"
+    | "CAPTURED"
+    | "CANCELED"
+    | "REFUNDED"
+    | "FAILED";
+  amountCents: number;
+  currency: string;
+  bookingId: string;
+};
+
+export type PixChargeResponse = {
+  paymentId: string;
+  bookingId: string;
+  method: PaymentMethod;
+  status: PaymentStatusResponse["status"];
+  amountCents: number;
+  pix: {
+    qrCodeUrl: string | null;
+    copyAndPasteCode: string | null;
+    hostedInstructionsUrl: string | null;
+    expiresAt: string | null;
+  } | null;
+};
+
+export type PushDevice = {
+  id: string;
+  token: string;
+  platform: "IOS" | "ANDROID" | "WEB" | "UNKNOWN";
+  appVersion?: string | null;
+  deviceName?: string | null;
+  isActive: boolean;
+  invalidAt?: string | null;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NotificationInboxItem = {
+  id: string;
+  title: string;
+  body: string;
+  data?: Record<string, string | number | boolean> | null;
+  readAt?: string | null;
+  createdAt: string;
+};
+
+export type CustomerPaymentStatus = {
+  configured: boolean;
+  hasCustomer: boolean;
+  hasDefaultPaymentMethod: boolean;
+};
+
+export type CustomerCardSummary = {
+  id: string;
+  nickname: string;
+  brand: string;
+  last4: string;
+  funding: "CREDIT" | "DEBIT" | "UNKNOWN";
+  expMonth: number | null;
+  expYear: number | null;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CustomerSetupIntent = {
+  setupIntentId: string;
+  setupIntentClientSecret: string;
+  customerId: string;
+  ephemeralKeySecret: string;
+  mpPublicKey?: string;
+};
+
+type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+
+type RequestConfig = {
+  method?: HttpMethod;
+  token?: string;
+  body?: unknown;
+};
+
+export type ExerciseMediaType = "YOUTUBE" | "VIDEO" | "IMAGE" | "GIF";
+
+export type Exercise = {
+  id: string;
+  providerId?: string | null;
+  name: string;
+  category: string;
+  description?: string | null;
+  defaultRepetitionsSets?: string | null;
+  defaultRestLabel?: string | null;
+  mediaUrl?: string | null;
+  mediaType?: ExerciseMediaType | null;
+  isPrebuilt: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const EXERCISE_CATEGORIES = [
+  "Peitoral",
+  "Ombros",
+  "Tríceps",
+  "Bíceps",
+  "Dorsal",
+  "Posterior",
+  "Glúteos",
+  "Quadríceps",
+  "Panturrilha",
+  "Abdômen",
+  "Alongamento",
+  "Mobilidade",
+  "Cardio",
+] as const;
+
+export type ExerciseCategory = typeof EXERCISE_CATEGORIES[number];
+
+export const exerciseApi = {
+  listAll(token: string, params?: { category?: string; q?: string }) {
+    const query = new URLSearchParams();
+    if (params?.category) query.set("category", params.category);
+    if (params?.q) query.set("q", params.q);
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<Exercise[]>(`/exercises${suffix}`, { token });
+  },
+  listMine(token: string, params?: { category?: string; q?: string }) {
+    const query = new URLSearchParams();
+    if (params?.category) query.set("category", params.category);
+    if (params?.q) query.set("q", params.q);
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<Exercise[]>(`/exercises/mine${suffix}`, { token });
+  },
+  listPrebuilt(params?: { category?: string; q?: string }) {
+    const query = new URLSearchParams();
+    if (params?.category) query.set("category", params.category);
+    if (params?.q) query.set("q", params.q);
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<Exercise[]>(`/exercises/prebuilt${suffix}`);
+  },
+  create(token: string, body: {
+    name: string;
+    category: string;
+    description?: string;
+    defaultRepetitionsSets?: string;
+    defaultRestLabel?: string;
+    mediaUrl?: string;
+    mediaType?: ExerciseMediaType;
+  }) {
+    return apiRequest<Exercise>("/exercises", { method: "POST", token, body });
+  },
+  delete(token: string, exerciseId: string) {
+    return apiRequest<void>(`/exercises/${exerciseId}`, { method: "DELETE", token });
+  },
+};
+
+export class ApiError extends Error {
+  status: number;
+  details?: unknown;
+
+  constructor(status: number, message: string, details?: unknown) {
+    super(message);
+    this.status = status;
+    this.details = details;
+  }
+}
+
+function resolveApiBaseUrl() {
+  const configuredBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (configuredBaseUrl) {
+    if (!__DEV__ && configuredBaseUrl.startsWith("http://")) {
+      throw new Error(
+        "EXPO_PUBLIC_API_BASE_URL deve usar HTTPS em build de producao."
+      );
+    }
+    return configuredBaseUrl;
+  }
+
+  if (!__DEV__) {
+    throw new Error(
+      "EXPO_PUBLIC_API_BASE_URL e obrigatoria em producao."
+    );
+  }
+
+  // Android emulator cannot reach localhost of host machine directly.
+  if (Platform.OS === "android") {
+    return "http://10.0.2.2:3000/api";
+  }
+
+  return "http://localhost:3000/api";
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
+const API_REQUEST_TIMEOUT_MS = 15000;
+
+function buildNetworkErrorMessage() {
+  return `Falha de rede ao conectar com a API. Verifique sua internet, confirme se o backend está ativo e se o celular está na mesma rede. URL atual: ${API_BASE_URL}`;
+}
+
+function buildTimeoutErrorMessage() {
+  return `Tempo limite ao conectar com a API (${Math.round(API_REQUEST_TIMEOUT_MS / 1000)}s). Verifique sua internet e tente novamente. URL atual: ${API_BASE_URL}`;
+}
+
+async function parseResponse(response: Response) {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (response.status === 204) {
+    return undefined;
+  }
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+  return response.text();
+}
+
+export async function apiRequest<T = unknown>(
+  path: string,
+  { method = "GET", token, body }: RequestConfig = {}
+) {
+  const requestUrl = `${API_BASE_URL}${path}`;
+  let response: Response;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
+
+  try {
+    response = await fetch(requestUrl, {
+      method,
+      headers: {
+        ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        "ngrok-skip-browser-warning": "true"
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal
+    });
+  } catch (error) {
+    const timedOut =
+      error instanceof Error &&
+      (error.name === "AbortError" || /aborted|timeout/i.test(error.message));
+    const cause = error instanceof Error ? error.message : "Network request failed";
+    throw new ApiError(0, timedOut ? buildTimeoutErrorMessage() : buildNetworkErrorMessage(), {
+      cause,
+      requestUrl,
+      method
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const payload = await parseResponse(response);
+  if (!response.ok) {
+    const message =
+      typeof payload === "string"
+        ? payload
+        : (payload as { message?: string })?.message ?? `HTTP ${response.status}`;
+    throw new ApiError(response.status, message, payload);
+  }
+  return payload as T;
+}
+
+export const authApi = {
+  register(input: {
+    name: string;
+    email: string;
+    password: string;
+    phone: string;
+    role?: "CLIENT" | "PROVIDER";
+    termsVersion: string;
+    consentAccepted: true;
+  }) {
+    return apiRequest<AuthResponse>("/auth/register", { method: "POST", body: input });
+  },
+  login(input: { email: string; password: string }) {
+    return apiRequest<AuthResponse>("/auth/login", { method: "POST", body: input });
+  },
+  refresh(refreshToken: string) {
+    return apiRequest<AuthResponse>("/auth/refresh", {
+      method: "POST",
+      body: { refreshToken }
+    });
+  },
+  logout(refreshToken: string) {
+    return apiRequest<void>("/auth/logout", {
+      method: "POST",
+      body: { refreshToken }
+    });
+  },
+  forgotPassword(input: { channel: ForgotPasswordChannel; email?: string; phone?: string }) {
+    return apiRequest<ForgotPasswordResponse>("/auth/forgot-password", {
+      method: "POST",
+      body: input
+    });
+  },
+  resetPassword(input: { token: string; newPassword: string }) {
+    return apiRequest<void>("/auth/reset-password", {
+      method: "POST",
+      body: input
+    });
+  },
+  resendVerificationEmail(token: string) {
+    return apiRequest<{ message: string }>("/auth/resend-verification", {
+      method: "POST",
+      token
+    });
+  }
+};
+
+export const userApi = {
+  me(token: string) {
+    return apiRequest<AuthUser>("/users/me", { token });
+  },
+  updateMe(token: string, input: { name?: string; phone?: string; email?: string; photoUrl?: string }) {
+    return apiRequest<AuthUser>("/users/me", { method: "PATCH", token, body: input });
+  },
+  providerBankAccount(token: string) {
+    return apiRequest<ProviderBankAccount | null>("/users/me/provider-bank-account", { token });
+  },
+  upsertProviderBankAccount(
+    token: string,
+    input: {
+      bankName: string;
+      accountType: "CHECKING" | "SAVINGS";
+      agency: string;
+      accountNumber: string;
+      accountDigit: string;
+      holderName: string;
+      holderDocument: string;
+      pixKey?: string;
+    }
+  ) {
+    return apiRequest<ProviderBankAccount>("/users/me/provider-bank-account", {
+      method: "PUT",
+      token,
+      body: input
+    });
+  },
+  myAnamnesis(token: string) {
+    return apiRequest<ClientAnamnesisProfile>("/users/me/anamnesis", { token });
+  },
+  upsertMyAnamnesis(
+    token: string,
+    input: {
+      status?: "DRAFT" | "COMPLETED";
+      answers?: AnamnesisAnswers;
+    }
+  ) {
+    return apiRequest<ClientAnamnesisProfile>("/users/me/anamnesis", {
+      method: "PUT",
+      token,
+      body: input
+    });
+  },
+  changePassword(
+    token: string,
+    input: {
+      currentPassword: string;
+      newPassword: string;
+      confirmNewPassword: string;
+    }
+  ) {
+    return apiRequest<{ success: boolean }>("/users/me/security/password", {
+      method: "POST",
+      token,
+      body: input
+    });
+  },
+  getRecoveryEmail(token: string) {
+    return apiRequest<SecurityRecoveryEmailResponse>("/users/me/security/recovery-email", {
+      token
+    });
+  },
+  upsertRecoveryEmail(token: string, recoveryEmail: string) {
+    return apiRequest<SecurityRecoveryEmailResponse>("/users/me/security/recovery-email", {
+      method: "PUT",
+      token,
+      body: { recoveryEmail }
+    });
+  },
+  sendSupportMessage(
+    token: string,
+    input: {
+      subject?: string;
+      message: string;
+    }
+  ) {
+    return apiRequest<{ ticketId: string; delivered: boolean; queued?: boolean }>("/users/me/support-message", {
+      method: "POST",
+      token,
+      body: input
+    });
+  }
+};
+
+export const adminApi = {
+  dashboardOverview(
+    token: string,
+    params?: {
+      month?: number;
+      year?: number;
+    }
+  ) {
+    const query = new URLSearchParams();
+    if (typeof params?.month === "number") query.set("month", String(params.month));
+    if (typeof params?.year === "number") query.set("year", String(params.year));
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<AdminDashboardOverview>(`/admin/dashboard/overview${suffix}`, { token });
+  },
+  listCrefRequests(
+    token: string,
+    params?: {
+      status?: "PENDING" | "IN_REVIEW" | "APPROVED" | "REJECTED";
+      take?: number;
+    }
+  ) {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (typeof params?.take === "number") query.set("take", String(params.take));
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<AdminCrefQueueItem[]>(`/admin/cref/requests${suffix}`, { token });
+  },
+  reviewCref(
+    token: string,
+    providerId: string,
+    input: {
+      decision: "APPROVE" | "REJECT";
+      justification?: string;
+    }
+  ) {
+    return apiRequest<ProviderCredentials>(`/admin/cref/requests/${providerId}`, {
+      method: "PATCH",
+      token,
+      body: input
+    });
+  },
+  listSupportTickets(
+    token: string,
+    params?: {
+      status?: "OPEN" | "ANSWERED";
+      take?: number;
+    }
+  ) {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (typeof params?.take === "number") query.set("take", String(params.take));
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<AdminSupportTicket[]>(`/admin/support/tickets${suffix}`, { token });
+  },
+  replySupportTicket(token: string, ticketId: string, responseMessage: string) {
+    return apiRequest<AdminSupportTicket>(`/admin/support/tickets/${ticketId}/respond`, {
+      method: "PATCH",
+      token,
+      body: { responseMessage }
+    });
+  },
+  listChatAuditSessions(
+    token: string,
+    params?: {
+      clientEmail?: string;
+      providerEmail?: string;
+      startedFrom?: string;
+      startedTo?: string;
+      take?: number;
+      cursor?: string;
+    }
+  ) {
+    const query = new URLSearchParams();
+    if (params?.clientEmail) query.set("clientEmail", params.clientEmail);
+    if (params?.providerEmail) query.set("providerEmail", params.providerEmail);
+    if (params?.startedFrom) query.set("startedFrom", params.startedFrom);
+    if (params?.startedTo) query.set("startedTo", params.startedTo);
+    if (typeof params?.take === "number") query.set("take", String(params.take));
+    if (params?.cursor) query.set("cursor", params.cursor);
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<AdminChatAuditSessionListResponse>(`/admin/chat-audit/sessions${suffix}`, { token });
+  },
+  getChatAuditSessionMessages(
+    token: string,
+    bookingId: string,
+    params?: {
+      take?: number;
+      cursor?: string;
+    }
+  ) {
+    const query = new URLSearchParams();
+    if (typeof params?.take === "number") query.set("take", String(params.take));
+    if (params?.cursor) query.set("cursor", params.cursor);
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<AdminChatAuditSessionMessagesResponse>(
+      `/admin/chat-audit/sessions/${bookingId}/messages${suffix}`,
+      { token }
+    );
+  }
+};
+
+export const categoriesApi = {
+  list() {
+    return apiRequest<Category[]>("/categories");
+  }
+};
+
+export type StudentAnamnesisResponse = {
+  status: "NONE" | "DRAFT" | "COMPLETED";
+  answers: Record<string, unknown> | null;
+  completedAt?: string | null;
+  updatedAt?: string | null;
+  client?: { id: string; name: string; email?: string; phone?: string | null } | null;
+};
+
+export type ProviderTimelineBooking = {
+  id: string;
+  status: "PENDING" | "CONFIRMED";
+  scheduledAt: string;
+  client: { id: string; name: string; photoUrl?: string | null };
+  category?: { name: string };
+};
+
+export type ProviderTimelineStudent = {
+  id: string;
+  name: string;
+  photoUrl?: string | null;
+};
+
+export type ProviderTimelineResponse = {
+  upcomingNow: ProviderTimelineBooking[];
+  today: ProviderTimelineBooking[];
+  recentNew: ProviderTimelineBooking[];
+  studentsWithIncompleteAnamnesis: ProviderTimelineStudent[];
+  generatedAt: string;
+};
+
+export const providersApi = {
+  list(params?: {
+    categoryId?: string;
+    q?: string;
+    minRating?: number;
+    lat?: number;
+    lng?: number;
+    maxDistanceKm?: number;
+    serviceMode?: ProviderServiceMode;
+    take?: number;
+    offset?: number;
+  }) {
+    const query = new URLSearchParams();
+    if (params?.categoryId) query.set("categoryId", params.categoryId);
+    if (params?.q) query.set("q", params.q);
+    if (typeof params?.minRating === "number") query.set("minRating", String(params.minRating));
+    if (typeof params?.lat === "number") query.set("lat", String(params.lat));
+    if (typeof params?.lng === "number") query.set("lng", String(params.lng));
+    if (typeof params?.maxDistanceKm === "number") query.set("maxDistanceKm", String(params.maxDistanceKm));
+    if (params?.serviceMode) query.set("serviceMode", params.serviceMode);
+    if (typeof params?.take === "number") query.set("take", String(params.take));
+    if (typeof params?.offset === "number") query.set("offset", String(params.offset));
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<ProviderSummary[]>(`/providers${suffix}`);
+  },
+  detail(providerId: string) {
+    return apiRequest<ProviderDetail>(`/providers/${providerId}`);
+  },
+  schedulePreview(
+    providerId: string,
+    params?: {
+      startDate?: string;
+      days?: number;
+    }
+  ) {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.set("startDate", params.startDate);
+    if (typeof params?.days === "number") query.set("days", String(params.days));
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<ProviderSchedulePreview>(`/providers/${providerId}/schedule-preview${suffix}`);
+  },
+  createProfile(
+    token: string,
+    body: {
+      displayName: string;
+      bio: string;
+      photoUrl?: string;
+      presentationVideoUrl?: string;
+      experienceYears: number;
+      priceCents: number;
+      serviceRadiusKm?: number;
+      latitude?: number;
+      longitude?: number;
+      serviceMode?: ProviderServiceMode;
+      fixedLocations?: Array<{
+        id?: string;
+        name: string;
+        address?: string;
+        latitude?: number;
+        longitude?: number;
+        radiusKm?: number;
+      }>;
+      excludedLocations?: string[];
+      categoryIds?: string[];
+      specialties?: string[];
+    }
+  ) {
+    return apiRequest<unknown>("/providers/profile", { method: "POST", token, body });
+  },
+  updateProfile(
+    token: string,
+    body: Partial<{
+      displayName: string;
+      bio: string;
+      photoUrl: string;
+      presentationVideoUrl: string | null;
+      experienceYears: number;
+      priceCents: number;
+      serviceRadiusKm: number;
+      latitude: number;
+      longitude: number;
+      serviceMode: ProviderServiceMode;
+      fixedLocations: Array<{
+        id?: string;
+        name: string;
+        address?: string;
+        latitude?: number;
+        longitude?: number;
+        radiusKm?: number;
+      }>;
+      excludedLocations: string[];
+      categoryIds: string[];
+      specialties: string[];
+    }>
+  ) {
+    return apiRequest<unknown>("/providers/profile", { method: "PUT", token, body });
+  },
+  myCredentials(token: string) {
+    return apiRequest<ProviderCredentials>("/providers/me/credentials", { token });
+  },
+  upsertMyCredentials(
+    token: string,
+    body: {
+      crefNumber: string;
+      crefDocumentUrl?: string;
+      credentials?: ProviderCredentialsDocument[];
+    }
+  ) {
+    return apiRequest<ProviderCredentials>("/providers/me/credentials", {
+      method: "PUT",
+      token,
+      body
+    });
+  },
+  dashboardStudents(token: string) {
+    return apiRequest<ProviderDashboardStudentsResponse>("/providers/dashboard/students", {
+      token
+    });
+  },
+  dashboardStudentDetail(token: string, clientId: string) {
+    return apiRequest<ProviderStudentManagementDetail>(
+      `/providers/dashboard/students/${clientId}`,
+      {
+        token
+      }
+    );
+  },
+  dashboardStudentPhysicalAssessment(token: string, clientId: string) {
+    return apiRequest<ProviderStudentPhysicalAssessment>(
+      `/providers/dashboard/students/${clientId}/physical-assessment`,
+      {
+        token
+      }
+    );
+  },
+  upsertStudentPhysicalAssessment(
+    token: string,
+    clientId: string,
+    input: {
+      weight?: string;
+      height?: string;
+      imc?: string;
+      bodyFatPercent?: string;
+      muscleMass?: string;
+      circumferences?: string;
+      waist?: string;
+      hip?: string;
+      chest?: string;
+      arm?: string;
+      thigh?: string;
+    }
+  ) {
+    return apiRequest<ProviderStudentPhysicalAssessment>(
+      `/providers/dashboard/students/${clientId}/physical-assessment`,
+      {
+        method: "PUT",
+        token,
+        body: input
+      }
+    );
+  },
+  getStudentAnamnesis(token: string, clientId: string) {
+    return apiRequest<StudentAnamnesisResponse>(
+      `/providers/dashboard/students/${clientId}/anamnesis`,
+      { token }
+    );
+  },
+  getTimeline(token: string) {
+    return apiRequest<ProviderTimelineResponse>("/providers/me/timeline", { token });
+  },
+};
+
+export const availabilityApi = {
+  me(token: string) {
+    return apiRequest<Availability[]>("/availability/me", { token });
+  },
+  create(
+    token: string,
+    body: { weekday: number; startTime: string; endTime: string; isActive?: boolean }
+  ) {
+    return apiRequest<Availability>("/availability", { method: "POST", token, body });
+  },
+  delete(token: string, availabilityId: string) {
+    return apiRequest<void>(`/availability/${availabilityId}`, { method: "DELETE", token });
+  }
+};
+
+export type ProviderManualBlock = {
+  id: string;
+  providerId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  label: string;
+  location?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const manualBlocksApi = {
+  list(token: string) {
+    return apiRequest<ProviderManualBlock[]>("/manual-blocks", { token });
+  },
+  create(
+    token: string,
+    body: { date: string; startTime: string; endTime: string; label: string; location?: string }
+  ) {
+    return apiRequest<ProviderManualBlock>("/manual-blocks", { method: "POST", token, body });
+  },
+  delete(token: string, blockId: string) {
+    return apiRequest<void>(`/manual-blocks/${blockId}`, { method: "DELETE", token });
+  },
+};
+
+export const bookingsApi = {
+  me(token: string) {
+    return apiRequest<Booking[]>("/bookings/me", { token });
+  },
+  create(
+    token: string,
+    body: {
+      providerId: string;
+      categoryId: string;
+      scheduledAt: string;
+      offerId?: string;
+      paymentMethod?: PaymentMethod;
+      notes?: string;
+      sessionLocation?: string;
+    }
+  ) {
+    return apiRequest<Booking>("/bookings", { method: "POST", token, body });
+  },
+  updateStatus(
+    token: string,
+    bookingId: string,
+    status: "CONFIRMED" | "CANCELLED" | "COMPLETED",
+    completionProof?: CompletionProofInput
+  ) {
+    return apiRequest<Booking>(`/bookings/${bookingId}/status`, {
+      method: "PATCH",
+      token,
+      body: {
+        status,
+        ...(completionProof ? { completionProof } : {})
+      }
+    });
+  },
+  attendanceCode(token: string, bookingId: string) {
+    return apiRequest<AttendanceCodeResponse>(`/bookings/${bookingId}/attendance-code`, {
+      token
+    });
+  },
+  verifyAttendanceCode(token: string, bookingId: string, code: string) {
+    return apiRequest<{
+      bookingId: string;
+      validated: boolean;
+      validatedAt?: string | null;
+    }>(`/bookings/${bookingId}/attendance-code/verify`, {
+      method: "POST",
+      token,
+      body: { code }
+    });
+  },
+  verifyAttendanceQr(token: string, bookingId: string, qrToken: string) {
+    return apiRequest<{
+      bookingId: string;
+      validated: boolean;
+      validatedAt?: string | null;
+    }>(`/bookings/${bookingId}/attendance-code/verify-qr`, {
+      method: "POST",
+      token,
+      body: { qrToken }
+    });
+  }
+};
+
+export type ChatMessage = {
+  id: string;
+  senderId: string | null;
+  isSystem?: boolean;
+  content: string;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export type ChatSummary = {
+  bookingId: string;
+  bookingStatus: "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED";
+  isOpen: boolean;
+  otherUser: { name: string; photoUrl?: string | null };
+  clientId: string;
+  lastMessage: {
+    content: string;
+    createdAt: string;
+    isMine: boolean;
+    isSystem: boolean;
+  };
+  unreadCount: number;
+};
+
+export type ChatMessagesResponse = {
+  messages: ChatMessage[];
+  isOpen: boolean;
+  otherUser: { name: string; photoUrl?: string | null };
+};
+
+export type ChatOtherUserResponse = {
+  name: string;
+  photoUrl?: string | null;
+};
+
+export const chatApi = {
+  myChats(token: string) {
+    return apiRequest<ChatSummary[]>("/bookings/me/chats", { token });
+  },
+  getOtherUser(token: string, bookingId: string) {
+    return apiRequest<ChatOtherUserResponse>(`/bookings/${bookingId}/other-user`, { token });
+  },
+  getMessages(token: string, bookingId: string) {
+    return apiRequest<ChatMessagesResponse>(`/bookings/${bookingId}/messages`, { token });
+  },
+  sendMessage(token: string, bookingId: string, content: string) {
+    return apiRequest<ChatMessage>(`/bookings/${bookingId}/messages`, {
+      method: "POST",
+      token,
+      body: { content }
+    });
+  }
+};
+
+export const reviewsApi = {
+  create(
+    token: string,
+    body: {
+      bookingId: string;
+      rating: number;
+      comment?: string;
+    }
+  ) {
+    return apiRequest<unknown>("/reviews", { method: "POST", token, body });
+  }
+};
+
+export const favoritesApi = {
+  list(token: string) {
+    return apiRequest<Favorite[]>("/favorites", { token });
+  },
+  add(token: string, providerId: string) {
+    return apiRequest<Favorite>("/favorites", { method: "POST", token, body: { providerId } });
+  },
+  remove(token: string, providerId: string) {
+    return apiRequest<void>(`/favorites/${providerId}`, { method: "DELETE", token });
+  }
+};
+
+export const paymentsApi = {
+  customerStatus(token: string) {
+    return apiRequest<CustomerPaymentStatus>("/payments/customer", { token });
+  },
+  createCustomerSetupIntent(token: string) {
+    return apiRequest<CustomerSetupIntent>("/payments/customer/setup-intent", {
+      method: "POST",
+      token,
+      body: {}
+    });
+  },
+  confirmCustomerSetupIntent(token: string, setupIntentId: string) {
+    return apiRequest<void>("/payments/customer/setup-intent/confirm", {
+      method: "POST",
+      token,
+      body: { setupIntentId }
+    });
+  },
+  confirmCustomerSetupIntentWithMetadata(
+    token: string,
+    input: {
+      setupIntentId?: string;
+      cardToken?: string;
+      nickname?: string;
+      makeDefault?: boolean;
+    }
+  ) {
+    return apiRequest<void>("/payments/customer/setup-intent/confirm", {
+      method: "POST",
+      token,
+      body: input
+    });
+  },
+  listCustomerCards(token: string) {
+    return apiRequest<CustomerCardSummary[]>("/payments/customer/cards", { token });
+  },
+  updateCustomerCardNickname(token: string, cardId: string, nickname: string) {
+    return apiRequest<CustomerCardSummary[]>(`/payments/customer/cards/${cardId}`, {
+      method: "PATCH",
+      token,
+      body: { nickname }
+    });
+  },
+  setCustomerCardDefault(token: string, cardId: string) {
+    return apiRequest<CustomerCardSummary[]>(`/payments/customer/cards/${cardId}/default`, {
+      method: "PATCH",
+      token,
+      body: {}
+    });
+  },
+  removeCustomerCard(token: string, cardId: string) {
+    return apiRequest<CustomerCardSummary[]>(`/payments/customer/cards/${cardId}`, {
+      method: "DELETE",
+      token
+    });
+  },
+  selectBookingPaymentMethod(
+    token: string,
+    bookingId: string,
+    input: {
+      method: "CARD" | "PIX";
+      customerCardId?: string;
+    }
+  ) {
+    return apiRequest<PaymentStatusResponse>(`/payments/booking/${bookingId}/method`, {
+      method: "PATCH",
+      token,
+      body: input
+    });
+  },
+  setupCustomer(token: string, paymentMethodId: string) {
+    return apiRequest<void>("/payments/customer/setup", {
+      method: "POST",
+      token,
+      body: { paymentMethodId }
+    });
+  },
+  createProviderAccount(
+    token: string,
+    body?: {
+      returnUrl?: string;
+      refreshUrl?: string;
+    }
+  ) {
+    return apiRequest<ProviderAccountCreate>("/payments/provider/account", {
+      method: "POST",
+      token,
+      body: body ?? {}
+    });
+  },
+  createOnboardingLink(
+    token: string,
+    body?: {
+      returnUrl?: string;
+      refreshUrl?: string;
+    }
+  ) {
+    return apiRequest<ProviderAccountCreate>("/payments/provider/account/onboarding-link", {
+      method: "POST",
+      token,
+      body: body ?? {}
+    });
+  },
+  providerStatus(token: string) {
+    return apiRequest<ProviderAccountStatus>("/payments/provider/account", { token });
+  },
+  bookingPayment(token: string, bookingId: string) {
+    return apiRequest<PaymentStatusResponse>(`/payments/booking/${bookingId}`, { token });
+  },
+  createPixCharge(token: string, bookingId: string) {
+    return apiRequest<PixChargeResponse>(`/payments/booking/${bookingId}/pix/charge`, {
+      method: "POST",
+      token,
+      body: {}
+    });
+  }
+};
+
+// ─── Financial Management ─────────────────────────────────────────────────
+
+export type FinancialStudentType = "PRESENTIAL" | "ONLINE" | "APP" | "BOTH";
+export type FinancialExpenseCategory = "GYM" | "TRANSPORT" | "EQUIPMENT" | "MARKETING" | "OTHER";
+
+export type WeeklyScheduleSlot = {
+  dayOfWeek: number; // 0=domingo, 1=segunda, ..., 6=sábado
+  startTime: string; // "HH:mm"
+  endTime: string;   // "HH:mm"
+};
+
+export type FinancialStudent = {
+  id: string;
+  providerId: string;
+  name: string;
+  monthlyValueCents: number;
+  type: FinancialStudentType;
+  weeklyFrequency: number;
+  isActive: boolean;
+  notes?: string | null;
+  location?: string | null;
+  weeklySchedule?: WeeklyScheduleSlot[] | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FinancialIncome = {
+  id: string;
+  providerId: string;
+  studentId?: string | null;
+  description: string;
+  amountCents: number;
+  source: string;
+  paidAt: string;
+  createdAt: string;
+  student?: { id: string; name: string } | null;
+};
+
+export type FinancialExpense = {
+  id: string;
+  providerId: string;
+  description: string;
+  amountCents: number;
+  category: FinancialExpenseCategory;
+  paidAt: string;
+  createdAt: string;
+};
+
+export type FinancialGoal = {
+  id: string;
+  providerId: string;
+  month: string;
+  targetRevenueCents?: number | null;
+  targetStudents?: number | null;
+  targetWeeklyClasses?: number | null;
+};
+
+export type FinancialClassSession = {
+  id: string;
+  providerId: string;
+  studentId?: string | null;
+  date: string;
+  notes?: string | null;
+  createdAt: string;
+  student?: { id: string; name: string } | null;
+};
+
+export type FinancialDashboard = {
+  month: string;
+  /** receitas manuais ? fora do app (aba Receitas) */
+  totalRevenueCents: number;
+  /** receitas realizadas pelo app ? agendamentos COMPLETED */
+  appRevenueCents: number;
+  /** receita prevista - agendamentos CONFIRMED ainda nao entregues */
+  confirmedRevenueCents: number;
+  totalExpensesCents: number;
+  netProfitCents: number;
+  growthPct: number | null;
+  activeStudents: number;
+  totalClassesThisMonth: number;
+  avgClassesPerDay: number;
+  weeklyClasses: number;
+  ticketMedioCents: number;
+  goal: FinancialGoal | null;
+  dailyRevenue: Record<string, number>;
+};
+
+export type FinancialReport = {
+  months: Array<{
+    month: string;
+    revenueCents: number;
+    appRevenueCents: number;
+    expensesCents: number;
+    netCents: number;
+    classes: number;
+  }>;
+  bestMonth: { month: string; revenueCents: number } | null;
+  avgRevenueCents: number;
+};
+
+/** Cliente que comprou servico diretamente pelo app (agrupado por cliente/mes) */
+export type FinancialAppClient = {
+  clientId: string;
+  name: string;
+  /** sessoes concluidas - receita realizada */
+  completedCents: number;
+  /** sessoes agendadas (CONFIRMED) - receita prevista */
+  confirmedCents: number;
+  sessionCount: number;
+  confirmedSessionCount: number;
+  services: string[];
+  latestAt: string;
+};
+
+export const financialApi = {
+  dashboard(token: string, month?: string) {
+    const q = month ? `?month=${month}` : "";
+    return apiRequest<FinancialDashboard>(`/financial/dashboard${q}`, { token });
+  },
+  report(token: string, months = 6) {
+    return apiRequest<FinancialReport>(`/financial/report?months=${months}`, { token });
+  },
+  listAppClients(token: string, month?: string) {
+    const q = month ? `?month=${month}` : "";
+    return apiRequest<FinancialAppClient[]>(`/financial/app-clients${q}`, { token });
+  },
+  listStudents(token: string) {
+    return apiRequest<FinancialStudent[]>("/financial/students", { token });
+  },
+  createStudent(token: string, body: { name: string; monthlyValueCents: number; type: FinancialStudentType; weeklyFrequency?: number; notes?: string; location?: string; weeklySchedule?: WeeklyScheduleSlot[] }) {
+    return apiRequest<FinancialStudent>("/financial/students", { method: "POST", token, body });
+  },
+  updateStudent(token: string, id: string, body: Partial<{ name: string; monthlyValueCents: number; type: FinancialStudentType; weeklyFrequency: number; isActive: boolean; notes: string; location: string; weeklySchedule: WeeklyScheduleSlot[] }>) {
+    return apiRequest<FinancialStudent>(`/financial/students/${id}`, { method: "PATCH", token, body });
+  },
+  deleteStudent(token: string, id: string) {
+    return apiRequest<void>(`/financial/students/${id}`, { method: "DELETE", token });
+  },
+  listIncomes(token: string, month?: string) {
+    const q = month ? `?month=${month}` : "";
+    return apiRequest<FinancialIncome[]>(`/financial/incomes${q}`, { token });
+  },
+  createIncome(token: string, body: { description: string; amountCents: number; studentId?: string; paidAt: string }) {
+    return apiRequest<FinancialIncome>("/financial/incomes", { method: "POST", token, body });
+  },
+  deleteIncome(token: string, id: string) {
+    return apiRequest<void>(`/financial/incomes/${id}`, { method: "DELETE", token });
+  },
+  listExpenses(token: string, month?: string) {
+    const q = month ? `?month=${month}` : "";
+    return apiRequest<FinancialExpense[]>(`/financial/expenses${q}`, { token });
+  },
+  createExpense(token: string, body: { description: string; amountCents: number; category?: FinancialExpenseCategory; paidAt: string }) {
+    return apiRequest<FinancialExpense>("/financial/expenses", { method: "POST", token, body });
+  },
+  deleteExpense(token: string, id: string) {
+    return apiRequest<void>(`/financial/expenses/${id}`, { method: "DELETE", token });
+  },
+  getGoal(token: string, month?: string) {
+    const q = month ? `?month=${month}` : "";
+    return apiRequest<FinancialGoal | null>(`/financial/goals${q}`, { token });
+  },
+  upsertGoal(token: string, body: { month: string; targetRevenueCents?: number; targetStudents?: number; targetWeeklyClasses?: number }) {
+    return apiRequest<FinancialGoal>("/financial/goals", { method: "PUT", token, body });
+  },
+  listSessions(token: string, month?: string) {
+    const q = month ? `?month=${month}` : "";
+    return apiRequest<FinancialClassSession[]>(`/financial/sessions${q}`, { token });
+  },
+  createSession(token: string, body: { studentId?: string; date: string; notes?: string }) {
+    return apiRequest<FinancialClassSession>("/financial/sessions", { method: "POST", token, body });
+  },
+  deleteSession(token: string, id: string) {
+    return apiRequest<void>(`/financial/sessions/${id}`, { method: "DELETE", token });
+  }
+};
+
+export const notificationsApi = {
+  inbox(token: string, take = 100) {
+    return apiRequest<NotificationInboxItem[]>(`/notifications/inbox?take=${take}`, {
+      token
+    });
+  },
+  unreadCount(token: string) {
+    return apiRequest<{ unread: number }>("/notifications/inbox/unread-count", { token });
+  },
+  markAllRead(token: string) {
+    return apiRequest<void>("/notifications/inbox/read-all", {
+      method: "PATCH",
+      token,
+      body: {}
+    });
+  },
+  listDevices(token: string) {
+    return apiRequest<PushDevice[]>("/notifications/devices", { token });
+  },
+  registerDevice(
+    token: string,
+    body: {
+      token: string;
+      platform?: "ios" | "android" | "web" | "unknown";
+      appVersion?: string;
+      deviceName?: string;
+    }
+  ) {
+    return apiRequest<PushDevice>("/notifications/devices", { method: "POST", token, body });
+  },
+  unregisterDevice(token: string, pushToken: string) {
+    return apiRequest<void>("/notifications/devices", {
+      method: "DELETE",
+      token,
+      body: { token: pushToken }
+    });
+  }
+};
+
+export const consultancyApi = {
+  promotions() {
+    return apiRequest<PromotionFeedItem[]>("/consultancy/promotions");
+  },
+  providerCatalog(providerId: string) {
+    return apiRequest<ProviderConsultancyCatalog>(`/consultancy/providers/${providerId}/catalog`);
+  },
+  myTraining(token: string) {
+    return apiRequest<MyTrainingResponse>("/consultancy/my/training", { token });
+  },
+  myRequests(token: string) {
+    return apiRequest<ConsultancyRequest[]>("/consultancy/my/requests", { token });
+  },
+  myArchivedRequests(
+    token: string,
+    params?: {
+      status?: "ALL" | "REFUSED" | "EXPIRED_REFUNDED" | "ARCHIVED";
+    }
+  ) {
+    const query = new URLSearchParams();
+    if (params?.status) {
+      query.set("status", params.status);
+    }
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<ConsultancyRequest[]>(`/consultancy/my/requests/archived${suffix}`, {
+      token
+    });
+  },
+  createRequest(
+    token: string,
+    body: {
+      providerId: string;
+      quotedOfferId?: string;
+      trainingNeedText?: string;
+      limitationText?: string;
+      extraInfoText?: string;
+    }
+  ) {
+    return apiRequest<ConsultancyRequest>("/consultancy/requests", {
+      method: "POST",
+      token,
+      body
+    });
+  },
+  decideRequest(
+    token: string,
+    requestId: string,
+    body: {
+      decision: "ACCEPT" | "REFUSE";
+      paymentMethod?: ConsultancyPaymentMethod;
+    }
+  ) {
+    return apiRequest<{ request: ConsultancyRequest; contract: ConsultancyContract | null }>(
+      `/consultancy/requests/${requestId}/decision`,
+      {
+        method: "POST",
+        token,
+        body
+      }
+    );
+  },
+  providerRequests(token: string) {
+    return apiRequest<ConsultancyRequest[]>("/consultancy/provider/requests", { token });
+  },
+  providerArchivedRequests(
+    token: string,
+    params?: {
+      status?: "ALL" | "REFUSED" | "EXPIRED_REFUNDED" | "ARCHIVED";
+    }
+  ) {
+    const query = new URLSearchParams();
+    if (params?.status) {
+      query.set("status", params.status);
+    }
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<ConsultancyRequest[]>(
+      `/consultancy/provider/requests/archived${suffix}`,
+      {
+        token
+      }
+    );
+  },
+  upsertProviderSettings(
+    token: string,
+    body: {
+      enabled: boolean;
+      responseSlaDays?: number;
+    }
+  ) {
+    return apiRequest<{
+      id: string;
+      enabled: boolean;
+      responseSlaDays: number;
+      providerId: string;
+    }>("/consultancy/provider/settings", {
+      method: "PUT",
+      token,
+      body
+    });
+  },
+  providerSettings(token: string) {
+    return apiRequest<{
+      id: string | null;
+      enabled: boolean;
+      responseSlaDays: number;
+      providerId: string;
+    }>("/consultancy/provider/settings", {
+      token
+    });
+  },
+  providerOffers(token: string) {
+    return apiRequest<ProviderServiceOffer[]>("/consultancy/provider/offers", { token });
+  },
+  createProviderOffer(
+    token: string,
+    body: {
+      kind: ServiceOfferKind;
+      title: string;
+      billingCycle: OfferBillingCycle;
+      daysPerWeek?: number;
+      comboPresentialDaysPerWeek?: number;
+      comboOnlineDaysPerWeek?: number;
+      priceCents: number;
+      isPromotion?: boolean;
+      promotionPriceCents?: number;
+      promotionEndsAt?: string;
+      promotionLabel?: string;
+      isActive?: boolean;
+    }
+  ) {
+    return apiRequest<ProviderServiceOffer>("/consultancy/provider/offers", {
+      method: "POST",
+      token,
+      body
+    });
+  },
+  updateProviderOffer(
+    token: string,
+    offerId: string,
+    body: {
+      title?: string;
+      priceCents?: number;
+      daysPerWeek?: number;
+      comboPresentialDaysPerWeek?: number;
+      comboOnlineDaysPerWeek?: number;
+      isPromotion?: boolean;
+      promotionPriceCents?: number;
+      promotionEndsAt?: string;
+      promotionLabel?: string;
+      isActive?: boolean;
+    }
+  ) {
+    return apiRequest<ProviderServiceOffer>(`/consultancy/provider/offers/${offerId}`, {
+      method: "PATCH",
+      token,
+      body
+    });
+  },
+  deleteProviderOffer(token: string, offerId: string) {
+    return apiRequest<void>(`/consultancy/provider/offers/${offerId}`, {
+      method: "DELETE",
+      token
+    });
+  },
+  providerPlans(token: string) {
+    return apiRequest<TrainingPlan[]>("/consultancy/provider/plans", { token });
+  },
+  createProviderPlan(
+    token: string,
+    body: {
+      title: string;
+      description?: string;
+      isPrebuilt?: boolean;
+      exercises: Array<{
+        sortOrder?: number;
+        exerciseId?: string;
+        name: string;
+        repetitionsSets: string;
+        load: string;
+        restSeconds?: number;
+        restLabel?: string;
+        demoVideoUrl?: string;
+      }>;
+    }
+  ) {
+    return apiRequest<TrainingPlan>("/consultancy/provider/plans", {
+      method: "POST",
+      token,
+      body
+    });
+  },
+  updateProviderPlan(
+    token: string,
+    planId: string,
+    body: Partial<{
+      title: string;
+      description?: string;
+      isActive: boolean;
+      exercises: Array<{
+        sortOrder?: number;
+        exerciseId?: string;
+        name: string;
+        repetitionsSets: string;
+        load: string;
+        restSeconds?: number;
+        restLabel?: string;
+        demoVideoUrl?: string;
+      }>;
+    }>
+  ) {
+    return apiRequest<TrainingPlan>(`/consultancy/provider/plans/${planId}`, {
+      method: "PATCH",
+      token,
+      body
+    });
+  },
+  deleteProviderPlan(token: string, planId: string) {
+    return apiRequest<void>(`/consultancy/provider/plans/${planId}`, {
+      method: "DELETE",
+      token
+    });
+  },
+  respondRequest(
+    token: string,
+    requestId: string,
+    body: {
+      providerResponseText: string;
+      quotedOfferId: string;
+    }
+  ) {
+    return apiRequest<ConsultancyRequest>(`/consultancy/requests/${requestId}/respond`, {
+      method: "POST",
+      token,
+      body
+    });
+  }
+};

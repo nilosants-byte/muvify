@@ -1,0 +1,65 @@
+﻿import React from "react";
+import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { ForgotPasswordScreen } from "../screens/client/ForgotPasswordScreen";
+import { ClientProfileScreen } from "../screens/client/ClientProfileScreen";
+import { authApi } from "../services/api/client";
+import { useAppState } from "../state/AppState";
+
+jest.mock("../state/AppState", () => ({
+  useAppState: jest.fn()
+}));
+
+describe("Fluxo modular cliente - auth/perfil", () => {
+  it("carrega perfil real e abre configurações", async () => {
+    const showToast = jest.fn();
+
+    (useAppState as jest.Mock).mockReturnValue({
+      showToast,
+      user: { id: "u1", name: "Fallback", email: "fallback@email.com", role: "CLIENT" }
+    });
+
+    const parentNavigate = jest.fn();
+    const navigation = {
+      getParent: () => ({ navigate: parentNavigate })
+    };
+
+    const ui = render(<ClientProfileScreen navigation={navigation as any} route={{} as any} />);
+    expect(await ui.findByText("Fallback")).toBeTruthy();
+    expect(await ui.findByText("fallback@email.com")).toBeTruthy();
+
+    fireEvent.press(ui.getByText("Configurações"));
+    expect(parentNavigate).toHaveBeenCalledWith("ClientSettings");
+  }, 10000);
+
+  it("forgot password usa endpoint real e valida e-mail", async () => {
+    const showToast = jest.fn();
+    (useAppState as jest.Mock).mockReturnValue({
+      showToast
+    });
+
+    const forgotSpy = jest.spyOn(authApi, "forgotPassword").mockResolvedValue({
+      message: "Se o e-mail existir, enviaremos instruções para redefinição."
+    });
+
+    const navigation = { goBack: jest.fn(), navigate: jest.fn() };
+    const ui = render(<ForgotPasswordScreen navigation={navigation as any} route={{} as any} />);
+
+    fireEvent.press(ui.getByText("Enviar código"));
+    expect(showToast).toHaveBeenCalled();
+    expect(String(showToast.mock.calls[0][0]).toLowerCase()).toContain("e-mail");
+    expect(showToast.mock.calls[0][1]).toBe("error");
+
+    fireEvent.changeText(ui.getByPlaceholderText("seu@email.com"), "cliente@email.com");
+    fireEvent.press(ui.getByText("Enviar código"));
+
+    await waitFor(() =>
+      expect(forgotSpy).toHaveBeenCalledWith({
+        channel: "EMAIL",
+        email: "cliente@email.com"
+      })
+    );
+    const [, toastType] = showToast.mock.calls[showToast.mock.calls.length - 1];
+    expect(toastType).toBe("success");
+  });
+});
+

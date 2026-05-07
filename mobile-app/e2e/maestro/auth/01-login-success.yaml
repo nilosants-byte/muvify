@@ -1,0 +1,12 @@
+# Auth: login com sucesso (CLIENT)
+# Executa: maestro test auth/01-login-success.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- runFlow: ../helpers/_login-client.yaml
+
+- assertVisible: "Início"
+- takeScreenshot: "auth-login-success-client"

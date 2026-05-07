@@ -1,0 +1,16 @@
+appId: com.personalapp.mobile
+name: Auth - Login required fields
+tags:
+  - auth
+  - negative
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: screen.auth.login
+    timeout: 30000
+- tapOn:
+    id: button.auth.login.submit
+- assertVisible: Preencha e-mail e senha.
+- takeScreenshot: auth-login-required-fields

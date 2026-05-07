@@ -1,0 +1,34 @@
+# Auth: tentativa de login com campos vazios
+# Verifica que o formulário não submete sem email e senha
+# Executa: maestro test auth/02-login-empty-fields.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- assertVisible:
+    id: "screen.auth.login"
+
+# Tenta submeter sem preencher campos
+- tapOn:
+    id: "button.auth.login.submit"
+
+# Deve permanecer na tela de login (não avançou)
+- assertVisible:
+    id: "screen.auth.login"
+
+- takeScreenshot: "auth-login-empty-fields"
+
+# Preenche apenas o email e tenta novamente
+- tapOn:
+    id: "input.auth.login.email"
+- inputText: "qa.aluno@muvify.local"
+
+- tapOn:
+    id: "button.auth.login.submit"
+
+- assertVisible:
+    id: "screen.auth.login"
+
+- takeScreenshot: "auth-login-only-email"

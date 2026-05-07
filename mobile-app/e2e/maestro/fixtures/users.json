@@ -1,0 +1,25 @@
+{
+  "client": {
+    "name": "QA Aluno",
+    "email": "qa.aluno@muvify.local",
+    "phone": "11999990001",
+    "password": "Qa123456"
+  },
+  "professional": {
+    "name": "QA Personal",
+    "email": "qa.personal@muvify.local",
+    "phone": "11999990002",
+    "password": "Qa123456"
+  },
+  "admin": {
+    "name": "Muvify Admin",
+    "email": "muvifyadm@gmail.com",
+    "password": "M0105V2026F"
+  },
+  "new_client": {
+    "name": "Novo Teste E2E",
+    "email": "e2e.novo@muvify.local",
+    "phone": "11988880001",
+    "password": "Teste123456"
+  }
+}

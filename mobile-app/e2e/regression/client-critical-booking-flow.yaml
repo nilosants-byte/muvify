@@ -1,0 +1,40 @@
+appId: com.personalapp.mobile
+name: Regression - Client critical booking flow
+tags:
+  - regression
+  - critical
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: screen.auth.login
+    timeout: 30000
+- tapOn:
+    id: input.auth.login.email
+- inputText: qa.cliente@muvify.dev
+- tapOn:
+    id: input.auth.login.password
+- inputText: "12345678"
+- hideKeyboard
+- tapOn:
+    id: button.auth.login.submit
+- extendedWaitUntil:
+    visible:
+      id: screen.client.home
+    timeout: 45000
+- tapOn:
+    id: nav.bottom.bookings
+- extendedWaitUntil:
+    visible:
+      id: screen.client.bookings
+    timeout: 20000
+- tapOn:
+    id: booking.card.booking-client-1
+- extendedWaitUntil:
+    visible:
+      id: screen.client.booking-detail
+    timeout: 20000
+- assertVisible: Status do atendimento
+- assertVisible: Pagamento
+- takeScreenshot: regression-client-critical-booking-flow

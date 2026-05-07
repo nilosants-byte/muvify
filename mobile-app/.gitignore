@@ -1,0 +1,46 @@
+# ── Dependências ──────────────────────────────────────────────
+node_modules/
+
+# ── Build ─────────────────────────────────────────────────────
+dist/
+web-build/
+expo-env.d.ts
+*.tsbuildinfo
+
+# ── Expo ──────────────────────────────────────────────────────
+.expo/
+.expo-export-check
+.expo-web-build-check
+
+# ── Variáveis de ambiente (NUNCA subir ao GitHub) ─────────────
+.env
+.env.*
+!.env.example
+
+# ── Certificados e pastas nativas ────────────────────────────
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+/ios
+/android
+
+# ── Metro bundler ─────────────────────────────────────────────
+.metro-health-check*
+
+# ── Logs ──────────────────────────────────────────────────────
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+logs/
+runtime-logs/
+*.log
+
+# ── Temporários ───────────────────────────────────────────────
+.DS_Store
+*.bak
+coverage/

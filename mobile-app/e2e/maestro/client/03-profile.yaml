@@ -1,0 +1,20 @@
+# Client: visualização da tela de perfil
+# Executa: maestro test client/03-profile.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- runFlow: ../helpers/_login-client.yaml
+
+- tapOn:
+    text: "Perfil"
+
+- assertVisible:
+    id: "screen.client.profile"
+
+- takeScreenshot: "client-profile-loaded"
+
+# Verifica que o nome do usuário QA está visível
+- assertVisible: "QA Aluno"

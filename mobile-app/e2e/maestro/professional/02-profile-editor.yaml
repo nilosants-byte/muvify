@@ -1,0 +1,18 @@
+# Professional: abre o editor de perfil e verifica campos
+# Executa: maestro test professional/02-profile-editor.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- runFlow: ../helpers/_login-professional.yaml
+
+# Vai para tab de Perfil
+- tapOn:
+    text: "Perfil"
+
+- takeScreenshot: "professional-profile-screen"
+
+# Verifica que o nome do profissional QA está visível
+- assertVisible: "QA Personal"

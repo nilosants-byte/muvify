@@ -1,0 +1,87 @@
+# ── Dependências ──────────────────────────────────────────────
+node_modules/
+mobile-app/node_modules/
+
+# ── Build / compilado ─────────────────────────────────────────
+dist/
+mobile-app/dist/
+mobile-app/web-build/
+generated/
+coverage/
+mobile-app/coverage/
+
+# ── Variáveis de ambiente (NUNCA subir ao GitHub) ─────────────
+.env
+.env.*
+!.env.example
+mobile-app/.env
+mobile-app/.env.*
+!mobile-app/.env.example
+
+# ── Expo / React Native ───────────────────────────────────────
+.expo/
+**/.expo/
+mobile-app/.expo/
+mobile-app/.expo-export-check
+mobile-app/.expo-web-build-check
+*.orig.*
+
+# ── Certificados e chaves nativas (iOS / Android) ────────────
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+/ios/
+/android/
+mobile-app/ios/
+mobile-app/android/
+.kotlin/
+
+# ── Logs ──────────────────────────────────────────────────────
+logs/
+*.log
+mobile-app/logs/
+mobile-app/runtime-logs/
+mobile-app/capture-brand.log
+$log
+
+# ── Backups ───────────────────────────────────────────────────
+backups/*
+!backups/.gitkeep
+
+# ── Dados de sessão e ferramentas locais ──────────────────────
+.claude/
+.audit/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ── Arquivos de preview / design temporários ─────────────────
+client-redesign.html
+client-redesign-emerald.html
+client-profile-redesign-emerald-preview.html
+finance-preview.html
+splash-animations.html
+splash-animations-v2.html
+splash-preview.html
+mobile-app/App.tsx.preview.bak
+*.bak
+*.tsbuildinfo
+
+# ── Scripts utilitários locais / obsoletos ────────────────────
+fix-private.js
+gen-leaflet-bundle.js
+scripts/stripe-e2e.ts
+scripts/export_full_app_pdf.py
+scripts/mock-mobile-api.js
+
+# ── Artefatos de build ────────────────────────────────────────
+artifacts/
+
+# ── Metro bundler ─────────────────────────────────────────────
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*

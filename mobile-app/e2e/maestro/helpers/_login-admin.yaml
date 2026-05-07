@@ -1,0 +1,19 @@
+# Helper: autentica como administrador (ADMIN)
+
+appId: com.personalapp.mobile
+---
+- tapOn:
+    id: "input.auth.login.email"
+- clearText
+- inputText: "muvifyadm@gmail.com"
+
+- tapOn:
+    id: "input.auth.login.password"
+- clearText
+- inputText: "M0105V2026F"
+
+- tapOn:
+    id: "button.auth.login.submit"
+
+- assertVisible: "Administrador"
+- takeScreenshot: "login-admin-success"

@@ -1,0 +1,38 @@
+services:
+  app:
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@smoke_postgres:5432/personal_app_smoke
+      TEST_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@smoke_postgres:5432/personal_app_smoke
+      REDIS_URL: redis://smoke_redis:6379
+      JWT_SECRET: testsecret123
+    depends_on:
+      smoke_postgres:
+        condition: service_healthy
+      smoke_redis:
+        condition: service_healthy
+    command: sh -c "node_modules/.bin/prisma migrate deploy && npm run seed && node dist/server.js"
+
+  smoke_postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: personal_app_smoke
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d personal_app_smoke"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  smoke_redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

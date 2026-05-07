@@ -1,0 +1,91 @@
+import { env } from "../../../config/env";
+import { prisma } from "../../../config/prisma";
+import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
+import { BookingService } from "../../bookings/services/booking.service";
+import { ConsultancyService } from "../../consultancy/services/consultancy.service";
+import { PaymentService } from "../services/payment.service";
+
+const bookingService = new BookingService();
+const paymentService = new PaymentService();
+const consultancyService = new ConsultancyService();
+
+let timer: NodeJS.Timeout | null = null;
+let running = false;
+const paymentJobLockKey = 909_001;
+const MAX_DATABASE_BACKOFF_MS = 5 * 60 * 1000;
+let consecutiveDatabaseFailures = 0;
+let nextAllowedRunAt = 0;
+
+function calculateBackoffMs(baseIntervalMs: number, failures: number) {
+  const exponent = Math.max(0, failures - 1);
+  return Math.min(baseIntervalMs * 2 ** exponent, MAX_DATABASE_BACKOFF_MS);
+}
+
+export function startPaymentJobs() {
+  if (timer || env.NODE_ENV === "test" || !env.RUN_PAYMENT_JOBS) {
+    return;
+  }
+  timer = setInterval(async () => {
+    if (running || Date.now() < nextAllowedRunAt) {
+      return;
+    }
+    running = true;
+    let lockAcquired = false;
+    try {
+      const lockResult = (await prisma.$queryRaw<
+        Array<{ pg_try_advisory_lock: boolean }>
+      >`SELECT pg_try_advisory_lock(${paymentJobLockKey})`)?.[0];
+      lockAcquired = Boolean(lockResult?.pg_try_advisory_lock);
+      if (!lockAcquired) {
+        return;
+      }
+
+      await bookingService.releaseDueAttendanceCodes();
+      await bookingService.autoExpireStaleBookings();
+      await paymentService.autoRefundExpiredBookings();
+      await paymentService.authorizeDuePayments();
+      await paymentService.autoCaptureSingleConfirmation();
+      await consultancyService.autoRefundExpiredContracts();
+      consecutiveDatabaseFailures = 0;
+      nextAllowedRunAt = 0;
+    } catch (error) {
+      if (isPrismaDatabaseUnavailableError(error)) {
+        consecutiveDatabaseFailures += 1;
+        const backoffMs = calculateBackoffMs(
+          env.PAYMENT_JOB_INTERVAL_SECONDS * 1000,
+          consecutiveDatabaseFailures
+        );
+        nextAllowedRunAt = Date.now() + backoffMs;
+        console.error(
+          `Payment job paused: database unavailable (${error.code}). Next retry in ${Math.ceil(backoffMs / 1000)}s.`
+        );
+      } else {
+        console.error("Payment job failed:", error);
+      }
+    } finally {
+      if (lockAcquired) {
+        try {
+          await prisma.$executeRaw`SELECT pg_advisory_unlock(${paymentJobLockKey})`;
+        } catch (unlockError) {
+          if (isPrismaDatabaseUnavailableError(unlockError)) {
+            console.error("Skipped payment job lock release because database became unavailable.");
+          } else {
+            console.error("Failed to release payment job lock:", unlockError);
+          }
+        }
+      }
+      running = false;
+    }
+  }, env.PAYMENT_JOB_INTERVAL_SECONDS * 1000);
+}
+
+export function stopPaymentJobs() {
+  if (!timer) {
+    return;
+  }
+  clearInterval(timer);
+  timer = null;
+  running = false;
+  consecutiveDatabaseFailures = 0;
+  nextAllowedRunAt = 0;
+}

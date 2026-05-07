@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "muvify",
+    "slug": "personalapp",
+    "scheme": "personalapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash/splash-light.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FAFCFA",
+      "dark": {
+        "image": "./assets/splash/splash-dark.png",
+        "backgroundColor": "#080C09"
+      }
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.personalapp.mobile"
+    },
+    "android": {
+      "package": "com.personalapp.mobile",
+      "softwareKeyboardLayoutMode": "resize",
+      "adaptiveIcon": {
+        "backgroundColor": "#070B08",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Permita que o Muvify acesse sua localização para configurar sua área de atendimento.",
+          "locationAlwaysAndWhenInUsePermission": "Permita que o Muvify acesse sua localização em segundo plano para atualizar sua disponibilidade no mapa de alunos.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-secure-store",
+      "expo-notifications",
+      "expo-dev-client",
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.personalapp",
+          "enableGooglePay": true
+        }
+      ],
+      "@sentry/react-native"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1f205c7e-3d1f-46c5-b0b1-9b603a290049"
+      }
+    },
+    "owner": "dancsan"
+  }
+}

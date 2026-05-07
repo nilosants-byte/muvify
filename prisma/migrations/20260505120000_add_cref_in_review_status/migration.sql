@@ -1,0 +1,1 @@
+ALTER TYPE "CrefValidationStatus" ADD VALUE IF NOT EXISTS 'IN_REVIEW';

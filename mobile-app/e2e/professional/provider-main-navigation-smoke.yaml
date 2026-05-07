@@ -1,0 +1,44 @@
+appId: com.personalapp.mobile
+name: Professional - Main navigation smoke
+tags:
+  - professional
+  - smoke
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: screen.auth.login
+    timeout: 30000
+- tapOn:
+    id: input.auth.login.email
+- inputText: qa.pro@muvify.dev
+- tapOn:
+    id: input.auth.login.password
+- inputText: "12345678"
+- hideKeyboard
+- tapOn:
+    id: button.auth.login.submit
+- extendedWaitUntil:
+    visible:
+      id: screen.professional.home
+    timeout: 45000
+- tapOn:
+    id: nav.bottom.agenda
+- extendedWaitUntil:
+    visible:
+      id: screen.professional.agenda
+    timeout: 20000
+- tapOn:
+    id: nav.bottom.centro
+- extendedWaitUntil:
+    visible:
+      id: screen.professional.consultancy
+    timeout: 20000
+- tapOn:
+    id: nav.bottom.alunos
+- extendedWaitUntil:
+    visible:
+      id: screen.professional.students
+    timeout: 20000
+- takeScreenshot: professional-main-navigation

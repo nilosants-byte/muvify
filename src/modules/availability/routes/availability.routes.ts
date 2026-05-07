@@ -1,0 +1,14 @@
+import { UserRole } from "@prisma/client";
+import { Router } from "express";
+import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
+import { ensureRole } from "../../../middlewares/role.middleware";
+import { validate } from "../../../middlewares/validate.middleware";
+import { AvailabilityController } from "../controllers/availability.controller";
+import { createAvailabilitySchema } from "../validators/availability.validator";
+const availabilityController = new AvailabilityController();
+export const availabilityRoutes = Router();
+availabilityRoutes.use(ensureAuthenticated);
+availabilityRoutes.use(ensureRole(UserRole.PROVIDER));
+availabilityRoutes.get("/me", availabilityController.listMyAvailability);
+availabilityRoutes.post("/", validate(createAvailabilitySchema), availabilityController.create);
+availabilityRoutes.delete("/:availabilityId", availabilityController.deleteAvailability);

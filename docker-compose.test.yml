@@ -1,0 +1,40 @@
+services:
+  test:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+    depends_on:
+      test_postgres:
+        condition: service_healthy
+      test_redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@test_postgres:5432/personal_app_test
+      TEST_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@test_postgres:5432/personal_app_test
+      REDIS_URL: redis://test_redis:6379
+      JWT_SECRET: testsecret123
+      NODE_ENV: test
+    command: sh -c "npm install && npm run prisma:generate && npx prisma migrate deploy && npm run test"
+
+  test_postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: personal_app_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d personal_app_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  test_redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

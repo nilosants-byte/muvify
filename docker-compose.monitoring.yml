@@ -1,0 +1,38 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: marketplace_prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: marketplace_alertmanager
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./monitoring/alertmanager-entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
+    ports:
+      - "9093:9093"
+    entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: marketplace_grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+volumes:
+  prometheus_data:
+  grafana_data:

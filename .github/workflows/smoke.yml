@@ -1,0 +1,31 @@
+name: Smoke Test
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Deploy"]
+    types: [completed]
+
+jobs:
+  smoke:
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run smoke flow script
+        env:
+          BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
+          METRICS_TOKEN: ${{ secrets.METRICS_TOKEN }}
+          SMOKE_ADMIN_EMAIL: ${{ secrets.SMOKE_ADMIN_EMAIL }}
+          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "SMOKE_BASE_URL not configured"
+            exit 1
+          fi
+          node scripts/smoke.ts

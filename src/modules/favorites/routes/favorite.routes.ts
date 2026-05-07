@@ -1,0 +1,11 @@
+import { Router } from "express";
+import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
+import { validate } from "../../../middlewares/validate.middleware";
+import { FavoriteController } from "../controllers/favorite.controller";
+import { favoriteParamSchema, favoriteSchema } from "../validators/favorite.validator";
+const favoriteController = new FavoriteController();
+export const favoriteRoutes = Router();
+favoriteRoutes.use(ensureAuthenticated);
+favoriteRoutes.get("/", favoriteController.list);
+favoriteRoutes.post("/", validate(favoriteSchema), favoriteController.add);
+favoriteRoutes.delete("/:providerId", validate(favoriteParamSchema), favoriteController.remove);

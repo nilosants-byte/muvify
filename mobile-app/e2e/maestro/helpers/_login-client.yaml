@@ -1,0 +1,22 @@
+# Helper: autentica como aluno (CLIENT)
+# Uso: runFlow: helpers/_login-client.yaml
+# Pré-condição: app na tela de login
+
+appId: com.personalapp.mobile
+---
+- tapOn:
+    id: "input.auth.login.email"
+- clearText
+- inputText: "qa.aluno@muvify.local"
+
+- tapOn:
+    id: "input.auth.login.password"
+- clearText
+- inputText: "Qa123456"
+
+- tapOn:
+    id: "button.auth.login.submit"
+
+# Aguarda a tela inicial do cliente aparecer
+- assertVisible: "Início"
+- takeScreenshot: "login-client-success"

@@ -1,0 +1,45 @@
+﻿# Auth: cadastro de novo cliente com sucesso
+# ATENÇÃO: usa e-mail único gerado por timestamp — cada execução cria um usuário novo
+# Executa: maestro test auth/04-register-success.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- assertVisible:
+    id: "screen.auth.login"
+
+# Navega para tela de cadastro
+- tapOn:
+    id: "button.auth.login.go-register"
+
+- assertVisible:
+    id: "screen.auth.register"
+
+- tapOn:
+    id: "input.auth.register.name"
+- clearText
+- inputText: "Novo Teste E2E"
+
+- tapOn:
+    id: "input.auth.register.email"
+- clearText
+- inputText: "e2e.novo@muvify.local"
+
+- tapOn:
+    id: "input.auth.register.phone"
+- clearText
+- inputText: "11988880001"
+
+- tapOn:
+    id: "input.auth.register.password"
+- clearText
+- inputText: "Teste123456"
+
+- tapOn:
+    id: "button.auth.register.submit"
+
+# Após cadastro deve aparecer a seleção de perfil ou tela principal
+- assertVisible: "Início"
+- takeScreenshot: "auth-register-success"

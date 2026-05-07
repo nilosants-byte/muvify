@@ -1,0 +1,21 @@
+# Helper: autentica como personal trainer (PROVIDER)
+# Uso: runFlow: helpers/_login-professional.yaml
+# Pré-condição: app na tela de login
+
+appId: com.personalapp.mobile
+---
+- tapOn:
+    id: "input.auth.login.email"
+- clearText
+- inputText: "qa.personal@muvify.local"
+
+- tapOn:
+    id: "input.auth.login.password"
+- clearText
+- inputText: "Qa123456"
+
+- tapOn:
+    id: "button.auth.login.submit"
+
+- assertVisible: "Agenda"
+- takeScreenshot: "login-professional-success"

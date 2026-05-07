@@ -1,0 +1,46 @@
+# Auth: validação de campos obrigatórios no cadastro
+# Executa: maestro test auth/05-register-validation.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- assertVisible:
+    id: "screen.auth.login"
+
+- tapOn:
+    id: "button.auth.login.go-register"
+
+- assertVisible:
+    id: "screen.auth.register"
+
+# Tenta submeter com campos vazios
+- tapOn:
+    id: "button.auth.register.submit"
+
+# Permanece na tela de registro
+- assertVisible:
+    id: "screen.auth.register"
+
+- takeScreenshot: "auth-register-empty-fields"
+
+# Preenche apenas o nome e tenta novamente
+- tapOn:
+    id: "input.auth.register.name"
+- inputText: "Teste"
+
+- tapOn:
+    id: "button.auth.register.submit"
+
+- assertVisible:
+    id: "screen.auth.register"
+
+- takeScreenshot: "auth-register-partial-fields"
+
+# Volta para login
+- tapOn:
+    id: "button.auth.register.go-login"
+
+- assertVisible:
+    id: "screen.auth.login"

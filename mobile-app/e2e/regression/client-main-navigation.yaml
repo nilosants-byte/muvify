@@ -1,0 +1,55 @@
+appId: com.personalapp.mobile
+name: Regression - Client main navigation
+tags:
+  - regression
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: screen.auth.login
+    timeout: 30000
+- tapOn:
+    id: input.auth.login.email
+- inputText: qa.cliente@muvify.dev
+- tapOn:
+    id: input.auth.login.password
+- inputText: "12345678"
+- hideKeyboard
+- tapOn:
+    id: button.auth.login.submit
+- extendedWaitUntil:
+    visible:
+      id: screen.client.home
+    timeout: 45000
+- tapOn:
+    id: nav.bottom.promotions
+- extendedWaitUntil:
+    visible:
+      id: screen.client.promotions
+    timeout: 20000
+- tapOn:
+    id: nav.bottom.training
+- extendedWaitUntil:
+    visible:
+      id: screen.client.training
+    timeout: 20000
+- tapOn:
+    id: nav.bottom.profile
+- extendedWaitUntil:
+    visible:
+      id: screen.client.profile
+    timeout: 20000
+- tapOn:
+    id: nav.bottom.bookings
+- extendedWaitUntil:
+    visible:
+      id: screen.client.bookings
+    timeout: 20000
+- tapOn:
+    id: nav.bottom.home
+- extendedWaitUntil:
+    visible:
+      id: screen.client.home
+    timeout: 20000
+- takeScreenshot: regression-client-main-navigation

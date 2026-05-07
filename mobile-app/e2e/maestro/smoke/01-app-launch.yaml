@@ -1,0 +1,12 @@
+# Smoke: verifica que o app abre e exibe a tela de login
+# Executa: maestro test smoke/01-app-launch.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- assertVisible:
+    id: "screen.auth.login"
+
+- takeScreenshot: "smoke-app-launch"

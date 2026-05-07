@@ -1,0 +1,95 @@
+name: Mobile Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Plataforma do build"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - android
+          - ios
+      profile:
+        description: "Perfil EAS"
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - production
+      auto_submit:
+        description: "Fazer submit automatico para lojas (somente production)"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  release-mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile-app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile-app/package-lock.json
+
+      - name: Setup Expo + EAS
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Prepare EAS project id
+        run: node scripts/prepare-eas-project.mjs
+        env:
+          MOBILE_EAS_PROJECT_ID: ${{ secrets.MOBILE_EAS_PROJECT_ID }}
+
+      - name: Validate release quality
+        run: npm run validate:release
+
+      - name: EAS build
+        if: ${{ inputs.auto_submit == false }}
+        run: >
+          npx eas build
+          --platform ${{ inputs.platform }}
+          --profile ${{ inputs.profile }}
+          --non-interactive
+        env:
+          EXPO_PUBLIC_API_BASE_URL: ${{ secrets.MOBILE_EXPO_PUBLIC_API_BASE_URL }}
+          EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.MOBILE_EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.MOBILE_EXPO_PUBLIC_SENTRY_DSN }}
+          EXPO_PUBLIC_APP_ENV: ${{ inputs.profile == 'production' && 'production' || 'preview' }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+
+      - name: EAS build + auto submit
+        if: ${{ inputs.auto_submit == true }}
+        run: >
+          npx eas build
+          --platform ${{ inputs.platform }}
+          --profile production
+          --auto-submit
+          --non-interactive
+        env:
+          EXPO_PUBLIC_API_BASE_URL: ${{ secrets.MOBILE_EXPO_PUBLIC_API_BASE_URL }}
+          EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.MOBILE_EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.MOBILE_EXPO_PUBLIC_SENTRY_DSN }}
+          EXPO_PUBLIC_APP_ENV: production
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}

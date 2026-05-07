@@ -1,0 +1,138 @@
+import { ExerciseMediaType } from "@prisma/client";
+import { StatusCodes } from "http-status-codes";
+import { ENABLE_VIDEO_UPLOAD } from "../../../config/features";
+import { prisma } from "../../../config/prisma";
+import { AppError } from "../../../shared/errors/app-error";
+
+type CreateExerciseInput = {
+  providerId: string;
+  name: string;
+  category: string;
+  description?: string;
+  defaultRepetitionsSets?: string;
+  defaultRestLabel?: string;
+  mediaUrl?: string;
+  mediaType?: ExerciseMediaType;
+};
+
+type ListExercisesInput = {
+  userId: string;
+  category?: string;
+  q?: string;
+  includePrebuilt?: boolean;
+};
+
+/** Remove mediaUrl de exercícios do tipo VIDEO quando upload está desabilitado. */
+function stripVideoMedia<T extends { mediaType?: ExerciseMediaType | null; mediaUrl?: string | null }>(
+  exercises: T[]
+): T[] {
+  if (ENABLE_VIDEO_UPLOAD) return exercises;
+  return exercises.map((ex) =>
+    ex.mediaType === ExerciseMediaType.VIDEO ? { ...ex, mediaUrl: null } : ex
+  );
+}
+
+export class ExerciseService {
+  async list({ userId, category, q, includePrebuilt = true }: ListExercisesInput) {
+    const provider = await prisma.providerProfile.findUnique({
+      where: { userId },
+      select: { id: true }
+    });
+
+    const ownerFilter = provider ? [{ providerId: provider.id }] : [];
+    const visibilityFilter = [
+      ...ownerFilter,
+      ...(includePrebuilt ? [{ isPrebuilt: true }] : [])
+    ];
+
+    if (visibilityFilter.length === 0) {
+      return [];
+    }
+
+    const exercises = await prisma.exercise.findMany({
+      where: {
+        OR: visibilityFilter,
+        ...(category ? { category } : {}),
+        ...(q ? {
+          name: { contains: q, mode: "insensitive" as const }
+        } : {})
+      },
+      orderBy: [{ isPrebuilt: "asc" }, { name: "asc" }]
+    });
+    return stripVideoMedia(exercises);
+  }
+
+  async listPrebuilt(category?: string, q?: string) {
+    const exercises = await prisma.exercise.findMany({
+      where: {
+        isPrebuilt: true,
+        ...(category ? { category } : {}),
+        ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {})
+      },
+      orderBy: [{ category: "asc" }, { name: "asc" }]
+    });
+    return stripVideoMedia(exercises);
+  }
+
+  async listMine(providerId: string, category?: string, q?: string) {
+    const provider = await prisma.providerProfile.findUnique({
+      where: { userId: providerId },
+      select: { id: true }
+    });
+
+    if (!provider) {
+      return [];
+    }
+
+    const exercises = await prisma.exercise.findMany({
+      where: {
+        providerId: provider.id,
+        isPrebuilt: false,
+        ...(category ? { category } : {}),
+        ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {})
+      },
+      orderBy: [{ category: "asc" }, { name: "asc" }]
+    });
+    return stripVideoMedia(exercises);
+  }
+
+  async create(input: CreateExerciseInput) {
+    const provider = await prisma.providerProfile.findUnique({
+      where: { userId: input.providerId }
+    });
+    if (!provider) {
+      throw new AppError("Perfil profissional não encontrado. Crie seu perfil antes de adicionar exercícios.", StatusCodes.NOT_FOUND);
+    }
+
+    const isVideoMedia = input.mediaType === ExerciseMediaType.VIDEO;
+
+    return prisma.exercise.create({
+      data: {
+        providerId: provider.id,
+        name: input.name.trim(),
+        category: input.category.trim(),
+        description: input.description?.trim() || null,
+        defaultRepetitionsSets: input.defaultRepetitionsSets?.trim() || null,
+        defaultRestLabel: input.defaultRestLabel?.trim() || null,
+        mediaUrl: (ENABLE_VIDEO_UPLOAD || !isVideoMedia) ? (input.mediaUrl || null) : null,
+        mediaType: (ENABLE_VIDEO_UPLOAD || !isVideoMedia) ? (input.mediaType || null) : null,
+        isPrebuilt: false
+      }
+    });
+  }
+
+  async delete(exerciseId: string, providerId: string) {
+    const exercise = await prisma.exercise.findUnique({ where: { id: exerciseId } });
+    if (!exercise) throw new AppError("Exercício não encontrado.", StatusCodes.NOT_FOUND);
+
+    const provider = await prisma.providerProfile.findUnique({ where: { userId: providerId } });
+    if (!provider || exercise.providerId !== provider.id) {
+      throw new AppError("Você não tem permissão para remover este exercício.", StatusCodes.FORBIDDEN);
+    }
+    if (exercise.isPrebuilt) {
+      throw new AppError("Exercícios da biblioteca Muvify não podem ser removidos.", StatusCodes.FORBIDDEN);
+    }
+
+    await prisma.exercise.delete({ where: { id: exerciseId } });
+  }
+}

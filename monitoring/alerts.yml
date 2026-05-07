@@ -1,0 +1,36 @@
+﻿groups:
+  - name: app.rules
+    rules:
+      - alert: AppDown
+        expr: up{job="app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "App indisponivel"
+          description: "Nenhuma instancia respondendo em /metrics por 1 minuto."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_request_duration_seconds_count{job="app",status_code=~"5.."}[5m]))
+          /
+          sum(rate(http_request_duration_seconds_count{job="app"}[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alta taxa de erro 5xx"
+          description: "Mais de 5% das requisicoes com erro 5xx nos ultimos 5 minutos."
+
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket{job="app"}[5m]))
+          ) > 1.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latencia P95 elevada"
+          description: "P95 acima de 1.5s por 10 minutos."

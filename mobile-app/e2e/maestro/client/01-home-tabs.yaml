@@ -1,0 +1,55 @@
+# Client: navegação pelas tabs principais do cliente
+# Executa: maestro test client/01-home-tabs.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- runFlow: ../helpers/_login-client.yaml
+
+# Verifica tab Início (ativa por padrão)
+- assertVisible:
+    id: "screen.client.home"
+- takeScreenshot: "client-tab-inicio"
+
+# Navega para Categorias
+- tapOn:
+    text: "Categorias"
+- assertVisible:
+    id: "screen.client.categories"
+- takeScreenshot: "client-tab-categorias"
+
+# Navega para Promoções
+- tapOn:
+    text: "Promoções"
+- assertVisible:
+    id: "screen.client.promotions"
+- takeScreenshot: "client-tab-promocoes"
+
+# Navega para Seu Treino
+- tapOn:
+    text: "Seu Treino"
+- assertVisible:
+    id: "screen.client.training"
+- takeScreenshot: "client-tab-treino"
+
+# Navega para Agenda
+- tapOn:
+    text: "Agenda"
+- assertVisible:
+    id: "screen.client.bookings"
+- takeScreenshot: "client-tab-agenda"
+
+# Navega para Perfil
+- tapOn:
+    text: "Perfil"
+- assertVisible:
+    id: "screen.client.profile"
+- takeScreenshot: "client-tab-perfil"
+
+# Volta para Início
+- tapOn:
+    text: "Início"
+- assertVisible:
+    id: "screen.client.home"

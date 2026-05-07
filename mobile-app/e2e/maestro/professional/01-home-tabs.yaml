@@ -1,0 +1,49 @@
+# Professional: navegação pelas tabs principais do personal trainer
+# Executa: maestro test professional/01-home-tabs.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- runFlow: ../helpers/_login-professional.yaml
+
+# Verifica tab Início (ativa por padrão)
+- assertVisible:
+    id: "screen.professional.home"
+- takeScreenshot: "professional-tab-inicio"
+
+# Navega para Agenda
+- tapOn:
+    text: "Agenda"
+- assertVisible: "Agenda"
+- takeScreenshot: "professional-tab-agenda"
+
+# Navega para Consultoria
+- tapOn:
+    text: "Consultoria"
+- takeScreenshot: "professional-tab-consultoria"
+
+# Navega para Financeiro
+- tapOn:
+    text: "Financeiro"
+- takeScreenshot: "professional-tab-financeiro"
+
+# Navega para Avisos
+- tapOn:
+    text: "Avisos"
+- takeScreenshot: "professional-tab-avisos"
+
+# Navega para Perfil
+- tapOn:
+    text: "Perfil"
+- takeScreenshot: "professional-tab-perfil"
+
+# Verifica nome do usuário QA
+- assertVisible: "QA Personal"
+
+# Volta para Início
+- tapOn:
+    text: "Início"
+- assertVisible:
+    id: "screen.professional.home"
