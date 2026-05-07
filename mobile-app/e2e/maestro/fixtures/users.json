@@ -13,8 +13,8 @@
   },
   "admin": {
     "name": "Muvify Admin",
-    "email": "muvifyadm@gmail.com",
-    "password": "M0105V2026F"
+    "email": "ADMIN_EMAIL_PLACEHOLDER",
+    "password": "ADMIN_PASSWORD_PLACEHOLDER"
   },
   "new_client": {
     "name": "Novo Teste E2E",

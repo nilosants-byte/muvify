@@ -79,6 +79,10 @@ scripts/mock-mobile-api.js
 
 # ── Artefatos de build ────────────────────────────────────────
 artifacts/
+public/
+
+# ── Credenciais locais de testes E2E (nunca commitar) ─────────
+mobile-app/e2e/maestro/fixtures/users.local.json
 
 # ── Metro bundler ─────────────────────────────────────────────
 .metro-health-check*

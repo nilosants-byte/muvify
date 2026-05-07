@@ -5,12 +5,12 @@ appId: com.personalapp.mobile
 - tapOn:
     id: "input.auth.login.email"
 - clearText
-- inputText: "muvifyadm@gmail.com"
+- inputText: ${ADMIN_EMAIL}
 
 - tapOn:
     id: "input.auth.login.password"
 - clearText
-- inputText: "M0105V2026F"
+- inputText: ${ADMIN_PASSWORD}
 
 - tapOn:
     id: "button.auth.login.submit"
