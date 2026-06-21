@@ -141,9 +141,88 @@ enum SupportTicketStatus {
   OPEN
   ANSWERED
 }
+
+enum XpReason {
+  PRESENTIAL_WORKOUT_COMPLETED
+  ONLINE_WORKOUT_COMPLETED
+  TRAINING_PLAN_COMPLETED
+  POST_WORKOUT_PHOTO
+  REVIEW_SUBMITTED
+  NEW_PROVIDER_FIRST_SESSION
+  SERVICE_PURCHASED
+  ACHIEVEMENT_UNLOCKED
+  LEVEL_UP
+  WEEKLY_RANKING_1ST
+  WEEKLY_RANKING_2ND
+  WEEKLY_RANKING_3RD
+  MONTHLY_RANKING_1ST
+  MONTHLY_RANKING_2ND
+  MONTHLY_RANKING_3RD
+  GENERAL_RANKING_1ST_REACHED
+  GENERAL_RANKING_2ND_REACHED
+  GENERAL_RANKING_3RD_REACHED
+  FIRST_BOOKING
+  FIRST_CONSULTANCY
+  EVERY_10_BOOKINGS
+  STREAK_MILESTONE_15
+  STREAK_MILESTONE_30
+  STREAK_MILESTONE_45
+  STREAK_MILESTONE_90
+}
+
+enum AchievementCategory {
+  CONSISTENCY
+  VOLUME
+  SOCIAL
+  RANKING
+  PROGRESSION
+}
+
+enum MedalType {
+  SPECIAL
+  BRONZE
+  SILVER
+  GOLD
+  DIAMOND
+}
+
+enum AchievementConditionType {
+  STREAK_SESSIONS
+  TOTAL_WORKOUTS
+  TOTAL_FOLLOWING
+  TOTAL_FOLLOWERS
+  WEEKLY_TOP3_REACHED
+  WEEKLY_1ST_REACHED
+  WEEKLY_TOP3_CONSECUTIVE_WEEKS
+  TOTAL_REVIEWS_SUBMITTED
+  TOTAL_PHOTO_POSTS
+  DISTINCT_PROVIDERS_TRAINED
+  LEVEL_REACHED
+}
+
+enum FeedPostType {
+  WORKOUT_COMPLETED
+  ACHIEVEMENT_UNLOCKED
+  LEVEL_UP
+  STREAK_MILESTONE
+  RANKING_POSITION_CLIMBED
+  RANKING_ENTERED_WEEKLY_TOP3
+  RANKING_WEEK_ENDED_TOP3
+  RANKING_MONTH_ENDED_TOP3
+  RANKING_ENTERED_MONTHLY_TOP5
+  RANKING_ENTERED_GENERAL_TOP5
+  MANUAL_PHOTO
+}
+
+enum RankingPeriodType {
+  WEEKLY
+  MONTHLY
+  ALLTIME
+}
 model User {
   id              String            @id @default(uuid())
   name            String
+  apelido         String?           @unique
   email           String            @unique
   password        String
   phone           String?
@@ -156,6 +235,11 @@ model User {
   termsAcceptedAt             DateTime?
   privacyPolicyAcceptedAt     DateTime?
   termsVersion                String?
+  twoFactorSecret             String?
+  twoFactorEnabled            Boolean   @default(false)
+  twoFactorEnabledAt          DateTime?
+  document                    String?
+  trainingDaysPerWeek         Int       @default(3)
   customerPaymentMethods CustomerPaymentMethod[]
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -171,6 +255,8 @@ model User {
   notifications   UserNotification[]
   passwordResetTokens PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
+  twoFactorLoginChallenges TwoFactorLoginChallenge[]
+  twoFactorBackupCodes     TwoFactorBackupCode[]
   anamnesisProfile ClientAnamnesis?
   physicalAssessments ProviderStudentAssessment[] @relation("AssessmentClient")
   trainingPlanCompletions TrainingPlanCompletion[]
@@ -178,6 +264,17 @@ model User {
   notificationPreferences NotificationPreference[]
   supportTicketsSubmitted SupportTicket[] @relation("SupportTicketRequester")
   supportTicketsResponded SupportTicket[] @relation("SupportTicketResponder")
+  xpTransactions          UserXpTransaction[]
+  streak                  UserStreak?
+  unlockedAchievements    UserAchievement[]
+  following               Follow[]        @relation("Follower")
+  followers               Follow[]        @relation("Following")
+  feedPosts               FeedPost[]
+  feedPostLikes           FeedPostLike[]
+  feedPostComments        FeedPostComment[]
+  rankingSnapshots        RankingSnapshot[]
+
+  @@index([createdAt])
 }
 model ProviderProfile {
   id               String             @id @default(uuid())
@@ -281,17 +378,19 @@ model Booking {
   clientConfirmedAt   DateTime?
   providerConfirmedAt DateTime?
   completedAt         DateTime?
+  reminder60SentAt    DateTime?
+  reminder30SentAt    DateTime?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   client        User             @relation("ClientBookings", fields: [clientId], references: [id], onDelete: Cascade)
   provider      ProviderProfile  @relation("ProviderBookings", fields: [providerId], references: [id], onDelete: Cascade)
-  category      ServiceCategory  @relation(fields: [categoryId], references: [id])
+  category      ServiceCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   review        Review?
   payment       Payment?
   completionEvidences CompletionEvidence[]
   chatMessages        BookingMessage[]
-  @@index([clientId, scheduledAt])
   @@index([providerId, scheduledAt])
+  @@index([clientId, scheduledAt])
   @@index([providerId, status])
   @@index([clientId, status])
   @@index([status, scheduledAt])
@@ -300,6 +399,7 @@ model Review {
   id          String           @id @default(uuid())
   bookingId   String           @unique
   userId      String
+
   providerId  String
   rating      Int
   comment     String?
@@ -309,10 +409,8 @@ model Review {
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   provider    ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
   @@index([providerId, rating])
+  @@index([userId, createdAt])
 }
-
-
-
 
 model Favorite {
   id          String           @id @default(uuid())
@@ -334,6 +432,31 @@ model Session {
   revokedAt        DateTime?
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId])
+  @@index([userId, revokedAt, expiresAt])
+}
+
+model TwoFactorLoginChallenge {
+  id                 String   @id @default(uuid())
+  userId             String
+  challengeTokenHash String   @unique
+  expiresAt          DateTime
+  consumedAt         DateTime?
+  createdAt          DateTime @default(now())
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt, consumedAt])
+}
+
+model TwoFactorBackupCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
 }
 
 model PasswordResetToken {
@@ -345,6 +468,7 @@ model PasswordResetToken {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId])
+  @@index([expiresAt])
 }
 
 model EmailVerificationToken {
@@ -356,6 +480,7 @@ model EmailVerificationToken {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId])
+  @@index([expiresAt])
 }
 
 model Payment {
@@ -480,6 +605,22 @@ model PushNotificationQueue {
   createdAt   DateTime  @default(now())
 
   @@index([nextRetryAt, failedAt])
+  @@index([failedAt, nextRetryAt, attempts])
+}
+
+model EmailDeliveryQueue {
+  id          String    @id @default(uuid())
+  template    String
+  payload     Json
+  attempts    Int       @default(0)
+  nextRetryAt DateTime  @default(now())
+  failedAt    DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([nextRetryAt, failedAt])
+  @@index([createdAt])
 }
 
 model ProviderBankAccount {
@@ -603,6 +744,7 @@ model Exercise {
 
   @@index([providerId, category])
   @@index([isPrebuilt, category])
+  @@index([category, name])
 }
 
 model ConsultancyRequest {
@@ -648,6 +790,9 @@ model ConsultancyContract {
   deliveredAt       DateTime?
   refundedAt        DateTime?
   refundReason      String?
+  expiry7dSentAt    DateTime?
+  expiry1dSentAt    DateTime?
+  expiryNoticeSentAt DateTime?
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
   request           ConsultancyRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
@@ -659,6 +804,7 @@ model ConsultancyContract {
 
   @@index([providerId, status, deliveryDeadlineAt])
   @@index([clientId, status, createdAt])
+  @@index([clientId, paymentStatus, status])
 }
 
 model ProviderCalendarEvent {
@@ -687,6 +833,7 @@ model ClientAnamnesis {
   client      User           @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([status])
+  @@index([clientId, updatedAt])
 }
 
 model ProviderStudentAssessment {
@@ -732,6 +879,7 @@ model FinancialStudent {
   classSessions     FinancialClassSession[]
 
   @@index([providerId, isActive])
+  @@unique([providerId, name])
 }
 
 model FinancialIncome {
@@ -838,9 +986,10 @@ model BookingMessage {
   createdAt DateTime  @default(now())
 
   booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  sender    User?    @relation(fields: [senderId], references: [id])
+  sender    User?    @relation(fields: [senderId], references: [id], onDelete: SetNull)
 
   @@index([bookingId, createdAt])
+  @@index([senderId, createdAt])
 }
 
 model NotificationPreference {
@@ -884,4 +1033,133 @@ model PaymentAuditLog {
 
   @@index([paymentId, createdAt])
   @@index([consultancyContractId, createdAt])
+  @@index([createdAt])
+}
+
+// ─── Gamification ────────────────────────────────────────────────────────────
+
+model UserXpTransaction {
+  id          String    @id @default(uuid())
+  userId      String
+  amount      Int
+  reason      XpReason
+  referenceId String?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reason, referenceId])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+model UserStreak {
+  id                  String    @id @default(uuid())
+  userId              String    @unique
+  currentStreak       Int       @default(0)
+  longestStreak       Int       @default(0)
+  lastTrainingDate    DateTime?
+  trainingDaysPerWeek Int       @default(3)
+  updatedAt           DateTime  @updatedAt
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Achievement {
+  id             String                   @id @default(uuid())
+  key            String                   @unique
+  name           String
+  description    String
+  category       AchievementCategory
+  medalType      MedalType
+  xpReward       Int
+  conditionType  AchievementConditionType
+  conditionValue Int
+  sortOrder      Int                      @default(0)
+  userAchievements UserAchievement[]
+}
+
+model UserAchievement {
+  id            String      @id @default(uuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime    @default(now())
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, achievementId])
+  @@index([userId, unlockedAt])
+}
+
+// ─── Community ────────────────────────────────────────────────────────────────
+
+model Follow {
+  id          String   @id @default(uuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+model FeedPost {
+  id          String       @id @default(uuid())
+  userId      String
+  type        FeedPostType
+  referenceId String?
+  imageUrl    String?
+  caption     String?
+  metadata    Json?
+  isAutomatic Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes       FeedPostLike[]
+  comments    FeedPostComment[]
+
+  @@index([userId, createdAt])
+  @@index([userId, isAutomatic, createdAt])
+  @@index([createdAt])
+}
+
+model FeedPostLike {
+  id        String   @id @default(uuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  post      FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId, createdAt])
+}
+
+model FeedPostComment {
+  id        String   @id @default(uuid())
+  postId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  post      FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model RankingSnapshot {
+  id                String            @id @default(uuid())
+  userId            String
+  periodType        RankingPeriodType
+  periodKey         String
+  xpEarned          Int               @default(0)
+  lastKnownPosition Int?
+  updatedAt         DateTime          @updatedAt
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, periodType, periodKey])
+  @@index([periodType, periodKey, xpEarned])
+  @@index([periodType, periodKey, xpEarned, userId])
 }
