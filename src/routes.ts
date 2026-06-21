@@ -5,23 +5,28 @@ import { availabilityRoutes } from "./modules/availability/routes/availability.r
 import { bookingRoutes } from "./modules/bookings/routes/booking.routes";
 import { chatRoutes } from "./modules/bookings/routes/chat.routes";
 import { categoryRoutes } from "./modules/categories/routes/category.routes";
+import { communityRoutes } from "./modules/community/routes/community.routes";
 import { consultancyRoutes } from "./modules/consultancy/routes/consultancy.routes";
 import { exerciseRoutes } from "./modules/exercises/routes/exercise.routes";
 import { favoriteRoutes } from "./modules/favorites/routes/favorite.routes";
 import { financialRoutes } from "./modules/financial/routes/financial.routes";
+import { gamificationRoutes } from "./modules/gamification/routes/gamification.routes";
 import { manualBlockRoutes } from "./modules/providers/manual-blocks/routes/manual-block.routes";
 import { notificationRoutes } from "./modules/notifications/routes/notification.routes";
 import { paymentRoutes } from "./modules/payments/routes/payment.routes";
 import { providerRoutes } from "./modules/providers/routes/provider.routes";
 import { reviewRoutes } from "./modules/reviews/routes/review.routes";
 import { userRoutes } from "./modules/users/routes/user.routes";
+
 export const router = Router();
 router.use("/auth", authRoutes);
 router.use("/admin", adminRoutes);
 router.use("/users", userRoutes);
 router.use("/categories", categoryRoutes);
+router.use("/community", communityRoutes);
 router.use("/consultancy", consultancyRoutes);
 router.use("/exercises", exerciseRoutes);
+router.use("/gamification", gamificationRoutes);
 router.use("/providers", providerRoutes);
 router.use("/availability", availabilityRoutes);
 router.use("/manual-blocks", manualBlockRoutes);
