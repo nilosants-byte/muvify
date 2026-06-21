@@ -5,7 +5,8 @@ const completionProofSchema = z.object({
     .string()
     .trim()
     .min(20, "Selfie em base64 obrigatoria.")
-    .max(2_000_000, "Selfie acima do tamanho maximo permitido."),
+    .max(2_000_000, "Selfie acima do tamanho maximo permitido.")
+    .regex(/^data:image\/(jpeg|jpg|png|webp);base64,[a-zA-Z0-9+/=]+$/, "Formato de imagem base64 invalido."),
   mimeType: z.enum(["image/jpeg", "image/jpg", "image/png", "image/webp"]),
   cameraFacing: z.enum(["FRONT", "BACK"])
 });
@@ -14,10 +15,18 @@ export const createBookingSchema = z.object({
   body: z.object({
     providerId: z.string().uuid(),
     categoryId: z.string().uuid(),
-    scheduledAt: z.string().datetime({ offset: true }),
+    scheduledAt: z.string().datetime({ offset: true }).refine(
+      (d) => {
+        const date = new Date(d);
+        const max = new Date();
+        max.setFullYear(max.getFullYear() + 1);
+        return date > new Date() && date <= max;
+      },
+      { message: "Agendamento deve ser no futuro e com no maximo 1 ano de antecedencia." }
+    ),
     offerId: z.string().uuid().optional(),
     paymentMethod: z.enum(["CARD", "CREDIT_CARD", "DEBIT_CARD", "PIX"]).default("CREDIT_CARD"),
-    notes: z.string().max(500).optional(),
+    notes: z.string().trim().max(500).optional(),
     sessionLocation: z.string().trim().max(300).optional()
   })
 });

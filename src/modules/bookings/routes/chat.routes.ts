@@ -1,6 +1,7 @@
 import { UserRole } from "@prisma/client";
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
+import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { ChatController } from "../controllers/chat.controller";
@@ -18,4 +19,4 @@ chatRoutes.get("/me/chats", chatController.listMyChats);
 chatRoutes.get("/:bookingId/other-user", validate(chatBookingIdParamSchema), chatController.getOtherUser);
 chatRoutes.get("/:bookingId/other-user-photo", validate(chatBookingIdParamSchema), chatController.streamOtherUserPhoto);
 chatRoutes.get("/:bookingId/messages", validate(chatBookingIdParamSchema), chatController.getMessages);
-chatRoutes.post("/:bookingId/messages", validate(chatSendMessageSchema), chatController.sendMessage);
+chatRoutes.post("/:bookingId/messages", uploadRateLimiter, validate(chatSendMessageSchema), chatController.sendMessage);

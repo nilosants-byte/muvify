@@ -25,7 +25,7 @@ const studentTypeEnum = z.enum(["PRESENTIAL", "ONLINE", "APP", "BOTH"]);
 export const createStudentSchema = z.object({
   body: z.object({
     name: z.string().trim().min(2).max(120),
-    monthlyValueCents: z.number().int().min(100),
+    monthlyValueCents: z.number().int().min(100).max(2_000_000_000), // Int32 safe
     type: studentTypeEnum,
     weeklyFrequency: z.number().int().min(1).max(7).optional(),
     notes: z.string().trim().max(500).optional(),
@@ -38,7 +38,7 @@ export const updateStudentSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: z.object({
     name: z.string().trim().min(2).max(120).optional(),
-    monthlyValueCents: z.number().int().min(100).optional(),
+    monthlyValueCents: z.number().int().min(100).max(2_000_000_000).optional(), // Int32 safe
     type: studentTypeEnum.optional(),
     weeklyFrequency: z.number().int().min(1).max(7).optional(),
     isActive: z.boolean().optional(),
@@ -55,7 +55,7 @@ export const studentIdSchema = z.object({
 export const createIncomeSchema = z.object({
   body: z.object({
     description: z.string().trim().min(2).max(200),
-    amountCents: z.number().int().min(1),
+    amountCents: z.number().int().min(1).max(2_000_000_000), // max ~R$20M (Int32 safe)
     studentId: z.string().uuid().optional(),
     paidAt: z.string().datetime({ offset: true })
   })
@@ -68,7 +68,7 @@ export const incomeIdSchema = z.object({
 export const createExpenseSchema = z.object({
   body: z.object({
     description: z.string().trim().min(2).max(200),
-    amountCents: z.number().int().min(1),
+    amountCents: z.number().int().min(1).max(2_000_000_000), // max ~R$20M (Int32 safe)
     category: z.enum(["GYM", "TRANSPORT", "EQUIPMENT", "MARKETING", "OTHER"]).optional(),
     paidAt: z.string().datetime({ offset: true })
   })

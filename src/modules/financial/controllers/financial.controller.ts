@@ -88,7 +88,8 @@ export class FinancialController {
 
   // Reports
   async report(req: Request, res: Response) {
-    const months = req.query.months ? Number(req.query.months) : 6;
+    const rawMonths = req.query.months ? parseInt(req.query.months as string, 10) : 6;
+    const months = Number.isNaN(rawMonths) || rawMonths < 1 ? 6 : rawMonths;
     const data = await service.getReport(req.user!.id, Math.min(months, 12));
     return res.json(data);
   }

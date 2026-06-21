@@ -132,6 +132,12 @@ export const requestIdParamSchema = z.object({
   })
 });
 
+export const offerIdParamSchema = z.object({
+  params: z.object({
+    offerId: z.string().uuid()
+  })
+});
+
 export const respondConsultancyRequestSchema = z.object({
   params: z.object({
     requestId: z.string().uuid()

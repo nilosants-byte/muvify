@@ -70,51 +70,47 @@ export class ManualBlockService {
       throw new AppError("Horário inicial deve ser menor que o final.");
     }
 
-    // Check overlap with existing manual blocks on the same date
-    const existingBlocks = await prisma.providerManualBlock.findMany({
-      where: { providerId: provider.id, date },
-    });
-    const overlapBlock = existingBlocks.some(
-      (b) => startTime < b.endTime && endTime > b.startTime
-    );
-    if (overlapBlock) {
-      throw new AppError(
-        "Horário conflita com um bloqueio manual existente.",
-        StatusCodes.CONFLICT
+    return prisma.$transaction(async (tx) => {
+      // Lock pessimista por provider+data para prevenir overlaps concorrentes
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`manualblock:${provider.id}:${date}`}))`;
+
+      const existingBlocks = await tx.providerManualBlock.findMany({
+        where: { providerId: provider.id, date },
+      });
+      const overlapBlock = existingBlocks.some(
+        (b) => startTime < b.endTime && endTime > b.startTime
       );
-    }
+      if (overlapBlock) {
+        throw new AppError("Horário conflita com um bloqueio manual existente.", StatusCodes.CONFLICT);
+      }
 
-    // Check overlap with existing bookings on the same date (timezone-aware)
-    // Use a generous UTC window around the local day to ensure we catch all bookings
-    const dayStartUtc = new Date(`${date}T00:00:00.000Z`);
-    dayStartUtc.setUTCHours(dayStartUtc.getUTCHours() - 12);
-    const dayEndUtc = new Date(`${date}T23:59:59.999Z`);
-    dayEndUtc.setUTCHours(dayEndUtc.getUTCHours() + 12);
+      const dayStartUtc = new Date(`${date}T00:00:00.000Z`);
+      dayStartUtc.setUTCHours(dayStartUtc.getUTCHours() - 12);
+      const dayEndUtc = new Date(`${date}T23:59:59.999Z`);
+      dayEndUtc.setUTCHours(dayEndUtc.getUTCHours() + 12);
 
-    const bookings = await prisma.booking.findMany({
-      where: {
-        providerId: provider.id,
-        status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
-        scheduledAt: { gte: dayStartUtc, lte: dayEndUtc },
-      },
-      select: { scheduledAt: true },
-    });
+      const bookings = await tx.booking.findMany({
+        where: {
+          providerId: provider.id,
+          status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+          scheduledAt: { gte: dayStartUtc, lte: dayEndUtc },
+        },
+        select: { scheduledAt: true },
+      });
 
-    const overlapBooking = bookings.some((booking) => {
-      const localDate = toDateKeyInTimezone(booking.scheduledAt, env.APP_TIMEZONE);
-      if (localDate !== date) return false;
-      const localTime = toTimeInTimezone(booking.scheduledAt, env.APP_TIMEZONE);
-      return localTime >= startTime && localTime < endTime;
-    });
-    if (overlapBooking) {
-      throw new AppError(
-        "Já existe um agendamento marcado neste horário.",
-        StatusCodes.CONFLICT
-      );
-    }
+      const overlapBooking = bookings.some((booking) => {
+        const localDate = toDateKeyInTimezone(booking.scheduledAt, env.APP_TIMEZONE);
+        if (localDate !== date) return false;
+        const localTime = toTimeInTimezone(booking.scheduledAt, env.APP_TIMEZONE);
+        return localTime >= startTime && localTime < endTime;
+      });
+      if (overlapBooking) {
+        throw new AppError("Já existe um agendamento marcado neste horário.", StatusCodes.CONFLICT);
+      }
 
-    return prisma.providerManualBlock.create({
-      data: { providerId: provider.id, date, startTime, endTime, label, location },
+      return tx.providerManualBlock.create({
+        data: { providerId: provider.id, date, startTime, endTime, label, location },
+      });
     });
   }
 

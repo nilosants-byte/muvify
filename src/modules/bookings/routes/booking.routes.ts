@@ -19,7 +19,7 @@ bookingRoutes.use(ensureAuthenticated);
 const clientOrProvider = ensureRole(UserRole.CLIENT, UserRole.PROVIDER);
 
 bookingRoutes.get("/me", clientOrProvider, bookingController.listMyBookings);
-bookingRoutes.post("/", clientOrProvider, validate(createBookingSchema), bookingController.create);
+bookingRoutes.post("/", clientOrProvider, uploadRateLimiter, validate(createBookingSchema), bookingController.create);
 bookingRoutes.get(
   "/:bookingId/attendance-code",
   clientOrProvider,
@@ -29,12 +29,14 @@ bookingRoutes.get(
 bookingRoutes.post(
   "/:bookingId/attendance-code/verify",
   clientOrProvider,
+  uploadRateLimiter,
   validate(verifyAttendanceCodeSchema),
   bookingController.verifyAttendanceCode
 );
 bookingRoutes.post(
   "/:bookingId/attendance-code/verify-qr",
   clientOrProvider,
+  uploadRateLimiter,
   validate(verifyAttendanceQrSchema),
   bookingController.verifyAttendanceQr
 );

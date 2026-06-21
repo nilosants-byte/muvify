@@ -69,6 +69,8 @@ export class ChatController {
       where: {
         OR: [{ clientId: userId }, { provider: { userId } }],
       },
+      orderBy: { updatedAt: "desc" },
+      take: 200,
       include: {
         client: { select: { id: true, name: true, photoUrl: true, updatedAt: true } },
         provider: {
@@ -190,9 +192,15 @@ export class ChatController {
       data: { readAt: new Date() },
     });
 
+    const rawCursor = req.query.before as string | undefined;
+    const take = 100;
     const messages = await prisma.bookingMessage.findMany({
-      where: { bookingId },
+      where: {
+        bookingId,
+        ...(rawCursor ? { createdAt: { lt: new Date(rawCursor) } } : {}),
+      },
       orderBy: { createdAt: "asc" },
+      take,
       select: MESSAGE_SELECT,
     });
 

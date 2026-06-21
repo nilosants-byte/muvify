@@ -33,13 +33,13 @@ const presentationVideoSchema = z
 
 export const createProviderProfileSchema = z.object({
   body: z.object({
-    displayName: z.string().min(3),
-    bio: z.string().min(10),
-    experienceYears: z.number().int().min(0),
-    priceCents: z.number().int().min(100),
+    displayName: z.string().trim().min(3).max(120),
+    bio: z.string().trim().min(10).max(1000),
+    experienceYears: z.number().int().min(0).max(75),
+    priceCents: z.number().int().min(100).max(10_000_000),
     photoUrl: profilePhotoSchema.optional(),
     presentationVideoUrl: presentationVideoSchema.optional(),
-    serviceRadiusKm: z.number().int().min(1).optional(),
+    serviceRadiusKm: z.number().int().min(1).max(500).optional(),
     latitude: z.number().min(-90).max(90).optional(),
     longitude: z.number().min(-180).max(180).optional(),
     serviceMode: z.enum(["PRESENTIAL_ONLY", "HOME_VISIT_ONLY", "BOTH"]).optional(),
@@ -52,13 +52,13 @@ export const createProviderProfileSchema = z.object({
 
 export const updateProviderProfileSchema = z.object({
   body: z.object({
-    displayName: z.string().min(3).optional(),
-    bio: z.string().min(10).optional(),
-    experienceYears: z.number().int().min(0).optional(),
-    priceCents: z.number().int().min(100).optional(),
+    displayName: z.string().trim().min(3).max(120).optional(),
+    bio: z.string().trim().min(10).max(1000).optional(),
+    experienceYears: z.number().int().min(0).max(75).optional(),
+    priceCents: z.number().int().min(100).max(10_000_000).optional(),
     photoUrl: profilePhotoSchema.optional(),
     presentationVideoUrl: presentationVideoSchema.nullable().optional(),
-    serviceRadiusKm: z.number().int().min(1).optional(),
+    serviceRadiusKm: z.number().int().min(1).max(500).optional(),
     latitude: z.number().min(-90).max(90).optional(),
     longitude: z.number().min(-180).max(180).optional(),
     serviceMode: z.enum(["PRESENTIAL_ONLY", "HOME_VISIT_ONLY", "BOTH"]).optional(),
@@ -72,7 +72,7 @@ export const updateProviderProfileSchema = z.object({
 export const searchProvidersSchema = z.object({
   query: z.object({
     categoryId: z.string().uuid().optional(),
-    q: z.string().optional(),
+    q: z.string().trim().min(1).max(200).optional(),
     minRating: z.coerce.number().min(0).max(5).optional(),
     lat: z.coerce.number().min(-90).max(90).optional(),
     lng: z.coerce.number().min(-180).max(180).optional(),

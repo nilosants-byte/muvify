@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
-import { Prisma, UserRole } from "@prisma/client";
+import { CrefValidationStatus, Prisma, UserRole } from "@prisma/client";
 import { app } from "../src/app";
 import { prisma } from "../src/config/prisma";
 
@@ -37,6 +37,7 @@ async function createProviderProfile(input: {
       bio: "Profissional para teste de raio no mapa.",
       experienceYears: 3,
       priceCents: 15000,
+      crefValidationStatus: CrefValidationStatus.APPROVED,
       latitude: input.latitude,
       longitude: input.longitude,
       serviceRadiusKm: input.serviceRadiusKm,

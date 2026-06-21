@@ -1,6 +1,7 @@
 import { UserRole } from "@prisma/client";
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
+import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { ConsultancyController } from "../controllers/consultancy.controller";
@@ -8,6 +9,7 @@ import {
   archivedConsultancyQuerySchema,
   completeTrainingPlanSchema,
   createConsultancyRequestSchema,
+  offerIdParamSchema,
   createProviderOfferSchema,
   createTrainingPlanSchema,
   decideConsultancyRequestSchema,
@@ -33,10 +35,12 @@ consultancyRoutes.get(
 
 consultancyRoutes.use(ensureAuthenticated);
 
-consultancyRoutes.get("/my/training", consultancyController.myTraining);
-consultancyRoutes.get("/my/training/completions", consultancyController.myTrainingCompletions);
+consultancyRoutes.get("/my/training", ensureRole(UserRole.CLIENT), consultancyController.myTraining);
+consultancyRoutes.get("/my/training/completions", ensureRole(UserRole.CLIENT), consultancyController.myTrainingCompletions);
 consultancyRoutes.post(
   "/my/training/plans/:trainingPlanId/complete",
+  ensureRole(UserRole.CLIENT),
+  uploadRateLimiter,
   validate(completeTrainingPlanSchema),
   consultancyController.completeTrainingPlan
 );
@@ -48,11 +52,15 @@ consultancyRoutes.get(
 );
 consultancyRoutes.post(
   "/requests",
+  ensureRole(UserRole.CLIENT),
+  uploadRateLimiter,
   validate(createConsultancyRequestSchema),
   consultancyController.createRequest
 );
 consultancyRoutes.post(
   "/requests/:requestId/decision",
+  ensureRole(UserRole.CLIENT),
+  uploadRateLimiter,
   validate(decideConsultancyRequestSchema),
   consultancyController.decideRequest
 );
@@ -71,6 +79,7 @@ consultancyRoutes.get(
 consultancyRoutes.put(
   "/provider/settings",
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(updateOnlineSettingSchema),
   consultancyController.upsertOnlineSetting
 );
@@ -87,18 +96,22 @@ consultancyRoutes.get(
 consultancyRoutes.post(
   "/provider/offers",
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(createProviderOfferSchema),
   consultancyController.createProviderOffer
 );
 consultancyRoutes.patch(
   "/provider/offers/:offerId",
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(updateProviderOfferSchema),
   consultancyController.updateProviderOffer
 );
 consultancyRoutes.delete(
   "/provider/offers/:offerId",
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
+  validate(offerIdParamSchema),
   consultancyController.deleteProviderOffer
 );
 consultancyRoutes.get(
@@ -109,30 +122,35 @@ consultancyRoutes.get(
 consultancyRoutes.post(
   "/provider/plans",
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(createTrainingPlanSchema),
   consultancyController.createTrainingPlan
 );
 consultancyRoutes.patch(
   "/provider/plans/:planId",
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(updateTrainingPlanSchema),
   consultancyController.updateTrainingPlan
 );
 consultancyRoutes.delete(
   "/provider/plans/:planId",
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(trainingPlanIdSchema),
   consultancyController.deleteTrainingPlan
 );
 consultancyRoutes.post(
   "/requests/:requestId/respond",
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(respondConsultancyRequestSchema),
   consultancyController.respondRequest
 );
 consultancyRoutes.post(
   "/contracts/:contractId/deliver",
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(deliverContractSchema),
   consultancyController.deliverContract
 );

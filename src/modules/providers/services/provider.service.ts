@@ -384,11 +384,24 @@ export class ProviderService {
   async upsertOwnCredentials(userId: string, input: UpsertProviderCredentialsInput) {
     const provider = await prisma.providerProfile.findUnique({
       where: { userId },
-      select: { id: true }
+      select: { id: true, crefValidationStatus: true, crefReviewedAt: true }
     });
 
     if (!provider) {
       throw new AppError("Perfil profissional nao encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    if (provider.crefValidationStatus === CrefValidationStatus.REJECTED && provider.crefReviewedAt) {
+      const cooldownDays = 7;
+      const msSinceRejection = Date.now() - provider.crefReviewedAt.getTime();
+      const daysSinceRejection = msSinceRejection / (1000 * 60 * 60 * 24);
+      if (daysSinceRejection < cooldownDays) {
+        const daysLeft = Math.ceil(cooldownDays - daysSinceRejection);
+        throw new AppError(
+          `Resubmissao de CREF disponivel em ${daysLeft} dia(s) apos a rejeicao.`,
+          StatusCodes.TOO_MANY_REQUESTS
+        );
+      }
     }
 
     const sanitizedCredentials = (input.credentials ?? []).map((item) => ({
@@ -607,22 +620,26 @@ export class ProviderService {
   }
 
   private async assertStudentManagedByProvider(providerId: string, clientId: string) {
-    const [bookingCount, contractCount] = await Promise.all([
-      prisma.booking.count({
+    const [booking, contract] = await Promise.all([
+      prisma.booking.findFirst({
         where: {
           providerId,
-          clientId
-        }
+          clientId,
+          status: { in: ["PENDING", "CONFIRMED", "COMPLETED"] }
+        },
+        select: { id: true }
       }),
-      prisma.consultancyContract.count({
+      prisma.consultancyContract.findFirst({
         where: {
           providerId,
-          clientId
-        }
+          clientId,
+          status: { in: ["PENDING_PAYMENT", "ACTIVE", "DELIVERED"] }
+        },
+        select: { id: true }
       })
     ]);
 
-    if (bookingCount === 0 && contractCount === 0) {
+    if (!booking && !contract) {
       throw new AppError(
         "Aluno não vinculado aos serviços deste profissional.",
         StatusCodes.NOT_FOUND
@@ -704,6 +721,11 @@ export class ProviderService {
           }
         }
       });
+    }).catch((err) => {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new AppError("Perfil profissional já existe.", StatusCodes.CONFLICT);
+      }
+      throw err;
     });
     await deleteByPattern("providers:*");
     return profile;
@@ -792,7 +814,7 @@ export class ProviderService {
   async search(input: SearchProvidersInput) {
     const pageOffset =
       typeof input.offset === "number" && Number.isFinite(input.offset)
-        ? Math.max(0, Math.trunc(input.offset))
+        ? Math.max(0, Math.min(10000, Math.trunc(input.offset)))
         : 0;
     const pageTake =
       typeof input.take === "number" && Number.isFinite(input.take)
@@ -940,8 +962,10 @@ export class ProviderService {
         fixedDistances: number[];
       };
 
+      const MAX_GEO_CANDIDATES = 5000;
       let cursorId: string | null = null;
       for (;;) {
+        if (ranked.length >= MAX_GEO_CANDIDATES) break;
         const candidates: GeoCandidate[] = await prisma.providerProfile.findMany({
           where,
           select: {
@@ -1254,6 +1278,7 @@ export class ProviderService {
     const manualBlocksInRange = await prisma.providerManualBlock.findMany({
       where: { providerId, date: { in: validDayKeys } },
       select: { date: true, startTime: true, endTime: true },
+      take: 1000,
     });
 
     const blockedByDay = new Map<string, Array<{ startTime: string; endTime: string }>>();
@@ -1349,19 +1374,17 @@ export class ProviderService {
             }
           }
         },
-        orderBy: { scheduledAt: "asc" }
+        orderBy: { scheduledAt: "asc" },
+        take: 500,
       }),
       prisma.providerCalendarEvent.findMany({
         where: {
           providerId: provider.id,
-          startsAt: {
-            lte: to
-          },
-          endsAt: {
-            gte: from
-          }
+          startsAt: { lte: to },
+          endsAt: { gte: from }
         },
-        orderBy: { startsAt: "asc" }
+        orderBy: { startsAt: "asc" },
+        take: 300,
       })
     ]);
 
@@ -1505,7 +1528,8 @@ export class ProviderService {
             }
           }
         },
-        orderBy: { scheduledAt: "desc" }
+        orderBy: { scheduledAt: "desc" },
+        take: 1000,
       }),
       prisma.consultancyContract.findMany({
         where: {
@@ -1538,7 +1562,8 @@ export class ProviderService {
             }
           }
         },
-        orderBy: { createdAt: "desc" }
+        orderBy: { createdAt: "desc" },
+        take: 500,
       })
     ]);
 
@@ -1755,7 +1780,8 @@ export class ProviderService {
             orderBy: { capturedAt: "desc" }
           }
         },
-        orderBy: { scheduledAt: "desc" }
+        orderBy: { scheduledAt: "desc" },
+        take: 100,
       }),
       prisma.consultancyContract.findMany({
         where: {
@@ -1799,7 +1825,8 @@ export class ProviderService {
             orderBy: { createdAt: "desc" }
           }
         },
-        orderBy: { createdAt: "desc" }
+        orderBy: { createdAt: "desc" },
+        take: 50,
       }),
       prisma.trainingPlanCompletion.findMany({
         where: {
@@ -2153,6 +2180,7 @@ export class ProviderService {
           category: { select: { name: true } },
         },
         orderBy: { scheduledAt: "asc" },
+        take: 100,
       }),
       // Bookings in the next 3 hours
       prisma.booking.findMany({
@@ -2166,6 +2194,7 @@ export class ProviderService {
           category: { select: { name: true } },
         },
         orderBy: { scheduledAt: "asc" },
+        take: 50,
       }),
       // All active client IDs for anamnesis check
       prisma.booking.findMany({
@@ -2175,6 +2204,7 @@ export class ProviderService {
         },
         select: { clientId: true },
         distinct: ["clientId"],
+        take: 1000,
       }),
     ]);
 

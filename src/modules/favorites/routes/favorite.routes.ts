@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
+import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { FavoriteController } from "../controllers/favorite.controller";
 import { favoriteParamSchema, favoriteSchema } from "../validators/favorite.validator";
@@ -7,5 +8,5 @@ const favoriteController = new FavoriteController();
 export const favoriteRoutes = Router();
 favoriteRoutes.use(ensureAuthenticated);
 favoriteRoutes.get("/", favoriteController.list);
-favoriteRoutes.post("/", validate(favoriteSchema), favoriteController.add);
-favoriteRoutes.delete("/:providerId", validate(favoriteParamSchema), favoriteController.remove);
+favoriteRoutes.post("/", uploadRateLimiter, validate(favoriteSchema), favoriteController.add);
+favoriteRoutes.delete("/:providerId", uploadRateLimiter, validate(favoriteParamSchema), favoriteController.remove);

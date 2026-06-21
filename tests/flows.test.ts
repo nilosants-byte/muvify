@@ -1,6 +1,7 @@
 ﻿import "dotenv/config";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
+import { CrefValidationStatus } from "@prisma/client";
 import { app } from "../src/app";
 import { prisma } from "../src/config/prisma";
 
@@ -81,7 +82,14 @@ describe("flows", () => {
       });
 
     providerId = profile.body.id;
-
+    await prisma.providerProfile.update({
+      where: { id: providerId },
+      data: {
+        crefValidationStatus: CrefValidationStatus.APPROVED,
+        crefValidatedAt: new Date(),
+        crefReviewedAt: new Date()
+      }
+    });
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const weekday = tomorrow.getUTCDay();
 

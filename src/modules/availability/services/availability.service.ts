@@ -13,27 +13,22 @@ export class AvailabilityService {
     if (startTime >= endTime) {
       throw new AppError("Horário inicial deve ser menor que o final.");
     }
-    const existing = await prisma.availability.findMany({
-      where: {
-        providerId: profile.id,
-        weekday,
-        isActive: true
+    const availability = await prisma.$transaction(async (tx) => {
+      // Lock pessimista: impede dois creates simultâneos para o mesmo provider/weekday
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`avail:${profile.id}:${weekday}`}))`;
+
+      const existing = await tx.availability.findMany({
+        where: { providerId: profile.id, weekday, isActive: true }
+      });
+      const overlaps = existing.some(
+        (item) => startTime < item.endTime && endTime > item.startTime
+      );
+      if (overlaps) {
+        throw new AppError("Horário conflita com disponibilidade existente.");
       }
-    });
-    const overlaps = existing.some(
-      (item) => startTime < item.endTime && endTime > item.startTime
-    );
-    if (overlaps) {
-      throw new AppError("Horário conflita com disponibilidade existente.");
-    }
-    const availability = await prisma.availability.create({
-      data: {
-        providerId: profile.id,
-        weekday,
-        startTime,
-        endTime,
-        isActive
-      }
+      return tx.availability.create({
+        data: { providerId: profile.id, weekday, startTime, endTime, isActive }
+      });
     });
     await deleteByPattern("providers:*");
     return availability;

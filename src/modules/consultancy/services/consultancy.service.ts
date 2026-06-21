@@ -515,6 +515,17 @@ export class ConsultancyService {
           StatusCodes.BAD_REQUEST
         );
       }
+
+      const maxInstallments = resolveMaxInstallments(cycle, input.maxCreditInstallments ?? 1);
+      const minInstallmentCents = 500; // R$ 5,00 — mínimo exigido pelo Mercado Pago por parcela
+      if (input.priceCents / maxInstallments < minInstallmentCents) {
+        const maxAllowed = Math.floor(input.priceCents / minInstallmentCents);
+        throw new AppError(
+          `O valor da oferta (R$ ${(input.priceCents / 100).toFixed(2)}) não permite ${maxInstallments}x. ` +
+            `Cada parcela deve ser de no mínimo R$ 5,00. Máximo permitido para este valor: ${maxAllowed}x.`,
+          StatusCodes.UNPROCESSABLE_ENTITY
+        );
+      }
     }
   }
 
@@ -1235,6 +1246,35 @@ export class ConsultancyService {
       );
     }
 
+    const hasActiveOffer = await prisma.providerServiceOffer.findFirst({
+      where: {
+        providerId: provider.id,
+        isActive: true,
+        kind: { in: onlineOfferKinds }
+      },
+      select: { id: true }
+    });
+    if (!hasActiveOffer) {
+      throw new AppError(
+        "Este profissional não possui ofertas de consultoria ativas no momento.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    const recentRequests = await prisma.consultancyRequest.count({
+      where: {
+        clientId,
+        providerId: input.providerId,
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+      }
+    });
+    if (recentRequests >= 3) {
+      throw new AppError(
+        "Limite de 3 solicitacoes por dia para este profissional atingido.",
+        StatusCodes.TOO_MANY_REQUESTS
+      );
+    }
+
     const request = await prisma.consultancyRequest.create({
       data: {
         providerId: provider.id,
@@ -1291,7 +1331,8 @@ export class ConsultancyService {
           }
         }
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      take: 100,
     });
   }
 
@@ -1333,7 +1374,8 @@ export class ConsultancyService {
           }
         }
       },
-      orderBy: { updatedAt: "desc" }
+      orderBy: { updatedAt: "desc" },
+      take: 100,
     });
   }
 
@@ -1341,6 +1383,7 @@ export class ConsultancyService {
     const provider = await this.providerProfileByUserId(userId);
     return prisma.consultancyRequest.findMany({
       where: { providerId: provider.id },
+      take: 100,
       include: {
         client: {
           select: {
@@ -1397,7 +1440,8 @@ export class ConsultancyService {
           }
         }
       },
-      orderBy: { updatedAt: "desc" }
+      orderBy: { updatedAt: "desc" },
+      take: 100,
     });
   }
 
@@ -1437,7 +1481,8 @@ export class ConsultancyService {
     if (
       !offer ||
       offer.providerId !== provider.id ||
-      !onlineOfferKinds.includes(offer.kind)
+      !onlineOfferKinds.includes(offer.kind) ||
+      !offer.isActive
     ) {
       throw new AppError(
         "Oferta de consultoria invalida para esta resposta.",
@@ -1617,6 +1662,15 @@ export class ConsultancyService {
       priceCents: request.quotedOffer.priceCents
     });
 
+    // Mínimo de R$ 5,00 por parcela exigido pelo Mercado Pago
+    if (resolvedInstallments > 1 && paymentAmountCents / resolvedInstallments < 500) {
+      const maxAllowed = Math.floor(paymentAmountCents / 500);
+      throw new AppError(
+        `Cada parcela deve ser de no mínimo R$ 5,00. Máximo permitido para este valor: ${maxAllowed}x.`,
+        StatusCodes.UNPROCESSABLE_ENTITY
+      );
+    }
+
     const now = new Date();
     const deliveryDays =
       request.provider.onlineConsultancySetting?.responseSlaDays ??
@@ -1626,6 +1680,23 @@ export class ConsultancyService {
     );
 
     const { updatedRequest, contract } = await prisma.$transaction(async (tx) => {
+      // Re-valida o status dentro da transação para prevenir race condition com decideRequest REFUSE
+      const freshRequest = await tx.consultancyRequest.findUnique({
+        where: { id: request.id },
+        select: { status: true, contract: true }
+      });
+      if (!freshRequest || freshRequest.status !== ConsultancyRequestStatus.RESPONDED) {
+        throw new AppError(
+          "A solicitação já foi decidida por outro processo. Recarregue para ver o status atual.",
+          StatusCodes.CONFLICT
+        );
+      }
+      if (freshRequest.contract) {
+        // Re-lê o request para garantir consistência (request fora da tx pode estar stale)
+        const consistentRequest = await tx.consultancyRequest.findUniqueOrThrow({ where: { id: request.id } });
+        return { updatedRequest: consistentRequest, contract: freshRequest.contract };
+      }
+
       const updatedRequestTx = await tx.consultancyRequest.update({
         where: { id: request.id },
         data: {
@@ -1760,6 +1831,15 @@ export class ConsultancyService {
       }
     });
 
+    if (mpStatus === "approved") {
+      const {
+        onServicePurchased,
+        onFirstConsultancyContracted,
+      } = await import("../../gamification/services/gamification-events.service");
+      void onServicePurchased(clientId, contract.id);
+      void onFirstConsultancyContracted(clientId);
+    }
+
     return {
       request: updatedRequest,
       contract: updatedContract,
@@ -1806,15 +1886,15 @@ export class ConsultancyService {
       throw new AppError("Contrato não encontrado.", StatusCodes.NOT_FOUND);
     }
 
-    if (contract.status === ConsultancyContractStatus.REFUNDED_EXPIRED) {
-      throw new AppError(
-        "Contrato expirado e estornado. Entrega não permitida.",
-        StatusCodes.BAD_REQUEST
-      );
-    }
-
     if (contract.status === ConsultancyContractStatus.DELIVERED) {
       throw new AppError("Treino já entregue para este contrato.", StatusCodes.BAD_REQUEST);
+    }
+
+    if (contract.status !== ConsultancyContractStatus.ACTIVE) {
+      throw new AppError(
+        "Contrato deve estar ativo (pagamento confirmado) para entregar o treino.",
+        StatusCodes.BAD_REQUEST
+      );
     }
 
     const now = new Date();
@@ -1828,15 +1908,20 @@ export class ConsultancyService {
           isPrebuilt: false,
           isActive: true,
           exercises: {
-            create: input.exercises.map((exercise, index) => ({
-              sortOrder: exercise.sortOrder ?? index,
-              name: exercise.name,
-              repetitionsSets: exercise.repetitionsSets,
-              load: exercise.load,
-              restSeconds: exercise.restSeconds,
-              restLabel: exercise.restLabel,
-              demoVideoUrl: exercise.demoVideoUrl
-            }))
+            create: input.exercises.map((exercise, index) => {
+              if (!exercise.name?.trim()) {
+                throw new AppError("Nome do exercicio nao pode estar vazio.", StatusCodes.BAD_REQUEST);
+              }
+              return {
+                sortOrder: exercise.sortOrder ?? index,
+                name: exercise.name.trim(),
+                repetitionsSets: exercise.repetitionsSets?.trim() ?? null,
+                load: exercise.load?.trim() ?? null,
+                restSeconds: exercise.restSeconds,
+                restLabel: exercise.restLabel?.trim() ?? null,
+                demoVideoUrl: exercise.demoVideoUrl?.trim() ?? null
+              };
+            })
           }
         },
         include: {
@@ -1991,7 +2076,7 @@ export class ConsultancyService {
       contractId = activeContract.id;
     }
 
-    return prisma.trainingPlanCompletion.create({
+    const completion = await prisma.trainingPlanCompletion.create({
       data: {
         clientId,
         providerId,
@@ -2000,11 +2085,18 @@ export class ConsultancyService {
         notes: notes?.trim() || null
       }
     });
+
+    const { onTrainingPlanCompleted } = await import("../../gamification/services/gamification-events.service");
+    void onTrainingPlanCompleted(clientId, contractId ?? completion.id);
+
+    return completion;
   }
 
   async listMyTrainingCompletions(clientId: string) {
     const completions = await prisma.trainingPlanCompletion.findMany({
       where: { clientId },
+      orderBy: { completedAt: "desc" },
+      take: 100,
       include: {
         trainingPlan: {
           select: {
@@ -2020,9 +2112,7 @@ export class ConsultancyService {
             updatedAt: true
           }
         }
-      },
-      orderBy: { completedAt: "desc" },
-      take: 100
+      }
     });
 
     return completions.map((completion) => ({
@@ -2036,6 +2126,95 @@ export class ConsultancyService {
         )
       }
     }));
+  }
+
+  async sendConsultancyExpiryReminders(referenceDate = new Date()) {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const windowMs = 5 * 60 * 1000;
+
+    const lower7d = new Date(referenceDate.getTime() + 7 * dayMs - windowMs);
+    const upper7d = new Date(referenceDate.getTime() + 7 * dayMs + windowMs);
+
+    const due7d = await prisma.consultancyContract.findMany({
+      where: {
+        status: ConsultancyContractStatus.ACTIVE,
+        expiry7dSentAt: null,
+        deliveryDeadlineAt: { gte: lower7d, lte: upper7d },
+      },
+      select: { id: true, clientId: true, provider: { select: { userId: true } } },
+    });
+
+    for (const contract of due7d) {
+      const upd7d = await prisma.consultancyContract.updateMany({
+        where: { id: contract.id, expiry7dSentAt: null },
+        data: { expiry7dSentAt: referenceDate },
+      });
+      if (upd7d.count > 0) {
+        void notificationService
+          .sendToUsers([contract.clientId, contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: "Consultoria expira em 7 dias",
+            body: "O prazo de entrega do seu plano de treino expira em 7 dias.",
+            data: { type: "CONSULTANCY_EXPIRY_7D", contractId: contract.id },
+          })
+          .catch((e) => console.error("Consultancy 7d reminder failed:", e));
+      }
+    }
+
+    const lower1d = new Date(referenceDate.getTime() + 1 * dayMs - windowMs);
+    const upper1d = new Date(referenceDate.getTime() + 1 * dayMs + windowMs);
+
+    const due1d = await prisma.consultancyContract.findMany({
+      where: {
+        status: ConsultancyContractStatus.ACTIVE,
+        expiry1dSentAt: null,
+        deliveryDeadlineAt: { gte: lower1d, lte: upper1d },
+      },
+      select: { id: true, clientId: true, provider: { select: { userId: true } } },
+    });
+
+    for (const contract of due1d) {
+      const upd1d = await prisma.consultancyContract.updateMany({
+        where: { id: contract.id, expiry1dSentAt: null },
+        data: { expiry1dSentAt: referenceDate },
+      });
+      if (upd1d.count > 0) {
+        void notificationService
+          .sendToUsers([contract.clientId, contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: "Consultoria expira amanhã",
+            body: "O prazo de entrega do seu plano de treino expira em 24 horas.",
+            data: { type: "CONSULTANCY_EXPIRY_1D", contractId: contract.id },
+          })
+          .catch((e) => console.error("Consultancy 1d reminder failed:", e));
+      }
+    }
+
+    const expiredContracts = await prisma.consultancyContract.findMany({
+      where: {
+        status: ConsultancyContractStatus.ACTIVE,
+        expiryNoticeSentAt: null,
+        deliveryDeadlineAt: { lte: referenceDate },
+      },
+      select: { id: true, clientId: true, provider: { select: { userId: true } } },
+    });
+
+    for (const contract of expiredContracts) {
+      const updExp = await prisma.consultancyContract.updateMany({
+        where: { id: contract.id, expiryNoticeSentAt: null },
+        data: { expiryNoticeSentAt: referenceDate },
+      });
+      if (updExp.count > 0) {
+        void notificationService
+          .sendToUsers([contract.clientId, contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: "Prazo de consultoria expirado",
+            body: "O prazo de entrega do plano de treino expirou.",
+            data: { type: "CONSULTANCY_EXPIRED", contractId: contract.id },
+          })
+          .catch((e) => console.error("Consultancy expiry notice failed:", e));
+      }
+    }
   }
 
   async autoRefundExpiredContracts(referenceDate = new Date()) {
@@ -2054,72 +2233,43 @@ export class ConsultancyService {
             userId: true
           }
         }
-      }
+      },
+      take: 200,
     });
 
-    for (const contract of expiredContracts) {
+    const processContract = async (contract: (typeof expiredContracts)[number]) => {
       let mpRefundId: string | null = null;
-      let refundReason =
-        "Prazo de 7 dias expirado sem entrega do treino personalizado.";
+      let refundReason = "Prazo de 7 dias expirado sem entrega do treino personalizado.";
 
       if (contract.mpPaymentId) {
         try {
-          const refund = await mpRefundClient.create({
-            payment_id: contract.mpPaymentId,
-            body: {}
-          });
+          const refund = await mpRefundClient.create({ payment_id: contract.mpPaymentId, body: {} });
           mpRefundId = String(refund.id);
         } catch (error) {
-          console.error("Consultancy refund failed:", {
-            contractId: contract.id,
-            error
-          });
-          continue;
+          // Não interrompe — registra o erro e marca o contrato como expirado sem reembolso gateway
+          console.error("Consultancy refund failed (MP error):", { contractId: contract.id, error });
+          refundReason = "Prazo expirado sem entrega. Reembolso via gateway falhou — pendente revisao manual.";
         }
       } else {
-        refundReason =
-          "Prazo expirado sem entrega. Contrato legado sem cobranca gateway registrada.";
+        refundReason = "Prazo expirado sem entrega. Contrato legado sem cobranca gateway registrada.";
       }
 
       await prisma.$transaction(async (tx) => {
         await tx.consultancyContract.update({
           where: { id: contract.id },
-          data: {
-            status: ConsultancyContractStatus.REFUNDED_EXPIRED,
-            paymentStatus: ConsultancyPaymentStatus.REFUNDED,
-            refundedAt: referenceDate,
-            mpRefundId,
-            refundReason
-          }
+          data: { status: ConsultancyContractStatus.REFUNDED_EXPIRED, paymentStatus: ConsultancyPaymentStatus.REFUNDED, refundedAt: referenceDate, mpRefundId, refundReason }
         });
-
-        await tx.consultancyRequest.update({
-          where: { id: contract.requestId },
-          data: {
-            status: ConsultancyRequestStatus.EXPIRED_REFUNDED
-          }
-        });
+        await tx.consultancyRequest.update({ where: { id: contract.requestId }, data: { status: ConsultancyRequestStatus.EXPIRED_REFUNDED } });
       });
 
-      await notificationService.sendToUsers([contract.clientId], {
-        preferenceType: "CONSULTANCY",
-        title: "Estorno automatico da consultoria",
-        body: "Prazo de entrega expirado sem treino entregue. Valor estornado automaticamente.",
-        data: {
-          type: "CONSULTANCY_AUTO_REFUND",
-          contractId: contract.id
-        }
-      });
+      void notificationService.sendToUsers([contract.clientId], { preferenceType: "CONSULTANCY", title: "Estorno automatico da consultoria", body: "Prazo de entrega expirado sem treino entregue. Valor estornado automaticamente.", data: { type: "CONSULTANCY_AUTO_REFUND", contractId: contract.id } });
+      void notificationService.sendToUsers([contract.provider.userId], { preferenceType: "CONSULTANCY", title: "Contrato estornado por prazo expirado", body: "Contrato de consultoria expirou sem entrega e foi estornado ao aluno.", data: { type: "CONSULTANCY_CONTRACT_EXPIRED", contractId: contract.id } });
+    };
 
-      await notificationService.sendToUsers([contract.provider.userId], {
-        preferenceType: "CONSULTANCY",
-        title: "Contrato estornado por prazo expirado",
-        body: "Contrato de consultoria expirou sem entrega e foi estornado ao aluno.",
-        data: {
-          type: "CONSULTANCY_CONTRACT_EXPIRED",
-          contractId: contract.id
-        }
-      });
+    // Processar 5 em paralelo para não sobrecarregar a API do MP
+    const CONCURRENCY = 5;
+    for (let i = 0; i < expiredContracts.length; i += CONCURRENCY) {
+      await Promise.allSettled(expiredContracts.slice(i, i + CONCURRENCY).map(processContract));
     }
   }
 }

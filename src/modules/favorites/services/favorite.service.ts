@@ -49,7 +49,7 @@ export class FavoriteService {
     });
   }
 
-  async list(userId: string) {
+  async list(userId: string, take = 100, skip = 0) {
     return prisma.favorite.findMany({
       where: {
         userId,
@@ -75,7 +75,9 @@ export class FavoriteService {
           }
         }
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      take,
+      skip,
     });
   }
 }

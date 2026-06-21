@@ -1,4 +1,4 @@
-import { BookingStatus, FinancialExpenseCategory, FinancialStudentType } from "@prisma/client";
+import { BookingStatus, FinancialExpenseCategory, FinancialStudentType, Prisma } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
@@ -87,16 +87,20 @@ export class FinancialService {
       confirmedBookingsAgg
     ] = await Promise.all([
       prisma.financialIncome.findMany({
-        where: { providerId: provider.id, paidAt: { gte: from, lte: to } }
+        where: { providerId: provider.id, paidAt: { gte: from, lte: to } },
+        take: 2000,
       }),
       prisma.financialExpense.findMany({
-        where: { providerId: provider.id, paidAt: { gte: from, lte: to } }
+        where: { providerId: provider.id, paidAt: { gte: from, lte: to } },
+        take: 2000,
       }),
       prisma.financialClassSession.findMany({
-        where: { providerId: provider.id, date: { gte: from, lte: to } }
+        where: { providerId: provider.id, date: { gte: from, lte: to } },
+        take: 2000,
       }),
       prisma.financialStudent.findMany({
-        where: { providerId: provider.id, isActive: true }
+        where: { providerId: provider.id, isActive: true },
+        take: 2000,
       }),
       prisma.financialGoal.findUnique({
         where: { providerId_month: { providerId: provider.id, month: m } }
@@ -109,12 +113,14 @@ export class FinancialService {
             gte: (() => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 2, 1); })(),
             lte: (() => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 1, 0, 23, 59, 59); })()
           }
-        }
+        },
+        take: 2000,
       }),
       // agendamentos COMPLETADOS: receita realizada pelo app (com datas para breakdown diário)
       prisma.booking.findMany({
         where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: from, lte: to } },
-        select: { priceCents: true, scheduledAt: true }
+        select: { priceCents: true, scheduledAt: true },
+        take: 2000,
       }),
       // agendamentos CONFIRMADOS: receita prevista (ainda não realizada)
       prisma.booking.aggregate({
@@ -189,24 +195,32 @@ export class FinancialService {
     const provider = await getProviderByUserId(userId);
     return prisma.financialStudent.findMany({
       where: { providerId: provider.id },
-      orderBy: [{ isActive: "desc" }, { createdAt: "desc" }]
+      orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+      take: 500,
     });
   }
 
   async createStudent(userId: string, input: CreateStudentInput) {
     const provider = await getProviderByUserId(userId);
-    return prisma.financialStudent.create({
-      data: {
-        providerId: provider.id,
-        name: input.name.trim(),
-        monthlyValueCents: input.monthlyValueCents,
-        type: input.type as any,
-        weeklyFrequency: input.weeklyFrequency ?? 3,
-        notes: input.notes?.trim() ?? null,
-        ...(input.location !== undefined ? { location: input.location?.trim() || null } : {}),
-        ...(input.weeklySchedule !== undefined ? { weeklySchedule: input.weeklySchedule as any } : {})
-      } as any
-    });
+    try {
+      return await prisma.financialStudent.create({
+        data: {
+          providerId: provider.id,
+          name: input.name.trim(),
+          monthlyValueCents: input.monthlyValueCents,
+          type: input.type as any,
+          weeklyFrequency: input.weeklyFrequency ?? 3,
+          notes: input.notes?.trim() ?? null,
+          ...(input.location !== undefined ? { location: input.location?.trim() || null } : {}),
+          ...(input.weeklySchedule !== undefined ? { weeklySchedule: input.weeklySchedule as any } : {})
+        } as any
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new AppError("Já existe um aluno com este nome no seu perfil.", StatusCodes.CONFLICT);
+      }
+      throw err;
+    }
   }
 
   async updateStudent(userId: string, studentId: string, input: UpdateStudentInput) {
@@ -440,6 +454,8 @@ export class FinancialService {
 
   // ─── Reports ──────────────────────────────────────────────────────────────
   async getReport(userId: string, months = 6) {
+    const safeMon = Math.min(Math.max(Number.isInteger(months) ? months : 6, 1), 24);
+    months = safeMon;
     const provider = await getProviderByUserId(userId);
     const now = new Date();
     const result: Array<{

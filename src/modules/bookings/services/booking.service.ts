@@ -136,6 +136,7 @@ export class BookingService {
     const scheduleTime = toTimeInTimezone(scheduleDate, env.APP_TIMEZONE);
     const scheduleDateKey = toDateKeyInTimezone(scheduleDate, env.APP_TIMEZONE);
 
+    scheduleDate.setMilliseconds(0); // normaliza ms para garantir lock idêntico para o mesmo horário
     const lockKey = `${providerId}:${scheduleDate.toISOString()}`;
 
     const createdBooking = await prisma.$transaction(async (tx) => {
@@ -400,6 +401,7 @@ export class BookingService {
   }
 
   async listMyBookings(userId: string, skip = 0, take = 50) {
+    take = Math.max(1, Math.min(take, 200));
     const bookings = await prisma.booking.findMany({
       where: {
         OR: [
@@ -537,6 +539,70 @@ export class BookingService {
     );
   }
 
+  async sendSessionReminders(referenceDate = new Date()) {
+    const oneHourMs = 60 * 60 * 1000;
+    const thirtyMinMs = 30 * 60 * 1000;
+    const windowMs = 5 * 60 * 1000;
+
+    const hour1Lower = new Date(referenceDate.getTime() + oneHourMs - windowMs);
+    const hour1Upper = new Date(referenceDate.getTime() + oneHourMs + windowMs);
+
+    const due60 = await prisma.booking.findMany({
+      where: {
+        status: BookingStatus.CONFIRMED,
+        reminder60SentAt: null,
+        scheduledAt: { gte: hour1Lower, lte: hour1Upper },
+      },
+      select: { id: true, clientId: true, provider: { select: { userId: true } } },
+    });
+
+    for (const booking of due60) {
+      const upd60 = await prisma.booking.updateMany({
+        where: { id: booking.id, reminder60SentAt: null },
+        data: { reminder60SentAt: referenceDate },
+      });
+      if (upd60.count > 0) {
+        void notificationService
+          .sendToUsers([booking.clientId, booking.provider.userId], {
+            preferenceType: "BOOKINGS",
+            title: "Sessão em 1 hora",
+            body: "Você tem uma sessão confirmada em 1 hora.",
+            data: { type: "SESSION_REMINDER", bookingId: booking.id },
+          })
+          .catch((e) => console.error("Session reminder 60 failed:", e));
+      }
+    }
+
+    const min30Lower = new Date(referenceDate.getTime() + thirtyMinMs - windowMs);
+    const min30Upper = new Date(referenceDate.getTime() + thirtyMinMs + windowMs);
+
+    const due30 = await prisma.booking.findMany({
+      where: {
+        status: BookingStatus.CONFIRMED,
+        reminder30SentAt: null,
+        scheduledAt: { gte: min30Lower, lte: min30Upper },
+      },
+      select: { id: true, clientId: true, provider: { select: { userId: true } } },
+    });
+
+    for (const booking of due30) {
+      const upd30 = await prisma.booking.updateMany({
+        where: { id: booking.id, reminder30SentAt: null },
+        data: { reminder30SentAt: referenceDate },
+      });
+      if (upd30.count > 0) {
+        void notificationService
+          .sendToUsers([booking.clientId, booking.provider.userId], {
+            preferenceType: "BOOKINGS",
+            title: "Sessão em 30 minutos",
+            body: "Sua sessão começa em 30 minutos. Prepare-se!",
+            data: { type: "SESSION_REMINDER", bookingId: booking.id },
+          })
+          .catch((e) => console.error("Session reminder 30 failed:", e));
+      }
+    }
+  }
+
   async autoExpireStaleBookings(referenceDate = new Date()) {
     // Cancel PENDING bookings whose scheduledAt has already passed
     const expiredPending = await prisma.booking.findMany({
@@ -551,22 +617,28 @@ export class BookingService {
       }
     });
 
-    for (const booking of expiredPending) {
-      await prisma.booking.updateMany({
-        where: { id: booking.id, status: BookingStatus.PENDING },
-        data: { status: BookingStatus.CANCELLED }
-      });
-
-      void notificationService
-        .sendToUsers([booking.clientId, booking.provider.userId], {
-        preferenceType: "BOOKINGS",
-          title: "Agendamento cancelado automaticamente",
-          body: "Um agendamento pendente não foi confirmado a tempo e foi cancelado.",
-          data: { type: "BOOKING_EXPIRED", bookingId: booking.id }
+    const PENDING_CONCURRENCY = 5;
+    for (let i = 0; i < expiredPending.length; i += PENDING_CONCURRENCY) {
+      await Promise.allSettled(
+        expiredPending.slice(i, i + PENDING_CONCURRENCY).map(async (booking) => {
+          const updatedPending = await prisma.booking.updateMany({
+            where: { id: booking.id, status: BookingStatus.PENDING },
+            data: { status: BookingStatus.CANCELLED }
+          });
+          if (updatedPending.count === 0) return;
+          await paymentService.cancelPaymentForBooking(booking.id).catch((err) => {
+            console.error("autoExpire pending: cancel payment failed for booking", booking.id, err);
+          });
+          void notificationService
+            .sendToUsers([booking.clientId, booking.provider.userId], {
+              preferenceType: "BOOKINGS",
+              title: "Agendamento cancelado automaticamente",
+              body: "Um agendamento pendente não foi confirmado a tempo e foi cancelado.",
+              data: { type: "BOOKING_EXPIRED", bookingId: booking.id }
+            })
+            .catch((error) => console.error("Booking expiry notification failed:", error));
         })
-        .catch((error) => {
-          console.error("Booking expiry notification failed:", error);
-        });
+      );
     }
 
     // Cancel CONFIRMED bookings that are more than 48h past scheduledAt and never completed
@@ -585,22 +657,28 @@ export class BookingService {
       }
     });
 
-    for (const booking of expiredConfirmed) {
-      await prisma.booking.updateMany({
-        where: { id: booking.id, status: BookingStatus.CONFIRMED },
-        data: { status: BookingStatus.CANCELLED }
-      });
-
-      void notificationService
-        .sendToUsers([booking.clientId, booking.provider.userId], {
-        preferenceType: "BOOKINGS",
-          title: "Agendamento expirado",
-          body: "Um agendamento confirmado não foi concluído e foi encerrado automaticamente.",
-          data: { type: "BOOKING_EXPIRED", bookingId: booking.id }
+    const CONCURRENCY = 5;
+    for (let i = 0; i < expiredConfirmed.length; i += CONCURRENCY) {
+      await Promise.allSettled(
+        expiredConfirmed.slice(i, i + CONCURRENCY).map(async (booking) => {
+          const updated = await prisma.booking.updateMany({
+            where: { id: booking.id, status: BookingStatus.CONFIRMED },
+            data: { status: BookingStatus.CANCELLED }
+          });
+          if (updated.count === 0) return;
+          await paymentService.cancelPaymentForBooking(booking.id).catch((err) => {
+            console.error("autoExpire: cancel payment failed for booking", booking.id, err);
+          });
+          void notificationService
+            .sendToUsers([booking.clientId, booking.provider.userId], {
+              preferenceType: "BOOKINGS",
+              title: "Agendamento expirado",
+              body: "Um agendamento confirmado não foi concluído e foi encerrado automaticamente.",
+              data: { type: "BOOKING_EXPIRED", bookingId: booking.id }
+            })
+            .catch((error) => console.error("Booking expiry notification failed:", error));
         })
-        .catch((error) => {
-          console.error("Booking expiry notification failed:", error);
-        });
+      );
     }
   }
 
@@ -902,9 +980,6 @@ export class BookingService {
       );
     }
 
-    const sanitizedProof = this.validateCompletionProof(completionProof);
-    await this.upsertCompletionEvidence(bookingId, userId, sanitizedProof);
-
     const data: {
       clientConfirmedAt?: Date;
       providerConfirmedAt?: Date;
@@ -941,6 +1016,24 @@ export class BookingService {
       data.completedAt = now;
     }
 
+    // Guard atômico ANTES de upsert — evita sobrescrever evidência em requests concorrentes.
+    const confirmationField = isClient ? "clientConfirmedAt" : "providerConfirmedAt";
+    const wasAlreadySet = booking[confirmationField] !== null;
+    if (wasAlreadySet) {
+      // Este request chegou após outro já ter confirmado — não há nada novo a fazer.
+      return prisma.booking.findUniqueOrThrow({
+        where: { id: bookingId },
+        include: {
+          client: { select: { id: true, name: true } },
+          provider: { select: { userId: true, displayName: true } }
+        }
+      });
+    }
+
+    // Upsert da evidência apenas após passar o guard (evita sobrescrita desnecessária)
+    const sanitizedProof = this.validateCompletionProof(completionProof);
+    await this.upsertCompletionEvidence(bookingId, userId, sanitizedProof);
+
     const updated = await prisma.booking.update({
       where: { id: bookingId },
       data,
@@ -962,6 +1055,16 @@ export class BookingService {
 
     if (bothConfirmed) {
       await paymentService.captureIfAuthorizedForBooking(bookingId);
+
+      const {
+        onWorkoutCompleted,
+        onFirstBookingCompleted,
+        onEvery10BookingsCompleted,
+      } = await import("../../gamification/services/gamification-events.service");
+      void onWorkoutCompleted(updated.clientId, bookingId, false);
+      void onFirstBookingCompleted(updated.clientId);
+      void onEvery10BookingsCompleted(updated.clientId);
+
       void notificationService
         .sendToUsers([updated.clientId, updated.provider.userId], {
         preferenceType: "BOOKINGS",

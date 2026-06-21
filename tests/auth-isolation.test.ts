@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { app } from "../src/app";
 import { prisma } from "../src/config/prisma";
-import { redis } from "../src/config/redis";
+import { clearTokenBlacklist } from "../src/shared/security/token-blacklist";
 
 const password = "Test1234";
 
@@ -127,9 +127,9 @@ describe("auth-isolation", () => {
     await prisma.session.deleteMany({ where: { userId: { in: [clientAId, clientBId, providerAUserId] } } });
     await prisma.user.deleteMany({ where: { id: { in: [clientAId, clientBId, providerAUserId] } } });
     await prisma.serviceCategory.deleteMany({ where: { id: categoryId } });
-    if (redis.status === "ready") {
-      await redis.del(`auth:blacklist:${clientAId}`, `auth:blacklist:${clientBId}`, `auth:blacklist:${providerAUserId}`);
-    }
+    await clearTokenBlacklist(clientAId);
+    await clearTokenBlacklist(clientBId);
+    await clearTokenBlacklist(providerAUserId);
     await prisma.$disconnect();
   });
 
@@ -187,18 +187,9 @@ describe("auth-isolation", () => {
     expect([403, 404]).toContain(res.status);
   });
 
-  // ── Token blacklist (requires Redis) ──────────────────────────────────────
+  // ── Token blacklist ──────────────────────────────────────
 
-  it("invalidates access token after logout when Redis is available", async () => {
-    if (redis.status !== "ready") {
-      console.warn("Skipping blacklist test: Redis not available");
-      return;
-    }
-
-    const loginRes = await request(app)
-      .post("/api/auth/login")
-      .send({ email: `clientB_iso_${Date.now()}@test.com`, password });
-
+  it("invalidates access token after logout", async () => {
     // Register fresh user so we have a clean session
     const freshEmail = `blacklist_${Date.now()}@test.com`;
     const freshPhone = `1194${Date.now().toString().slice(-7)}`;
@@ -238,8 +229,6 @@ describe("auth-isolation", () => {
     // Cleanup
     await prisma.session.deleteMany({ where: { userId: freshUserId } });
     await prisma.user.deleteMany({ where: { id: freshUserId } });
-    await redis.del(`auth:blacklist:${freshUserId}`);
-
-    void loginRes; // suppress unused warning
+    await clearTokenBlacklist(freshUserId);
   });
 });

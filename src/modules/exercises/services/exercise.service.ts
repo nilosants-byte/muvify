@@ -57,7 +57,8 @@ export class ExerciseService {
           name: { contains: q, mode: "insensitive" as const }
         } : {})
       },
-      orderBy: [{ isPrebuilt: "asc" }, { name: "asc" }]
+      orderBy: [{ isPrebuilt: "asc" }, { name: "asc" }],
+      take: 500,
     });
     return stripVideoMedia(exercises);
   }
@@ -69,7 +70,8 @@ export class ExerciseService {
         ...(category ? { category } : {}),
         ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {})
       },
-      orderBy: [{ category: "asc" }, { name: "asc" }]
+      orderBy: [{ category: "asc" }, { name: "asc" }],
+      take: 500,
     });
     return stripVideoMedia(exercises);
   }
@@ -91,7 +93,8 @@ export class ExerciseService {
         ...(category ? { category } : {}),
         ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {})
       },
-      orderBy: [{ category: "asc" }, { name: "asc" }]
+      orderBy: [{ category: "asc" }, { name: "asc" }],
+      take: 500,
     });
     return stripVideoMedia(exercises);
   }
@@ -119,6 +122,64 @@ export class ExerciseService {
         isPrebuilt: false
       }
     });
+  }
+
+  async createPrebuilt(input: {
+    name: string;
+    category: string;
+    description?: string;
+    defaultRepetitionsSets?: string;
+    defaultRestLabel?: string;
+    mediaUrl?: string;
+    mediaType?: ExerciseMediaType;
+  }) {
+    return prisma.exercise.create({
+      data: {
+        providerId: null,
+        name: input.name.trim(),
+        category: input.category.trim(),
+        description: input.description?.trim() || null,
+        defaultRepetitionsSets: input.defaultRepetitionsSets?.trim() || null,
+        defaultRestLabel: input.defaultRestLabel?.trim() || null,
+        mediaUrl: input.mediaUrl?.trim() || null,
+        mediaType: input.mediaType || null,
+        isPrebuilt: true,
+      },
+    });
+  }
+
+  async updatePrebuilt(exerciseId: string, input: {
+    name?: string;
+    category?: string;
+    description?: string;
+    defaultRepetitionsSets?: string;
+    defaultRestLabel?: string;
+    mediaUrl?: string;
+    mediaType?: ExerciseMediaType;
+  }) {
+    const exercise = await prisma.exercise.findUnique({ where: { id: exerciseId } });
+    if (!exercise) throw new AppError("Exercício não encontrado.", StatusCodes.NOT_FOUND);
+    if (!exercise.isPrebuilt) throw new AppError("Exercício não é pré-montado.", StatusCodes.BAD_REQUEST);
+
+    return prisma.exercise.update({
+      where: { id: exerciseId },
+      data: {
+        ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+        ...(input.category !== undefined ? { category: input.category.trim() } : {}),
+        ...(input.description !== undefined ? { description: input.description.trim() || null } : {}),
+        ...(input.defaultRepetitionsSets !== undefined ? { defaultRepetitionsSets: input.defaultRepetitionsSets.trim() || null } : {}),
+        ...(input.defaultRestLabel !== undefined ? { defaultRestLabel: input.defaultRestLabel.trim() || null } : {}),
+        ...(input.mediaUrl !== undefined ? { mediaUrl: input.mediaUrl.trim() || null } : {}),
+        ...(input.mediaType !== undefined ? { mediaType: input.mediaType || null } : {}),
+      },
+    });
+  }
+
+  async deletePrebuilt(exerciseId: string) {
+    const exercise = await prisma.exercise.findUnique({ where: { id: exerciseId } });
+    if (!exercise) throw new AppError("Exercício não encontrado.", StatusCodes.NOT_FOUND);
+    if (!exercise.isPrebuilt) throw new AppError("Exercício não é pré-montado.", StatusCodes.BAD_REQUEST);
+    await prisma.exercise.delete({ where: { id: exerciseId } });
   }
 
   async delete(exerciseId: string, providerId: string) {

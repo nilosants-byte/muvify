@@ -1,6 +1,7 @@
 import { UserRole } from "@prisma/client";
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
+import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { ExerciseController } from "../controllers/exercise.controller";
@@ -42,6 +43,7 @@ exerciseRoutes.post(
   "/",
   ensureAuthenticated,
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(createExerciseSchema),
   exerciseController.create.bind(exerciseController)
 );
@@ -50,6 +52,7 @@ exerciseRoutes.delete(
   "/:exerciseId",
   ensureAuthenticated,
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(exerciseIdSchema),
   exerciseController.delete.bind(exerciseController)
 );

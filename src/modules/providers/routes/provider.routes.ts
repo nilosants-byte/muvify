@@ -3,7 +3,7 @@ import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
-import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
+import { uploadRateLimiter, apiRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { ProviderController } from "../controllers/provider.controller";
 import {
   createProviderManualCalendarEventSchema,
@@ -61,6 +61,7 @@ providerRoutes.post(
   "/dashboard/calendar/manual",
   ensureAuthenticated,
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(createProviderManualCalendarEventSchema),
   providerController.createManualCalendarEvent
 );
@@ -69,6 +70,7 @@ providerRoutes.patch(
   "/dashboard/calendar/manual/:eventId",
   ensureAuthenticated,
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(updateProviderManualCalendarEventSchema),
   providerController.updateManualCalendarEvent
 );
@@ -77,6 +79,7 @@ providerRoutes.delete(
   "/dashboard/calendar/manual/:eventId",
   ensureAuthenticated,
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(providerCalendarEventIdSchema),
   providerController.deleteManualCalendarEvent
 );
@@ -108,6 +111,7 @@ providerRoutes.put(
   "/dashboard/students/:clientId/physical-assessment",
   ensureAuthenticated,
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(upsertProviderStudentPhysicalAssessmentSchema),
   providerController.upsertStudentPhysicalAssessment
 );
@@ -146,6 +150,7 @@ providerRoutes.put(
 
 providerRoutes.get(
   "/:providerId/schedule-preview",
+  apiRateLimiter,
   validate(providerSchedulePreviewSchema),
   providerController.schedulePreview
 );

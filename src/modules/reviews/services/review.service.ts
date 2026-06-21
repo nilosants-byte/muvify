@@ -1,4 +1,4 @@
-import { BookingStatus } from "@prisma/client";
+import { BookingStatus, Prisma } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
@@ -26,7 +26,9 @@ export class ReviewService {
       throw new AppError("Este agendamento já foi avaliado.", StatusCodes.CONFLICT);
     }
 
-    const review = await prisma.$transaction(async (tx) => {
+    let review: Awaited<ReturnType<typeof prisma.review.create>>;
+    try {
+      review = await prisma.$transaction(async (tx) => {
       // Lock the provider row to prevent concurrent rating recalculations
       // from producing stale aggregates under READ COMMITTED isolation.
       await tx.$executeRaw`SELECT id FROM "ProviderProfile" WHERE id = ${booking.providerId} FOR UPDATE`;
@@ -57,6 +59,12 @@ export class ReviewService {
 
       return created;
     });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new AppError("Este agendamento já foi avaliado.", StatusCodes.CONFLICT);
+      }
+      throw err;
+    }
 
     // Invalidate provider search cache (averageRating changed) and
     // schedule preview cache (booking that triggered this review is now COMPLETED).
@@ -64,6 +72,10 @@ export class ReviewService {
       deleteByPattern("providers:*"),
       deleteByPattern(`schedule:${booking.providerId}:*`)
     ]);
+
+    const { onReviewSubmitted } = await import("../../gamification/services/gamification-events.service");
+    void onReviewSubmitted(userId, review.id);
+
     return review;
   }
 }
