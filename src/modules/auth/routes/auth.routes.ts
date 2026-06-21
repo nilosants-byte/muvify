@@ -3,6 +3,7 @@ import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
 import { authRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { AuthController } from "../controllers/auth.controller";
+import { TwoFactorController } from "../controllers/two-factor.controller";
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -10,7 +11,13 @@ import {
   registerSchema,
   resetPasswordSchema
 } from "../validators/auth.validator";
+import {
+  confirmTwoFactorSchema,
+  disableTwoFactorSchema,
+  loginWithTwoFactorSchema
+} from "../validators/two-factor.validator";
 const authController = new AuthController();
+const twoFactorController = new TwoFactorController();
 export const authRoutes = Router();
 /**
  * @swagger
@@ -83,4 +90,34 @@ authRoutes.post(
   authRateLimiter,
   ensureAuthenticated,
   authController.resendVerificationEmail
+);
+
+// 2FA — verificação no login (não requer sessão, usa challengeToken)
+authRoutes.post(
+  "/2fa/verify",
+  authRateLimiter,
+  validate(loginWithTwoFactorSchema),
+  twoFactorController.loginWithTwoFactor
+);
+
+// 2FA — gerenciamento (requer sessão ativa)
+authRoutes.post(
+  "/2fa/setup",
+  authRateLimiter,
+  ensureAuthenticated,
+  twoFactorController.setup
+);
+authRoutes.post(
+  "/2fa/confirm",
+  authRateLimiter,
+  ensureAuthenticated,
+  validate(confirmTwoFactorSchema),
+  twoFactorController.confirm
+);
+authRoutes.delete(
+  "/2fa",
+  authRateLimiter,
+  ensureAuthenticated,
+  validate(disableTwoFactorSchema),
+  twoFactorController.disable
 );

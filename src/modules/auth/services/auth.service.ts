@@ -4,8 +4,17 @@ import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { connectRedis, redis } from "../../../config/redis";
 import { AppError } from "../../../shared/errors/app-error";
+import {
+  clearLocalLoginAttempts,
+  getLocalLoginAttempts,
+  incrementLocalLoginAttempts
+} from "../../../shared/security/login-attempts";
+import { setTokenBlacklist } from "../../../shared/security/token-blacklist";
+import { EmailQueueService } from "../../../shared/services/email-queue.service";
 import { EmailService } from "../../../shared/services/email.service";
 import { isAdminEmail, resolveEffectiveUserRole } from "../../../shared/utils/admin-access";
+import { decryptSensitiveText } from "../../../shared/utils/encryption";
+import { TwoFactorService } from "./two-factor.service";
 import { compareHash, hashValue } from "../../../shared/utils/hash";
 import { signToken } from "../../../shared/utils/jwt";
 import { toUserPhotoUrl } from "../../../shared/utils/photo-url";
@@ -13,6 +22,7 @@ import { generateRefreshToken, hashRefreshToken } from "../../../shared/utils/re
 
 type RegisterInput = {
   name: string;
+  apelido?: string;
   email: string;
   password: string;
   phone: string;
@@ -21,13 +31,30 @@ type RegisterInput = {
   consentAccepted: true;
 };
 
+/** Gera um apelido único a partir do nome + prefixo do UUID. */
+async function generateUniqueApelido(name: string, userId: string): Promise<string> {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 23) || "user";
+  const prefix = userId.replace(/-/g, "").slice(0, 6);
+  let candidate = `${base}_${prefix}`;
+  let suffix = 0;
+  while (await prisma.user.findFirst({ where: { apelido: candidate }, select: { id: true } })) {
+    suffix += 1;
+    candidate = `${base}_${prefix}${suffix}`;
+  }
+  return candidate;
+}
+
 type ResetPasswordInput = {
   token: string;
   newPassword: string;
 };
 
 type ForgotPasswordInput = {
-  channel: "EMAIL";
+  channel: "EMAIL" | "RECOVERY_EMAIL";
   email?: string;
 };
 
@@ -54,6 +81,8 @@ function shouldExposeResetToken() {
 
 export class AuthService {
   private emailService = new EmailService();
+  private emailQueueService = new EmailQueueService();
+  private twoFactorService = new TwoFactorService();
 
   private loginAttemptsKey(email: string) {
     return `auth:login:attempts:${email}`;
@@ -64,11 +93,19 @@ export class AuthService {
       return;
     }
     await connectRedis();
-    if (redis.status !== "ready") {
+    if (redis.status === "ready") {
+      const attempts = await redis.get(this.loginAttemptsKey(email));
+      if (attempts && Number(attempts) >= env.LOGIN_MAX_ATTEMPTS) {
+        throw new AppError(
+          "Muitas tentativas. Tente novamente mais tarde.",
+          StatusCodes.TOO_MANY_REQUESTS
+        );
+      }
       return;
     }
-    const attempts = await redis.get(this.loginAttemptsKey(email));
-    if (attempts && Number(attempts) >= env.LOGIN_MAX_ATTEMPTS) {
+
+    const localAttempts = getLocalLoginAttempts(email);
+    if (localAttempts >= env.LOGIN_MAX_ATTEMPTS) {
       throw new AppError(
         "Muitas tentativas. Tente novamente mais tarde.",
         StatusCodes.TOO_MANY_REQUESTS
@@ -81,15 +118,15 @@ export class AuthService {
       return 0;
     }
     await connectRedis();
-    if (redis.status !== "ready") {
-      return 0;
+    if (redis.status === "ready") {
+      const key = this.loginAttemptsKey(email);
+      const attempts = await redis.incr(key);
+      if (attempts === 1) {
+        await redis.expire(key, env.LOGIN_LOCK_MINUTES * 60);
+      }
+      return attempts;
     }
-    const key = this.loginAttemptsKey(email);
-    const attempts = await redis.incr(key);
-    if (attempts === 1) {
-      await redis.expire(key, env.LOGIN_LOCK_MINUTES * 60);
-    }
-    return attempts;
+    return incrementLocalLoginAttempts(email, env.LOGIN_LOCK_MINUTES * 60);
   }
 
   private async clearLoginAttempts(email: string) {
@@ -97,10 +134,11 @@ export class AuthService {
       return;
     }
     await connectRedis();
-    if (redis.status !== "ready") {
+    if (redis.status === "ready") {
+      await redis.del(this.loginAttemptsKey(email));
       return;
     }
-    await redis.del(this.loginAttemptsKey(email));
+    clearLocalLoginAttempts(email);
   }
 
   private async createSession(userId: string, tx: PrismaLike = prisma) {
@@ -137,8 +175,24 @@ export class AuthService {
     return token;
   }
 
+  private async queueEmailVerificationEmail(input: {
+    userId: string;
+    email: string;
+    name: string;
+  }) {
+    const verificationToken = await this.createEmailVerificationToken(input.userId);
+    const verificationUrl =
+      `${env.EMAIL_VERIFICATION_WEB_URL}?token=${encodeURIComponent(verificationToken)}`;
+    await this.emailQueueService.enqueueEmailVerification({
+      to: input.email,
+      name: input.name,
+      verificationUrl
+    });
+  }
+
   async register({
     name,
+    apelido,
     email,
     password,
     phone,
@@ -147,8 +201,12 @@ export class AuthService {
     consentAccepted
   }: RegisterInput) {
     const normalizedEmail = email.trim().toLowerCase();
+    const normalizedPhone = phone.replace(/\D/g, "");
     if (consentAccepted !== true) {
-      throw new AppError("Aceite dos termos é obrigatório para criar conta.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Aceite dos termos e obrigatorio para criar conta.", StatusCodes.BAD_REQUEST);
+    }
+    if (!/^\d{8,15}$/.test(normalizedPhone)) {
+      throw new AppError("Telefone invalido. Informe entre 8 e 15 digitos.", StatusCodes.BAD_REQUEST);
     }
 
     const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
@@ -160,11 +218,28 @@ export class AuthService {
       ? UserRole.ADMIN
       : (role as UserRole | undefined) ?? UserRole.CLIENT;
 
-    const user = await prisma.user.create({
+    // Gera um UUID temporário para poder computar o apelido antes de inserir
+    const tempId = crypto.randomUUID();
+    const resolvedApelido = apelido
+      ? apelido.toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 30)
+      : await generateUniqueApelido(name, tempId);
+
+    // Verifica conflito de apelido
+    const apelidoConflict = await prisma.user.findFirst({ where: { apelido: resolvedApelido }, select: { id: true } });
+    if (apelidoConflict) {
+      throw new AppError("Apelido já está em uso. Escolha outro.", StatusCodes.CONFLICT);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let user: any;
+    try {
+      user = await prisma.user.create({
       data: {
+        id: tempId,
         name,
+        apelido: resolvedApelido,
         email: normalizedEmail,
-        phone,
+        phone: normalizedPhone,
         password: await hashValue(password),
         role: persistedRole,
         termsAcceptedAt: new Date(),
@@ -174,6 +249,7 @@ export class AuthService {
       select: {
         id: true,
         name: true,
+        apelido: true,
         email: true,
         role: true,
         phone: true,
@@ -183,22 +259,26 @@ export class AuthService {
         updatedAt: true
       }
     });
-
-    const effectiveRole = resolveEffectiveUserRole(user.email, user.role);
-    const refreshToken = await this.createSession(user.id);
-
-    if (this.emailService.canSendEmail()) {
-      try {
-        const verificationToken = await this.createEmailVerificationToken(user.id);
-        const verificationUrl = `${env.EMAIL_VERIFICATION_WEB_URL}?token=${encodeURIComponent(verificationToken)}`;
-        await this.emailService.sendEmailVerificationEmail({
-          to: user.email,
-          name: user.name,
-          verificationUrl
-        });
-      } catch {
-        // best effort — registration succeeds even if verification email fails
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        const target = (err.meta?.target as string[] | undefined) ?? [];
+        if (target.includes("email")) throw new AppError("E-mail ja cadastrado.", StatusCodes.CONFLICT);
+        if (target.includes("apelido")) throw new AppError("Apelido ja esta em uso.", StatusCodes.CONFLICT);
       }
+      throw err;
+    }
+
+    const effectiveRole = resolveEffectiveUserRole(user!.email, user!.role, user!.emailVerifiedAt);
+    const refreshToken = await this.createSession(user!.id);
+
+    try {
+      await this.queueEmailVerificationEmail({
+        userId: user.id,
+        email: user.email,
+        name: user.name
+      });
+    } catch {
+      // best effort - registration succeeds even if email enqueue fails
     }
 
     return {
@@ -230,6 +310,11 @@ export class AuthService {
       prisma.emailVerificationToken.update({
         where: { id: record.id },
         data: { usedAt: now }
+      }),
+      // Revogar sessões antigas para forçar re-login com nova role efetiva
+      prisma.session.updateMany({
+        where: { userId: record.userId, revokedAt: null },
+        data: { revokedAt: now }
       })
     ]);
   }
@@ -248,19 +333,23 @@ export class AuthService {
       throw new AppError("E-mail ja verificado.", StatusCodes.CONFLICT);
     }
 
-    if (!this.emailService.canSendEmail()) {
-      throw new AppError(
-        "Servico de e-mail nao configurado. Tente novamente mais tarde.",
-        StatusCodes.SERVICE_UNAVAILABLE
-      );
+    // Throttle por userId: máx 3 reenvios por hora
+    if (redis.status === "ready") {
+      const key = `auth:resend_verification:${userId}`;
+      const count = await redis.incr(key);
+      if (count === 1) await redis.expire(key, 3600);
+      if (count > 3) {
+        throw new AppError(
+          "Muitas tentativas de reenvio. Aguarde 1 hora antes de tentar novamente.",
+          StatusCodes.TOO_MANY_REQUESTS
+        );
+      }
     }
 
-    const verificationToken = await this.createEmailVerificationToken(user.id);
-    const verificationUrl = `${env.EMAIL_VERIFICATION_WEB_URL}?token=${encodeURIComponent(verificationToken)}`;
-    await this.emailService.sendEmailVerificationEmail({
-      to: user.email,
-      name: user.name,
-      verificationUrl
+    await this.queueEmailVerificationEmail({
+      userId: user.id,
+      email: user.email,
+      name: user.name
     });
   }
 
@@ -281,7 +370,54 @@ export class AuthService {
     }
 
     await this.clearLoginAttempts(normalizedEmail);
-    const effectiveRole = resolveEffectiveUserRole(user.email, user.role);
+
+    if (user.twoFactorEnabled) {
+      const challengeToken = await this.twoFactorService.createChallengeToken(user.id);
+      return { requiresTwoFactor: true as const, challengeToken };
+    }
+
+    const effectiveRole = resolveEffectiveUserRole(user.email, user.role, user.emailVerifiedAt);
+    const refreshToken = await this.createSession(user.id);
+    return {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: effectiveRole,
+        phone: user.phone,
+        photoUrl: toUserPhotoUrl(user.id, user.photoUrl, user.updatedAt)
+      },
+      accessToken: signToken(user.id, effectiveRole),
+      refreshToken
+    };
+  }
+
+  async loginWithTwoFactor(challengeToken: string, code?: string, backupCode?: string) {
+    const userId = await this.twoFactorService.resolveAndConsumeChallengeToken(challengeToken);
+    if (backupCode) {
+      await this.twoFactorService.consumeBackupCode(userId, backupCode);
+    } else if (code) {
+      await this.twoFactorService.verifyCode(userId, code);
+    } else {
+      throw new AppError("Informe o codigo do app autenticador ou um codigo de recuperacao.", StatusCodes.BAD_REQUEST);
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        phone: true,
+        photoUrl: true,
+        updatedAt: true,
+        emailVerifiedAt: true
+      }
+    });
+    if (!user) throw new AppError("Usuario nao encontrado.", StatusCodes.NOT_FOUND);
+
+    const effectiveRole = resolveEffectiveUserRole(user.email, user.role, user.emailVerifiedAt);
     const refreshToken = await this.createSession(user.id);
     return {
       user: {
@@ -304,7 +440,18 @@ export class AuthService {
         where: { refreshTokenHash },
         include: { user: true }
       });
-      if (!session || session.revokedAt || session.expiresAt <= new Date()) {
+
+      // Token revogado sendo reutilizado: possível roubo de token.
+      // Revoga todas as sessões ativas do usuário como defesa.
+      if (session?.revokedAt) {
+        await tx.session.updateMany({
+          where: { userId: session.userId, revokedAt: null },
+          data: { revokedAt: new Date() }
+        });
+        throw new AppError("Sessao comprometida. Faca login novamente.", StatusCodes.UNAUTHORIZED);
+      }
+
+      if (!session || session.expiresAt <= new Date()) {
         throw new AppError("Refresh token invalido.", StatusCodes.UNAUTHORIZED);
       }
 
@@ -314,7 +461,11 @@ export class AuthService {
         data: { revokedAt: new Date() }
       });
 
-      const effectiveRole = resolveEffectiveUserRole(session.user.email, session.user.role);
+      const effectiveRole = resolveEffectiveUserRole(
+        session.user.email,
+        session.user.role,
+        session.user.emailVerifiedAt
+      );
       return {
         user: {
           id: session.user.id,
@@ -344,27 +495,37 @@ export class AuthService {
       where: { refreshTokenHash, revokedAt: null },
       data: { revokedAt: new Date() }
     });
-    if (session && redis.status === "ready") {
+    if (session) {
       const nowSeconds = Math.floor(Date.now() / 1000);
       const ttl = parseDurationToSeconds(env.ACCESS_TOKEN_EXPIRES_IN);
-      await redis.set(`auth:blacklist:${session.userId}`, String(nowSeconds), "EX", ttl);
+      await setTokenBlacklist(session.userId, nowSeconds, ttl);
     }
   }
 
   async forgotPassword(input: ForgotPasswordInput) {
     const channel = input.channel ?? "EMAIL";
     const normalizedEmail = input.email?.trim().toLowerCase();
+    const genericResponse = {
+      message: "Se o e-mail existir, enviaremos instrucoes para redefinir a senha."
+    };
+
     const user = await prisma.user.findUnique({
-      where: {
-        email: normalizedEmail
-      }
+      where: { email: normalizedEmail }
     });
 
     if (!user) {
-      return {
-        message:
-          "Se o e-mail existir, enviaremos instrucoes para redefinir a senha."
-      };
+      return genericResponse;
+    }
+
+    let deliveryEmail: string = user.email;
+
+    if (channel === "RECOVERY_EMAIL") {
+      const recoveryEmail = decryptSensitiveText(user.recoveryEmailEncrypted);
+      if (!recoveryEmail) {
+        // Sem e-mail de recuperação cadastrado — retorna mensagem genérica para não expor o estado
+        return genericResponse;
+      }
+      deliveryEmail = recoveryEmail;
     }
 
     const resetToken = generateRefreshToken();
@@ -388,23 +549,21 @@ export class AuthService {
       }
     });
 
-    if (channel === "EMAIL" && this.emailService.canSendEmail()) {
+    if (this.emailService.canSendEmail()) {
       try {
-        await this.emailService.sendPasswordResetEmail({
-          to: user.email,
+        await this.emailQueueService.enqueuePasswordReset({
+          to: deliveryEmail,
           name: user.name,
           resetToken
         });
       } catch (error) {
         // best effort: never expose SMTP failures to forgot-password callers
         const reason = error instanceof Error ? error.message : "unknown";
-        console.warn(`[AUTH_FORGOT_PASSWORD_EMAIL_FAILED] userId=${user.id} reason=${reason}`);
+        console.warn(`[AUTH_FORGOT_PASSWORD_EMAIL_FAILED] userId=${user.id} channel=${channel} reason=${reason}`);
       }
     }
 
-    const response: { message: string; resetToken?: string } = {
-      message: "Se o e-mail existir, enviaremos instrucoes para redefinir a senha."
-    };
+    const response: { message: string; resetToken?: string } = genericResponse;
 
     if (shouldExposeResetToken()) {
       response.resetToken = resetToken;
@@ -438,11 +597,13 @@ export class AuthService {
         data: { usedAt: now }
       });
 
+      // Invalida outros tokens de reset não usados (defesa em profundidade)
+      await tx.passwordResetToken.deleteMany({
+        where: { userId: passwordResetToken.userId, usedAt: null, id: { not: passwordResetToken.id } }
+      });
+
       await tx.session.updateMany({
-        where: {
-          userId: passwordResetToken.userId,
-          revokedAt: null
-        },
+        where: { userId: passwordResetToken.userId, revokedAt: null },
         data: { revokedAt: now }
       });
     });
