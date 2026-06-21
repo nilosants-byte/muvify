@@ -1,4 +1,5 @@
 ﻿import "react-native-gesture-handler";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
 import { Platform } from "react-native";
@@ -7,32 +8,21 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { initSentry } from "./src/observability/sentry";
 import { RootNavigator } from "./src/navigation/root-stack";
 import { AppStateProvider } from "./src/state/AppState";
-import { StripeAppProvider } from "./src/providers/StripeAppProvider";
+import { PostHogProvider } from "posthog-react-native";
+import { posthog } from "./src/services/analytics";
 import { useTheme } from "./src/theme/useTheme";
 import "./src/services/location/providerBackgroundLocation";
-import {
-  Syne_400Regular,
-  Syne_600SemiBold,
-  Syne_700Bold,
-  Syne_800ExtraBold,
-} from "@expo-google-fonts/syne";
 import {
   DMSans_400Regular,
   DMSans_500Medium,
   DMSans_700Bold,
 } from "@expo-google-fonts/dm-sans";
-import {
-  Outfit_600SemiBold,
-  Outfit_700Bold,
-  Outfit_800ExtraBold,
-} from "@expo-google-fonts/outfit";
-import {
-  SpaceGrotesk_400Regular,
-  SpaceGrotesk_500Medium,
-  SpaceGrotesk_600SemiBold,
-  SpaceGrotesk_700Bold,
-} from "@expo-google-fonts/space-grotesk";
+import { PlusJakartaSans_700Bold } from "@expo-google-fonts/plus-jakarta-sans/700Bold";
+import { PlusJakartaSans_800ExtraBold } from "@expo-google-fonts/plus-jakarta-sans/800ExtraBold";
+import { Nunito_800ExtraBold } from "@expo-google-fonts/nunito/800ExtraBold";
+import { Nunito_400Regular } from "@expo-google-fonts/nunito/400Regular";
 import { MvThemeProvider } from "./src/theme/MvThemeContext";
+import { ErrorBoundary } from "./src/components/ErrorBoundary";
 
 initSentry();
 
@@ -49,23 +39,15 @@ function AppContent() {
 }
 
 export default function App() {
-  const [fontsLoaded, fontsError] = useFonts({
-    "Syne-Regular": Syne_400Regular,
-    "Syne-SemiBold": Syne_600SemiBold,
-    "Syne-Bold": Syne_700Bold,
-    "Syne-ExtraBold": Syne_800ExtraBold,
-    "DMSans-Light": DMSans_400Regular,
-    "DMSans-Regular": DMSans_400Regular,
-    "DMSans-Medium": DMSans_500Medium,
-    "DMSans-SemiBold": DMSans_500Medium,
-    "DMSans-Bold": DMSans_700Bold,
-    "Outfit-SemiBold": Outfit_600SemiBold,
-    "Outfit-Bold": Outfit_700Bold,
-    "Outfit-ExtraBold": Outfit_800ExtraBold,
-    "SpaceGrotesk-Regular": SpaceGrotesk_400Regular,
-    "SpaceGrotesk-Medium": SpaceGrotesk_500Medium,
-    "SpaceGrotesk-SemiBold": SpaceGrotesk_600SemiBold,
-    "SpaceGrotesk-Bold": SpaceGrotesk_700Bold,
+  const skipFontLoading = Platform.OS === "web" || process.env.EXPO_PUBLIC_SKIP_FONT_LOADING === "true";
+  const [fontsLoaded, fontsError] = useFonts(skipFontLoading ? {} : {
+    "PlusJakartaSans_800ExtraBold": PlusJakartaSans_800ExtraBold,
+    "PlusJakartaSans_700Bold": PlusJakartaSans_700Bold,
+    "DMSans_400Regular": DMSans_400Regular,
+    "DMSans_500Medium": DMSans_500Medium,
+    "DMSans_700Bold": DMSans_700Bold,
+    "Nunito_800ExtraBold": Nunito_800ExtraBold,
+    "Nunito_400Regular": Nunito_400Regular,
   });
 
   const [fontGateTimedOut, setFontGateTimedOut] = React.useState(false);
@@ -87,14 +69,18 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <MvThemeProvider>
-        <StripeAppProvider>
-          <AppStateProvider>
-            <AppContent />
-          </AppStateProvider>
-        </StripeAppProvider>
-      </MvThemeProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <PostHogProvider client={posthog} autocapture={{ captureScreens: false }}>
+        <ErrorBoundary>
+          <SafeAreaProvider>
+            <MvThemeProvider>
+              <AppStateProvider>
+                <AppContent />
+              </AppStateProvider>
+            </MvThemeProvider>
+          </SafeAreaProvider>
+        </ErrorBoundary>
+      </PostHogProvider>
+    </GestureHandlerRootView>
   );
 }

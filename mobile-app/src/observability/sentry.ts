@@ -38,14 +38,15 @@ export function initSentry() {
 
 export function captureException(error: unknown, context?: Record<string, unknown>) {
   if (!initialized) return;
+  const err = error instanceof Error ? error : new Error(String(error));
   if (context) {
     Sentry.withScope((scope) => {
       scope.setContext("details", context);
-      Sentry.captureException(error);
+      Sentry.captureException(err);
     });
     return;
   }
-  Sentry.captureException(error);
+  Sentry.captureException(err);
 }
 
 export function captureMessage(message: string, level: Sentry.SeverityLevel = "info") {
@@ -59,11 +60,7 @@ export function setSentryUser(user: AuthUser | null) {
     Sentry.setUser(null);
     return;
   }
-  Sentry.setUser({
-    id: user.id,
-    email: user.email,
-    username: user.name
-  });
+  Sentry.setUser({ id: user.id });
 }
 
 export { Sentry };

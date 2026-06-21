@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "muvify",
-    "slug": "personalapp",
-    "scheme": "personalapp",
+    "slug": "muvify",
+    "scheme": "muvify",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -18,10 +18,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.personalapp.mobile"
+      "bundleIdentifier": "com.muvify.app",
+      "buildNumber": "1"
     },
     "android": {
-      "package": "com.personalapp.mobile",
+      "package": "com.muvify.app",
+      "versionCode": 1,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#070B08",
@@ -33,6 +35,15 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/1f205c7e-3d1f-46c5-b0b1-9b603a290049",
+      "enabled": true,
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     },
     "plugins": [
       "expo-font",
@@ -47,15 +58,15 @@
         }
       ],
       "expo-secure-store",
-      "expo-notifications",
-      "expo-dev-client",
       [
-        "@stripe/stripe-react-native",
+        "expo-camera",
         {
-          "merchantIdentifier": "merchant.personalapp",
-          "enableGooglePay": true
+          "cameraPermission": "Permita acesso à câmera para capturar selfie de confirmação de presença nos agendamentos."
         }
       ],
+      "expo-notifications",
+      "expo-dev-client",
+      "expo-updates",
       "@sentry/react-native"
     ],
     "extra": {

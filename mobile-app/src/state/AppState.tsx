@@ -3,7 +3,16 @@ import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { captureException, setSentryUser } from "../observability/sentry";
-import { ApiError, authApi, AuthUser, notificationsApi, userApi } from "../services/api/client";
+import { identifyUser, resetAnalyticsUser, trackEvent } from "../services/analytics";
+import {
+  ApiError,
+  authApi,
+  AuthLoginResponse,
+  AuthLoginTwoFactorChallenge,
+  AuthUser,
+  notificationsApi,
+  userApi
+} from "../services/api/client";
 import { stopProviderBackgroundLocation } from "../services/location/providerBackgroundLocation";
 import { getPushRegistrationPayload } from "../services/notifications/push";
 import { ThemeMode, setThemeMode } from "../theme/tokens";
@@ -28,9 +37,11 @@ type AppStateContextValue = {
   completeOnboarding: () => Promise<void>;
   chooseRole: (role: UserRole) => Promise<void>;
   setThemePreference: (mode: ThemeMode) => Promise<void>;
-  login: (input: { email: string; password: string }) => Promise<void>;
+  login: (input: { email: string; password: string }) => Promise<{ requiresTwoFactor: true; challengeToken: string } | void>;
+  completeTwoFactorLogin: (challengeToken: string, code: string) => Promise<void>;
   register: (input: {
     name: string;
+    apelido?: string;
     email: string;
     password: string;
     phone: string;
@@ -64,11 +75,22 @@ async function saveUserCache(user: AuthUser) {
   }
 }
 
+function isAuthUser(value: unknown): value is AuthUser {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).id === "string" &&
+    typeof (value as Record<string, unknown>).email === "string" &&
+    typeof (value as Record<string, unknown>).role === "string"
+  );
+}
+
 async function loadUserCache(): Promise<AuthUser | null> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.userCache);
     if (!raw) return null;
-    return JSON.parse(raw) as AuthUser;
+    const parsed: unknown = JSON.parse(raw);
+    return isAuthUser(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -97,6 +119,12 @@ function resolveSessionRole(user: AuthUser, preferredRole: UserRole | null): Use
     return user.role;
   }
   return null;
+}
+
+function isTwoFactorChallenge(
+  payload: AuthLoginResponse
+): payload is AuthLoginTwoFactorChallenge {
+  return "requiresTwoFactor" in payload && payload.requiresTwoFactor === true;
 }
 
 async function secureSet(
@@ -171,6 +199,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const accessTokenRef = useRef<string | null>(null);
   const refreshTokenRef = useRef<string | null>(null);
+  // Singleton promise: evita múltiplos refreshes simultâneos quando várias
+  // operações falham com 401 ao mesmo tempo (race condition)
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     accessTokenRef.current = accessToken;
@@ -276,11 +307,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const clearSession = useCallback(async () => {
     accessTokenRef.current = null;
     refreshTokenRef.current = null;
+    refreshInFlightRef.current = null;
     setIsAuthenticated(false);
     setUser(null);
-    setRole(null);
     setAccessToken(null);
     setRefreshToken(null);
+    setToast(null);
     try {
       await stopProviderBackgroundLocation({ preservePreference: true });
     } catch {
@@ -290,11 +322,15 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       clearTokens(),
       AsyncStorage.removeItem(STORAGE_KEYS.pushToken),
       AsyncStorage.removeItem(STORAGE_KEYS.pushTokenUserId),
-      AsyncStorage.removeItem(STORAGE_KEYS.userCache)
+      AsyncStorage.removeItem(STORAGE_KEYS.userCache),
+      AsyncStorage.removeItem(STORAGE_KEYS.role),
+      AsyncStorage.removeItem(STORAGE_KEYS.roleUserId),
     ]);
   }, []);
 
   useEffect(() => {
+    // Timeout de segurança: se bootstrap travar, desbloqueia o app em 10s
+    const bootstrapTimeout = setTimeout(() => setBootstrapping(false), 10_000);
     async function hydrate() {
       try {
         const [storedOnboarding, storedAccessToken, storedRefreshToken, storedThemeMode, cachedUser] =
@@ -306,7 +342,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             loadUserCache()
           ]);
 
-        setOnboardingDone(storedOnboarding === "1");
+        // Usuário com sessão existente mas sem onboarding marcado = usuário antigo.
+        // Auto-completa silenciosamente para não forçar onboarding em quem já usa o app.
+        if (storedAccessToken && storedOnboarding !== "1") {
+          await AsyncStorage.setItem(STORAGE_KEYS.onboardingDone, "1");
+          setOnboardingDone(true);
+        } else {
+          setOnboardingDone(storedOnboarding === "1");
+        }
         setAccessToken(storedAccessToken ?? null);
         setRefreshToken(storedRefreshToken ?? null);
         if (storedThemeMode === "light" || storedThemeMode === "dark") {
@@ -320,7 +363,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Aplica dados em cache imediatamente — UI mostra foto/nome corretos sem esperar a API
-        if (cachedUser) {
+        if (cachedUser && cachedUser.id) {
           setUser(cachedUser);
           setIsAuthenticated(true);
           const preferredRole = await loadPreferredRoleForUser(cachedUser.id);
@@ -358,7 +401,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    hydrate();
+    hydrate().finally(() => clearTimeout(bootstrapTimeout));
   }, []);
 
   async function completeOnboarding() {
@@ -385,13 +428,26 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function login(input: { email: string; password: string }) {
+  async function login(input: { email: string; password: string }): Promise<{ requiresTwoFactor: true; challengeToken: string } | void> {
     const session = await authApi.login(input);
+    if (isTwoFactorChallenge(session)) {
+      return { requiresTwoFactor: true, challengeToken: session.challengeToken };
+    }
     await setSession(session);
+    identifyUser(session.user.id, { name: session.user.name, role: session.user.role });
+    trackEvent("user_logged_in", { role: session.user.role });
+  }
+
+  async function completeTwoFactorLogin(challengeToken: string, code: string) {
+    const session = await authApi.loginWithTwoFactor({ challengeToken, code });
+    await setSession(session);
+    identifyUser(session.user.id, { name: session.user.name, role: session.user.role });
+    trackEvent("user_logged_in", { role: session.user.role, method: "2fa" });
   }
 
   async function register(input: {
     name: string;
+    apelido?: string;
     email: string;
     password: string;
     phone: string;
@@ -407,9 +463,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       role: registrationRole
     });
     await setSession(session);
+    identifyUser(session.user.id, { name: session.user.name, role: session.user.role });
+    trackEvent("user_registered", { role: session.user.role ?? registrationRole });
   }
 
   async function signOut() {
+    trackEvent("user_logged_out");
+    resetAnalyticsUser();
     const currentRefreshToken = refreshTokenRef.current;
     const currentAccessToken = accessTokenRef.current;
 
@@ -443,8 +503,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const refreshed = await authApi.refresh(currentRefreshToken);
-      await setSession(refreshed);
+      if (!refreshInFlightRef.current) {
+        refreshInFlightRef.current = authApi.refresh(currentRefreshToken)
+          .then((refreshed) => setSession(refreshed))
+          .finally(() => { refreshInFlightRef.current = null; });
+      }
+      await refreshInFlightRef.current;
       return true;
     } catch (error) {
       captureException(error, { stage: "app_state_refresh_session" });
@@ -475,7 +539,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   }, [setCurrentUser]);
 
   const showToast = useCallback((message: string, type: ToastType = "info") => {
-    setToast({ id: Date.now(), message, type });
+    setToast({ id: Date.now() + Math.random() * 100_000, message, type });
   }, []);
 
   const clearToast = useCallback(() => {
@@ -500,8 +564,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           throw new Error("Sessão expirada. Faça login novamente.");
         }
         try {
-          const refreshed = await authApi.refresh(currentRefreshToken);
-          await setSession(refreshed);
+          // Reutiliza refresh em andamento se já existe (evita race condition)
+          if (!refreshInFlightRef.current) {
+            refreshInFlightRef.current = authApi.refresh(currentRefreshToken)
+              .then((refreshed) => setSession(refreshed))
+              .finally(() => { refreshInFlightRef.current = null; });
+          }
+          await refreshInFlightRef.current;
           const newToken = accessTokenRef.current;
           if (!newToken) {
             showToast("Sessão expirada. Faça login novamente.", "error");
@@ -541,7 +610,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       completeOnboarding,
       chooseRole,
       setThemePreference,
-      login,
+      login: login as AppStateContextValue["login"],
+      completeTwoFactorLogin,
       register,
       signOut,
       refreshSession,
