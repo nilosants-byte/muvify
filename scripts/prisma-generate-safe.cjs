@@ -18,24 +18,26 @@ function isWindowsPrismaEngineLockError(errorText) {
 }
 
 function runGenerate(extraEnv) {
-  const npxCliPath = path.join(
-    path.dirname(process.execPath),
-    "node_modules",
-    "npm",
-    "bin",
-    "npx-cli.js"
-  );
-  const directResult = spawnSync(
-    process.execPath,
-    [npxCliPath, "prisma", "generate"],
-    {
-      env: { ...process.env, ...extraEnv },
-      encoding: "utf-8"
-    }
-  );
+  if (process.platform === "win32") {
+    const npxCliPath = path.join(
+      path.dirname(process.execPath),
+      "node_modules",
+      "npm",
+      "bin",
+      "npx-cli.js"
+    );
+    const directResult = spawnSync(
+      process.execPath,
+      [npxCliPath, "prisma", "generate"],
+      {
+        env: { ...process.env, ...extraEnv },
+        encoding: "utf-8"
+      }
+    );
 
-  if (!directResult.error) {
-    return directResult;
+    if (!directResult.error) {
+      return directResult;
+    }
   }
 
   return spawnSync("npx prisma generate", {
