@@ -3,6 +3,10 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "../../config/env";
 import { AppError } from "../errors/app-error";
 
+function sanitizeSubject(subject: string): string {
+  return subject.replace(/[\r\n]/g, " ").trim();
+}
+
 type EmailVerificationInput = {
   to: string;
   name: string;
@@ -71,6 +75,10 @@ type BookingConfirmationProviderInput = {
 let transporter: Transporter | null = null;
 
 function isSmtpConfigured() {
+  if (env.NODE_ENV === "test" && !env.SMTP_ENABLED_IN_TEST) {
+    return false;
+  }
+
   return (
     Boolean(env.SMTP_HOST?.trim()) &&
     Boolean(env.SMTP_PORT) &&
@@ -93,6 +101,9 @@ function getTransporter() {
       auth: {
         user: env.SMTP_USER,
         pass: env.SMTP_PASS
+      },
+      tls: {
+        rejectUnauthorized: env.SMTP_TLS_REJECT_UNAUTHORIZED
       }
     });
   }
@@ -165,6 +176,14 @@ function buildEmailLayout(body: string): string {
 export class EmailService {
   canSendEmail() {
     return isSmtpConfigured();
+  }
+
+  async verifyConnection() {
+    if (!this.canSendEmail()) {
+      return;
+    }
+    const mailer = requireMailer();
+    await mailer.verify();
   }
 
   async sendEmailVerificationEmail(input: EmailVerificationInput) {
@@ -305,7 +324,7 @@ export class EmailService {
       from: env.SMTP_FROM,
       to: input.to,
       replyTo: input.userEmail,
-      subject: `[Suporte Muvify] ${input.subject}`,
+      subject: `[Suporte Muvify] ${sanitizeSubject(input.subject)}`,
       text: [
         "Nova solicitacao de suporte recebida pelo app.",
         "",
@@ -337,7 +356,7 @@ export class EmailService {
     await mailer.sendMail({
       from: env.SMTP_FROM,
       to: input.to,
-      subject: `[Suporte Muvify] Resposta: ${input.subject ?? "Sua solicitacao"}`,
+      subject: `[Suporte Muvify] Resposta: ${sanitizeSubject(input.subject ?? "Sua solicitacao")}`,
       text: [
         `Ola, ${input.userName}!`,
         "",
@@ -367,7 +386,7 @@ export class EmailService {
     await mailer.sendMail({
       from: env.SMTP_FROM,
       to: input.to,
-      subject: `Muvify — Agendamento solicitado com ${input.providerName}`,
+      subject: `Muvify — Agendamento solicitado com ${sanitizeSubject(input.providerName)}`,
       text: [
         `Ola, ${input.clientName}!`,
         "",
@@ -407,7 +426,7 @@ export class EmailService {
     await mailer.sendMail({
       from: env.SMTP_FROM,
       to: input.to,
-      subject: `Muvify — Novo agendamento de ${input.clientName}`,
+      subject: `Muvify — Novo agendamento de ${sanitizeSubject(input.clientName)}`,
       text: [
         `Ola, ${input.providerName}!`,
         "",
@@ -468,7 +487,7 @@ export class EmailService {
     await mailer.sendMail({
       from: env.SMTP_FROM,
       to: input.to,
-      subject: `Muvify — Revisao de CREF: ${decisionLabel}`,
+      subject: `Muvify — Revisao de CREF: ${sanitizeSubject(decisionLabel)}`,
       text: [
         `Ola, ${input.userName}!`,
         "",

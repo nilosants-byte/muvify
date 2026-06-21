@@ -6,7 +6,8 @@ const notificationService = new NotificationService();
 
 export class NotificationController {
   async listInbox(request: Request, response: Response) {
-    const take = request.query.take ? Number(request.query.take) : undefined;
+    const rawTake = request.query.take ? Number(request.query.take) : undefined;
+    const take = rawTake && Number.isFinite(rawTake) && rawTake > 0 ? rawTake : undefined;
     const items = await notificationService.listInbox(request.user!.id, take);
     return response.json(items);
   }

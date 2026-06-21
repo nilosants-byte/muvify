@@ -1,10 +1,11 @@
+import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
+import { EmailQueueService } from "../../../shared/services/email-queue.service";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
-import { NotificationService } from "../services/notification.service";
 
-const notificationService = new NotificationService();
-const notificationRetryLockKey = 909_002;
-const RETRY_JOB_INTERVAL_MS = 30_000; // run every 30 s
+const emailQueueService = new EmailQueueService();
+const emailRetryLockKey = 909_003;
+const RETRY_JOB_INTERVAL_MS = env.EMAIL_RETRY_JOB_INTERVAL_SECONDS * 1000;
 const MAX_DATABASE_BACKOFF_MS = 5 * 60 * 1000;
 
 let timer: NodeJS.Timeout | null = null;
@@ -17,10 +18,11 @@ function calculateBackoffMs(baseIntervalMs: number, failures: number) {
   return Math.min(baseIntervalMs * 2 ** exponent, MAX_DATABASE_BACKOFF_MS);
 }
 
-export function startNotificationRetryJob() {
-  if (timer) {
+export function startEmailRetryJob() {
+  if (timer || !env.RUN_EMAIL_RETRY_JOB) {
     return;
   }
+
   timer = setInterval(async () => {
     if (running || Date.now() < nextAllowedRunAt) {
       return;
@@ -30,18 +32,17 @@ export function startNotificationRetryJob() {
     try {
       const lockResult = (await prisma.$queryRaw<
         Array<{ pg_try_advisory_lock: boolean }>
-      >`SELECT pg_try_advisory_lock(${notificationRetryLockKey})`)?.[0];
+      >`SELECT pg_try_advisory_lock(${emailRetryLockKey})`)?.[0];
       lockAcquired = Boolean(lockResult?.pg_try_advisory_lock);
       if (!lockAcquired) {
         return;
       }
-      const JOB_TIMEOUT_MS = 120_000; // 2 minutos
-      await Promise.race([
-        notificationService.processRetryQueue(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Notification retry job timeout after 120s")), JOB_TIMEOUT_MS)
-        ),
-      ]);
+      await emailQueueService.processRetryQueue();
+      try {
+        await emailQueueService.purgeOldFailures();
+      } catch {
+        // non-critical — purge failure does not affect retry processing
+      }
       consecutiveDatabaseFailures = 0;
       nextAllowedRunAt = 0;
     } catch (error) {
@@ -50,22 +51,20 @@ export function startNotificationRetryJob() {
         const backoffMs = calculateBackoffMs(RETRY_JOB_INTERVAL_MS, consecutiveDatabaseFailures);
         nextAllowedRunAt = Date.now() + backoffMs;
         console.error(
-          `Notification retry job paused: database unavailable (${error.code}). Next retry in ${Math.ceil(backoffMs / 1000)}s.`
+          `Email retry job paused: database unavailable (${error.code}). Next retry in ${Math.ceil(backoffMs / 1000)}s.`
         );
       } else {
-        console.error("Notification retry job failed:", error);
+        console.error("Email retry job failed:", error);
       }
     } finally {
       if (lockAcquired) {
         try {
-          await prisma.$executeRaw`SELECT pg_advisory_unlock(${notificationRetryLockKey})`;
+          await prisma.$executeRaw`SELECT pg_advisory_unlock(${emailRetryLockKey})`;
         } catch (unlockError) {
           if (isPrismaDatabaseUnavailableError(unlockError)) {
-            console.error(
-              "Skipped notification retry job lock release because database became unavailable."
-            );
+            console.error("Skipped email retry job lock release because database became unavailable.");
           } else {
-            console.error("Failed to release notification retry job lock:", unlockError);
+            console.error("Failed to release email retry job lock:", unlockError);
           }
         }
       }
@@ -74,7 +73,7 @@ export function startNotificationRetryJob() {
   }, RETRY_JOB_INTERVAL_MS);
 }
 
-export function stopNotificationRetryJob() {
+export function stopEmailRetryJob() {
   if (!timer) {
     return;
   }

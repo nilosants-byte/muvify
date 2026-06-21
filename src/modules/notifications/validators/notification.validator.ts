@@ -3,6 +3,7 @@ import { z } from "zod";
 const pushTokenSchema = z
   .string()
   .trim()
+  .max(255)
   .regex(
     /^(ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_-]+\]$/,
     "Push token invalido."

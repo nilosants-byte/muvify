@@ -192,6 +192,13 @@ export class NotificationService {
     if (uniqueUserIds.length === 0) {
       return { attempted: 0, delivered: 0, deactivated: 0, disabled: false };
     }
+    const MAX_BROADCAST = 10_000;
+    if (uniqueUserIds.length > MAX_BROADCAST) {
+      throw new AppError(
+        `Broadcast para ${uniqueUserIds.length} usuários excede o limite de ${MAX_BROADCAST}.`,
+        StatusCodes.UNPROCESSABLE_ENTITY
+      );
+    }
 
     let targetUserIds = uniqueUserIds;
     if (input.preferenceType) {
@@ -214,14 +221,18 @@ export class NotificationService {
       }
     }
 
-    await prisma.userNotification.createMany({
-      data: targetUserIds.map((userId) => ({
-        userId,
-        title: input.title,
-        body: input.body,
-        data: input.data ?? undefined
-      }))
-    });
+    const DB_CHUNK_SIZE = 500;
+    for (let i = 0; i < targetUserIds.length; i += DB_CHUNK_SIZE) {
+      const chunk = targetUserIds.slice(i, i + DB_CHUNK_SIZE);
+      await prisma.userNotification.createMany({
+        data: chunk.map((userId) => ({
+          userId,
+          title: input.title,
+          body: input.body,
+          data: input.data ?? undefined
+        }))
+      });
+    }
 
     if (!env.PUSH_NOTIFICATIONS_ENABLED || env.NODE_ENV === "test") {
       return { attempted: 0, delivered: 0, deactivated: 0, disabled: true };
@@ -370,37 +381,32 @@ export class NotificationService {
 
     if (pending.length === 0) return;
 
-    for (const entry of pending) {
-      const messages = entry.messages as ExpoMessage[];
-      const result = await this.deliverChunk(messages);
+    const CONCURRENCY = 5;
+    for (let i = 0; i < pending.length; i += CONCURRENCY) {
+      await Promise.allSettled(
+        pending.slice(i, i + CONCURRENCY).map(async (entry) => {
+          const messages = entry.messages as ExpoMessage[];
+          const result = await this.deliverChunk(messages);
 
-      if (result.failed) {
-        const newAttempts = entry.attempts + 1;
-        const delaySeconds = RETRY_DELAY_SECONDS[newAttempts] ?? RETRY_DELAY_SECONDS[RETRY_DELAY_SECONDS.length - 1]!;
-        const nextRetryAt = new Date(now.getTime() + delaySeconds * 1000);
-
-        await prisma.pushNotificationQueue.update({
-          where: { id: entry.id },
-          data: {
-            attempts: newAttempts,
-            nextRetryAt,
-            lastError: result.lastError,
-            failedAt: newAttempts >= MAX_RETRY_ATTEMPTS ? now : null
+          if (result.failed) {
+            const newAttempts = entry.attempts + 1;
+            const delaySeconds = RETRY_DELAY_SECONDS[newAttempts] ?? RETRY_DELAY_SECONDS[RETRY_DELAY_SECONDS.length - 1]!;
+            const nextRetryAt = new Date(now.getTime() + delaySeconds * 1000);
+            await prisma.pushNotificationQueue.update({
+              where: { id: entry.id },
+              data: { attempts: newAttempts, nextRetryAt, lastError: result.lastError, failedAt: newAttempts >= MAX_RETRY_ATTEMPTS ? now : null }
+            });
+          } else {
+            if (result.invalidTokens.length > 0) {
+              await prisma.pushDevice.updateMany({
+                where: { token: { in: result.invalidTokens } },
+                data: { isActive: false, invalidAt: now }
+              }).catch((error) => console.error("Failed to deactivate invalid tokens during retry:", error));
+            }
+            await prisma.pushNotificationQueue.delete({ where: { id: entry.id } });
           }
-        });
-      } else {
-        // Deactivate invalid tokens found during retry
-        if (result.invalidTokens.length > 0) {
-          await prisma.pushDevice.updateMany({
-            where: { token: { in: result.invalidTokens } },
-            data: { isActive: false, invalidAt: now }
-          }).catch((error) => {
-            console.error("Failed to deactivate invalid tokens during retry:", error);
-          });
-        }
-        // Success — remove from queue
-        await prisma.pushNotificationQueue.delete({ where: { id: entry.id } });
-      }
+        })
+      );
     }
   }
 }

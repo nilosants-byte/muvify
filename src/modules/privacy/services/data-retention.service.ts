@@ -17,7 +17,12 @@ const RETENTION_WINDOWS_DAYS = {
   completionEvidence: 730,
   anamnesis: 730,
   bookingMessages: 730,
-  supportTickets: 1825
+  supportTickets: 1825,
+  bookingNotes: 730,
+  consultancyHealthData: 730,
+  biometricAssessments: 730,
+  emailDeliveryQueue: 90,
+  reviewComments: 730,
 } as const;
 
 type RetentionRuleMode = "DELETE" | "UPDATE";
@@ -64,18 +69,32 @@ export class DataRetentionService {
       .map((value) => value.trim())
       .filter(Boolean);
 
+    // Cada rule é isolada — falha de uma não impede as demais
+    const safeRun = async (fn: () => Promise<RetentionRuleExecution>): Promise<RetentionRuleExecution | null> => {
+      try { return await fn(); }
+      catch (err) { console.error("[data-retention] Rule failed:", err); return null; }
+    };
+
     const rules: RetentionRuleExecution[] = [];
     try {
-      rules.push(await this.cleanupSessions(now, input.dryRun));
-      rules.push(await this.cleanupPasswordResetTokens(now, input.dryRun));
-      rules.push(await this.cleanupEmailVerificationTokens(now, input.dryRun));
-      rules.push(await this.cleanupPushDevices(now, input.dryRun));
-      rules.push(await this.cleanupUserNotifications(now, input.dryRun));
-      rules.push(await this.cleanupPushQueue(now, input.dryRun));
-      rules.push(await this.cleanupCompletionEvidence(now, input.dryRun));
-      rules.push(await this.cleanupAnamnesis(now, input.dryRun));
-      rules.push(await this.cleanupBookingMessages(now, input.dryRun));
-      rules.push(await this.cleanupSupportTickets(now, input.dryRun));
+      const results = await Promise.all([
+        safeRun(() => this.cleanupSessions(now, input.dryRun)),
+        safeRun(() => this.cleanupPasswordResetTokens(now, input.dryRun)),
+        safeRun(() => this.cleanupEmailVerificationTokens(now, input.dryRun)),
+        safeRun(() => this.cleanupPushDevices(now, input.dryRun)),
+        safeRun(() => this.cleanupUserNotifications(now, input.dryRun)),
+        safeRun(() => this.cleanupPushQueue(now, input.dryRun)),
+        safeRun(() => this.cleanupCompletionEvidence(now, input.dryRun)),
+        safeRun(() => this.cleanupAnamnesis(now, input.dryRun)),
+        safeRun(() => this.cleanupBookingMessages(now, input.dryRun)),
+        safeRun(() => this.cleanupSupportTickets(now, input.dryRun)),
+        safeRun(() => this.cleanupBookingNotes(now, input.dryRun)),
+        safeRun(() => this.cleanupConsultancyHealthData(now, input.dryRun)),
+        safeRun(() => this.cleanupBiometricAssessments(now, input.dryRun)),
+        safeRun(() => this.cleanupEmailDeliveryQueue(now, input.dryRun)),
+        safeRun(() => this.cleanupReviewComments(now, input.dryRun)),
+      ]);
+      rules.push(...(results.filter(Boolean) as RetentionRuleExecution[]));
 
       const finishedAt = new Date();
       const durationMs = finishedAt.getTime() - startedAt.getTime();
@@ -384,6 +403,131 @@ export class DataRetentionService {
       "booking_messages_redaction",
       "Redact booking chat messages after retention window.",
       "UPDATE",
+      retentionDays,
+      cutoff,
+      matchedCount,
+      affectedCount
+    );
+  }
+
+  private async cleanupEmailDeliveryQueue(now: Date, dryRun: boolean) {
+    const retentionDays = RETENTION_WINDOWS_DAYS.emailDeliveryQueue;
+    const cutoff = this.cutoffFromDays(now, retentionDays);
+    const where: Prisma.EmailDeliveryQueueWhereInput = {
+      createdAt: { lt: cutoff },
+      OR: [{ failedAt: { not: null } }, { attempts: { gte: 10 } }]
+    };
+    const matchedCount = await prisma.emailDeliveryQueue.count({ where });
+    const affectedCount = dryRun
+      ? 0
+      : (await prisma.emailDeliveryQueue.deleteMany({ where })).count;
+    return this.buildRule(
+      "email_delivery_queue_cleanup",
+      "Delete old failed email delivery queue records.",
+      "DELETE",
+      retentionDays,
+      cutoff,
+      matchedCount,
+      affectedCount
+    );
+  }
+
+  private async cleanupReviewComments(now: Date, dryRun: boolean) {
+    const retentionDays = RETENTION_WINDOWS_DAYS.reviewComments;
+    const cutoff = this.cutoffFromDays(now, retentionDays);
+    const where: Prisma.ReviewWhereInput = {
+      ...this.getUserFilter("userId"),
+      updatedAt: { lt: cutoff },
+      comment: { not: null }
+    };
+    const matchedCount = await prisma.review.count({ where });
+    const affectedCount = dryRun
+      ? 0
+      : (await prisma.review.updateMany({ where, data: { comment: null } })).count;
+    return this.buildRule(
+      "review_comments_redaction",
+      "Redact review comment text after retention window.",
+      "UPDATE",
+      retentionDays,
+      cutoff,
+      matchedCount,
+      affectedCount
+    );
+  }
+
+  private async cleanupBookingNotes(now: Date, dryRun: boolean) {
+    const retentionDays = RETENTION_WINDOWS_DAYS.bookingNotes;
+    const cutoff = this.cutoffFromDays(now, retentionDays);
+    const legalHold = this.legalHoldUserIds;
+    const where: Prisma.BookingWhereInput = {
+      status: { in: [BookingStatus.COMPLETED, BookingStatus.CANCELLED] },
+      updatedAt: { lt: cutoff },
+      OR: [{ notes: { not: null } }, { sessionLocation: { not: null } }],
+      ...(legalHold.length > 0 ? {
+        clientId: { notIn: legalHold },
+        provider: { userId: { notIn: legalHold } }
+      } : {})
+    };
+    const matchedCount = await prisma.booking.count({ where });
+    const affectedCount = dryRun
+      ? 0
+      : (await prisma.booking.updateMany({ where, data: { notes: null, sessionLocation: null } })).count;
+    return this.buildRule(
+      "booking_notes_redaction",
+      "Redact booking notes and session location after retention window.",
+      "UPDATE",
+      retentionDays,
+      cutoff,
+      matchedCount,
+      affectedCount
+    );
+  }
+
+  private async cleanupConsultancyHealthData(now: Date, dryRun: boolean) {
+    const retentionDays = RETENTION_WINDOWS_DAYS.consultancyHealthData;
+    const cutoff = this.cutoffFromDays(now, retentionDays);
+    const where: Prisma.ConsultancyRequestWhereInput = {
+      ...this.getUserFilter("clientId"),
+      updatedAt: { lt: cutoff },
+      OR: [
+        { trainingNeedText: { not: null } },
+        { limitationText: { not: null } },
+        { extraInfoText: { not: null } }
+      ]
+    };
+    const matchedCount = await prisma.consultancyRequest.count({ where });
+    const affectedCount = dryRun
+      ? 0
+      : (await prisma.consultancyRequest.updateMany({
+          where,
+          data: { trainingNeedText: null, limitationText: null, extraInfoText: null, providerResponseText: null }
+        })).count;
+    return this.buildRule(
+      "consultancy_health_data_redaction",
+      "Redact sensitive health data from consultancy requests after retention window.",
+      "UPDATE",
+      retentionDays,
+      cutoff,
+      matchedCount,
+      affectedCount
+    );
+  }
+
+  private async cleanupBiometricAssessments(now: Date, dryRun: boolean) {
+    const retentionDays = RETENTION_WINDOWS_DAYS.biometricAssessments;
+    const cutoff = this.cutoffFromDays(now, retentionDays);
+    const where: Prisma.ProviderStudentAssessmentWhereInput = {
+      ...this.getUserFilter("clientId"),
+      updatedAt: { lt: cutoff }
+    };
+    const matchedCount = await prisma.providerStudentAssessment.count({ where });
+    const affectedCount = dryRun
+      ? 0
+      : (await prisma.providerStudentAssessment.deleteMany({ where })).count;
+    return this.buildRule(
+      "biometric_assessments_deletion",
+      "Delete biometric physical assessment records after retention window.",
+      "DELETE",
       retentionDays,
       cutoff,
       matchedCount,

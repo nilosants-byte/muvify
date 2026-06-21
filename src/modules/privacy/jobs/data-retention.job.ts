@@ -4,7 +4,7 @@ import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-e
 import { DataRetentionService } from "../services/data-retention.service";
 
 const retentionService = new DataRetentionService();
-const retentionJobLockKey = 909_003;
+const retentionJobLockKey = 909_005;
 const MAX_DATABASE_BACKOFF_MS = 5 * 60 * 1000;
 
 let timer: NodeJS.Timeout | null = null;

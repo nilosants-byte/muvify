@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
+import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { NotificationController } from "../controllers/notification.controller";
 import {
   pushTestSchema,
@@ -19,16 +20,19 @@ notificationRoutes.patch("/inbox/read-all", notificationController.markAllAsRead
 notificationRoutes.get("/devices", notificationController.listDevices);
 notificationRoutes.post(
   "/devices",
+  uploadRateLimiter,
   validate(registerPushDeviceSchema),
   notificationController.registerDevice
 );
 notificationRoutes.delete(
   "/devices",
+  uploadRateLimiter,
   validate(unregisterPushDeviceSchema),
   notificationController.unregisterDevice
 );
 notificationRoutes.post(
   "/test",
+  uploadRateLimiter,
   validate(pushTestSchema),
   notificationController.sendTestNotification
 );
