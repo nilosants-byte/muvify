@@ -10,11 +10,13 @@
  */
 
 import React, { useEffect, useRef } from "react";
-import { ActivityIndicator, Animated, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Animated, Text, View, useWindowDimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { theme } from "../theme";
 import { useTheme } from "../theme/useTheme";
+import { useMvTheme } from "../theme/MvThemeContext";
+import { C } from "../theme/v2tokens";
 import { useThemedStyles } from "../theme/useThemedStyles";
 import { AppButton as AppButtonUI } from "./ui/AppButton";
 import { AppCard as AppCardUI } from "./ui/AppCard";
@@ -232,6 +234,8 @@ export function FullScreenLoader({ label }: { label: string }) {
   }));
   return (
     <View
+      accessibilityRole="progressbar"
+      accessibilityLabel={label}
       style={[
         loaderStyles.wrap,
         { paddingTop: insets.top, paddingBottom: insets.bottom },
@@ -252,47 +256,41 @@ export function ToastHost({
   message: string;
   type?: "info" | "success" | "error";
 }) {
-  const insets = (() => {
-    try {
-      return useSafeAreaInsets();
-    } catch {
-      return { top: 0, bottom: 0, left: 0, right: 0 };
-    }
-  })();
-  const { colors } = useTheme();
-  const toastStyles = useThemedStyles(() => ({
-    wrap: {
-      position: "absolute",
-      alignSelf: "center",
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.sm,
-      borderRadius: theme.radius.pill,
-      zIndex: theme.zIndex.toast,
-      maxWidth: 480,
-    },
-  }));
+  const insets = useSafeAreaInsets();
+  const { theme: mvTheme } = useMvTheme();
+
   const bg =
-    type === "success"
-      ? "rgba(46,184,114,0.95)"
-      : type === "error"
-        ? "rgba(214,69,69,0.95)"
-        : "rgba(12,15,13,0.95)";
+    type === "success" ? mvTheme.primary
+    : type === "error"  ? mvTheme.danger
+    : C.surface1;
+  const textColor = type === "success" ? mvTheme.textOnPrimary : C.white;
+  const hasBorder = type === "info";
 
   return (
     <View
-      style={[
-        toastStyles.wrap,
-        {
-          backgroundColor: bg,
-          bottom: Math.max(theme.spacing.xl, insets.bottom + theme.spacing.md),
-        },
-      ]}
+      style={{
+        position: "absolute",
+        alignSelf: "center",
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderRadius: 999,
+        zIndex: 9999,
+        maxWidth: 480,
+        bottom: Math.max(24, insets.bottom + 16),
+        backgroundColor: bg,
+        borderWidth: hasBorder ? 1 : 0,
+        borderColor: "rgba(255,255,255,0.14)",
+        shadowColor: "#000",
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+        elevation: 8,
+      }}
       accessibilityLiveRegion="polite"
       accessibilityRole={type === "error" ? "alert" : "text"}
     >
-      <AppTextUI variant="captionStrong" color={colors.white}>
+      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: textColor, textAlign: "center" }}>
         {message}
-      </AppTextUI>
+      </Text>
     </View>
   );
 }

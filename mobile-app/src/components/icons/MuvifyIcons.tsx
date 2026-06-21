@@ -97,6 +97,48 @@ export const IconStar = ({
   </Svg>
 );
 
+export const IconGymVenue = ({ color = "#fff", size = 24, strokeWidth = 1.5 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    {/* Left weight plate — rounded corners, slightly taller than the handle zone */}
+    <Rect
+      x="2" y="8" width="4.5" height="8" rx="1.5"
+      stroke={color}
+      strokeWidth={strokeWidth}
+    />
+    {/* Left collar — thicker band between plate and grip */}
+    <Line
+      x1="6.5" y1="10" x2="6.5" y2="14"
+      stroke={color}
+      strokeWidth={strokeWidth + 1.2}
+      strokeLinecap="round"
+    />
+    {/* Grip — central handle */}
+    <Line
+      x1="7" y1="12" x2="17" y2="12"
+      stroke={color}
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+    />
+    {/* Knurling — 3 grip notches evenly spaced */}
+    <Line x1="10" y1="10.5" x2="10" y2="13.5" stroke={color} strokeWidth={strokeWidth * 0.65} strokeLinecap="round" />
+    <Line x1="12" y1="10.5" x2="12" y2="13.5" stroke={color} strokeWidth={strokeWidth * 0.65} strokeLinecap="round" />
+    <Line x1="14" y1="10.5" x2="14" y2="13.5" stroke={color} strokeWidth={strokeWidth * 0.65} strokeLinecap="round" />
+    {/* Right collar */}
+    <Line
+      x1="17.5" y1="10" x2="17.5" y2="14"
+      stroke={color}
+      strokeWidth={strokeWidth + 1.2}
+      strokeLinecap="round"
+    />
+    {/* Right weight plate */}
+    <Rect
+      x="17.5" y="8" width="4.5" height="8" rx="1.5"
+      stroke={color}
+      strokeWidth={strokeWidth}
+    />
+  </Svg>
+);
+
 export const IconChevronLeft = ({ color = "#fff", size = 24, strokeWidth = 2 }: IconProps) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Polyline

@@ -56,8 +56,8 @@ export function AppAgendaItem({
         <AppText variant="captionStrong">{time}</AppText>
       </View>
       <View style={styles.content}>
-        <AppText variant="bodyStrong">{name}</AppText>
-        {subtitle ? <AppText variant="caption">{subtitle}</AppText> : null}
+        <AppText variant="bodyStrong" numberOfLines={1}>{name}</AppText>
+        {subtitle ? <AppText variant="caption" numberOfLines={2}>{subtitle}</AppText> : null}
       </View>
       {status ? <AppBadge label={status} tone={statusTone} /> : null}
     </View>

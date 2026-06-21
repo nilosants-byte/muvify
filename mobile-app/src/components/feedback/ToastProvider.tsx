@@ -107,6 +107,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const showNext = useCallback(
     (item: ToastItem) => {
       setCurrent(item);
+      anim.stopAnimation();
       anim.setValue(0);
       Animated.spring(anim, {
         toValue: 1,
@@ -153,9 +154,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     });
   }, [anim]);
 
+  const MAX_QUEUE_SIZE = 5;
   const showToast = useCallback((message: string, tone: ToastTone = "info") => {
-    const item: ToastItem = { id: ++toastIdCounter, message, tone };
-    setQueue((q) => [...q, item]);
+    setQueue((q) => {
+      // Ignorar mensagem idêntica à última na fila (deduplicação)
+      const last = q[q.length - 1];
+      if (last && last.message === message && last.tone === tone) return q;
+      const item: ToastItem = { id: ++toastIdCounter, message, tone };
+      const updated = [...q, item];
+      return updated.length > MAX_QUEUE_SIZE ? updated.slice(-MAX_QUEUE_SIZE) : updated;
+    });
   }, []);
 
   const value = useMemo(
@@ -199,7 +207,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             accessibilityLabel={current.message}
           >
             <MaterialIcons color={config.color} name={config.icon} size={20} />
-            <AppText style={styles.text} variant="captionStrong">
+            <AppText style={styles.text} variant="captionStrong" numberOfLines={2}>
               {current.message}
             </AppText>
             {queue.length > 1 ? (

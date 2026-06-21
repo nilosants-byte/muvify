@@ -29,19 +29,19 @@ interface AppTextProps extends TextProps {
 }
 
 const displayFontFamilyByWeight: Record<string, string> = {
-  [theme.fontWeight.regular]: "DMSans-Regular",
-  [theme.fontWeight.medium]: "DMSans-Medium",
-  [theme.fontWeight.semibold]: "Outfit-SemiBold",
-  [theme.fontWeight.bold]: "Outfit-Bold",
-  [theme.fontWeight.extrabold]: "Outfit-ExtraBold",
+  [theme.fontWeight.regular]: "DMSans_400Regular",
+  [theme.fontWeight.medium]: "DMSans_500Medium",
+  [theme.fontWeight.semibold]: "DMSans_700Bold",
+  [theme.fontWeight.bold]: "PlusJakartaSans_700Bold",
+  [theme.fontWeight.extrabold]: "PlusJakartaSans_800ExtraBold",
 };
 
 const bodyFontFamilyByWeight: Record<string, string> = {
-  [theme.fontWeight.regular]: "DMSans-Regular",
-  [theme.fontWeight.medium]: "DMSans-Medium",
-  [theme.fontWeight.semibold]: "DMSans-SemiBold",
-  [theme.fontWeight.bold]: "DMSans-Bold",
-  [theme.fontWeight.extrabold]: "DMSans-ExtraBold",
+  [theme.fontWeight.regular]: "DMSans_400Regular",
+  [theme.fontWeight.medium]: "DMSans_500Medium",
+  [theme.fontWeight.semibold]: "DMSans_700Bold",
+  [theme.fontWeight.bold]: "DMSans_700Bold",
+  [theme.fontWeight.extrabold]: "DMSans_700Bold",
 };
 
 const systemFontFamily = Platform.select({

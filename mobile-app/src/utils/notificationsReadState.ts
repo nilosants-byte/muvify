@@ -6,7 +6,8 @@ const SEEN_NOTIFICATIONS_KEY_PREFIX = "@muvify/notifications/seen";
 const DISMISSED_NOTIFICATIONS_KEY_PREFIX = "@muvify/notifications/dismissed/v2";
 
 function buildKey(prefix: string, userId?: string | null) {
-  return `${prefix}:${userId ?? "anonymous"}`;
+  const safe = (userId ?? "anonymous").replace(/:/g, "_").replace(/\//g, "_");
+  return `${prefix}:${safe}`;
 }
 
 async function loadIdSet(key: string) {
@@ -43,10 +44,11 @@ export async function saveDismissedNotificationIds(userId: string | null | undef
 }
 
 export function countUnreadNotifications(
-  inbox: NotificationInboxItem[],
+  inbox: NotificationInboxItem[] | undefined | null,
   seenIds: Set<string>,
   dismissedIds: Set<string>
 ) {
+  if (!Array.isArray(inbox)) return 0;
   return inbox.reduce((total, item) => {
     if (dismissedIds.has(item.id)) return total;
     if (item.readAt) return total;

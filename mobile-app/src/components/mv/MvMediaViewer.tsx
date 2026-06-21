@@ -54,7 +54,7 @@ export function MvMediaViewer({ mediaUrl, mediaType, height = 200, borderRadius 
           }}
         >
           <Ionicons name="image-outline" size={28} color={theme.text3} />
-          <MvText variant="body4" color="secondary">Nao foi possivel carregar a midia</MvText>
+          <MvText variant="body4" color="secondary">Não foi possível carregar a mídia</MvText>
         </View>
       );
     }

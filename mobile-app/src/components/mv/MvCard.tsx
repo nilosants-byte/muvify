@@ -3,6 +3,7 @@ import { StyleProp, View, ViewStyle } from "react-native";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { cardShadowLight } from "../../theme/MvColors";
 import { shadows } from "../../theme/tokens";
+import { radius } from "../../theme/MvTypography";
 
 type CardVariant = "default" | "green" | "flat";
 
@@ -17,7 +18,7 @@ export function MvCard({ variant = "default", style, children }: MvCardProps) {
   const isLight = theme.mode === "light";
 
   const baseStyle: ViewStyle = {
-    borderRadius: 12,
+    borderRadius: radius.xl,
     padding: 14,
     borderWidth: 1,
   };

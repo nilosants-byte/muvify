@@ -10,14 +10,16 @@ interface MvProgressBarProps {
 
 export function MvProgressBar({ progress, height = 3, style }: MvProgressBarProps) {
   const { theme } = useMvTheme();
-  const clamped = Math.min(1, Math.max(0, progress));
+  const safeProgress = Number.isFinite(progress) ? progress : 0;
+  const safeHeight = Math.max(1, height);
+  const clamped = Math.min(1, Math.max(0, safeProgress));
 
   return (
     <View
       style={[
         {
-          height,
-          borderRadius: height,
+          height: safeHeight,
+          borderRadius: safeHeight,
           backgroundColor: theme.mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.09)",
           marginTop: 6,
           overflow: "hidden",
@@ -27,9 +29,9 @@ export function MvProgressBar({ progress, height = 3, style }: MvProgressBarProp
     >
       <View
         style={{
-          height,
-          borderRadius: height,
-          backgroundColor: "#4CAF50",
+          height: safeHeight,
+          borderRadius: safeHeight,
+          backgroundColor: theme.primary,
           width: `${clamped * 100}%`,
         }}
       />

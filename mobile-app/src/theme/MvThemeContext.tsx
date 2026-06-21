@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { MvTheme, darkTheme, lightTheme } from "./MvColors";
 
 const THEME_KEY = "@personalapp/themeMode";
@@ -35,9 +35,10 @@ export function MvThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const theme = isDark ? darkTheme : lightTheme;
+  const value = useMemo(() => ({ theme, isDark, toggleTheme }), [isDark, toggleTheme]);
 
   return (
-    <MvThemeContext.Provider value={{ theme, isDark, toggleTheme }}>
+    <MvThemeContext.Provider value={value}>
       {children}
     </MvThemeContext.Provider>
   );

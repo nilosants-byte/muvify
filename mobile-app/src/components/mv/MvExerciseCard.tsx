@@ -18,13 +18,13 @@ export function MvExerciseCard({ index, name, sets, reps, load, rest: restTime, 
   const { theme } = useMvTheme();
   const isLight = theme.mode === "light";
 
-  const numBg = isLight ? "rgba(76,175,80,0.08)" : "rgba(76,175,80,0.10)";
-  const numBorder = isLight ? "rgba(76,175,80,0.18)" : "rgba(76,175,80,0.20)";
-  const numColor = isLight ? "#2E7D32" : "#4CAF50";
+  const numBg = theme.primarySubtle;
+  const numBorder = theme.primarySubtleBorder;
+  const numColor = theme.textGreen;
   const statBg = isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.04)";
-  const thumbBg = isLight ? "rgba(76,175,80,0.06)" : "rgba(76,175,80,0.08)";
-  const thumbBorder = isLight ? "rgba(76,175,80,0.14)" : "rgba(76,175,80,0.15)";
-  const playBg = isLight ? "#2E7D32" : "#4CAF50";
+  const thumbBg = theme.primarySubtle;
+  const thumbBorder = theme.primarySubtleBorder;
+  const playBg = theme.primary;
 
   const stats = [
     { label: "Séries", value: sets },
@@ -54,7 +54,7 @@ export function MvExerciseCard({ index, name, sets, reps, load, rest: restTime, 
 
         {/* Info */}
         <View style={{ flex: 1, gap: 6 }}>
-          <Text style={[typography.semi2, { color: theme.text1 }]}>{name}</Text>
+          <Text style={[typography.semi2, { color: theme.text1 }]} numberOfLines={2}>{name}</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
             {stats.map((s) => (
               <View
@@ -76,7 +76,7 @@ export function MvExerciseCard({ index, name, sets, reps, load, rest: restTime, 
         </View>
 
         {/* Video thumb */}
-        <TouchableOpacity
+        {onVideoPress ? <TouchableOpacity
           activeOpacity={0.8}
           onPress={onVideoPress}
           style={{
@@ -102,7 +102,7 @@ export function MvExerciseCard({ index, name, sets, reps, load, rest: restTime, 
           >
             <Text style={{ color: "#FFF", fontSize: 9 }}>▶</Text>
           </View>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
       </View>
     </MvCard>
   );

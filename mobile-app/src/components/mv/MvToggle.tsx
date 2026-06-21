@@ -5,19 +5,21 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 interface MvToggleProps {
   value: boolean;
   onValueChange?: (value: boolean) => void;
+  disabled?: boolean;
 }
 
-export function MvToggle({ value, onValueChange }: MvToggleProps) {
+export function MvToggle({ value, onValueChange, disabled = false }: MvToggleProps) {
   const { theme } = useMvTheme();
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
   useEffect(() => {
+    anim.stopAnimation();
     Animated.timing(anim, {
       toValue: value ? 1 : 0,
       duration: 200,
       useNativeDriver: false,
     }).start();
-  }, [value]);
+  }, [value, anim]);
 
   const translateX = anim.interpolate({
     inputRange: [0, 1],
@@ -26,14 +28,17 @@ export function MvToggle({ value, onValueChange }: MvToggleProps) {
 
   const bgColor = anim.interpolate({
     inputRange: [0, 1],
-    outputRange: [theme.toggleOff, "#4CAF50"],
+    outputRange: [theme.toggleOff, theme.primary],
   });
 
   return (
     <TouchableOpacity
-      activeOpacity={0.9}
-      onPress={() => onValueChange?.(!value)}
-      style={{ width: 38, height: 22 }}
+      activeOpacity={disabled ? 1 : 0.9}
+      onPress={() => { if (!disabled) onValueChange?.(!value); }}
+      disabled={disabled}
+      accessibilityRole="switch"
+      accessibilityState={{ disabled, checked: value }}
+      style={{ width: 38, height: 22, opacity: disabled ? 0.5 : 1 }}
     >
       <Animated.View
         style={{

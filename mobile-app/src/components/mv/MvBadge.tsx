@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { StyleProp, Text, View, ViewStyle } from "react-native";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { typography } from "../../theme/MvTypography";
@@ -9,9 +9,10 @@ interface MvBadgeProps {
   variant?: BadgeVariant;
   label: string;
   style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
 }
 
-export function MvBadge({ variant = "green", label, style }: MvBadgeProps) {
+export function MvBadge({ variant = "green", label, style, accessibilityLabel }: MvBadgeProps) {
   const { theme } = useMvTheme();
   const isLight = theme.mode === "light";
 
@@ -20,12 +21,12 @@ export function MvBadge({ variant = "green", label, style }: MvBadgeProps) {
       case "green":
         return {
           bg: isLight ? "rgba(34,197,94,0.10)" : "rgba(34,197,94,0.13)",
-          textColor: isLight ? "#16A34A" : "#22C55E",
+          textColor: theme.primary,
         };
       case "greenDark":
         return {
           bg: "rgba(34,197,94,0.13)",
-          textColor: "#22C55E",
+          textColor: "#24E66D",
         };
       case "orange":
         return {
@@ -53,6 +54,8 @@ export function MvBadge({ variant = "green", label, style }: MvBadgeProps) {
 
   return (
     <View
+      accessibilityRole="text"
+      accessibilityLabel={accessibilityLabel ?? label}
       style={[
         {
           borderRadius: 999,
@@ -64,7 +67,7 @@ export function MvBadge({ variant = "green", label, style }: MvBadgeProps) {
         style,
       ]}
     >
-      <Text style={[typography.badge, { color: textColor }]}>{label}</Text>
+      <Text style={[typography.badge, { color: textColor }]} numberOfLines={1}>{label}</Text>
     </View>
   );
 }

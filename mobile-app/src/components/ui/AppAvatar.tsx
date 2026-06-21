@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Image, View } from "react-native";
 import { AppText } from "./AppText";
 import { theme } from "../../theme";
@@ -20,6 +20,7 @@ const sizeMap: Record<AvatarSize, number> = {
 };
 
 export function AppAvatar({ uri, initials, size = "md" }: AppAvatarProps) {
+  const [imageError, setImageError] = useState(false);
   const dimension = sizeMap[size];
   const { colors } = useTheme();
   const styles = useThemedStyles((palette) => ({
@@ -40,13 +41,15 @@ export function AppAvatar({ uri, initials, size = "md" }: AppAvatarProps) {
     borderColor: colors.border,
   };
 
-  if (uri) {
+  if (uri && !imageError) {
     return (
       <Image
         accessibilityLabel="Foto de perfil"
         accessibilityRole="image"
         source={{ uri }}
         style={[styles.image, commonStyle]}
+        resizeMode="cover"
+        onError={() => setImageError(true)}
       />
     );
   }

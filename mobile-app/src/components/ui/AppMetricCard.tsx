@@ -40,7 +40,9 @@ export function AppMetricCard({
   }));
   return (
     <View style={[styles.container, style]}>
-      <AppText variant="title">{value}</AppText>
+      <AppText variant="title" numberOfLines={1}>
+        {typeof value === "number" && !Number.isFinite(value) ? "—" : value}
+      </AppText>
       <AppText style={styles.label} variant="caption">
         {label}
       </AppText>

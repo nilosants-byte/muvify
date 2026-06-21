@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { ActivityIndicator, Image, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, AppState, Image, TouchableOpacity, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -18,7 +18,7 @@ type VideoSource = {
 };
 
 function getYouTubeId(url: string): string | null {
-  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([^&\s?/]+)/i);
+  const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([^&\s?/]+)/i);
   return match?.[1] ?? null;
 }
 
@@ -110,8 +110,22 @@ export function MvVideoPlayer({ url, height = 200, borderRadius = 12 }: Props) {
   const [loading, setLoading] = useState(true);
 
   const videoSource = useMemo(() => buildVideoSource(url), [url]);
+  const [videoError, setVideoError] = useState(false);
+  useEffect(() => { setVideoError(false); setLoading(true); setPlaying(false); }, [videoSource]);
 
-  if (!videoSource) return null;
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") setPlaying(false);
+    });
+    return () => sub.remove();
+  }, []);
+
+  if (!videoSource) return (
+    <View style={{ height, borderRadius, backgroundColor: theme.cardBg, alignItems: "center", justifyContent: "center", gap: 6 }}>
+      <Ionicons name="alert-circle-outline" size={28} color={theme.text3} />
+      <MvText variant="body4" color="secondary">URL de vídeo inválida</MvText>
+    </View>
+  );
 
   if (!playing) {
     return (
@@ -152,7 +166,7 @@ export function MvVideoPlayer({ url, height = 200, borderRadius = 12 }: Props) {
               borderRadius: 26,
               backgroundColor: videoSource.youTubeThumbnail
                 ? "rgba(255,0,0,0.88)"
-                : "rgba(76,175,80,0.88)",
+                : theme.primary,
               alignItems: "center",
               justifyContent: "center",
               shadowColor: "#000",
@@ -189,23 +203,30 @@ export function MvVideoPlayer({ url, height = 200, borderRadius = 12 }: Props) {
         </View>
       ) : null}
 
-      <WebView
-        source={videoSource.source}
-        originWhitelist={["*"]}
-        style={{ flex: 1 }}
-        allowsFullscreenVideo
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        allowFileAccess={videoSource.isLocalFile}
-        allowUniversalAccessFromFileURLs={videoSource.isLocalFile}
-        onLoad={() => setLoading(false)}
-        onError={() => setLoading(false)}
-        javaScriptEnabled
-        domStorageEnabled
-        mixedContentMode="always"
-        thirdPartyCookiesEnabled
-        userAgent={MOBILE_UA}
-      />
+      {videoError ? (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <Ionicons name="wifi-outline" size={28} color={theme.text3} />
+          <MvText variant="body4" color="secondary">Falha ao carregar vídeo</MvText>
+        </View>
+      ) : (
+        <WebView
+          source={videoSource.source}
+          originWhitelist={["https://www.youtube-nocookie.com", "https://"]}
+          style={{ flex: 1 }}
+          allowsFullscreenVideo
+          allowsInlineMediaPlayback
+          mediaPlaybackRequiresUserAction={false}
+          allowFileAccess={videoSource.isLocalFile}
+          allowUniversalAccessFromFileURLs={videoSource.isLocalFile}
+          onLoad={() => setLoading(false)}
+          onError={() => { setLoading(false); setVideoError(true); }}
+          javaScriptEnabled
+          domStorageEnabled
+          mixedContentMode="always"
+          thirdPartyCookiesEnabled
+          userAgent={MOBILE_UA}
+        />
+      )}
 
       <TouchableOpacity
         onPress={() => {

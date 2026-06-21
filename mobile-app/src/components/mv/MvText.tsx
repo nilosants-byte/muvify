@@ -9,7 +9,7 @@ type Variant =
   | "h1" | "h2" | "h3" | "h4"
   | "body1" | "body2" | "body3" | "body4"
   | "semi1" | "semi2" | "semi3"
-  | "caption" | "label" | "badge" | "navLabel";
+  | "eyebrow" | "caption" | "label" | "badge" | "navLabel";
 
 type ColorName = "primary" | "secondary" | "tertiary" | "green" | "danger" | "warning" | string;
 
@@ -35,7 +35,7 @@ export function MvText({ variant = "body1", color, style, children, ...rest }: M
     }
   })();
 
-  const baseStyle = typography[variant] as TextStyle;
+  const baseStyle = (typography[variant] ?? typography.body3) as TextStyle;
 
   return (
     <Text {...rest} style={[baseStyle, { color: resolvedColor }, style]}>

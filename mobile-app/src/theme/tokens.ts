@@ -1,48 +1,48 @@
-export type ThemeMode = "dark" | "light";
+﻿export type ThemeMode = "dark" | "light";
 
 export const darkColors = {
   black: "#000000",
   white: "#FFFFFF",
-  background: "#0B0F0C",
-  surface: "#0F1412",
-  surfaceStrong: "#121715",
-  surfaceElevated: "#1A211E",
-  surfaceHighest: "#1A211E",
-  inputBg: "#0F1412",
-  border: "rgba(255, 255, 255, 0.05)",
-  borderMedium: "rgba(255, 255, 255, 0.08)",
-  borderStrong: "rgba(255, 255, 255, 0.12)",
-  navBg: "rgba(11, 15, 12, 0.96)",
-  primary: "#22C55E",
+  background: "#030806",
+  surface: "#07120C",
+  surfaceStrong: "#07120C",
+  surfaceElevated: "#0D1F14",
+  surfaceHighest: "#0D1F14",
+  inputBg: "#0D1F14",
+  border: "rgba(255,255,255,0.07)",
+  borderMedium: "rgba(255,255,255,0.11)",
+  borderStrong: "rgba(255,255,255,0.16)",
+  navBg: "rgba(3,8,6,0.95)",
+  primary: "#24E66D",
   primaryDark: "#16A34A",
-  primarySoft: "#4ADE80",
-  primaryGradientStart: "#22C55E",
-  primaryGradientEnd: "#4ADE80",
-  primaryMuted: "rgba(34, 197, 94, 0.10)",
-  softWhite: "#E5E7EB",
-  textSecondary: "#9CA3AF",
-  textTertiary: "#6B7280",
-  textInverse: "#0B0F0C",
+  primarySoft: "#5BFFAA",
+  primaryGradientStart: "#24E66D",
+  primaryGradientEnd: "#5BFFAA",
+  primaryMuted: "rgba(36,230,109,0.10)",
+  softWhite: "#E4E4E7",
+  textSecondary: "#A1A1AA",
+  textTertiary: "#71717A",
+  textInverse: "#030806",
   danger: "#EF4444",
   dangerStrong: "#DC2626",
   warning: "#F59E0B",
-  success: "#22C55E",
+  success: "#24E66D",
   info: "#3B82F6",
-  disabledBg: "#1A211E",
-  disabledText: "#6B7280",
-  overlay: "rgba(0, 0, 0, 0.72)",
-  overlaySoft: "rgba(0, 0, 0, 0.45)",
-  inputPlaceholder: "#6B7280",
-  divider: "rgba(255, 255, 255, 0.05)",
-  chipBg: "rgba(34, 197, 94, 0.10)",
-  chipBorder: "rgba(34, 197, 94, 0.20)",
-  cardGlow: "rgba(34, 197, 94, 0.25)",
-  offline: "#9CA3AF",
+  disabledBg: "#0D1F14",
+  disabledText: "#71717A",
+  overlay: "rgba(0,0,0,0.72)",
+  overlaySoft: "rgba(0,0,0,0.45)",
+  inputPlaceholder: "#71717A",
+  divider: "rgba(255,255,255,0.07)",
+  chipBg: "rgba(255,255,255,0.04)",
+  chipBorder: "rgba(255,255,255,0.09)",
+  cardGlow: "rgba(36,230,109,0.22)",
+  offline: "#A1A1AA",
   // Backward compatibility with the previous mobile frontend.
-  bg: "#0B0F0C",
-  surfaceAlt: "#121715",
-  text: "#E5E7EB",
-  textMuted: "#9CA3AF",
+  bg: "#030806",
+  surfaceAlt: "#07120C",
+  text: "#FFFFFF",
+  textMuted: "#A1A1AA",
 } as const;
 
 export const lightColors = {
@@ -58,10 +58,10 @@ export const lightColors = {
   borderMedium: "rgba(15, 23, 42, 0.12)",
   borderStrong: "rgba(15, 23, 42, 0.20)",
   navBg: "rgba(246, 248, 246, 0.96)",
-  primary: "#22C55E",
+  primary: "#24E66D",
   primaryDark: "#16A34A",
   primarySoft: "#4ADE80",
-  primaryGradientStart: "#22C55E",
+  primaryGradientStart: "#24E66D",
   primaryGradientEnd: "#4ADE80",
   primaryMuted: "rgba(34, 197, 94, 0.10)",
   softWhite: "#111827",
@@ -115,8 +115,13 @@ export function getColors() {
   return runtimeThemeMode === "light" ? lightColors : darkColors;
 }
 
-// Backward compatibility: legacy imports might still use this constant.
+// ─── DEPRECATED ──────────────────────────────────────────────────────────────
+// Os objetos abaixo conflitam com MvTypography.ts, que é a fonte da verdade
+// para spacing, radius e tipografia. Mantidos apenas para retrocompatibilidade.
+// Novos usos: importe de ../../theme/MvTypography.
+// ─────────────────────────────────────────────────────────────────────────────
 
+/** @deprecated Use `spacing` de MvTypography */
 export const spacing = {
   xxs: 4,
   xs: 8,
@@ -128,6 +133,7 @@ export const spacing = {
   "3xl": 64,
 } as const;
 
+/** @deprecated Use `radius` de MvTypography (radius.xl = 16 para cards) */
 export const radius = {
   sm: 8,
   md: 12,
@@ -137,6 +143,7 @@ export const radius = {
   pill: 999,
 } as const;
 
+/** @deprecated Use `typography` de MvTypography (TextStyle completo) */
 export const fontSize = {
   xs: 11,
   sm: 13,
@@ -147,6 +154,7 @@ export const fontSize = {
   "3xl": 38,
 } as const;
 
+/** @deprecated Use fontFamily constants de MvTypography */
 export const fontWeight = {
   regular: '400',
   medium: '500',
@@ -155,6 +163,7 @@ export const fontWeight = {
   extrabold: '800',
 } as const;
 
+/** @deprecated Use `typography` (TextStyle) de MvTypography */
 export const typography = {
   h1: 38,
   h2: 28,
@@ -172,7 +181,7 @@ export const shadows = {
     elevation: 4,
   },
   cardGreen: {
-    shadowColor: "#22C55E",
+    shadowColor: "#24E66D",
     shadowOpacity: 0.22,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 0 },
@@ -180,13 +189,13 @@ export const shadows = {
   },
   bottomNav: {
     shadowColor: "#000000",
-    shadowOpacity: 0.20,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: -2 },
-    elevation: 12,
+    shadowOpacity: 0.50,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 16,
   },
   button: {
-    shadowColor: "#22C55E",
+    shadowColor: "#24E66D",
     shadowOpacity: 0.28,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },

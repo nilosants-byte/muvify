@@ -10,7 +10,7 @@ interface AppProgressBarProps {
 }
 
 export function AppProgressBar({ progress }: AppProgressBarProps) {
-  const clamped = Math.max(0, Math.min(1, progress));
+  const clamped = Math.max(0, Math.min(1, Number.isNaN(progress) ? 0 : progress));
   const { colors } = useTheme();
   const styles = useThemedStyles((palette) => ({
     track: {

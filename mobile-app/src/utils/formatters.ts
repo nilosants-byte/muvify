@@ -1,11 +1,13 @@
 export function formatCurrencyBRL(value: number): string {
+  if (!Number.isFinite(value)) return "R$ 0,00";
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
     maximumFractionDigits: 2,
   }).format(value);
 }
-export function formatPhoneBR(value: string): string {
+export function formatPhoneBR(value: string | null | undefined): string {
+  if (!value) return '';
   const digits = value.replace(/\D/g, '').slice(0, 11);
   if (digits.length <= 10) {
     return digits
@@ -22,8 +24,10 @@ export function formatPhoneBR(value: string): string {
 }
 const TZ = "America/Sao_Paulo";
 
-export function formatDateTimeLabel(dateIso: string): string {
+export function formatDateTimeLabel(dateIso: string | null | undefined): string {
+  if (!dateIso) return "—";
   const date = new Date(dateIso);
+  if (!Number.isFinite(date.getTime())) return "—";
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
     month: 'short',
@@ -32,8 +36,10 @@ export function formatDateTimeLabel(dateIso: string): string {
     timeZone: TZ,
   }).format(date);
 }
-export function formatDateLabel(dateIso: string): string {
+export function formatDateLabel(dateIso: string | null | undefined): string {
+  if (!dateIso) return "—";
   const date = new Date(dateIso);
+  if (!Number.isFinite(date.getTime())) return "—";
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
     month: 'long',
@@ -41,8 +47,10 @@ export function formatDateLabel(dateIso: string): string {
     timeZone: TZ,
   }).format(date);
 }
-export function formatTimeLabel(dateIso: string): string {
+export function formatTimeLabel(dateIso: string | null | undefined): string {
+  if (!dateIso) return "—";
   const date = new Date(dateIso);
+  if (!Number.isFinite(date.getTime())) return "—";
   return new Intl.DateTimeFormat('pt-BR', {
     hour: '2-digit',
     minute: '2-digit',
@@ -50,9 +58,9 @@ export function formatTimeLabel(dateIso: string): string {
   }).format(date);
 }
 export function formatBRDateTime(iso?: string | null): string {
-  if (!iso) return "-";
+  if (!iso) return "—";
   const date = new Date(iso);
-  if (!Number.isFinite(date.getTime())) return "-";
+  if (!Number.isFinite(date.getTime())) return "—";
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
     month: '2-digit',
@@ -63,9 +71,9 @@ export function formatBRDateTime(iso?: string | null): string {
   }).format(date);
 }
 export function formatBRDate(iso?: string | null): string {
-  if (!iso) return "-";
+  if (!iso) return "—";
   const date = new Date(iso);
-  if (!Number.isFinite(date.getTime())) return "-";
+  if (!Number.isFinite(date.getTime())) return "—";
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
     month: '2-digit',
@@ -74,16 +82,17 @@ export function formatBRDate(iso?: string | null): string {
   }).format(date);
 }
 export function formatBRTime(iso?: string | null): string {
-  if (!iso) return "-";
+  if (!iso) return "—";
   const date = new Date(iso);
-  if (!Number.isFinite(date.getTime())) return "-";
+  if (!Number.isFinite(date.getTime())) return "—";
   return new Intl.DateTimeFormat('pt-BR', {
     hour: '2-digit',
     minute: '2-digit',
     timeZone: TZ,
   }).format(date);
 }
-export function maskPriceInput(value: string): string {
+export function maskPriceInput(value: string | null | undefined): string {
+  if (!value) return '';
   const digits = value.replace(/\D/g, '');
   if (!digits) {
     return '';
@@ -94,13 +103,15 @@ export function maskPriceInput(value: string): string {
     maximumFractionDigits: 2,
   });
 }
-export function maskDateInputBR(value: string): string {
+export function maskDateInputBR(value: string | null | undefined): string {
+  if (!value) return '';
   const digits = value.replace(/\D/g, '').slice(0, 8);
   if (digits.length <= 2) return digits;
   if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
-export function getInitials(name: string): string {
+export function getInitials(name: string | null | undefined): string {
+  if (!name) return '';
   return name
     .split(' ')
     .filter(Boolean)
