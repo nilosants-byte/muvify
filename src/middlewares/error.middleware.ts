@@ -79,6 +79,24 @@ export function errorMiddleware(
     });
   }
 
+  if (error instanceof Prisma.PrismaClientRustPanicError) {
+    if (log) log.error(error);
+    else console.error("[CRÍTICO] Prisma engine panic:", error.message);
+    return response.status(StatusCodes.SERVICE_UNAVAILABLE).json({
+      message: "Serviço temporariamente indisponível. Tente novamente em instantes.",
+      requestId
+    });
+  }
+
+  if (error instanceof Prisma.PrismaClientInitializationError) {
+    if (log) log.error(error);
+    else console.error("[CRÍTICO] Prisma initialization error:", error.message);
+    return response.status(StatusCodes.SERVICE_UNAVAILABLE).json({
+      message: "Serviço temporariamente indisponível. Tente novamente em instantes.",
+      requestId
+    });
+  }
+
   if (log) {
     log.error(error);
   } else {

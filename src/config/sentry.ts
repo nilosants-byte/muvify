@@ -25,7 +25,18 @@ export function initSentry() {
     dsn,
     environment: env.NODE_ENV,
     tracesSampleRate: env.NODE_ENV === "production" ? 0.1 : 1.0,
-    sendDefaultPii: false
+    sendDefaultPii: false,
+    beforeSend(event) {
+      if (event.request?.headers) {
+        const { authorization, cookie, ...safeHeaders } = event.request.headers as Record<string, string>;
+        event.request.headers = safeHeaders;
+      }
+      if (event.user) {
+        delete event.user.ip_address;
+        delete event.user.email;
+      }
+      return event;
+    },
   });
 }
 

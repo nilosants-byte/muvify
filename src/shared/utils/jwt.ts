@@ -12,13 +12,14 @@ type TokenPayload = {
 export function signToken(userId: string, role: UserRole) {
   const options: jwt.SignOptions = {
     subject: userId,
-    expiresIn: env.ACCESS_TOKEN_EXPIRES_IN as jwt.SignOptions["expiresIn"]
+    expiresIn: env.ACCESS_TOKEN_EXPIRES_IN as jwt.SignOptions["expiresIn"],
+    algorithm: "HS256",
   };
   return jwt.sign({ role }, env.JWT_SECRET, options);
 }
 export function verifyToken(token: string) {
   try {
-    return jwt.verify(token, env.JWT_SECRET) as TokenPayload;
+    return jwt.verify(token, env.JWT_SECRET, { algorithms: ["HS256"] }) as TokenPayload;
   } catch (error) {
     throw new AppError("Token invalido.", StatusCodes.UNAUTHORIZED);
   }

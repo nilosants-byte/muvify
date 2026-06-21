@@ -20,12 +20,19 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   APP_BASE_URL: z.string().url().default("http://localhost:3000"),
   APP_TIMEZONE: z.string().default("America/Sao_Paulo"),
-  DATABASE_URL: z.string().min(1),
-  REDIS_URL: z.string().min(1),
-  JWT_SECRET: z.string().min(10),
-  APP_ENCRYPTION_KEY: z.string().optional(),
+  DATABASE_URL: z.string().min(1).refine(
+    (v) => /^(postgresql|postgres):\/\//.test(v),
+    "DATABASE_URL deve ser uma URI PostgreSQL valida (postgresql:// ou postgres://)"
+  ),
+  REDIS_URL: z.string().min(1).refine(
+    (v) => /^rediss?:\/\//.test(v),
+    "REDIS_URL deve ser uma URI Redis valida (redis:// ou rediss://)"
+  ),
+  AUTH_REQUIRE_REDIS_FOR_BLACKLIST: booleanFlag.optional(),
+  JWT_SECRET: z.string().min(32),
+  APP_ENCRYPTION_KEY: z.string().min(32).optional(),
   JWT_EXPIRES_IN: z.string().optional(),
-  ACCESS_TOKEN_EXPIRES_IN: z.string().optional(),
+  ACCESS_TOKEN_EXPIRES_IN: z.string().regex(/^(\d+)([smhd]?)$/, "ACCESS_TOKEN_EXPIRES_IN deve usar formato como '15m', '1h', '7d'").optional(),
   REFRESH_TOKEN_EXPIRES_IN_DAYS: z.coerce.number().int().min(1).default(30),
   BCRYPT_ROUNDS: z.coerce.number().int().min(8).max(15).default(12),
   LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(20).default(5),
@@ -41,6 +48,9 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
   SMTP_SECURE: booleanFlag.default(false),
+  SMTP_TLS_REJECT_UNAUTHORIZED: booleanFlag.optional(),
+  SMTP_ENABLED_IN_TEST: booleanFlag.default(false),
+  SMTP_VERIFY_ON_STARTUP: booleanFlag.optional(),
   SUPPORT_EMAIL_RECIPIENT: z.string().email().optional(),
   SUPPORT_EMAIL_FROM_NAME: z.string().trim().min(2).max(80).optional(),
   ADMIN_ALLOWED_EMAILS: z.string().default(""),
@@ -84,11 +94,15 @@ const envSchema = z.object({
   CONSULTANCY_DELIVERY_DEADLINE_DAYS: z.coerce.number().int().min(1).max(30).default(7),
   PAYMENT_JOB_INTERVAL_SECONDS: z.coerce.number().int().min(15).max(3600).default(60),
   RUN_PAYMENT_JOBS: booleanFlag.default(true),
+  RUN_EMAIL_RETRY_JOB: booleanFlag.default(true),
+  EMAIL_RETRY_JOB_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(3600).default(30),
   RUN_DATA_RETENTION_JOBS: booleanFlag.default(true),
   DATA_RETENTION_JOB_INTERVAL_MINUTES: z.coerce.number().int().min(15).max(10080).default(1440),
   DATA_RETENTION_DRY_RUN: booleanFlag.default(true),
   ALLOW_DATA_RETENTION_DRY_RUN_IN_PRODUCTION: booleanFlag.default(false),
   DATA_RETENTION_LEGAL_HOLD_USER_IDS: z.string().default(""),
+  RUN_REMINDER_JOBS: booleanFlag.default(true),
+  REMINDER_JOB_INTERVAL_SECONDS: z.coerce.number().int().min(30).max(3600).default(60),
   PUSH_NOTIFICATIONS_ENABLED: booleanFlag.default(true),
   EXPO_PUSH_API_URL: z
     .string()
@@ -100,6 +114,16 @@ const parsed = envSchema.parse(process.env);
 // Wildcard CORS is never permitted — origins must be explicit in all environments.
 if (parsed.CORS_ORIGIN.trim() === "*") {
   throw new Error("CORS_ORIGIN nao pode ser '*'. Informe URLs explícitas separadas por vírgula.");
+}
+if (parsed.NODE_ENV === "production") {
+  const insecureOrigins = parsed.CORS_ORIGIN
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((origin) => !origin.startsWith("https://"));
+  if (insecureOrigins.length > 0) {
+    throw new Error(`CORS_ORIGIN deve usar apenas https:// em producao. Origens invalidas: ${insecureOrigins.join(", ")}`);
+  }
 }
 if (parsed.NODE_ENV === "production" && !parsed.METRICS_TOKEN) {
   throw new Error("METRICS_TOKEN e obrigatorio em producao.");
@@ -119,9 +143,16 @@ if (parsed.NODE_ENV === "production") {
       "SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_FROM sao obrigatorios em producao."
     );
   }
+  if (parsed.SMTP_TLS_REJECT_UNAUTHORIZED === false) {
+    throw new Error("SMTP_TLS_REJECT_UNAUTHORIZED nao pode ser false em producao.");
+  }
 
   if (!parsed.MP_WEBHOOK_SECRET?.trim()) {
     throw new Error("MP_WEBHOOK_SECRET e obrigatoria em producao.");
+  }
+
+  if (!parsed.REDIS_URL.startsWith("rediss://")) {
+    throw new Error("REDIS_URL deve usar rediss:// (TLS) em producao.");
   }
 
   if (parsed.MP_APP_ID?.trim() && !parsed.MP_CLIENT_SECRET?.trim()) {
@@ -148,6 +179,12 @@ const adminAllowedEmails = parsed.ADMIN_ALLOWED_EMAILS
 export const env = {
   ...parsed,
   ADMIN_ALLOWED_EMAILS: adminAllowedEmails,
+  AUTH_REQUIRE_REDIS_FOR_BLACKLIST:
+    parsed.AUTH_REQUIRE_REDIS_FOR_BLACKLIST ?? (parsed.NODE_ENV === "production"),
+  SMTP_TLS_REJECT_UNAUTHORIZED:
+    parsed.SMTP_TLS_REJECT_UNAUTHORIZED ?? (parsed.NODE_ENV === "production"),
+  SMTP_VERIFY_ON_STARTUP:
+    parsed.SMTP_VERIFY_ON_STARTUP ?? (parsed.NODE_ENV === "production"),
   ACCESS_TOKEN_EXPIRES_IN:
     parsed.ACCESS_TOKEN_EXPIRES_IN ?? parsed.JWT_EXPIRES_IN ?? "15m",
   PASSWORD_RESET_WEB_URL:

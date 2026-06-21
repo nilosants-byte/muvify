@@ -37,7 +37,20 @@ export const app = express();
 app.set("trust proxy", resolveTrustProxy(env.TRUST_PROXY));
 app.disable("x-powered-by");
 app.use(sentryRequestHandler);
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      imgSrc: ["'self'", "data:"],
+      mediaSrc: ["'self'"],
+      scriptSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    }
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+}));
 app.use(compression());
 app.use(
   cors({
@@ -68,9 +81,16 @@ app.use(
         "req.headers.cookie",
         "req.body.password",
         "req.body.newPassword",
+        "req.body.currentPassword",
         "req.body.email",
+        "req.body.recoveryEmail",
         "req.body.phone",
         "req.body.cpf",
+        "req.body.document",
+        "req.body.holderDocument",
+        "req.body.accountNumber",
+        "req.body.accountDigit",
+        "req.body.agency",
         "req.query.email",
         "req.query.token"
       ],
@@ -88,6 +108,10 @@ app.use(
 app.use(metricsMiddleware);
 app.get("/health", async (_request, response) => {
   const checks: Record<string, "ok" | "error"> = {};
+  const requiredChecks = {
+    database: true,
+    redis: env.AUTH_REQUIRE_REDIS_FOR_BLACKLIST
+  };
 
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -107,10 +131,21 @@ app.get("/health", async (_request, response) => {
     checks.redis = "error";
   }
 
-  const allOk = Object.values(checks).every((v) => v === "ok");
-  return response
-    .status(allOk ? 200 : 503)
-    .json({ status: allOk ? "ok" : "degraded", checks });
+  const readinessOk =
+    checks.database === "ok" &&
+    (!requiredChecks.redis || checks.redis === "ok");
+  const degraded = Object.values(checks).some((value) => value === "error");
+
+  const body =
+    env.NODE_ENV === "production"
+      ? { status: readinessOk ? "ok" : "degraded" }
+      : {
+          status: degraded ? "degraded" : "ok",
+          readiness: readinessOk ? "ready" : "not_ready",
+          requiredChecks,
+          checks,
+        };
+  return response.status(readinessOk ? 200 : 503).json(body);
 });
 app.get("/metrics", metricsHandler);
 app.use(mpConnectRoutes);

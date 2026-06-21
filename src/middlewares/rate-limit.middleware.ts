@@ -17,7 +17,7 @@ function extractUserId(req: Request): string | undefined {
     const auth = req.headers.authorization;
     if (!auth?.startsWith("Bearer ")) return undefined;
     const token = auth.slice(7);
-    const decoded = jwt.verify(token, env.JWT_SECRET) as Record<string, unknown> | null;
+    const decoded = jwt.verify(token, env.JWT_SECRET, { algorithms: ["HS256"] }) as Record<string, unknown> | null;
     if (decoded && typeof decoded["sub"] === "string") return decoded["sub"];
     if (decoded && typeof decoded["id"] === "string") return decoded["id"];
     return undefined;

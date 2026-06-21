@@ -3,7 +3,12 @@ import { env } from "./env";
 
 export const redis = new Redis(env.REDIS_URL, {
   lazyConnect: true,
-  maxRetriesPerRequest: 3
+  maxRetriesPerRequest: 3,
+  retryStrategy: (times) => {
+    // Backoff exponencial: 100ms → 200ms → 400ms … até 5s
+    const delay = Math.min(100 * 2 ** (times - 1), 5000);
+    return delay;
+  },
 });
 
 let connectPromise: Promise<void> | null = null;

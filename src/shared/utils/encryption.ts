@@ -68,7 +68,7 @@ export function decryptSensitiveText(value: string | null | undefined) {
     const payload = normalized.slice(ENCRYPTION_PREFIX.length);
     const [ivEncoded, tagEncoded, dataEncoded] = payload.split(".");
     if (!ivEncoded || !tagEncoded || !dataEncoded) {
-      return normalized;
+      throw new Error("Encrypted payload format invalid");
     }
 
     const key = resolveEncryptionKey();
@@ -80,8 +80,9 @@ export function decryptSensitiveText(value: string | null | undefined) {
     decipher.setAuthTag(tag);
     const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
     return decrypted.toString("utf8");
-  } catch {
-    return normalized;
+  } catch (err) {
+    console.error("[encryption] decryptSensitiveText failed:", (err as Error).message);
+    return null;
   }
 }
 

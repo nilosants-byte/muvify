@@ -14,8 +14,12 @@ export function isAdminEmail(email?: string | null) {
   return env.ADMIN_ALLOWED_EMAILS.includes(normalized);
 }
 
-export function resolveEffectiveUserRole(email: string, persistedRole: UserRole) {
-  if (isAdminEmail(email)) {
+export function resolveEffectiveUserRole(
+  email: string,
+  persistedRole: UserRole,
+  emailVerifiedAt?: Date | null
+) {
+  if (isAdminEmail(email) && emailVerifiedAt) {
     return UserRole.ADMIN;
   }
 
