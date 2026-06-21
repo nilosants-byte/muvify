@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,6 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import Svg, { Circle, Line as SvgLine, Path, Text as SvgText } from "react-native-svg";
 import { useGooglePlacesSearch } from "../../hooks/useGooglePlacesSearch";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -32,9 +34,11 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvAvatar, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { SkeletonFinanceTab } from "../../components/polish/SkeletonCard";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "PersonalFinance">;
 type Tab = "alunos" | "receitas" | "despesas" | "metas";
@@ -64,7 +68,7 @@ function currentMonthStr() {
 function monthLabel(m: string) {
   const [y, mo] = m.split("-");
   return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("pt-BR", {
-    month: "long", year: "numeric",
+    month: "long", year: "numeric", timeZone: "America/Sao_Paulo",
   });
 }
 
@@ -97,17 +101,26 @@ const FILTER_OPTS: { key: ChartFilter; label: string }[] = [
   { key: "despesas", label: "Despesas" },
 ];
 
-// Stat card with colored top border
-function StatCard({ label, value, color, theme }: {
-  label: string; value: string; color: string; theme: MvThemeValue;
+function StatCard({ label, value, icon, color, delta, theme, isDark }: {
+  label: string; value: string; icon: string; color: string;
+  delta?: number | null; theme: MvThemeValue; isDark: boolean;
 }) {
+  const bgAlpha = isDark ? "26" : "18";
   return (
-    <View style={{ flex: 1, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgSurface, overflow: "hidden" }}>
-      <View style={{ height: 3, backgroundColor: color }} />
-      <View style={{ padding: 8 }}>
-        <MvText variant="body4" color="secondary" style={{ fontSize: 8.5, marginBottom: 2 }}>{label}</MvText>
-        <MvText variant="semi3" style={{ color, fontSize: 12, letterSpacing: -0.3 }}>{value}</MvText>
+    <View style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)", backgroundColor: theme.bgSurface, padding: 8, gap: 4 }}>
+      <View style={{ width: 24, height: 24, borderRadius: 7, backgroundColor: `${color}${bgAlpha}`, alignItems: "center", justifyContent: "center" }}>
+        <Ionicons name={icon as any} size={12} color={color} />
       </View>
+      <MvText variant="semi2" style={{ color, fontSize: 13, letterSpacing: -0.4 }} numberOfLines={1} adjustsFontSizeToFit>{value}</MvText>
+      <MvText variant="body4" color="secondary" style={{ fontSize: 9 }} numberOfLines={1}>{label}</MvText>
+      {delta != null ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+          <Ionicons name={delta >= 0 ? "trending-up" : "trending-down"} size={9} color={delta >= 0 ? color : "#e57373"} />
+          <MvText variant="badge" style={{ fontSize: 8, color: delta >= 0 ? color : "#e57373" }}>
+            {delta >= 0 ? "+" : ""}{delta.toFixed(1)}%
+          </MvText>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -124,11 +137,11 @@ const D_SW = 9;
 const D_C = 2 * Math.PI * D_R; // ~213.6
 const D_GAP = 5; // px de espaco visual entre segmentos
 
-function DonutChart({ app, offApp, expenses, filter, isDark }: {
+function DonutChart({ app, offApp, expenses, filter, isDark, theme }: {
   app: number; offApp: number; expenses: number;
-  filter: ChartFilter; isDark: boolean;
+  filter: ChartFilter; isDark: boolean; theme: MvThemeValue;
 }) {
-  const green  = isDark ? "#00C853" : "#16A34A";
+  const green  = isDark ? theme.primary : "#16A34A";
   const blue   = isDark ? "#38BDF8" : "#0284C7";
   const red    = isDark ? "#F87171" : "#E53935";
   const track  = isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)";
@@ -197,11 +210,11 @@ function DonutChart({ app, offApp, expenses, filter, isDark }: {
       <Circle cx={D_CX} cy={D_CY} r={D_R} fill="none" stroke={track} strokeWidth={D_SW} />
       {segments}
       <SvgText x={D_CX} y={D_CY - 4} textAnchor="middle" fill={centerColor}
-        fontSize={9.5} fontWeight="700" fontFamily="DMSans-Bold">
+        fontSize={9.5} fontWeight="700" fontFamily="DMSans_700Bold">
         {fmtCentsShort(centerVal)}
       </SvgText>
       <SvgText x={D_CX} y={D_CY + 9} textAnchor="middle" fill={tSub}
-        fontSize={6.5} fontFamily="DMSans-Regular">
+        fontSize={6.5} fontFamily="DMSans_400Regular">
         {centerLabel}
       </SvgText>
     </Svg>
@@ -232,11 +245,11 @@ function areaPath(vals: number[], maxV: number, W: number, H: number): string {
   return `${line} L ${lastX},${H} L 0,${H} Z`;
 }
 
-function SparklineChart({ points, chartWidth, isDark, filter, highlightIdx }: {
+function SparklineChart({ points, chartWidth, isDark, filter, highlightIdx, theme }: {
   points: SparkPoint[]; chartWidth: number; isDark: boolean;
-  filter: ChartFilter; highlightIdx?: number;
+  filter: ChartFilter; highlightIdx?: number; theme: MvThemeValue;
 }) {
-  const green  = isDark ? "#00C853" : "#16A34A";
+  const green  = isDark ? theme.primary : "#16A34A";
   const blue   = isDark ? "#38BDF8" : "#0284C7";
   const profitColor = isDark ? "#FACC15" : "#CA8A04";
   const red    = isDark ? "#F87171" : "#E53935";
@@ -348,17 +361,24 @@ function RadarChartSection({ app, offApp, expenses, report, dashboard, isDark, t
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
 
+  const handleSetPeriod = useCallback((p: ChartPeriod) => {
+    setPeriod(p);
+    if ((p === "d" || p === "s") && (filter === "app" || filter === "despesas")) {
+      setFilter("geral");
+    }
+  }, [filter]);
+
   const dailyRevenue = dashboard?.dailyRevenue ?? {};
-  const green = isDark ? "#00C853" : "#16A34A";
+  const green = isDark ? theme.primary : "#16A34A";
   const blue  = isDark ? "#38BDF8" : "#0284C7";
   const profitColor = isDark ? "#FACC15" : "#CA8A04";
   const red   = isDark ? "#F87171" : "#E53935";
 
   // Dados do donut por periodo
-  const donutApp = period === "m" ? app
-    : period === "a" ? app
-    : period === "d" ? Math.round(app / dim)
-    : Math.round(app / Math.max(1, dim / 7));
+  // Para dia/semana: dailyRevenue é o único dado disponível — sem split app/off-app e sem despesas diárias.
+  const isDayOrWeek = period === "d" || period === "s";
+
+  const donutApp = (period === "m" || period === "a") ? app : 0;
 
   const donutOffApp = (() => {
     if (period === "m") return offApp;
@@ -373,11 +393,11 @@ function RadarChartSection({ app, offApp, expenses, report, dashboard, isDark, t
     return getWeekDatesFn(y, mo, weekNum).reduce((s, d) => s + (dailyRevenue[d] ?? 0), 0);
   })();
 
-  const donutExp = period === "m" ? expenses
-    : period === "a"
-      ? (report?.months.filter(m2 => m2.month.startsWith(String(y))) ?? []).reduce((s, m2) => s + m2.expensesCents, 0)
-    : period === "d" ? Math.round(expenses / dim)
-    : Math.round(expenses / Math.max(1, dim / 7));
+  // Despesas diárias não estão disponíveis na API — usado 0 para dia/semana.
+  const donutExp = (period === "m" || period === "a")
+    ? (period === "m" ? expenses
+      : (report?.months.filter(m2 => m2.month.startsWith(String(y))) ?? []).reduce((s, m2) => s + m2.expensesCents, 0))
+    : 0;
   const donutProfit = donutApp + donutOffApp - donutExp;
 
   // Pontos do sparkline por periodo
@@ -386,11 +406,10 @@ function RadarChartSection({ app, offApp, expenses, report, dashboard, isDark, t
       const mths = period === "a"
         ? (report?.months.filter(m2 => m2.month.startsWith(String(y))) ?? [])
         : (report?.months.slice(-6) ?? []);
-      const total = app + offApp;
       return mths.map(m2 => ({
         label:    getMonthAbbr(m2.month),
-        app:      total > 0 ? Math.round(m2.revenueCents * (app / total)) : 0,
-        offApp:   total > 0 ? Math.round(m2.revenueCents * (offApp / total)) : m2.revenueCents,
+        app:      m2.appRevenueCents,
+        offApp:   Math.max(0, m2.revenueCents - m2.appRevenueCents),
         expenses: m2.expensesCents,
         net:      m2.netCents,
       }));
@@ -455,12 +474,17 @@ function RadarChartSection({ app, offApp, expenses, report, dashboard, isDark, t
         .map(i => sparkPoints[i]);
 
   // Legend rows com valores reais do periodo selecionado
-  const legendRows = [
-    { color: green, label: "Pelo app",  value: donutApp,    key: "app"      as ChartFilter },
-    { color: blue,  label: "Fora app",  value: donutOffApp, key: "fora-app" as ChartFilter },
-    { color: profitColor,  label: "Lucro",  value: donutProfit, key: "lucro" as ChartFilter },
-    { color: red,   label: "Despesas",  value: donutExp,    key: "despesas" as ChartFilter },
-  ];
+  const legendRows = isDayOrWeek
+    ? [
+        { color: green, label: "Receita",  value: donutOffApp, key: "fora-app" as ChartFilter },
+        { color: profitColor, label: "Lucro",   value: donutOffApp, key: "lucro"    as ChartFilter },
+      ]
+    : [
+        { color: green, label: "Pelo app",  value: donutApp,    key: "app"      as ChartFilter },
+        { color: blue,  label: "Fora app",  value: donutOffApp, key: "fora-app" as ChartFilter },
+        { color: profitColor, label: "Lucro",   value: donutProfit, key: "lucro"    as ChartFilter },
+        { color: red,   label: "Despesas",  value: donutExp,    key: "despesas" as ChartFilter },
+      ];
 
   return (
     <View style={{ paddingHorizontal: 14, paddingBottom: 8 }}>
@@ -468,15 +492,15 @@ function RadarChartSection({ app, offApp, expenses, report, dashboard, isDark, t
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           {period !== "a" && (
-            <TouchableOpacity onPress={handlePrev} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <PressableScale scale={0.88} onPress={handlePrev}>
               <Ionicons name="chevron-back" size={16} color={theme.text3} />
-            </TouchableOpacity>
+            </PressableScale>
           )}
           <MvText variant="semi3" style={{ fontSize: 12, minWidth: 80, textAlign: "center" }}>{navLabel}</MvText>
           {period !== "a" && (
-            <TouchableOpacity onPress={handleNext} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <PressableScale scale={0.88} onPress={handleNext}>
               <Ionicons name="chevron-forward" size={16} color={theme.text3} />
-            </TouchableOpacity>
+            </PressableScale>
           )}
         </View>
         {/* Pills D/S/M/A */}
@@ -484,11 +508,11 @@ function RadarChartSection({ app, offApp, expenses, report, dashboard, isDark, t
           {(["d","s","m","a"] as ChartPeriod[]).map(p => {
             const sel = period === p;
             return (
-              <TouchableOpacity key={p} onPress={() => setPeriod(p)} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: sel ? (isDark ? "#00C853" : "#16A34A") : "transparent" }}>
+              <PressableScale key={p} scale={0.92} onPress={() => handleSetPeriod(p)} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: sel ? (isDark ? theme.primary : "#16A34A") : "transparent" }}>
                 <MvText variant="badge" style={{ fontSize: 10, fontWeight: sel ? "700" : "500", color: sel ? (isDark ? "#030d03" : "#fff") : theme.text3 }}>
                   {p.toUpperCase()}
                 </MvText>
-              </TouchableOpacity>
+              </PressableScale>
             );
           })}
         </View>
@@ -497,13 +521,13 @@ function RadarChartSection({ app, offApp, expenses, report, dashboard, isDark, t
       {/* Graficos */}
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
         {/* Donut */}
-        <DonutChart app={donutApp} offApp={donutOffApp} expenses={donutExp} filter={filter} isDark={isDark} />
+        <DonutChart app={donutApp} offApp={donutOffApp} expenses={donutExp} filter={filter} isDark={isDark} theme={theme} />
 
         {/* Sparkline + eixo X + legenda */}
         <View style={{ flex: 1 }}>
           <View onLayout={e => setSparkWidth(e.nativeEvent.layout.width)} style={{ height: SPARK_H }}>
             {sparkWidth > 0 && sparkPoints.length >= 2 && (
-              <SparklineChart points={sparkPoints} chartWidth={sparkWidth} isDark={isDark} filter={filter} highlightIdx={highlightIdx} />
+              <SparklineChart points={sparkPoints} chartWidth={sparkWidth} isDark={isDark} filter={filter} highlightIdx={highlightIdx} theme={theme} />
             )}
           </View>
           {/* Eixo X */}
@@ -517,37 +541,37 @@ function RadarChartSection({ app, offApp, expenses, report, dashboard, isDark, t
             {legendRows.map(row => {
               const active = filter === "geral" || filter === row.key;
               return (
-                <TouchableOpacity key={row.key} onPress={() => setFilter(f => f === row.key ? "geral" : row.key)} style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                <PressableScale key={row.key} scale={0.92} onPress={() => setFilter(f => f === row.key ? "geral" : row.key)} style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
                   <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: row.color, opacity: active ? 1 : 0.3 }} />
                   <MvText variant="body4" style={{ fontSize: 7.5, opacity: active ? 0.72 : 0.32 }}>
                     {row.label} {fmtCentsShort(row.value)}
                   </MvText>
-                </TouchableOpacity>
+                </PressableScale>
               );
             })}
           </View>
+          {isDayOrWeek ? (
+            <MvText variant="body4" style={{ fontSize: 7, opacity: 0.38, marginTop: 4 }}>
+              * Despesas diárias indisponíveis na API
+            </MvText>
+          ) : null}
         </View>
       </View>
 
       {/* Filtros */}
       <View style={{ flexDirection: "row", gap: 5, marginTop: 10, flexWrap: "wrap" }}>
-        {FILTER_OPTS.map(opt => {
+        {FILTER_OPTS.filter(opt => !isDayOrWeek || (opt.key !== "app" && opt.key !== "despesas")).map(opt => {
           const sel = filter === opt.key;
           return (
-            <TouchableOpacity key={opt.key} onPress={() => setFilter(f => f === opt.key ? "geral" : opt.key)} style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 10, borderWidth: 1, borderColor: sel ? (isDark ? "rgba(0,200,83,0.4)" : "rgba(22,163,74,0.3)") : theme.border, backgroundColor: sel ? (isDark ? "rgba(0,200,83,0.12)" : "rgba(22,163,74,0.09)") : "transparent" }}>
-              <MvText variant="badge" style={{ fontSize: 9.5, color: sel ? (isDark ? "#00C853" : "#16A34A") : theme.text3, fontWeight: sel ? "700" : "500" }}>
+            <PressableScale key={opt.key} scale={0.93} onPress={() => setFilter(f => f === opt.key ? "geral" : opt.key)} style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 10, borderWidth: 1, borderColor: sel ? (isDark ? "rgba(0,200,83,0.4)" : "rgba(22,163,74,0.3)") : theme.border, backgroundColor: sel ? (isDark ? "rgba(0,200,83,0.12)" : "rgba(22,163,74,0.09)") : "transparent" }}>
+              <MvText variant="badge" style={{ fontSize: 9.5, color: sel ? (isDark ? theme.primary : "#16A34A") : theme.text3, fontWeight: sel ? "700" : "500" }}>
                 {opt.label}
               </MvText>
-            </TouchableOpacity>
+            </PressableScale>
           );
         })}
       </View>
 
-      {period === "d" || period === "s" ? (
-        <MvText variant="body4" style={{ fontSize: 9, opacity: 0.38, marginTop: 4 }}>
-          * Receitas do app estimadas com base na media mensal.
-        </MvText>
-      ) : null}
     </View>
   );
 }
@@ -576,19 +600,20 @@ function ModalSheet({ visible, title, onClose, children, theme, topInset }: {
   children: React.ReactNode; theme: MvThemeValue; topInset: number;
 }) {
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: theme.bg }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: topInset + 16, paddingHorizontal: 16 }}>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 10 }}>
-            <TouchableOpacity
+            <PressableScale
+              scale={0.92}
               onPress={onClose}
               style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
             >
               <Ionicons name="close" size={18} color={theme.text1} />
-            </TouchableOpacity>
+            </PressableScale>
             <MvText variant="semi2">{title}</MvText>
           </View>
           <ScrollView
@@ -608,7 +633,6 @@ function ModalSheet({ visible, title, onClose, children, theme, topInset }: {
 // Schedule helpers
 const DAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
-const GRN = "#22C55E";
 
 function normalizeTimeInput(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 4);
@@ -712,12 +736,12 @@ function WeeklyScheduleCalendarPicker({ schedule, onChange, theme }: {
           const isSel = selectedDay === day;
           const has = Boolean(slot);
           return (
-            <TouchableOpacity key={`cal-${day}`} onPress={() => setSelectedDay(day)} style={{ width: "31%", minWidth: 92, borderRadius: 12, borderWidth: 1, borderColor: isSel ? "rgba(34,197,94,0.55)" : has ? "rgba(34,197,94,0.25)" : theme.border, backgroundColor: isSel ? "rgba(34,197,94,0.16)" : has ? "rgba(34,197,94,0.08)" : theme.inputBg, paddingHorizontal: 8, paddingVertical: 10, alignItems: "center", gap: 2 }}>
+            <PressableScale key={`cal-${day}`} scale={0.96} onPress={() => setSelectedDay(day)} style={{ width: "31%", minWidth: 92, borderRadius: 12, borderWidth: 1, borderColor: isSel ? "rgba(34,197,94,0.55)" : has ? "rgba(34,197,94,0.25)" : theme.border, backgroundColor: isSel ? "rgba(34,197,94,0.16)" : has ? "rgba(34,197,94,0.08)" : theme.inputBg, paddingHorizontal: 8, paddingVertical: 10, alignItems: "center", gap: 2 }}>
               <MvText variant="badge" style={{ fontSize: 11, color: theme.text2 }}>{DAY_LABELS[day]}</MvText>
-              <MvText variant="body4" style={{ fontSize: 11, color: has ? GRN : theme.text3, textAlign: "center" }} numberOfLines={2}>
+              <MvText variant="body4" style={{ fontSize: 11, color: has ? theme.primary : theme.text3, textAlign: "center" }} numberOfLines={2}>
                 {slot ? `${slot.startTime} - ${slot.endTime}` : "Sem aula"}
               </MvText>
-            </TouchableOpacity>
+            </PressableScale>
           );
         })}
       </View>
@@ -733,19 +757,19 @@ function WeeklyScheduleCalendarPicker({ schedule, onChange, theme }: {
           {WEEK_ORDER.map(day => {
             const picked = replicateDays.includes(day);
             return (
-              <TouchableOpacity key={`rep-${day}`} onPress={() => toggleReplicateDay(day)} style={{ borderRadius: 16, borderWidth: 1, borderColor: picked ? "rgba(34,197,94,0.45)" : theme.border, backgroundColor: picked ? "rgba(34,197,94,0.16)" : theme.chipBg, paddingHorizontal: 10, paddingVertical: 6 }}>
-                <MvText variant="badge" style={{ fontSize: 11, color: picked ? GRN : theme.text2 }}>{DAY_LABELS[day]}</MvText>
-              </TouchableOpacity>
+              <PressableScale key={`rep-${day}`} scale={0.94} onPress={() => toggleReplicateDay(day)} style={{ borderRadius: 16, borderWidth: 1, borderColor: picked ? "rgba(34,197,94,0.45)" : theme.border, backgroundColor: picked ? "rgba(34,197,94,0.16)" : theme.chipBg, paddingHorizontal: 10, paddingVertical: 6 }}>
+                <MvText variant="badge" style={{ fontSize: 11, color: picked ? theme.primary : theme.text2 }}>{DAY_LABELS[day]}</MvText>
+              </PressableScale>
             );
           })}
         </View>
         <View style={{ flexDirection: "row", gap: 8 }}>
-          <TouchableOpacity onPress={applyTemplateToDays} style={{ flex: 1, borderRadius: 10, borderWidth: 1, borderColor: "rgba(34,197,94,0.40)", backgroundColor: "rgba(34,197,94,0.14)", paddingVertical: 9, alignItems: "center" }}>
-            <MvText variant="semi3" style={{ color: GRN }}>Replicar horário</MvText>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setReplicateDays([])} style={{ borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, paddingHorizontal: 12, justifyContent: "center" }}>
+          <PressableScale scale={0.97} onPress={applyTemplateToDays} style={{ flex: 1, borderRadius: 10, borderWidth: 1, borderColor: "rgba(34,197,94,0.40)", backgroundColor: "rgba(34,197,94,0.14)", paddingVertical: 9, alignItems: "center" }}>
+            <MvText variant="semi3" style={{ color: theme.primary }}>Replicar horário</MvText>
+          </PressableScale>
+          <PressableScale scale={0.97} onPress={() => setReplicateDays([])} style={{ borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, paddingHorizontal: 12, justifyContent: "center" }}>
             <MvText variant="body4" color="secondary">Limpar</MvText>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       </View>
       {selectedDay !== null ? (
@@ -755,12 +779,12 @@ function WeeklyScheduleCalendarPicker({ schedule, onChange, theme }: {
             <TextInput value={selectedStartTime} onChangeText={v => setSelectedStartTime(normalizeTimeInput(v))} placeholder="07:00" placeholderTextColor={theme.text3} keyboardType="numbers-and-punctuation" maxLength={5} style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 8, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 8, color: theme.text2, fontSize: 14, textAlign: "center" }} />
           <MvText variant="body4" color="secondary">às</MvText>
             <TextInput value={selectedEndTime} onChangeText={v => setSelectedEndTime(normalizeTimeInput(v))} placeholder="08:00" placeholderTextColor={theme.text3} keyboardType="numbers-and-punctuation" maxLength={5} style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 8, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 8, color: theme.text2, fontSize: 14, textAlign: "center" }} />
-            <TouchableOpacity onPress={saveSelectedDay} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: GRN, alignItems: "center", justifyContent: "center" }}>
+            <PressableScale scale={0.92} onPress={saveSelectedDay} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name="checkmark" size={18} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={removeSelectedDay} style={{ width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
+            </PressableScale>
+            <PressableScale scale={0.92} onPress={removeSelectedDay} style={{ width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name="trash-outline" size={16} color={theme.text3} />
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </View>
       ) : null}
@@ -769,7 +793,7 @@ function WeeklyScheduleCalendarPicker({ schedule, onChange, theme }: {
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
           {groupScheduleByTime(schedule).map(item => (
             <View key={item.key} style={{ borderRadius: 14, borderWidth: 1, borderColor: "rgba(34,197,94,0.25)", backgroundColor: "rgba(34,197,94,0.10)", paddingHorizontal: 8, paddingVertical: 5 }}>
-              <MvText variant="badge" style={{ color: GRN, fontSize: 10 }}>{item.label}</MvText>
+              <MvText variant="badge" style={{ color: theme.primary, fontSize: 10 }}>{item.label}</MvText>
             </View>
           ))}
         </View>
@@ -810,9 +834,9 @@ function CompactSchedulePicker({ schedule, onChange, theme }: {
         {WEEK_ORDER.map(day => {
           const active = selectedDays.includes(day);
           return (
-            <TouchableOpacity key={`csp-${day}`} onPress={() => toggleDay(day)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: active ? "rgba(34,197,94,0.45)" : theme.border, backgroundColor: active ? "rgba(34,197,94,0.14)" : theme.chipBg }}>
-              <MvText variant="badge" style={{ fontSize: 11, color: active ? GRN : theme.text2 }}>{DAY_LABELS[day]}</MvText>
-            </TouchableOpacity>
+            <PressableScale key={`csp-${day}`} scale={0.94} onPress={() => toggleDay(day)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: active ? "rgba(34,197,94,0.45)" : theme.border, backgroundColor: active ? "rgba(34,197,94,0.14)" : theme.chipBg }}>
+              <MvText variant="badge" style={{ fontSize: 11, color: active ? theme.primary : theme.text2 }}>{DAY_LABELS[day]}</MvText>
+            </PressableScale>
           );
         })}
       </View>
@@ -1056,12 +1080,13 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
 
   const RED = "#e57373";
   const isDark = theme.mode === "dark";
+  const [showAnalysis, setShowAnalysis] = useState(false);
 
   // Tab renders
   function renderStudents() {
     const active   = students.filter(s => s.isActive);
     const inactive = students.filter(s => !s.isActive);
-    const appGreen = isDark ? "#00C853" : "#16A34A";
+    const appGreen = isDark ? theme.primary : "#16A34A";
     const offBlue  = isDark ? "#38BDF8" : "#0284C7";
 
     function StudentRow({ s, dim }: { s: FinancialStudent; dim?: boolean }) {
@@ -1084,7 +1109,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
                 <MvText variant="semi3" style={{ flex: 1 }}>{s.name}</MvText>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: isDark ? "rgba(56,189,248,0.12)" : "rgba(2,132,199,0.10)" }}>
-                    <MvText variant="badge" style={{ fontSize: 9, color: offBlue }}>Fora App</MvText>
+                    <MvText variant="badge" style={{ fontSize: 9, color: offBlue }}>Outros clientes</MvText>
                   </View>
                   <MvText variant="badge" style={{ color: offBlue }}>{fmtCents(s.monthlyValueCents)}</MvText>
                 </View>
@@ -1098,9 +1123,9 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
                 </MvText>
               ) : null}
             </View>
-            <TouchableOpacity onPress={() => void handleDeleteStudent(s.id, s.name)}>
+            <PressableScale scale={0.88} onPress={() => void handleDeleteStudent(s.id, s.name)}>
               <Ionicons name="trash-outline" size={16} color={RED} />
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </MvCard>
       );
@@ -1109,38 +1134,51 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     function AppClientRow({ c }: { c: FinancialAppClient }) {
       const hasPending  = c.confirmedSessionCount > 0;
       const hasComplete = c.sessionCount > 0;
-      const pendingColor = isDark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.38)";
+      const initials = c.name.split(" ").slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase();
+      const totalCents = c.completedCents + c.confirmedCents;
+      const latestDate = c.latestAt
+        ? new Date(c.latestAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" })
+        : null;
       return (
         <MvCard>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <MvText variant="semi3" style={{ flex: 1 }}>{c.name}</MvText>
-                <View style={{ alignItems: "flex-end", gap: 2 }}>
-                  {hasComplete ? (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5, backgroundColor: isDark ? "rgba(0,200,83,0.14)" : "rgba(22,163,74,0.10)" }}>
-                        <MvText variant="badge" style={{ fontSize: 8, color: appGreen }}>Concluido</MvText>
-                      </View>
-                      <MvText variant="badge" style={{ color: appGreen }}>{fmtCents(c.completedCents)}</MvText>
-                    </View>
-                  ) : null}
-                  {hasPending ? (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5, borderWidth: 1, borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.10)" }}>
-                        <MvText variant="badge" style={{ fontSize: 8, color: pendingColor }}>Agendado</MvText>
-                      </View>
-                      <MvText variant="badge" style={{ color: pendingColor }}>{fmtCents(c.confirmedCents)}</MvText>
-                    </View>
-                  ) : null}
-                </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={{ position: "relative" }}>
+              <MvAvatar initials={initials} size={40} tone="green" />
+              <View style={{ position: "absolute", bottom: -1, right: -1, width: 12, height: 12, borderRadius: 6, backgroundColor: appGreen, borderWidth: 2, borderColor: theme.bgSurface }} />
+            </View>
+            <View style={{ flex: 1, gap: 3 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <MvText variant="semi3" style={{ flex: 1, fontSize: 13 }}>{c.name}</MvText>
+                <MvText variant="semi2" style={{ color: appGreen, fontSize: 14, letterSpacing: -0.5 }}>{fmtCents(totalCents)}</MvText>
               </View>
-              <MvText variant="body4" color="secondary" style={{ fontSize: 11, marginTop: 2 }}>
-                {hasComplete ? `${c.sessionCount} concluida${c.sessionCount !== 1 ? "s" : ""}` : ""}
-                {hasComplete && hasPending ? " - " : ""}
-                {hasPending ? `${c.confirmedSessionCount} agendada${c.confirmedSessionCount !== 1 ? "s" : ""}` : ""}
-                {c.services.length > 0 ? ` - ${c.services.join(", ")}` : ""}
-              </MvText>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: isDark ? "rgba(0,200,83,0.12)" : "rgba(22,163,74,0.09)" }}>
+                  <MvText variant="badge" style={{ fontSize: 8.5, color: appGreen }}>Pelo app</MvText>
+                </View>
+                {c.services.length > 0 ? (
+                  <MvText variant="body4" color="secondary" style={{ fontSize: 10, flex: 1 }} numberOfLines={1}>
+                    {c.services.join(", ")}
+                  </MvText>
+                ) : null}
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                {hasComplete ? (
+                  <MvText variant="body4" style={{ fontSize: 10, color: appGreen }}>
+                    {c.sessionCount} concluída{c.sessionCount !== 1 ? "s" : ""}
+                  </MvText>
+                ) : null}
+                {hasPending ? (
+                  <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>
+                    {c.confirmedSessionCount} agendada{c.confirmedSessionCount !== 1 ? "s" : ""}
+                  </MvText>
+                ) : null}
+                {latestDate ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginLeft: "auto" }}>
+                    <Ionicons name="calendar-outline" size={10} color={theme.text3} />
+                    <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>{latestDate}</MvText>
+                  </View>
+                ) : null}
+              </View>
             </View>
           </View>
         </MvCard>
@@ -1163,11 +1201,11 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
         {/* Alunos adicionados manualmente */}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <MvText variant="semi3" style={{ color: offBlue, fontSize: 11 }}>
-            Fora do App ({active.length})
+            Outros clientes ({active.length})
           </MvText>
-          <TouchableOpacity onPress={() => setAddStudentModal(true)}>
+          <PressableScale scale={0.92} onPress={() => setAddStudentModal(true)}>
             <MvText variant="body4" style={{ color: offBlue, fontSize: 11 }}>+ Novo aluno</MvText>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
 
         {students.length === 0 && appClients.length === 0 ? (
@@ -1194,7 +1232,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 40, gap: 8 }} showsVerticalScrollIndicator={false}>
         <View style={{ padding: 12, borderRadius: 12, backgroundColor: "rgba(34,197,94,0.10)", borderWidth: 1, borderColor: "rgba(34,197,94,0.20)" }}>
           <MvText variant="body4" color="secondary">Total em {monthLabel(month)}</MvText>
-          <MvText variant="h3" style={{ color: GRN }}>{fmtCents(total)}</MvText>
+          <MvText variant="h3" style={{ color: theme.primary }}>{fmtCents(total)}</MvText>
         </View>
         <MvButton label="+ Registrar receita" onPress={() => setAddIncomeModal(true)} />
         {incomes.length === 0 ? (
@@ -1203,16 +1241,16 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
         {incomes.map(inc => (
           <MvCard key={inc.id}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Ionicons name="arrow-up-circle-outline" size={20} color={GRN} />
+              <Ionicons name="arrow-up-circle-outline" size={20} color={theme.primary} />
               <View style={{ flex: 1 }}>
                 <MvText variant="semi2">{inc.description}</MvText>
                 {inc.student ? <MvText variant="body4" color="secondary">{inc.student.name}</MvText> : null}
-                <MvText variant="body4" color="secondary">{new Date(inc.paidAt).toLocaleDateString("pt-BR")}</MvText>
+                <MvText variant="body4" color="secondary">{new Date(inc.paidAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</MvText>
               </View>
-              <MvText variant="semi2" style={{ color: GRN }}>{fmtCents(inc.amountCents)}</MvText>
-              <TouchableOpacity onPress={() => void handleDeleteIncome(inc.id)}>
+              <MvText variant="semi2" style={{ color: theme.primary }}>{fmtCents(inc.amountCents)}</MvText>
+              <PressableScale scale={0.88} onPress={() => void handleDeleteIncome(inc.id)}>
                 <Ionicons name="trash-outline" size={16} color={theme.text3} />
-              </TouchableOpacity>
+              </PressableScale>
             </View>
           </MvCard>
         ))}
@@ -1241,12 +1279,12 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
               <Ionicons name="arrow-down-circle-outline" size={20} color={RED} />
               <View style={{ flex: 1 }}>
                 <MvText variant="semi2">{exp.description}</MvText>
-                <MvText variant="body4" color="secondary">{catLabel[exp.category]} · {new Date(exp.paidAt).toLocaleDateString("pt-BR")}</MvText>
+                <MvText variant="body4" color="secondary">{catLabel[exp.category]} · {new Date(exp.paidAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</MvText>
               </View>
               <MvText variant="semi2" style={{ color: RED }}>{fmtCents(exp.amountCents)}</MvText>
-              <TouchableOpacity onPress={() => void handleDeleteExpense(exp.id)}>
+              <PressableScale scale={0.88} onPress={() => void handleDeleteExpense(exp.id)}>
                 <Ionicons name="trash-outline" size={16} color={theme.text3} />
-              </TouchableOpacity>
+              </PressableScale>
             </View>
           </MvCard>
         ))}
@@ -1267,7 +1305,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
           <MvCard>
             <MvText variant="semi2" style={{ marginBottom: 10 }}>Metas — {monthLabel(month)}</MvText>
             {goal.targetRevenueCents && d ? (
-              <GoalProgress label="Faturamento" current={effectiveRevenueCents} target={goal.targetRevenueCents} formatFn={fmtCents} color={GRN} />
+              <GoalProgress label="Faturamento" current={effectiveRevenueCents} target={goal.targetRevenueCents} formatFn={fmtCents} color={theme.primary} />
             ) : null}
             {goal.targetStudents && d ? (
               <GoalProgress label="Alunos ativos" current={d.activeStudents} target={goal.targetStudents} formatFn={v => `${v} alunos`} color="#42A5F5" />
@@ -1301,10 +1339,133 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     );
   }
 
+  function renderVida() {
+    const totalIncome  = incomes.reduce((s, i) => s + i.amountCents, 0);
+    const totalExpense = expenses.reduce((s, e) => s + e.amountCents, 0);
+    const d = dashboard;
+    const catLabel: Record<FinancialExpenseCategory, string> = {
+      GYM: "Academia", TRANSPORT: "Transporte", EQUIPMENT: "Equipamento", MARKETING: "Marketing", OTHER: "Outros",
+    };
+
+    return (
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false}>
+        {/* Atalhos de registro */}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <PressableScale
+            scale={0.97}
+            onPress={() => setAddIncomeModal(true)}
+            style={{ flex: 1, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "rgba(34,197,94,0.28)", backgroundColor: "rgba(34,197,94,0.08)", alignItems: "center", gap: 6 }}
+          >
+            <Ionicons name="arrow-up-circle-outline" size={22} color={theme.primary} />
+            <MvText variant="semi3" style={{ color: theme.primary, fontSize: 12 }}>+ Receita</MvText>
+          </PressableScale>
+          <PressableScale
+            scale={0.97}
+            onPress={() => setAddExpenseModal(true)}
+            style={{ flex: 1, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "rgba(239,68,68,0.25)", backgroundColor: "rgba(239,68,68,0.08)", alignItems: "center", gap: 6 }}
+          >
+            <Ionicons name="arrow-down-circle-outline" size={22} color={RED} />
+            <MvText variant="semi3" style={{ color: RED, fontSize: 12 }}>+ Despesa</MvText>
+          </PressableScale>
+        </View>
+
+        {/* Metas */}
+        <MvButton label="Definir metas" onPress={() => setEditGoalModal(true)} />
+        {!goal ? (
+          <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
+            Nenhuma meta definida para {monthLabel(month)}.
+          </MvText>
+        ) : (
+          <MvCard>
+            <MvText variant="semi2" style={{ marginBottom: 10 }}>Metas — {monthLabel(month)}</MvText>
+            {goal.targetRevenueCents && d ? (
+              <GoalProgress label="Faturamento" current={effectiveRevenueCents} target={goal.targetRevenueCents} formatFn={fmtCents} color={theme.primary} />
+            ) : null}
+            {goal.targetStudents && d ? (
+              <GoalProgress label="Alunos ativos" current={d.activeStudents} target={goal.targetStudents} formatFn={v => `${v} alunos`} color="#42A5F5" />
+            ) : null}
+            {goal.targetWeeklyClasses && d ? (
+              <GoalProgress label="Aulas por semana" current={d.weeklyClasses} target={goal.targetWeeklyClasses} formatFn={v => `${v} aulas`} color="#FF9800" />
+            ) : null}
+            <View style={{ marginTop: 12, gap: 4, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 10 }}>
+              {goal.targetRevenueCents ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <MvText variant="body4" color="secondary">Meta de faturamento</MvText>
+                  <MvText variant="body4">{fmtCents(goal.targetRevenueCents)}</MvText>
+                </View>
+              ) : null}
+              {goal.targetStudents ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <MvText variant="body4" color="secondary">Meta de alunos</MvText>
+                  <MvText variant="body4">{goal.targetStudents} alunos</MvText>
+                </View>
+              ) : null}
+              {goal.targetWeeklyClasses ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <MvText variant="body4" color="secondary">Meta de aulas/semana</MvText>
+                  <MvText variant="body4">{goal.targetWeeklyClasses} aulas</MvText>
+                </View>
+              ) : null}
+            </View>
+          </MvCard>
+        )}
+
+        {/* Receitas */}
+        <View style={{ padding: 12, borderRadius: 12, backgroundColor: "rgba(34,197,94,0.10)", borderWidth: 1, borderColor: "rgba(34,197,94,0.20)" }}>
+          <MvText variant="body4" color="secondary">Receitas — {monthLabel(month)}</MvText>
+          <MvText variant="h3" style={{ color: theme.primary }}>{fmtCents(totalIncome)}</MvText>
+        </View>
+        {incomes.length === 0 ? (
+          <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Nenhuma receita registrada.</MvText>
+        ) : null}
+        {incomes.map(inc => (
+          <MvCard key={inc.id}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Ionicons name="arrow-up-circle-outline" size={20} color={theme.primary} />
+              <View style={{ flex: 1 }}>
+                <MvText variant="semi2">{inc.description}</MvText>
+                {inc.student ? <MvText variant="body4" color="secondary">{inc.student.name}</MvText> : null}
+                <MvText variant="body4" color="secondary">{new Date(inc.paidAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</MvText>
+              </View>
+              <MvText variant="semi2" style={{ color: theme.primary }}>{fmtCents(inc.amountCents)}</MvText>
+              <PressableScale scale={0.88} onPress={() => void handleDeleteIncome(inc.id)}>
+                <Ionicons name="trash-outline" size={16} color={theme.text3} />
+              </PressableScale>
+            </View>
+          </MvCard>
+        ))}
+
+        {/* Despesas */}
+        <View style={{ padding: 12, borderRadius: 12, backgroundColor: "rgba(239,68,68,0.08)", borderWidth: 1, borderColor: "rgba(239,68,68,0.20)" }}>
+          <MvText variant="body4" color="secondary">Despesas — {monthLabel(month)}</MvText>
+          <MvText variant="h3" style={{ color: RED }}>{fmtCents(totalExpense)}</MvText>
+        </View>
+        {expenses.length === 0 ? (
+          <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Nenhuma despesa registrada.</MvText>
+        ) : null}
+        {expenses.map(exp => (
+          <MvCard key={exp.id}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Ionicons name="arrow-down-circle-outline" size={20} color={RED} />
+              <View style={{ flex: 1 }}>
+                <MvText variant="semi2">{exp.description}</MvText>
+                <MvText variant="body4" color="secondary">{catLabel[exp.category]} · {new Date(exp.paidAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</MvText>
+              </View>
+              <MvText variant="semi2" style={{ color: RED }}>{fmtCents(exp.amountCents)}</MvText>
+              <PressableScale scale={0.88} onPress={() => void handleDeleteExpense(exp.id)}>
+                <Ionicons name="trash-outline" size={16} color={theme.text3} />
+              </PressableScale>
+            </View>
+          </MvCard>
+        ))}
+      </ScrollView>
+    );
+  }
+
   const TypeChip = ({ selected, label, onPress }: { selected: boolean; label: string; onPress: () => void }) => (
-    <TouchableOpacity onPress={onPress} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: selected ? "rgba(34,197,94,0.12)" : theme.chipBg, borderWidth: 1, borderColor: selected ? "rgba(34,197,94,0.30)" : theme.border }}>
-      <MvText variant="body4" style={{ color: selected ? GRN : theme.text2 }}>{label}</MvText>
-    </TouchableOpacity>
+    <PressableScale scale={0.95} onPress={onPress} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: selected ? "rgba(34,197,94,0.12)" : theme.chipBg, borderWidth: 1, borderColor: selected ? "rgba(34,197,94,0.30)" : theme.border }}>
+      <MvText variant="body4" style={{ color: selected ? theme.primary : theme.text2 }}>{label}</MvText>
+    </PressableScale>
   );
 
   // ─── Main render ──────────────────────────────────────────────────────────
@@ -1313,42 +1474,82 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
       {/* Fixed top section */}
-      <View style={{ paddingTop: insets.top + 8 }}>
-        {/* Header: back + title */}
-        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingBottom: 8, gap: 10 }}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-          >
-            <Ionicons name="chevron-back" size={20} color={theme.text2} />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <MvText variant="semi1">Controle Financeiro</MvText>
-            <MvText variant="body4" color="secondary">Gestão completa da sua carreira</MvText>
-          </View>
-        </View>
+      <View>
+        <ProfessionalScreenHeader
+          title="Controle Financeiro"
+          subtitle="Gestão completa da sua carreira"
+          onBack={() => navigation.goBack()}
+        />
 
-        {/* Stats strip: bento cards com borda colorida superior */}
+        {/* Stats strip + analysis toggle */}
         {dashboard ? (
-          <View style={{ gap: 6, paddingHorizontal: 14, marginBottom: 10 }}>
-            <View style={{ flexDirection: "row", gap: 6 }}>
-              <StatCard label="Faturamento" value={fmtCents(effectiveRevenueCents)} color={isDark ? "#00C853" : "#16A34A"} theme={theme} />
-              <StatCard label="Despesas"    value={fmtCents(totalExpensesCents)} color={isDark ? "#F87171" : "#E53935"} theme={theme} />
-              <StatCard label="Lucro"       value={fmtCents(effectiveProfitCents)} color={effectiveProfitCents >= 0 ? (isDark ? "#00C853" : "#16A34A") : (isDark ? "#F87171" : "#E53935")} theme={theme} />
+          <View style={{ paddingHorizontal: 14, marginBottom: 4 }}>
+            {/* 4 cards em uma linha */}
+            <View style={{ flexDirection: "row", gap: 5, marginBottom: 8 }}>
+              <StatCard
+                label="Faturamento" value={fmtCents(effectiveRevenueCents)}
+                icon="cash-outline" color={isDark ? theme.primary : "#16A34A"}
+                delta={dashboard.growthPct} theme={theme} isDark={isDark}
+              />
+              <StatCard
+                label="Despesas" value={fmtCents(totalExpensesCents)}
+                icon="arrow-down-circle-outline" color={isDark ? "#F87171" : "#E53935"}
+                theme={theme} isDark={isDark}
+              />
+              <StatCard
+                label="Lucro" value={fmtCents(effectiveProfitCents)}
+                icon="trending-up-outline"
+                color={effectiveProfitCents >= 0 ? (isDark ? theme.primary : "#16A34A") : (isDark ? "#F87171" : "#E53935")}
+                theme={theme} isDark={isDark}
+              />
+              <StatCard
+                label="A receber" value={fmtCents(dashboard.confirmedRevenueCents)}
+                icon="time-outline" color={isDark ? "#FACC15" : "#CA8A04"}
+                theme={theme} isDark={isDark}
+              />
             </View>
-            {dashboard.confirmedRevenueCents > 0 ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)", borderStyle: "dashed" }}>
-                <Ionicons name="time-outline" size={13} color={theme.text3} />
-                <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>
-                  Receita prevista (agendada): <MvText variant="semi3" style={{ fontSize: 11, color: theme.text2 }}>{fmtCents(dashboard.confirmedRevenueCents)}</MvText>
-                </MvText>
+            {/* Secondary metrics: ticket médio + sessões */}
+            {(dashboard.ticketMedioCents > 0 || dashboard.weeklyClasses > 0) ? (
+              <View style={{ flexDirection: "row", gap: 12, paddingHorizontal: 2, marginBottom: 6 }}>
+                {dashboard.ticketMedioCents > 0 ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: isDark ? "rgba(0,200,83,0.15)" : "rgba(22,163,74,0.12)", alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="stats-chart-outline" size={10} color={isDark ? theme.primary : "#16A34A"} />
+                    </View>
+                    <MvText variant="body4" style={{ fontSize: 11, color: theme.text2 }}>
+                      Ticket médio{" "}
+                      <MvText variant="semi3" style={{ fontSize: 11, color: isDark ? theme.primary : "#16A34A" }}>
+                        {fmtCents(dashboard.ticketMedioCents)}
+                      </MvText>
+                    </MvText>
+                  </View>
+                ) : null}
+                {dashboard.weeklyClasses > 0 ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: isDark ? "rgba(0,200,83,0.15)" : "rgba(22,163,74,0.12)", alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="calendar-outline" size={10} color={isDark ? theme.primary : "#16A34A"} />
+                    </View>
+                    <MvText variant="body4" style={{ fontSize: 11, color: theme.text2 }}>
+                      Aulas/semana{" "}
+                      <MvText variant="semi3" style={{ fontSize: 11, color: isDark ? theme.primary : "#16A34A" }}>
+                        {dashboard.weeklyClasses}
+                      </MvText>
+                    </MvText>
+                  </View>
+                ) : null}
               </View>
             ) : null}
+            <PressableScale scale={0.97} onPress={() => setShowAnalysis(v => !v)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 5 }}>
+              <Ionicons name={showAnalysis ? "chevron-up-outline" : "bar-chart-outline"} size={13} color={theme.text3} />
+              <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>
+                {showAnalysis ? "Ocultar análise" : "Ver análise detalhada"}
+              </MvText>
+            </PressableScale>
           </View>
         ) : null}
 
-        {/* Radar chart: periodo + filtros + donut + sparkline */}
-        {dashboard ? (
+        {/* Radar chart: collapsible */}
+        {dashboard && showAnalysis ? (
           <RadarChartSection
             app={appRevenueCents}
             offApp={offAppRevenueCents}
@@ -1363,61 +1564,53 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
           />
         ) : null}
 
-        {/* Divider */}
-        <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 14 }} />
-      </View>
-
-      {/* Sidebar + content */}
-      <View style={{ flex: 1, flexDirection: "row" }}>
-        {/* Left icon navigation */}
-        <View style={{
-          width: 56,
-          paddingVertical: 10,
-          paddingHorizontal: 6,
-          gap: 4,
-          alignItems: "center",
-          borderRightWidth: 1,
-          borderRightColor: theme.border,
-        }}>
-          {TABS.map(t => {
+        {/* Tab bar de navegação */}
+        <View style={{ flexDirection: "row", marginHorizontal: 14, marginTop: 8, marginBottom: 4, borderWidth: 1, borderColor: theme.border, borderRadius: 12, overflow: "hidden" }}>
+          {TABS.map((t, idx) => {
             const sel = t.key === tab;
+            const activeColor = isDark ? theme.primary : "#16A34A";
             return (
               <TouchableOpacity
                 key={t.key}
+                activeOpacity={0.7}
                 onPress={() => setTab(t.key)}
                 style={{
-                  width: 44, height: 44,
-                  borderRadius: 14,
+                  flex: 1,
+                  flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: sel ? (isDark ? "rgba(0,200,83,0.15)" : "rgba(22,163,74,0.12)") : "transparent",
+                  paddingVertical: 11,
+                  borderBottomWidth: 2,
+                  borderBottomColor: sel ? activeColor : "transparent",
+                  borderLeftWidth: idx > 0 ? 1 : 0,
+                  borderLeftColor: theme.border,
+                  backgroundColor: sel
+                    ? (isDark ? "rgba(0,200,83,0.12)" : "rgba(22,163,74,0.08)")
+                    : "transparent",
                 }}
               >
-                <Ionicons
-                  name={t.icon as any}
-                  size={22}
-                  color={sel ? (isDark ? "#00C853" : "#16A34A") : theme.text3}
-                />
+                <Ionicons name={t.icon as any} size={13} color={sel ? activeColor : theme.text3} />
+                <MvText variant="semi3" style={{ fontSize: 11, color: sel ? activeColor : theme.text3, marginLeft: 4 }}>
+                  {t.label}
+                </MvText>
               </TouchableOpacity>
             );
           })}
         </View>
+      </View>
 
-        {/* Tab content */}
-        <View style={{ flex: 1 }}>
-          {loading ? (
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-              <ActivityIndicator color={isDark ? "#00C853" : "#16A34A"} />
-            </View>
-          ) : (
-            <>
-              {tab === "alunos"   ? renderStudents() : null}
-              {tab === "receitas" ? renderIncomes()  : null}
-              {tab === "despesas" ? renderExpenses() : null}
-              {tab === "metas"    ? renderGoals()    : null}
-            </>
-          )}
-        </View>
+      {/* Tab content - full width */}
+      <View style={{ flex: 1 }}>
+        {loading ? (
+          <SkeletonFinanceTab />
+        ) : (
+          <ScreenEntrance key={tab}>
+            {tab === "alunos"   ? renderStudents() : null}
+            {tab === "receitas" ? renderIncomes()  : null}
+            {tab === "despesas" ? renderExpenses() : null}
+            {tab === "metas"    ? renderGoals()    : null}
+          </ScreenEntrance>
+        )}
       </View>
 
       {/* Add Student Modal */}
@@ -1432,20 +1625,20 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
           {hasPresential ? (
             <View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderColor: sLocSuggOpen ? "rgba(34,197,94,0.50)" : theme.border, borderRadius: 10, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 8 }}>
-                <Ionicons name="location-outline" size={13} color={locationSuggsLoading ? GRN : theme.text3} />
+                <Ionicons name="location-outline" size={13} color={locationSuggsLoading ? theme.primary : theme.text3} />
                 <TextInput value={sLocationQuery} onChangeText={v => { setSLocationQuery(v); setSLocation(v); }} onFocus={() => { if (locBlurRef.current) clearTimeout(locBlurRef.current); setSLocSuggOpen(true); }} onBlur={() => { locBlurRef.current = setTimeout(() => setSLocSuggOpen(false), 400); }} placeholder="Local de atendimento (opcional)" placeholderTextColor={theme.text3} style={{ flex: 1, padding: 0, color: theme.text2, fontSize: 13 }} />
-                {locationSuggsLoading ? <ActivityIndicator size="small" color={GRN} /> : null}
+                {locationSuggsLoading ? <ActivityIndicator size="small" color={theme.primary} /> : null}
               </View>
               {locationSuggs.length > 0 && sLocSuggOpen ? (
                 <ScrollView style={{ maxHeight: 160, marginTop: 3, borderWidth: 1, borderColor: theme.border, borderRadius: 9 }} keyboardShouldPersistTaps="always">
                   {locationSuggs.map((s, idx) => (
-                    <TouchableOpacity key={s.placeId ?? `ls-${idx}`} onPressIn={() => { if (locBlurRef.current) clearTimeout(locBlurRef.current); }} onPress={() => { const text = s.address ? `${s.name}, ${s.address.replace(/, Brasil$/, "").replace(/, Brazil$/, "")}` : s.name; setSLocation(text); setSLocationQuery(text); setSLocSuggOpen(false); }} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderTopWidth: idx > 0 ? 1 : 0, borderColor: theme.borderSub, backgroundColor: theme.cardBg }}>
-                      <Ionicons name="location-outline" size={12} color={GRN} />
+                    <PressableScale key={s.placeId ?? `ls-${idx}`} scale={0.98} onPressIn={() => { if (locBlurRef.current) clearTimeout(locBlurRef.current); }} onPress={() => { const text = s.address ? `${s.name}, ${s.address.replace(/, Brasil$/, "").replace(/, Brazil$/, "")}` : s.name; setSLocation(text); setSLocationQuery(text); setSLocSuggOpen(false); }} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderTopWidth: idx > 0 ? 1 : 0, borderColor: theme.borderSub, backgroundColor: theme.cardBg }}>
+                      <Ionicons name="location-outline" size={12} color={theme.primary} />
                       <View style={{ flex: 1 }}>
                         <MvText variant="body4" numberOfLines={1} style={{ fontSize: 11 }}>{s.name}</MvText>
                         {s.address ? <MvText variant="body4" color="secondary" numberOfLines={1} style={{ fontSize: 10 }}>{s.address}</MvText> : null}
                       </View>
-                    </TouchableOpacity>
+                    </PressableScale>
                   ))}
                 </ScrollView>
               ) : null}

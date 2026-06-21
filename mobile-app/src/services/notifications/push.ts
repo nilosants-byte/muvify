@@ -1,7 +1,10 @@
 import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
-import { Platform } from "react-native";
+import { Alert, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const PUSH_PRE_PROMPT_KEY = "@muvify/pushPrePromptShown";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -73,6 +76,23 @@ export async function getPushRegistrationPayload(): Promise<PushRegistrationPayl
   const current = await Notifications.getPermissionsAsync();
   let finalStatus = current.status;
   if (finalStatus !== "granted") {
+    if (finalStatus === "undetermined") {
+      const prePromptShown = await AsyncStorage.getItem(PUSH_PRE_PROMPT_KEY);
+      if (!prePromptShown) {
+        await AsyncStorage.setItem(PUSH_PRE_PROMPT_KEY, "1");
+        const wantsToEnable = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            "Ativar notificações",
+            "Receba avisos de agendamentos, mensagens do personal e lembretes de treino diretamente no seu celular.",
+            [
+              { text: "Agora não", style: "cancel", onPress: () => resolve(false) },
+              { text: "Ativar", onPress: () => resolve(true) },
+            ]
+          );
+        });
+        if (!wantsToEnable) return null;
+      }
+    }
     const requested = await Notifications.requestPermissionsAsync();
     finalStatus = requested.status;
   }

@@ -1,19 +1,24 @@
 import React, { useMemo, useState } from "react";
-import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StatusBar, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AuthStackParamList } from "../../navigation/route-types";
 import { authApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
+import { MvButton } from "../../components/mv/MvButton";
+import { MvInput } from "../../components/mv/MvInput";
+import { MvText } from "../../components/mv/MvText";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { C, S } from "../../theme/v2tokens";
+import { hapticCta } from "../../utils/haptics";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvInput, MvText } from "../../components/mv";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "ResetPassword">;
 
 export function ResetPasswordScreen({ navigation, route }: Props) {
-  const { showToast } = useAppState();
   const { theme } = useMvTheme();
+  const { showToast } = useAppState();
   const insets = useSafeAreaInsets();
   const [token, setToken] = useState(route.params?.token ?? "");
   const [newPassword, setNewPassword] = useState("");
@@ -22,88 +27,130 @@ export function ResetPasswordScreen({ navigation, route }: Props) {
 
   const canSubmit = useMemo(() => {
     if (token.trim().length < 6) return false;
-    if (newPassword.length < 8) return false;
+    if (newPassword.length < 8 || newPassword.length > 72) return false;
     if (!/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) return false;
     return confirmPassword === newPassword;
   }, [confirmPassword, newPassword, token]);
 
   async function handleSubmit() {
-    if (!canSubmit) {
-      showToast("Revise o token e a senha antes de confirmar.", "error");
-      return;
-    }
+    if (!token.trim()) { showToast("Token inválido. Solicite um novo link.", "error"); return; }
+    if (newPassword.length > 72) { showToast("A senha não pode ter mais de 72 caracteres.", "error"); return; }
+    if (!canSubmit) { showToast("Revise o token e a senha antes de confirmar.", "error"); return; }
     try {
       setLoading(true);
+      hapticCta();
       await authApi.resetPassword({ token: token.trim(), newPassword: newPassword.trim() });
       showToast("Senha redefinida com sucesso. Faça login.", "success");
       navigation.navigate("Login");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao redefinir senha.";
       showToast(message, "error");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.auth.reset-password">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1, backgroundColor: theme.bg }}
+      testID="screen.auth.reset-password"
+    >
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 14, paddingBottom: 10, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: theme.borderSub }}>
-        <TouchableOpacity
+
+      {/* Header */}
+      <View style={{
+        paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10,
+        flexDirection: "row", alignItems: "center",
+        borderBottomWidth: 1, borderBottomColor: theme.border,
+      }}>
+        <PressableScale
           onPress={() => navigation.goBack()}
-          style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+          accessibilityRole="button"
+          accessibilityLabel="Voltar"
+          style={{
+            width: 44, height: 44, borderRadius: 22,
+            backgroundColor: "rgba(255,255,255,0.06)",
+            borderWidth: 1, borderColor: theme.border,
+            alignItems: "center", justifyContent: "center",
+          }}
         >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
-        </TouchableOpacity>
+          <Ionicons name="chevron-back" size={18} color={theme.text1} />
+        </PressableScale>
       </View>
 
-      <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 60, gap: 16 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
-        <MvText variant="h3" style={{ textAlign: "center", marginTop: 24 }}>Nova senha</MvText>
-        <MvText variant="body3" color="secondary" style={{ textAlign: "center" }}>
-          Informe o código recebido por e-mail e defina sua nova senha.
-        </MvText>
-
-        <View style={{ gap: 14, marginTop: 8 }}>
-          <MvInput
-            autoCapitalize="none"
-            testID="input.auth.reset.token"
-            label="Código de recuperação"
-            placeholder="Cole o código recebido"
-            value={token}
-            onChangeText={setToken}
-          />
-          <MvInput
-            label="Nova senha"
-            placeholder="Mínimo 8 caracteres"
-            secureTextEntry
-            testID="input.auth.reset.password"
-            value={newPassword}
-            onChangeText={setNewPassword}
-          />
-          <MvInput
-            label="Confirmar nova senha"
-            placeholder="Repita a nova senha"
-            secureTextEntry
-            testID="input.auth.reset.confirm-password"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            onSubmitEditing={() => void handleSubmit()}
-          />
-
-          <View style={{ borderRadius: 11, borderWidth: 1, borderColor: theme.inputBorder, backgroundColor: theme.inputBg, padding: 12 }}>
-            <MvText variant="body4" color="secondary">A senha deve conter letras e números.</MvText>
+      <ScrollView
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={{
+          paddingHorizontal: S.px,
+          paddingBottom: Math.max(insets.bottom + 24, 40),
+          paddingTop: 32,
+          gap: 14,
+        }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <View style={{
+            width: 72, height: 72, borderRadius: 22,
+            backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder,
+            alignItems: "center", justifyContent: "center",
+          }}>
+            <Ionicons name="key-outline" size={32} color={theme.primary} />
           </View>
+          <MvText variant="display" style={{ textAlign: "center" }}>Nova senha</MvText>
+          <MvText variant="body3" color="secondary" style={{ textAlign: "center", lineHeight: 22 }}>
+            Informe o código recebido por e-mail e defina sua nova senha.
+          </MvText>
         </View>
 
+        <MvInput
+          value={token}
+          onChangeText={setToken}
+          placeholder="Código de recuperação"
+          autoCapitalize="none"
+          testID="input.auth.reset.token"
+        />
+        <MvInput
+          value={newPassword}
+          onChangeText={setNewPassword}
+          placeholder="Nova senha (mínimo 8 caracteres)"
+          secureTextEntry
+          testID="input.auth.reset.password"
+        />
+        <MvInput
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          placeholder="Confirmar nova senha"
+          secureTextEntry
+          testID="input.auth.reset.confirm-password"
+          onSubmitEditing={() => void handleSubmit()}
+        />
+
+        {/* Critérios de senha com feedback em tempo real */}
+        {newPassword.length > 0 && (
+          <View style={{ gap: 4 }}>
+            {[
+              { ok: token.trim().length >= 6, label: "Código com 6+ caracteres" },
+              { ok: newPassword.length >= 8, label: "Senha com 8+ caracteres" },
+              { ok: /[A-Za-z]/.test(newPassword), label: "Contém letras" },
+              { ok: /\d/.test(newPassword), label: "Contém números" },
+              { ok: confirmPassword === newPassword && confirmPassword.length > 0, label: "Senhas coincidem" },
+            ].map((c) => (
+              <View key={c.label} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons name={c.ok ? "checkmark-circle" : "ellipse-outline"} size={14} color={c.ok ? theme.primary : theme.text3} />
+                <MvText variant="caption" style={{ color: c.ok ? theme.primary : theme.text3 }}>{c.label}</MvText>
+              </View>
+            ))}
+          </View>
+        )}
+
         <MvButton
-          disabled={!canSubmit}
+          label={loading ? "Confirmando..." : "Confirmar nova senha"}
+          disabled={!canSubmit || loading}
           loading={loading}
-          label="Confirmar nova senha"
           onPress={() => void handleSubmit()}
-          style={{ marginTop: 8 }}
           testID="button.auth.reset.submit"
         />
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }

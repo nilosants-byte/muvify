@@ -1,25 +1,34 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshControl, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { RefreshControl, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientTabParamList } from "../../navigation/route-types";
 import { consultancyApi, PromotionFeedItem } from "../../services/api/client";
-import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvBadge, MvBottomNav, MvButton, MvCard, MvText } from "../../components/mv";
+import { MvAvatar } from "../../components/mv";
 import { formatCurrencyBRL, getInitials } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAppState } from "../../state/AppState";
+import { useMvTheme } from "../../theme/MvThemeContext";
+import { C, S, DISPLAY } from "../../theme/v2tokens";
+import { hapticCta } from "../../utils/haptics";
+import { ClientBottomNavV2 } from "../../components/navigation/ClientBottomNavV2";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { SkeletonCard } from "../../components/polish/SkeletonCard";
 
 type Props = BottomTabScreenProps<ClientTabParamList, "Promotions">;
 type PromotionTab = "highlights" | "promotions" | "combos";
 
-function offerSectionLabel(item: PromotionFeedItem) {
+function offerTypeLabel(item: PromotionFeedItem): string {
   if (item.kind === "COMBO") return "Combo";
-  if (item.kind === "PRESENTIAL") return "Promocao";
-  if (item.kind === "ONLINE_CONSULTANCY") return "Consultoria";
-  if (item.kind === "ONLINE_CONSULTANCY_SPECIALIZED") return "Consultoria";
+  if (item.kind === "PRESENTIAL") return "Presencial";
+  if (item.kind === "ONLINE_CONSULTANCY" || item.kind === "ONLINE_CONSULTANCY_SPECIALIZED") return "Consultoria";
   return "Oferta";
+}
+
+function isConsultancy(item: PromotionFeedItem): boolean {
+  return item.kind === "ONLINE_CONSULTANCY" || item.kind === "ONLINE_CONSULTANCY_SPECIALIZED";
 }
 
 function daysUntil(dateIso?: string | null): number | null {
@@ -40,8 +49,6 @@ export function PromotionsScreen({ navigation }: Props) {
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
 
-  const iconColor = theme.mode === "dark" ? "#D8E0D8" : "#394239";
-
   const [promotions, setPromotions] = useState<PromotionFeedItem[]>([]);
   const [combos, setCombos] = useState<PromotionFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,37 +57,17 @@ export function PromotionsScreen({ navigation }: Props) {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const promotionFeed = await consultancyApi.promotions();
-      const nextPromotions = promotionFeed.filter((item) => item.kind !== "COMBO");
-      const nextCombos = promotionFeed
-        .filter((item) => item.kind === "COMBO")
-        .sort((a, b) => a.providerName.localeCompare(b.providerName, "pt-BR"));
-
-      setPromotions(nextPromotions);
-      setCombos(nextCombos);
+      const feed = await consultancyApi.promotions();
+      setPromotions(feed.filter((item) => item.kind !== "COMBO"));
+      setCombos(feed.filter((item) => item.kind === "COMBO").sort((a, b) => a.providerName.localeCompare(b.providerName, "pt-BR")));
     } catch (error) {
-      handleScreenError({
-        error,
-        showToast,
-        fallbackMessage: "Falha ao carregar ofertas.",
-        navigation,
-      });
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar ofertas.", navigation });
     } finally {
       setLoading(false);
     }
   }, [navigation, showToast]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const goBackOrHome = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-      return;
-    }
-    navigation.navigate("ClientHome");
-  };
+  useEffect(() => { void load(); }, [load]);
 
   const goToDetail = (providerId: string) => {
     const parent = navigation.getParent<any>();
@@ -88,9 +75,18 @@ export function PromotionsScreen({ navigation }: Props) {
   };
 
   const goToBooking = (item: PromotionFeedItem) => {
+    const days = daysUntil(item.promotionEndsAt);
+    if (days !== null && days < 0) {
+      showToast("Esta promoção já expirou.", "info");
+      return;
+    }
     const parent = navigation.getParent<any>();
     if (!parent) return;
-
+    // Consultoria: abre briefing antes do agendamento
+    if (isConsultancy(item)) {
+      parent.navigate("ConsultancyRequest", { professionalId: item.providerId });
+      return;
+    }
     parent.navigate("CreateBooking", {
       professionalId: item.providerId,
       offerId: item.offerId,
@@ -101,40 +97,9 @@ export function PromotionsScreen({ navigation }: Props) {
     });
   };
 
-  const navItems = [
-    { key: "home", icon: "compass-outline", label: "Início" },
-    { key: "bookings", icon: "calendar-clear-outline", label: "Agenda" },
-    { key: "promotions", icon: "flash-outline", label: "Promoções" },
-    { key: "training", icon: "barbell-outline", label: "Treino" },
-    { key: "profile", icon: "person-circle-outline", label: "Perfil" },
-  ];
-
-  const hasAnyOffer = useMemo(
-    () => promotions.length > 0 || combos.length > 0,
-    [combos.length, promotions.length]
-  );
-
-  const expiringSoonCount = useMemo(
-    () =>
-      promotions.filter((item) => {
-        const remaining = daysUntil(item.promotionEndsAt);
-        return remaining !== null && remaining >= 0 && remaining <= 3;
-      }).length,
-    [promotions]
-  );
-
-  const averageDiscount = useMemo(() => {
-    const values = promotions.map(discountPercent).filter((value) => value > 0);
-    if (!values.length) return 0;
-    return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
-  }, [promotions]);
-
   const highlightFeed = useMemo(() => {
-    const topPromotions = [...promotions]
-      .sort((a, b) => discountPercent(b) - discountPercent(a))
-      .slice(0, 6);
-    const topCombos = combos.slice(0, 4);
-    return [...topPromotions, ...topCombos];
+    const top = [...promotions].sort((a, b) => discountPercent(b) - discountPercent(a)).slice(0, 6);
+    return [...top, ...combos.slice(0, 4)];
   }, [combos, promotions]);
 
   const selectedFeed = useMemo(() => {
@@ -143,259 +108,233 @@ export function PromotionsScreen({ navigation }: Props) {
     return highlightFeed;
   }, [activeTab, combos, highlightFeed, promotions]);
 
-  const tabItems: Array<{ key: PromotionTab; label: string; count: number }> = useMemo(
-    () => [
-      { key: "highlights", label: "Destaques", count: highlightFeed.length },
-      { key: "promotions", label: "Promoções", count: promotions.length },
-      { key: "combos", label: "Combos", count: combos.length },
-    ],
-    [combos.length, highlightFeed.length, promotions.length]
+  const tabItems: Array<{ key: PromotionTab; label: string; count: number }> = useMemo(() => [
+    { key: "highlights", label: "Destaques", count: highlightFeed.length },
+    { key: "promotions", label: "Promoções", count: promotions.length },
+    { key: "combos", label: "Combos", count: combos.length },
+  ], [combos.length, highlightFeed.length, promotions.length]);
+
+  const averageDiscount = useMemo(() => {
+    const values = promotions.map(discountPercent).filter((v) => v > 0);
+    if (!values.length) return 0;
+    return Math.round(values.reduce((sum, v) => sum + v, 0) / values.length);
+  }, [promotions]);
+
+  const expiringSoonCount = useMemo(() =>
+    promotions.filter((item) => { const r = daysUntil(item.promotionEndsAt); return r !== null && r >= 0 && r <= 3; }).length,
+    [promotions]
   );
 
-  function OfferCard({ item, section }: { item: PromotionFeedItem; section: "promotion" | "combo" }) {
+  function OfferCard({ item }: { item: PromotionFeedItem }) {
     const saving = discountPercent(item);
     const endingIn = daysUntil(item.promotionEndsAt);
-    const hasUrgency = typeof endingIn === "number" && endingIn >= 0 && endingIn <= 3;
-    const hasBasePrice = Boolean(item.basePriceCents && item.basePriceCents > item.promotionalPriceCents);
+    const urgent = typeof endingIn === "number" && endingIn >= 0 && endingIn <= 3;
+    const hasBase = Boolean(item.basePriceCents && item.basePriceCents > item.promotionalPriceCents);
+    const consultancy = isConsultancy(item);
+    const accent = consultancy ? C.amber : theme.primary;
+    const accentDim = consultancy ? C.amberDim : theme.primarySubtle;
+    const accentBorder = consultancy ? C.amberBorder : theme.primarySubtleBorder;
 
     return (
-      <MvCard style={{ gap: 10 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <PressableScale
+        style={{
+          borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border,
+          backgroundColor: theme.cardBg, padding: S.cardPad, gap: 12,
+        }}
+      >
+        {/* Discount ribbon */}
+        {saving > 0 && (
+          <View style={{ backgroundColor: accent, borderRadius: S.cardR, paddingVertical: 3, paddingHorizontal: 10, alignSelf: "flex-start", flexDirection: "row", gap: 6, alignItems: "center" }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.textOnPrimary, letterSpacing: 0.04 * 10 }}>
+              {saving}% OFF · {offerTypeLabel(item)}
+            </Text>
+            {urgent && <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.textOnPrimary }}>· {endingIn}d restantes</Text>}
+          </View>
+        )}
+
+        {/* Provider row */}
+        <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
           <MvAvatar
             initials={getInitials(item.providerName)}
-            size={38}
-            borderRadius={11}
-            color="green"
+            tone={consultancy ? "amber" : "green"}
+            size="md"
             photoUri={item.providerPhotoUrl ?? null}
           />
-          <View style={{ flex: 1 }}>
-            <MvText variant="semi2" numberOfLines={1}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }} numberOfLines={1}>
               {item.providerName}
-            </MvText>
-            <MvText variant="caption" color="secondary" numberOfLines={1}>
+            </Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, marginTop: 2 }} numberOfLines={1}>
               {item.specialty}
-            </MvText>
+            </Text>
           </View>
-          <MvBadge label={section === "combo" ? "Combo" : offerSectionLabel(item)} variant="green" />
+          <View style={{ backgroundColor: accentDim, borderWidth: 1, borderColor: accentBorder, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 3 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: accent }}>{offerTypeLabel(item)}</Text>
+          </View>
         </View>
 
-        <View
-          style={{
-            borderWidth: 1,
-            borderColor: theme.border,
-            borderRadius: 10,
-            backgroundColor: theme.inputBg,
-            padding: 10,
-            gap: 4,
-          }}
-        >
-          <MvText variant="semi3" numberOfLines={2}>
+        {/* Offer title + price */}
+        <View style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 16, backgroundColor: theme.inputBg, padding: 12, gap: 4 }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }} numberOfLines={2}>
             {item.itemInPromotion}
-          </MvText>
-          <MvText variant="body4" color="secondary">
+          </Text>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>
             {item.kind === "COMBO"
-              ? `Pacote combinado ${item.comboPresentialDaysPerWeek ?? 0}p/${item.comboOnlineDaysPerWeek ?? 0}o por semana`
-              : "Oferta especial para avancar com acompanhamento personalizado"}
-          </MvText>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 2 }}>
+              ? `Combo: ${item.comboPresentialDaysPerWeek ?? 0}x presencial + ${item.comboOnlineDaysPerWeek ?? 0}x online/semana`
+              : consultancy ? "Plano online com acompanhamento" : "Oferta especial para aula presencial"}
+          </Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginTop: 4 }}>
             <View>
-              <MvText variant="h4" style={{ color: theme.textGreen }}>
-                {formatCurrencyBRL(item.promotionalPriceCents / 100)}
-              </MvText>
-              {hasBasePrice ? (
-                <MvText variant="body4" color="tertiary" style={{ textDecorationLine: "line-through" }}>
+              {hasBase && (
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.labelColor, textDecorationLine: "line-through" }}>
                   de {formatCurrencyBRL((item.basePriceCents ?? 0) / 100)}
-                </MvText>
-              ) : null}
-            </View>
-            <View style={{ alignItems: "flex-end", gap: 4 }}>
-              {saving > 0 ? <MvBadge label={`${saving}% OFF`} variant="green" /> : null}
-              {hasUrgency ? <MvBadge label={`Termina em ${endingIn}d`} variant="orange" /> : null}
+                </Text>
+              )}
+              <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: accent, letterSpacing: -0.013 * 20 }}>
+                {formatCurrencyBRL(item.promotionalPriceCents / 100)}
+              </Text>
             </View>
           </View>
         </View>
 
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <MvButton
-            style={{ flex: 1 }}
-            label="Agendar agora"
-            onPress={() => goToBooking(item)}
-          />
-          <MvButton
-            style={{ flex: 1 }}
-            variant="outline"
-            label="Ver profissional"
+        {/* Actions */}
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <PressableScale
             onPress={() => goToDetail(item.providerId)}
-          />
+            scale={0.96}
+            style={{
+              flex: 1, height: S.btnH, borderRadius: S.btnR,
+              backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border,
+              alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Ver perfil</Text>
+          </PressableScale>
+          <PressableScale
+            onPress={() => { hapticCta(); goToBooking(item); }}
+            scale={0.96}
+            style={{
+              flex: 1.4, height: S.btnH, borderRadius: S.btnR,
+              backgroundColor: accent,
+              alignItems: "center", justifyContent: "center",
+              shadowColor: accent, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
+            }}
+          >
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
+              {consultancy ? "Solicitar" : "Agendar"}
+            </Text>
+          </PressableScale>
         </View>
-      </MvCard>
+      </PressableScale>
     );
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.promotions">
-      <StatusBar
-        barStyle={theme.mode === "dark" ? "light-content" : "dark-content"}
-        backgroundColor={theme.bg}
-      />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
-      <View
-        style={{
-          paddingTop: insets.top + 10,
-          paddingHorizontal: 14,
-          paddingBottom: 10,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 10,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.borderSub,
-        }}
-      >
-        <TouchableOpacity
-          onPress={goBackOrHome}
-          style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-        >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <MvText variant="semi1">Promoções</MvText>
-          <MvText variant="body4" color="secondary">
-            Descubra ofertas especiais para contratar no melhor momento.
-          </MvText>
-        </View>
+      {/* Header V2 */}
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 10, color: theme.primary, letterSpacing: 0.1 * 10, textTransform: "uppercase", fontWeight: "700" }}>
+          Destaques do dia
+        </Text>
+        <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3, marginTop: 6 }}>
+          Ofertas e promoções
+        </Text>
+        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, marginTop: 4 }}>
+          Presenciais e consultorias online
+        </Text>
       </View>
 
+      <ScreenEntrance>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 84, gap: 10 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={loading}
-            onRefresh={load}
-            tintColor="#4CAF50"
-            colors={["#4CAF50"]}
-          />
-        }
+        contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, gap: 10, paddingTop: 16 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={theme.primary} colors={[theme.primary]} />}
         showsVerticalScrollIndicator={false}
       >
-        <MvCard style={{ gap: 10 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <MvText variant="semi2">Panorama de ofertas</MvText>
-            <Ionicons name="flash-outline" size={16} color={iconColor} />
-          </View>
+        {/* Hero card panorama */}
+        <View style={{
+          borderRadius: S.cardR, padding: 16, borderWidth: 1,
+          borderColor: theme.primarySubtleBorder, backgroundColor: "rgba(36,230,109,0.09)",
+        }}>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <View style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 8, backgroundColor: theme.inputBg }}>
-              <MvText variant="h3" style={{ color: theme.textGreen }}>
-                {promotions.length + combos.length}
-              </MvText>
-              <MvText variant="caption" color="secondary">
-                Ativas
-              </MvText>
-            </View>
-            <View style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 8, backgroundColor: theme.inputBg }}>
-              <MvText variant="h3" style={{ color: theme.textGreen }}>
-                {averageDiscount ? `${averageDiscount}%` : "0%"}
-              </MvText>
-              <MvText variant="caption" color="secondary">
-                Media OFF
-              </MvText>
-            </View>
-            <View style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 8, backgroundColor: theme.inputBg }}>
-              <MvText variant="h3" style={{ color: theme.textGreen }}>
-                {expiringSoonCount}
-              </MvText>
-              <MvText variant="caption" color="secondary">
-                Terminando
-              </MvText>
-            </View>
+            {[
+              { value: String(promotions.length + combos.length), label: "Ativas" },
+              { value: averageDiscount ? `${averageDiscount}%` : "0%", label: "Média OFF" },
+              { value: String(expiringSoonCount), label: "Terminando" },
+            ].map((s) => (
+              <View key={s.label} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.24)", borderRadius: 16, padding: 10, alignItems: "center", gap: 2 }}>
+                <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: theme.text1, letterSpacing: -0.013 * 18 }}>{s.value}</Text>
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 10, color: theme.text3 }}>{s.label}</Text>
+              </View>
+            ))}
           </View>
-          <MvText variant="body4" color="secondary">
-            Compare valores, avalie o perfil do profissional e agende com seguranca.
-          </MvText>
-        </MvCard>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 10 }}>
+            Compare valores, avalie o personal e agende com segurança.
+          </Text>
+        </View>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {/* Tabs V2 */}
+        <View style={{ flexDirection: "row", gap: 8 }}>
           {tabItems.map((tab) => {
-            const selected = tab.key === activeTab;
+            const active = tab.key === activeTab;
             return (
               <TouchableOpacity
                 key={tab.key}
-                activeOpacity={0.85}
                 onPress={() => setActiveTab(tab.key)}
                 style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                  borderRadius: 18,
+                  height: 36, paddingHorizontal: 14, borderRadius: S.chipR,
+                  flexDirection: "row", alignItems: "center", gap: 6,
                   borderWidth: 1,
-                  borderColor: selected ? "rgba(76,175,80,0.35)" : theme.border,
-                  backgroundColor: selected ? "rgba(76,175,80,0.12)" : theme.inputBg,
-                  paddingHorizontal: 10,
-                  paddingVertical: 7,
+                  borderColor: active ? theme.primarySubtleBorder : theme.border,
+                  backgroundColor: active ? theme.primarySubtle : "rgba(255,255,255,0.04)",
                 }}
               >
-                <MvText variant="body4" style={{ color: selected ? theme.textGreen : theme.text2 }}>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: active ? theme.primary : theme.text2 }}>
                   {tab.label}
-                </MvText>
-                <View
-                  style={{
-                    minWidth: 18,
-                    height: 18,
-                    borderRadius: 9,
-                    backgroundColor: selected ? "rgba(76,175,80,0.22)" : theme.backBtn,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingHorizontal: 4,
-                  }}
-                >
-                  <MvText variant="caption" style={{ color: selected ? theme.textGreen : theme.text2 }}>
-                    {tab.count}
-                  </MvText>
+                </Text>
+                <View style={{ backgroundColor: active ? "rgba(36,230,109,0.22)" : "rgba(255,255,255,0.08)", borderRadius: 99, minWidth: 20, height: 20, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 }}>
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: active ? theme.primary : theme.text3 }}>{tab.count}</Text>
                 </View>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {!hasAnyOffer && !loading ? (
-          <View style={{ paddingTop: 60, alignItems: "center", gap: 8 }}>
-            <View
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 16,
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 1,
-                borderColor: theme.border,
-                backgroundColor: theme.cardBg,
-              }}
-            >
-              <Ionicons name="pricetags-outline" size={28} color={theme.textGreen} />
+        {/* Skeleton loaders enquanto carrega */}
+        {loading ? (
+          <>
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </>
+        ) : null}
+
+        {selectedFeed.length === 0 && !loading ? (
+          <View style={{ paddingTop: 60, alignItems: "center", gap: 10 }}>
+            <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="pricetags-outline" size={28} color={theme.primary} />
             </View>
-            <MvText variant="body3" color="secondary">
-              No momento não há ofertas ativas. Volte em breve para novas oportunidades.
-            </MvText>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, textAlign: "center" }}>
+              Nenhuma oferta ativa no momento. Volte em breve.
+            </Text>
           </View>
         ) : null}
 
-        {selectedFeed.map((item) => (
-          <OfferCard
-            key={`${activeTab}-${item.providerId}-${item.offerId}`}
-            item={item}
-            section={item.kind === "COMBO" ? "combo" : "promotion"}
-          />
+        {!loading && selectedFeed.map((item) => (
+          <OfferCard key={`${activeTab}-${item.providerId}-${item.offerId}`} item={item} />
         ))}
       </ScrollView>
+      </ScreenEntrance>
 
-      <MvBottomNav
-        items={navItems}
-        activeKey="promotions"
-        onPress={(key) => {
-          if (key === "home") navigation.navigate("ClientHome");
-          if (key === "bookings") navigation.navigate("ClientBookings");
-          if (key === "promotions") navigation.navigate("Promotions");
-          if (key === "training") navigation.navigate("MyTraining");
-          if (key === "profile") navigation.navigate("ClientProfile");
+      <ClientBottomNavV2
+        activeTab="home"
+        onNavigate={(tab) => {
+          if (tab === "home") navigation.navigate("ClientHome");
+          if (tab === "agenda") navigation.navigate("ClientBookings");
+          if (tab === "trainings") navigation.navigate("MyTraining");
+          if (tab === "community") navigation.navigate("Community");
+          if (tab === "profile") navigation.navigate("ClientProfile");
         }}
       />
     </View>

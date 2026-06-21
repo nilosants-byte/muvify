@@ -1,112 +1,145 @@
 import React, { useState } from "react";
 import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvText } from "../../components/mv";
+import { AuthStackParamList } from "../../navigation/route-types";
 import { useAppState } from "../../state/AppState";
+import { MvBadge } from "../../components/mv/MvBadge";
+import { MvButton } from "../../components/mv/MvButton";
+import { MvText } from "../../components/mv/MvText";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { S } from "../../theme/v2tokens";
+import { useMvTheme } from "../../theme/MvThemeContext";
 
+type Props = NativeStackScreenProps<AuthStackParamList, "ProfileSelection">;
 type RoleOption = "CLIENT" | "PROVIDER";
 
-export function AuthProfileSelectionScreen() {
-  const { chooseRole, showToast } = useAppState();
+function RoleCard({
+  icon,
+  title,
+  description,
+  active,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  description: string;
+  active: boolean;
+  onPress: () => void;
+}) {
   const { theme } = useMvTheme();
+  return (
+    <PressableScale
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityLabel={`Selecionar perfil ${title}`}
+      accessibilityState={{ selected: active }}
+      style={{
+        borderRadius: S.cardR,
+        padding: S.cardPad,
+        borderWidth: active ? 1.5 : 1,
+        backgroundColor: active ? theme.primarySubtle : theme.cardBg,
+        borderColor: active ? theme.primarySubtleBorder : theme.border,
+        gap: 8,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{
+            width: 44, height: 44, borderRadius: 12,
+            backgroundColor: active ? theme.primarySubtle : theme.inputBg,
+            alignItems: "center", justifyContent: "center",
+          }}>
+            <Ionicons name={icon} size={24} color={active ? theme.primary : theme.text2} />
+          </View>
+          <MvText variant="semi2">{title}</MvText>
+        </View>
+        {active ? <MvBadge label="Selecionado" variant="green" /> : null}
+      </View>
+      <MvText variant="body4" color="secondary" style={{ lineHeight: 20 }}>{description}</MvText>
+    </PressableScale>
+  );
+}
+
+export function AuthProfileSelectionScreen({ navigation }: Props) {
+  const { theme } = useMvTheme();
+  const { chooseRole, showToast } = useAppState();
   const insets = useSafeAreaInsets();
   const [selected, setSelected] = useState<RoleOption>("CLIENT");
   const [loading, setLoading] = useState(false);
-  const isLight = theme.mode === "light";
 
   async function handleConfirm() {
     try {
       setLoading(true);
       await chooseRole(selected);
+      navigation.navigate("Register");
     } catch {
       showToast("Falha ao definir perfil.", "error");
-    } finally {
       setLoading(false);
     }
   }
 
-  const RoleCard = ({
-    role, icon, title, description,
-  }: { role: RoleOption; icon: keyof typeof Ionicons.glyphMap; title: string; description: string }) => {
-    const active = selected === role;
-    return (
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={() => setSelected(role)}
-        style={{
-          borderRadius: 12,
-          padding: 16,
-          borderWidth: active ? 1.5 : 1,
-          backgroundColor: active
-            ? (isLight ? "rgba(34,197,94,0.06)" : "rgba(34,197,94,0.08)")
-            : theme.cardBg,
-          borderColor: active
-            ? (isLight ? "rgba(34,197,94,0.30)" : "rgba(34,197,94,0.38)")
-            : theme.border,
-          gap: 8,
-        }}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <View style={{
-              width: 44, height: 44, borderRadius: 12,
-              backgroundColor: active
-                ? (isLight ? "rgba(34,197,94,0.12)" : "rgba(34,197,94,0.16)")
-                : (isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)"),
-              alignItems: "center", justifyContent: "center",
-            }}>
-              <Ionicons name={icon} size={24} color={active ? theme.textGreen : theme.text3} />
-            </View>
-            <MvText variant="semi1">{title}</MvText>
-          </View>
-          {active && (
-            <MvBadge
-              label="Selecionado"
-              variant={isLight ? "green" : "greenDark"}
-            />
-          )}
-        </View>
-        <MvText variant="body4" color="secondary">{description}</MvText>
-      </TouchableOpacity>
-    );
-  };
+  const confirmLabel = loading
+    ? "Confirmando..."
+    : selected === "CLIENT"
+    ? "Confirmar como Aluno"
+    : "Confirmar como Personal";
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <ScrollView automaticallyAdjustKeyboardInsets={true}
+
+      {/* Botão voltar */}
+      <TouchableOpacity
+        onPress={() => navigation.goBack()}
+        style={{
+          position: "absolute",
+          top: insets.top + 12,
+          left: 16,
+          zIndex: 10,
+          padding: 8,
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Voltar"
+      >
+        <Ionicons name="arrow-back" size={24} color={theme.text1} />
+      </TouchableOpacity>
+
+      <ScrollView
         contentContainerStyle={{
-          paddingHorizontal: 24,
-          paddingTop: insets.top + 52,
-          paddingBottom: 32,
+          paddingHorizontal: S.px,
+          paddingTop: insets.top + 72,
+          paddingBottom: Math.max(insets.bottom + 24, 32),
           flexGrow: 1,
         }}
-        showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}
+        showsVerticalScrollIndicator={false}
       >
-        <MvText variant="h2" style={{ marginBottom: 6 }}>Como quer usar o app?</MvText>
-        <MvText variant="body3" color="secondary" style={{ marginBottom: 28 }}>
-          Escolha seu perfil para continuar.
+        <MvText variant="display" style={{ marginBottom: 6 }}>Como quer usar o app?</MvText>
+        <MvText variant="body3" color="secondary" style={{ marginBottom: 28, lineHeight: 22 }}>
+          Escolha seu perfil para criar a conta. Após o cadastro, o perfil não pode ser alterado sem contato com o suporte.
         </MvText>
 
         <View style={{ gap: 10, marginBottom: 32 }}>
           <RoleCard
-            role="CLIENT"
             icon="walk-outline"
             title="Aluno"
             description="Encontre profissionais, agende sessões e acompanhe seus treinos."
+            active={selected === "CLIENT"}
+            onPress={() => setSelected("CLIENT")}
           />
           <RoleCard
-            role="PROVIDER"
             icon="barbell-outline"
             title="Personal Trainer"
             description="Gerencie alunos, agenda e seus serviços profissionais."
+            active={selected === "PROVIDER"}
+            onPress={() => setSelected("PROVIDER")}
           />
         </View>
 
         <MvButton
-          label={selected === "CLIENT" ? "Confirmar como Aluno" : "Confirmar como Personal"}
+          label={confirmLabel}
+          disabled={loading}
           loading={loading}
           onPress={() => void handleConfirm()}
         />

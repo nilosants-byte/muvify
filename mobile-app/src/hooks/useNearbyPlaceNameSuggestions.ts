@@ -149,6 +149,7 @@ out center tags;`.trim();
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      abortRef.current?.abort();
     };
   }, [query, enabled, localMatches.length, centerLat, centerLon, radiusKm]);
 

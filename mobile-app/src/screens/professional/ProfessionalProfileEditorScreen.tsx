@@ -14,7 +14,9 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { resolveMediaUrl } from "../../utils/media";
@@ -28,29 +30,6 @@ function parsePriceToCents(value: string) {
   return digits ? Number(digits) : 0;
 }
 
-function StepHeader({ step, title, subtitle, locked }: { step: number; title: string; subtitle?: string; locked?: boolean }) {
-  const { theme } = useMvTheme();
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4, marginBottom: 2 }}>
-      <View
-        style={{
-          width: 36, height: 36, borderRadius: 18,
-          backgroundColor: locked ? theme.chipBg : "rgba(34,197,94,0.15)",
-          borderWidth: 1.5,
-          borderColor: locked ? theme.border : "rgba(34,197,94,0.40)",
-          alignItems: "center", justifyContent: "center",
-        }}
-      >
-        <MvText variant="semi2" style={{ color: locked ? theme.text3 : "#22C55E" }}>{step}</MvText>
-      </View>
-      <View style={{ flex: 1 }}>
-        <MvText variant="semi1" style={{ color: locked ? theme.text3 : theme.text1 }}>{title}</MvText>
-        {subtitle ? <MvText variant="body4" color="secondary">{subtitle}</MvText> : null}
-      </View>
-      {locked ? <Ionicons name="lock-closed-outline" size={16} color={theme.text3} /> : null}
-    </View>
-  );
-}
 
 export function ProfessionalProfileEditorScreen({ navigation }: Props) {
   const { runWithAuth, setCurrentUser, syncCurrentUser, showToast, user } = useAppState();
@@ -210,36 +189,10 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       setVideoProcessing(true);
       showToast("Vídeo selecionado. Processando...", "success");
 
-      // Step 2: read file and convert to base64 data URI (only used at submit time)
-      try {
-        const response = await fetch(asset.uri);
-        const blob = await response.blob();
-
-        if (blob.size > 30 * 1024 * 1024) {
-          showToast("O vídeo excede 30MB mesmo comprimido. Grave um vídeo mais curto ou em menor resolução.", "error");
-          setVideoLocalUri(null);
-          setVideoProcessing(false);
-          return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = () => {
-          const dataUri = reader.result as string;
-          setPresentationVideoUrl(dataUri);
-          setVideoProcessing(false);
-          showToast("Vídeo pronto. Salve o perfil para publicar.", "success");
-        };
-        reader.onerror = () => {
-          showToast("Falha ao processar o vídeo. Tente outro arquivo.", "error");
-          setVideoLocalUri(null);
-          setVideoProcessing(false);
-        };
-        reader.readAsDataURL(blob);
-      } catch {
-        showToast("Falha ao ler o vídeo. Tente novamente.", "error");
-        setVideoLocalUri(null);
-        setVideoProcessing(false);
-      }
+      // Vídeo local selecionado — mantém URI para preview mas não converte para base64.
+      // Para publicar o vídeo de apresentação, use o campo de URL do YouTube abaixo.
+      setVideoProcessing(false);
+      showToast("Prévia do vídeo carregada. Para publicar no perfil, cole o link do YouTube no campo abaixo.", "info");
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Falha ao selecionar o vídeo.", "error");
     }
@@ -255,11 +208,16 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
     if (!Number.isFinite(parsedPriceCents) || parsedPriceCents < 100) { showToast("Preço obrigatório. Informe ao menos R$ 1,00.", "error"); return; }
     if (selectedSpecialties.length === 0) { showToast("Selecione ao menos uma especialidade.", "error"); return; }
 
+    // Só reenvia URLs de mídia se forem novos uploads (data URI) ou URLs absolutas.
+    // Caminhos relativos da API (/uploads/...) não são URLs válidas para o backend.
+    const isUploadableUrl = (v: string | null | undefined) =>
+      !!v && (v.startsWith("data:") || v.startsWith("http://") || v.startsWith("https://"));
+
     const profilePayload = {
       displayName: displayName.trim(),
       bio: bio.trim(),
-      photoUrl: photoUrl.trim() || undefined,
-      presentationVideoUrl: presentationVideoUrl ?? undefined,
+      photoUrl: isUploadableUrl(photoUrl.trim()) ? photoUrl.trim() : undefined,
+      presentationVideoUrl: isUploadableUrl(presentationVideoUrl) ? presentationVideoUrl! : undefined,
       experienceYears: parsedExperience,
       priceCents: parsedPriceCents,
       specialties: selectedSpecialties,
@@ -308,27 +266,23 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
 
       {/* Header */}
       <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <TouchableOpacity
+        <PressableScale
+          scale={0.92}
           onPress={goBack}
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="chevron-back" size={20} color={theme.text2} />
-        </TouchableOpacity>
+        </PressableScale>
         <View style={{ flex: 1 }}>
-          <MvText variant="semi1">Meu perfil</MvText>
-          <MvText variant="body4" color="secondary">Configure sua presença no app</MvText>
+          <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, letterSpacing: -0.3 }}>Meu perfil</MvText>
+          <MvText variant="body4" color="secondary">
+            {hasExistingProfile ? "Editando perfil público" : "Configure sua presença no app"}
+          </MvText>
         </View>
       </View>
 
-      <ScrollView automaticallyAdjustKeyboardInsets={true} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40, gap: 14 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
-        {/* Status badge */}
-        <MvBadge
-          label={hasExistingProfile ? "Perfil ativo — editando" : "Primeiro acesso — crie seu perfil"}
-          variant={hasExistingProfile ? "green" : "blue"}
-        />
-
-        {/* ─── PASSO 1 ─── */}
-        <StepHeader step={1} title="Quem sou eu?" subtitle="Foto, apresentação e especialidades" />
+      <ScreenEntrance>
+      <ScrollView automaticallyAdjustKeyboardInsets={true} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40, gap: 14 }} showsVerticalScrollIndicator={false}>
 
         {/* Foto circular */}
         <MvCard>
@@ -367,7 +321,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
               <MvVideoPlayer url={videoLocalUri} height={180} borderRadius={10} />
               {videoProcessing && (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4 }}>
-                  <ActivityIndicator size="small" color="#22C55E" />
+                  <ActivityIndicator size="small" color={theme.primary} />
                   <MvText variant="body4" color="secondary">Processando vídeo para salvar…</MvText>
                 </View>
               )}
@@ -375,7 +329,8 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                 <View style={{ flex: 1 }}>
                   <MvButton variant="outline" label="Trocar vídeo" onPress={() => void doPickPresentationVideo()} />
                 </View>
-                <TouchableOpacity
+                <PressableScale
+                  scale={0.92}
                   onPress={() => {
                     Alert.alert("Remover vídeo", "Deseja remover o vídeo de apresentação?", [
                       { text: "Cancelar", style: "cancel" },
@@ -390,7 +345,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                   }}
                 >
                   <Ionicons name="trash-outline" size={18} color="#f44336" />
-                </TouchableOpacity>
+                </PressableScale>
               </View>
             </View>
           ) : presentationVideoUrl ? (
@@ -411,7 +366,8 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                 <View style={{ flex: 1 }}>
                   <MvButton variant="outline" label="Trocar vídeo" onPress={() => void doPickPresentationVideo()} />
                 </View>
-                <TouchableOpacity
+                <PressableScale
+                  scale={0.92}
                   onPress={() => {
                     Alert.alert("Remover vídeo", "Deseja remover o vídeo de apresentação?", [
                       { text: "Cancelar", style: "cancel" },
@@ -426,7 +382,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                   }}
                 >
                   <Ionicons name="trash-outline" size={18} color="#f44336" />
-                </TouchableOpacity>
+                </PressableScale>
               </View>
             </View>
           ) : (
@@ -438,12 +394,17 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
         <MvCard>
           <View style={{ gap: 10 }}>
             <MvInput placeholder="Nome de exibição (Ex: Carlos Trainer)" value={displayName} onChangeText={setDisplayName} />
-            <MvInput placeholder="Biografia — conte sua experiência e diferencial" multiline numberOfLines={4} value={bio} onChangeText={setBio} />
-            <MvInput keyboardType="numeric" placeholder="Anos de experiência" value={experienceYears} onChangeText={setExperienceYears} />
+            <MvInput placeholder="Biografia — conte sua experiência e diferencial" multiline numberOfLines={4} maxLength={500} value={bio} onChangeText={setBio} />
+            <MvText variant="caption" color="secondary" style={{ textAlign: "right", marginTop: -6 }}>
+              {bio.length < 10 ? `Mínimo 10 caracteres (${bio.length}/500)` : `${bio.length}/500`}
+            </MvText>
+            <MvInput keyboardType="numeric" placeholder="Anos de experiência" value={experienceYears} onChangeText={setExperienceYears} maxLength={2} />
             <MvInput keyboardType="numeric" placeholder="Preço por sessão (R$)" value={priceInput} onChangeText={(v) => setPriceInput(maskPriceInput(v))} />
-            <View style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 10, backgroundColor: theme.inputBg }}>
-              <MvText variant="semi3">Divisão automática</MvText>
-              <MvText variant="body4" color="secondary">90% para você · 10% de comissão para o app.</MvText>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 2 }}>
+              <Ionicons name="information-circle-outline" size={14} color={theme.text3} />
+              <MvText variant="body4" color="secondary" style={{ fontSize: 12 }}>
+                Você recebe 90% · 10% vai para o app
+              </MvText>
             </View>
           </View>
         </MvCard>
@@ -462,8 +423,9 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                 {PROFESSIONAL_SPECIALTIES.map((name) => {
                   const selected = selectedSpecialties.includes(name);
                   return (
-                    <TouchableOpacity
+                    <PressableScale
                       key={name}
+                      scale={0.95}
                       onPress={() => toggleSpecialty(name)}
                       style={{
                         paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
@@ -474,13 +436,14 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                       <MvText variant="body4" style={{ color: selected ? theme.textGreen : theme.text2 }}>
                         {name}
                       </MvText>
-                    </TouchableOpacity>
+                    </PressableScale>
                   );
                 })}
                 {/* Custom specialties not in predefined list */}
                 {selectedSpecialties.filter((s) => !PROFESSIONAL_SPECIALTIES.some((defaultSpecialty) => defaultSpecialty === s)).map((name) => (
-                  <TouchableOpacity
+                  <PressableScale
                     key={name}
+                    scale={0.95}
                     onPress={() => toggleSpecialty(name)}
                     style={{
                       paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
@@ -491,7 +454,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                   >
                     <MvText variant="body4" style={{ color: theme.textGreen }}>{name}</MvText>
                     <Ionicons name="close" size={12} color={theme.textGreen} />
-                  </TouchableOpacity>
+                  </PressableScale>
                 ))}
               </View>
 
@@ -506,7 +469,8 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                     returnKeyType="done"
                   />
                 </View>
-                <TouchableOpacity
+                <PressableScale
+                  scale={0.92}
                   onPress={addCustomSpecialty}
                   style={{
                     width: 44, height: 44, borderRadius: 10,
@@ -515,69 +479,97 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                     alignItems: "center", justifyContent: "center",
                   }}
                 >
-                  <Ionicons name="add" size={20} color="#22C55E" />
-                </TouchableOpacity>
+                  <Ionicons name="add" size={20} color={theme.primary} />
+                </PressableScale>
               </View>
             </>
           )}
         </MvCard>
 
-        {/* Save Step 1 */}
         <MvButton label={hasExistingProfile ? "Salvar alterações" : "Criar perfil"} loading={savingProfile} onPress={() => void submitProfile()} />
 
-        {/* ─── PASSO 2 ─── */}
-        <StepHeader
-          step={2}
-          title="Meus Horários"
-          subtitle={hasExistingProfile ? "Configure seus horários disponíveis" : "Complete o Passo 1 primeiro"}
-          locked={!hasExistingProfile}
-        />
-        <MvCard>
-          {hasExistingProfile ? (
-            <View style={{ gap: 8 }}>
-              <MvText variant="body3" color="secondary">
-                Defina os dias e horários em que você está disponível para atender alunos.
-              </MvText>
-              <MvButton variant="outline" label="Meus Horários" onPress={() => goToStack("AvailabilityManager")} />
-            </View>
-          ) : (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, opacity: 0.5 }}>
-              <Ionicons name="lock-closed-outline" size={20} color={theme.text3} />
-              <MvText variant="body3" color="secondary">Salve o Passo 1 para desbloquear.</MvText>
-            </View>
-          )}
-        </MvCard>
+        {/* ─── Configurações complementares ─── */}
+        {hasExistingProfile ? (
+          <View style={{ gap: 8 }}>
+            <MvText variant="semi3" color="secondary" style={{ paddingHorizontal: 2, marginBottom: 2 }}>
+              Configurações complementares
+            </MvText>
 
-        {/* ─── PASSO 3 ─── */}
-        <StepHeader
-          step={3}
-          title="Consultoria Online"
-          subtitle={hasExistingProfile ? "Configure sua oferta de consultoria" : "Complete o Passo 1 primeiro"}
-          locked={!hasExistingProfile}
-        />
-        <MvCard>
-          {hasExistingProfile ? (
-            <View style={{ gap: 8 }}>
-              <MvText variant="body3" color="secondary">
-                Ative e configure seus serviços de consultoria online para atender alunos à distância.
-              </MvText>
-              <MvButton variant="outline" label="Configurar consultoria online" onPress={() => goToStack("ProfessionalConsultancyCenter")} />
-            </View>
-          ) : (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, opacity: 0.5 }}>
-              <Ionicons name="lock-closed-outline" size={20} color={theme.text3} />
-              <MvText variant="body3" color="secondary">Salve o Passo 1 para desbloquear.</MvText>
-            </View>
-          )}
-        </MvCard>
+            <PressableScale
+              scale={0.98}
+              onPress={() => goToStack("AvailabilityManager")}
+              style={{
+                flexDirection: "row", alignItems: "center", gap: 12,
+                borderRadius: 16, borderWidth: 1,
+                borderColor: theme.border, backgroundColor: theme.cardBg,
+                paddingHorizontal: 16, paddingVertical: 14,
+              }}
+            >
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="calendar-outline" size={18} color={theme.textGreen} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <MvText variant="semi2">Meus Horários</MvText>
+                <MvText variant="body4" color="secondary">Dias e horários disponíveis para atendimento</MvText>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={theme.text3} />
+            </PressableScale>
 
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 4 }}>Área de atendimento</MvText>
-          <MvText variant="body4" color="secondary">
-            O mapa, o raio e os locais de atendimento agora são configurados na tela inicial do profissional.
-          </MvText>
-        </MvCard>
+            <PressableScale
+              scale={0.98}
+              onPress={() => goToStack("ProfessionalConsultancyCenter")}
+              style={{
+                flexDirection: "row", alignItems: "center", gap: 12,
+                borderRadius: 16, borderWidth: 1,
+                borderColor: theme.border, backgroundColor: theme.cardBg,
+                paddingHorizontal: 16, paddingVertical: 14,
+              }}
+            >
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="videocam-outline" size={18} color={theme.textGreen} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <MvText variant="semi2">Consultoria Online</MvText>
+                <MvText variant="body4" color="secondary">Configure suas ofertas de atendimento remoto</MvText>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={theme.text3} />
+            </PressableScale>
+
+            <PressableScale
+              scale={0.98}
+              onPress={() => goToStack("ProfessionalCredentials")}
+              style={{
+                flexDirection: "row", alignItems: "center", gap: 12,
+                borderRadius: 16, borderWidth: 1,
+                borderColor: theme.border, backgroundColor: theme.cardBg,
+                paddingHorizontal: 16, paddingVertical: 14,
+              }}
+            >
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="shield-checkmark-outline" size={18} color={theme.textGreen} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <MvText variant="semi2">CREF e Documentos</MvText>
+                <MvText variant="body4" color="secondary">Validação da sua certificação profissional</MvText>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={theme.text3} />
+            </PressableScale>
+          </View>
+        ) : (
+          <View style={{
+            flexDirection: "row", alignItems: "center", gap: 10,
+            borderRadius: 12, borderWidth: 1,
+            borderColor: theme.border, backgroundColor: theme.chipBg,
+            padding: 12,
+          }}>
+            <Ionicons name="information-circle-outline" size={18} color={theme.text3} />
+            <MvText variant="body4" color="secondary" style={{ flex: 1, lineHeight: 18 }}>
+              Após criar seu perfil, você poderá configurar horários, consultoria online e validar seu CREF.
+            </MvText>
+          </View>
+        )}
       </ScrollView>
+      </ScreenEntrance>
       </KeyboardAvoidingView>
     </View>
   );

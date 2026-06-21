@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { captureException } from "../observability/sentry";
 
 export type GooglePlaceSuggestion = {
   name: string;
@@ -52,7 +53,7 @@ export async function fetchGooglePlaceCoords(
     const resp = await fetch(url);
     const json = (await resp.json()) as PlaceDetailsResponse;
     if (json.status !== "OK" || !json.result?.geometry?.location) {
-      console.warn("[GooglePlaces] details error:", json.status);
+      if (__DEV__) console.warn("[GooglePlaces] details error:", json.status);
       return null;
     }
     const loc = json.result.geometry.location;
@@ -86,9 +87,10 @@ export function useGooglePlacesSearch(
   enabled: boolean,
   /** Passed as `types` to the Autocomplete API. Empty string omits the param (returns all types). Default: "establishment" */
   types = "establishment"
-): { suggestions: GooglePlaceSuggestion[]; loading: boolean } {
+): { suggestions: GooglePlaceSuggestion[]; loading: boolean; hasError: boolean } {
   const [suggestions, setSuggestions] = useState<GooglePlaceSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -96,13 +98,21 @@ export function useGooglePlacesSearch(
     if (timerRef.current) clearTimeout(timerRef.current);
 
     const trimmed = query.trim();
-    if (!enabled || trimmed.length < 2 || !API_KEY) {
+    if (!API_KEY) {
       setSuggestions([]);
+      setLoading(false);
+      setHasError(true);
+      return;
+    }
+    if (!enabled || trimmed.length < 2) {
+      setSuggestions([]);
+      setHasError(false);
       setLoading(false);
       return;
     }
 
     setLoading(true);
+    setHasError(false);
     timerRef.current = setTimeout(async () => {
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -123,9 +133,13 @@ export function useGooglePlacesSearch(
         const resp = await fetch(url, { signal: controller.signal });
         const json = (await resp.json()) as AutocompleteResponse;
 
+        if (controller.signal.aborted) return;
         if (json.status !== "OK" && json.status !== "ZERO_RESULTS") {
-          console.warn("[GooglePlaces] autocomplete error:", json.status);
+          if (__DEV__) console.warn("[GooglePlaces] autocomplete error:", json.status);
           setSuggestions([]);
+          if (json.status === "REQUEST_DENIED" || json.status === "INVALID_REQUEST") {
+            setHasError(true);
+          }
           return;
         }
 
@@ -144,16 +158,18 @@ export function useGooglePlacesSearch(
       } catch (err: unknown) {
         if (err instanceof Error && err.name !== "AbortError") {
           setSuggestions([]);
+          setHasError(true);
+          captureException(err, { stage: "google_places_autocomplete" });
         }
       } finally {
         setLoading(false);
       }
-    }, 450);
+    }, 600);
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [query, lat, lon, radiusKm, enabled, types]);
 
-  return { suggestions, loading };
+  return { suggestions, loading, hasError };
 }

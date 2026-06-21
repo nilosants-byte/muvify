@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Alert, ScrollView, Share, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,18 +11,39 @@ import {
   ProviderServiceOffer,
   ProviderSummary,
   providersApi,
+  userApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
-import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvBadge, MvButton, MvCard, MvText } from "../../components/mv";
+import { MvAvatar } from "../../components/mv";
 import { averageToFive, formatPriceFromCents, handleScreenError } from "../shared/api-helpers";
 import { formatCurrencyBRL } from "../../utils/formatters";
+import { useMvTheme } from "../../theme/MvThemeContext";
+import { C, S, DISPLAY } from "../../theme/v2tokens";
+import { hapticCta } from "../../utils/haptics";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { SkeletonCard } from "../../components/polish/SkeletonCard";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ProfessionalDetail">;
 type ProviderDetail = ProviderSummary & {
   categoryLinks?: Array<{ category?: { name: string } }>;
   reviews?: Array<{ id: string; rating: number; comment?: string | null; user?: { name?: string } }>;
+  fixedLocations?: Array<{ id: string; name: string; latitude?: number | null; longitude?: number | null }>;
 };
+
+function getInitials(name: string) {
+  return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+}
+
+function StarRow({ rating }: { rating: number }) {
+  const { theme } = useMvTheme();
+  return (
+    <View style={{ flexDirection: "row", gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Text key={star} style={{ fontSize: 14, color: star <= Math.round(rating) ? C.amber : theme.labelColor }}>★</Text>
+      ))}
+    </View>
+  );
+}
 
 export function ProfessionalDetailScreen({ route, navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
@@ -35,42 +56,59 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [savingFavorite, setSavingFavorite] = useState(false);
   const [consultancyCatalog, setConsultancyCatalog] = useState<ProviderConsultancyCatalog | null>(null);
+  const [catalogLoadError, setCatalogLoadError] = useState(false);
+  const [anamnesisCompleted, setAnamnesisCompleted] = useState<boolean | null>(null);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const detail = (await providersApi.detail(providerId)) as ProviderDetail;
-      const catalog = await consultancyApi.providerCatalog(providerId).catch(() => null);
-      const currentFavorites = await runWithAuth((token) => favoritesApi.list(token));
+      setCatalogLoadError(false);
+      const [detail, catalog, currentFavorites, anamnesisProfile] = await Promise.all([
+        providersApi.detail(providerId) as Promise<ProviderDetail>,
+        consultancyApi.providerCatalog(providerId).catch(() => { setCatalogLoadError(true); return null; }),
+        runWithAuth((token) => favoritesApi.list(token)),
+        runWithAuth((token) => userApi.myAnamnesis(token)).catch(() => null),
+      ]);
       setProvider(detail);
       setConsultancyCatalog(catalog);
       setFavorite(currentFavorites.some((item) => item.providerId === providerId));
+      setAnamnesisCompleted(anamnesisProfile?.status === "COMPLETED");
     } catch (error) {
-      handleScreenError({
-        error,
-        showToast,
-        fallbackMessage: "Falha ao carregar detalhes do profissional.",
-        navigation,
-      });
-    } finally {
-      setLoading(false);
-    }
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar detalhes do profissional.", navigation });
+    } finally { setLoading(false); }
   }, [navigation, providerId, runWithAuth, showToast]);
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  useEffect(() => { void loadData(); }, [loadData]);
 
   const categoryLabel = useMemo(() => {
-    const names = provider?.categoryLinks?.map((item) => item.category?.name).filter(Boolean) as
-      | string[]
-      | undefined;
-    if (!names || names.length === 0) return "Categoria não informada";
-    return names.join(", ");
+    const names = provider?.categoryLinks?.map((l) => l.category?.name).filter(Boolean) as string[] | undefined;
+    return names?.length ? names.join(" · ") : "Personal Trainer";
   }, [provider?.categoryLinks]);
 
-  const promotionOffers = useMemo(
-    () => (consultancyCatalog?.offers ?? []).filter((offer) => offer.isActive && offer.isPromotionActive),
+  // Promoções de consultoria online — devem ir para ConsultancyRequest, não CreateBooking
+  const consultancyPromotionOffers = useMemo(
+    () =>
+      (consultancyCatalog?.offers ?? []).filter(
+        (o) => o.isActive && o.isPromotionActive && o.kind !== "PRESENTIAL"
+      ),
+    [consultancyCatalog?.offers]
+  );
+
+  // Promoções presenciais (agendamento) — mantém fluxo de CreateBooking
+  const presentialPromotionOffers = useMemo(
+    () =>
+      (consultancyCatalog?.offers ?? []).filter(
+        (o) => o.isActive && o.isPromotionActive && o.kind === "PRESENTIAL"
+      ),
+    [consultancyCatalog?.offers]
+  );
+
+  // Ofertas de consultoria sem promoção (as em promoção aparecem na seção de promoções)
+  const onlineOffers = useMemo(
+    () =>
+      (consultancyCatalog?.offers ?? [])
+        .filter((o) => o.kind !== "PRESENTIAL" && !o.isPromotionActive)
+        .slice(0, 3),
     [consultancyCatalog?.offers]
   );
 
@@ -88,19 +126,20 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : "";
-      if (msg.toLowerCase().includes("disponivel") || msg.toLowerCase().includes("disponível")) {
-        showToast("Este profissional não está disponível, pois seu CREF ainda não foi aprovado.", "info");
+      if (msg.toLowerCase().includes("disponiv")) {
+        showToast("Este profissional não está disponível para favoritos.", "info");
         return;
       }
-      handleScreenError({
-        error,
-        showToast,
-        fallbackMessage: "Não foi possível atualizar favoritos.",
-        navigation,
-      });
-    } finally {
-      setSavingFavorite(false);
-    }
+      handleScreenError({ error, showToast, fallbackMessage: "Não foi possível atualizar favoritos.", navigation });
+    } finally { setSavingFavorite(false); }
+  }
+
+  function handleShare() {
+    const name = provider?.displayName ?? "Personal Trainer";
+    void Share.share({
+      title: `Conheça ${name} no Muvify`,
+      message: `Conheça ${name} no Muvify!\nmuvify://professional/${providerId}`,
+    });
   }
 
   function goToBookingWithOffer(offer: ProviderServiceOffer) {
@@ -114,13 +153,42 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
     });
   }
 
+  // Verifica ficha de saúde ANTES de entrar no fluxo de agendamento.
+  // Mostra aviso se incompleta — o usuário pode continuar ou preencher agora.
+  function handleGoToBooking() {
+    hapticCta();
+    if (anamnesisCompleted === false) {
+      Alert.alert(
+        "Ficha de saúde incompleta",
+        "Preencha sua ficha de saúde para que o personal personalize seu atendimento com mais segurança. Você pode preencher agora ou continuar e preencher depois.",
+        [
+          {
+            text: "Preencher agora",
+            onPress: () => navigation.navigate("ClientAnamnesis"),
+          },
+          {
+            text: "Continuar assim",
+            style: "destructive",
+            onPress: () => navigation.navigate("CreateBooking", { professionalId: providerId }),
+          },
+          { text: "Cancelar", style: "cancel" },
+        ]
+      );
+      return;
+    }
+    navigation.navigate("CreateBooking", { professionalId: providerId });
+  }
+
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-        <MvText variant="body3" color="secondary">
-          Carregando profissional...
-        </MvText>
+        <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, height: 70, borderBottomWidth: 1, borderBottomColor: theme.border }} />
+        <View style={{ paddingHorizontal: S.px, paddingTop: 16, gap: 12 }}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
       </View>
     );
   }
@@ -129,201 +197,326 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
         <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-        <MvText variant="body3" color="secondary">
-          Profissional nao encontrado.
-        </MvText>
+        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 14, color: theme.text2 }}>Profissional não encontrado.</Text>
       </View>
     );
   }
 
   const rating = averageToFive(provider.avgRating ?? provider.averageRating);
-  const initials = provider.displayName.slice(0, 2).toUpperCase();
+  const reviewCount = provider.reviews?.length ?? 0;
+  const hasFixedLocations = (provider.fixedLocations ?? []).length > 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <View
-        style={{
-          paddingTop: insets.top + 10,
-          paddingHorizontal: 14,
-          paddingBottom: 10,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 10,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.borderSub,
-        }}
-      >
+
+      {/* Header V2 — sticky */}
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+          accessibilityRole="button" accessibilityLabel="Voltar" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
         >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
+          <Ionicons name="chevron-back" size={18} color={theme.text1} />
         </TouchableOpacity>
-        <MvText variant="h4" numberOfLines={1} style={{ flex: 1 }}>
-          {provider.displayName}
-        </MvText>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.02 * 22 }} numberOfLines={1}>{provider.displayName}</Text>
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>
+            personal trainer · {consultancyCatalog?.onlineConsultancyEnabled ? "CREF validado" : "profissional"}
+          </Text>
+        </View>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity
+            onPress={handleShare}
+            accessibilityRole="button" accessibilityLabel="Compartilhar perfil"
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
+          >
+            <Ionicons name="share-outline" size={18} color={theme.text1} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("ClientChatList")}
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
+          >
+            <Ionicons name="send" size={16} color={theme.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView automaticallyAdjustKeyboardInsets={true}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }}
-        showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}
+      <ScreenEntrance>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, paddingTop: 16, gap: 14 }}
+        showsVerticalScrollIndicator={false}
+        pinchGestureEnabled
+        maximumZoomScale={3}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 4 }}>
-          <MvAvatar
-            initials={initials}
-            size={56}
-            borderRadius={16}
-            color="green"
-            photoUri={provider.photoUrl ?? null}
-          />
-          <View style={{ flex: 1, gap: 2 }}>
-            <MvText variant="semi1">{provider.displayName}</MvText>
-            <MvText variant="body4" color="secondary">
-              {categoryLabel}
-            </MvText>
-            <MvText variant="semi3" style={{ color: theme.textGreen }}>
-              {`★ ${rating.toFixed(1)} · ${formatCurrencyBRL(formatPriceFromCents(provider.priceCents))}/sessão`}
-            </MvText>
+        {/* Hero card V2 */}
+        <View style={{
+          borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder,
+          backgroundColor: "rgba(36,230,109,0.09)", padding: 16,
+        }}>
+          <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>
+            <MvAvatar
+              initials={getInitials(provider.displayName)}
+              photoUri={provider.photoUrl ?? null}
+              tone="green"
+              size="lg"
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.02 * 22 }}>{provider.displayName}</Text>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 4 }}>{categoryLabel}</Text>
+              <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                {consultancyCatalog?.onlineConsultancyEnabled && (
+                  <View style={{ backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3 }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.primary }}>CREF VALIDADO</Text>
+                  </View>
+                )}
+                {favorite && (
+                  <View style={{ backgroundColor: "rgba(239,68,68,0.12)", borderWidth: 1, borderColor: "rgba(239,68,68,0.20)", borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3 }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.danger }}>Favorito</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+
+          {/* Stats grid */}
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 16 }}>
+            {[
+              { label: "Avaliação", value: rating > 0 ? `${rating.toFixed(1)} ★` : "—" },
+              { label: "Avaliações", value: String(reviewCount) },
+              { label: "A partir de", value: formatCurrencyBRL(formatPriceFromCents(provider.priceCents)) },
+            ].map((stat) => (
+              <View key={stat.label} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.24)", borderRadius: 16, padding: "10px 8px" as any, paddingVertical: 10, paddingHorizontal: 8, alignItems: "center", gap: 2 }}>
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 10, color: theme.text3 }}>{stat.label}</Text>
+                <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 14, color: theme.text1, letterSpacing: -0.013 * 14, textAlign: "center" }}>{stat.value}</Text>
+              </View>
+            ))}
           </View>
         </View>
 
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 6 }}>
-            Sobre
-          </MvText>
-          <MvText variant="body3" color="secondary">
-            {provider.bio || "Sem descrição cadastrada."}
-          </MvText>
-        </MvCard>
-
-        <MvCard>
-          <View
-            style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
-          >
-            <MvText variant="semi2">Valor por sessão</MvText>
-            <MvBadge label="Pagamento seguro" variant="green" />
+        {/* Por que contratar (bio) */}
+        {provider.bio ? (
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, marginBottom: 10 }}>Por que contratar</Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, lineHeight: 20 }}>{provider.bio}</Text>
           </View>
-          <MvText variant="h3" style={{ color: theme.textGreen }}>
-            {formatCurrencyBRL(formatPriceFromCents(provider.priceCents))}
-          </MvText>
-          <MvText variant="body4" color="secondary" style={{ marginTop: 4 }}>
-            Pré-autorizado antes do horário e capturado após conclusão.
-          </MvText>
-        </MvCard>
+        ) : null}
 
-        {promotionOffers.length > 0 ? (
-          <MvCard>
-            <MvText variant="semi2" style={{ marginBottom: 8 }}>
-              Ofertas em promocao
-            </MvText>
+        {/* Locais de atendimento */}
+        {hasFixedLocations ? (
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, marginBottom: 10 }}>Locais de atendimento</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {(provider.fixedLocations ?? []).map((loc) => (
+                <View key={loc.id} style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, padding: "10px 12px" as any, paddingVertical: 10, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="barbell-outline" size={13} color={theme.primary} />
+                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>{loc.name}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {/* Promoções de consultoria online */}
+        {consultancyPromotionOffers.length > 0 ? (
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: C.amberBorder, backgroundColor: "rgba(245,166,35,0.08)", padding: 14 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, marginBottom: 10 }}>Consultoria em promoção</Text>
             <View style={{ gap: 10 }}>
-              {promotionOffers.map((offer) => (
-                <View
-                  key={offer.id}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: theme.border,
-                    borderRadius: 10,
-                    backgroundColor: theme.inputBg,
-                    padding: 10,
-                    gap: 4,
-                  }}
-                >
-                  <MvText variant="semi3">{offer.title}</MvText>
-                  <MvText variant="body4" color="secondary">
-                    {offer.kindDescription ?? offer.kind}
-                  </MvText>
-                  <MvText variant="semi3" style={{ color: theme.textGreen }}>
-                    {formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}
-                  </MvText>
-                  {(offer.effectivePriceCents ?? offer.priceCents) < offer.priceCents ? (
-                    <MvText variant="body4" color="tertiary" style={{ textDecorationLine: "line-through" }}>
-                      de {formatCurrencyBRL(offer.priceCents / 100)}
-                    </MvText>
+              {consultancyPromotionOffers.map((offer) => {
+                const hasDiscount = (offer.effectivePriceCents ?? offer.priceCents) < offer.priceCents;
+                const kindLabel = offer.kindDescription
+                  ?? (offer.kind === "ONLINE_CONSULTANCY" ? "Consultoria online"
+                    : offer.kind === "ONLINE_CONSULTANCY_SPECIALIZED" ? "Consultoria especializada"
+                    : offer.kind === "COMBO" ? "Combo online + presencial"
+                    : "Consultoria");
+                return (
+                  <View key={offer.id} style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, padding: 12, gap: 6 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1, flex: 1, marginRight: 8 }}>{offer.title}</Text>
+                      <View style={{ backgroundColor: C.amber, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2 }}>
+                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.textOnPrimary }}>PROMO</Text>
+                      </View>
+                    </View>
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>{kindLabel}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+                      <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: C.amber, letterSpacing: -0.013 * 18 }}>
+                        {formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}
+                      </Text>
+                      {hasDiscount && (
+                        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.labelColor, textDecorationLine: "line-through" }}>
+                          {formatCurrencyBRL(offer.priceCents / 100)}
+                        </Text>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate("ConsultancyRequest", { professionalId: providerId })}
+                      style={{ height: S.touchMin, borderRadius: S.btnR, backgroundColor: C.amber, alignItems: "center", justifyContent: "center" }}
+                    >
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Solicitar consultoria</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        {/* Promoções de agendamento presencial */}
+        {presentialPromotionOffers.length > 0 ? (
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: C.amberBorder, backgroundColor: "rgba(245,166,35,0.08)", padding: 14 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, marginBottom: 10 }}>Aulas em promoção</Text>
+            <View style={{ gap: 10 }}>
+              {presentialPromotionOffers.map((offer) => {
+                const hasDiscount = (offer.effectivePriceCents ?? offer.priceCents) < offer.priceCents;
+                return (
+                  <View key={offer.id} style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, padding: 12, gap: 6 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1, flex: 1, marginRight: 8 }}>{offer.title}</Text>
+                      <View style={{ backgroundColor: C.amber, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2 }}>
+                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.textOnPrimary }}>PROMO</Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+                      <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: C.amber, letterSpacing: -0.013 * 18 }}>
+                        {formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}
+                      </Text>
+                      {hasDiscount && (
+                        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.labelColor, textDecorationLine: "line-through" }}>
+                          {formatCurrencyBRL(offer.priceCents / 100)}
+                        </Text>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => goToBookingWithOffer(offer)}
+                      style={{ height: S.touchMin, borderRadius: S.btnR, backgroundColor: C.amber, alignItems: "center", justifyContent: "center" }}
+                    >
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Escolher dias</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        {/* Consultoria online */}
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1 }}>Consultoria online</Text>
+            <View style={{
+              backgroundColor: catalogLoadError ? "rgba(239,68,68,0.08)" : consultancyCatalog?.onlineConsultancyEnabled ? theme.primarySubtle : "rgba(255,255,255,0.06)",
+              borderWidth: 1, borderColor: catalogLoadError ? "rgba(239,68,68,0.20)" : consultancyCatalog?.onlineConsultancyEnabled ? theme.primarySubtleBorder : theme.border,
+              borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3,
+            }}>
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: catalogLoadError ? theme.danger : consultancyCatalog?.onlineConsultancyEnabled ? theme.primary : theme.text3 }}>
+                {catalogLoadError ? "Erro ao carregar" : consultancyCatalog?.onlineConsultancyEnabled ? "Disponível" : "Indisponível"}
+              </Text>
+            </View>
+          </View>
+          {catalogLoadError ? (
+            <TouchableOpacity onPress={() => void loadData()} style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+              <Ionicons name="refresh-outline" size={14} color={theme.primary} />
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>Tentar novamente</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, marginBottom: 10 }}>
+              Planos mensais, trimestrais, semestrais ou anuais.
+            </Text>
+          )}
+          {onlineOffers.map((offer) => {
+            const kindLabel = offer.kindDescription
+              ?? (offer.kind === "ONLINE_CONSULTANCY" ? "Consultoria online"
+                : offer.kind === "ONLINE_CONSULTANCY_SPECIALIZED" ? "Consultoria especializada"
+                : offer.kind === "COMBO" ? "Combo online + presencial"
+                : "Consultoria");
+            return (
+              <View key={offer.id} style={{ marginBottom: 8 }}>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>{offer.title}</Text>
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3, marginTop: 2 }}>
+                  {kindLabel} · {formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}
+                </Text>
+              </View>
+            );
+          })}
+          <TouchableOpacity
+            disabled={catalogLoadError}
+            onPress={() => navigation.navigate("ConsultancyRequest", { professionalId: providerId })}
+            style={{ height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: catalogLoadError ? theme.border : theme.primarySubtleBorder, backgroundColor: catalogLoadError ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", marginTop: 4, opacity: catalogLoadError ? 0.45 : 1 }}
+          >
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: catalogLoadError ? theme.text3 : theme.text1 }}>
+              {catalogLoadError ? "Consultoria indisponível no momento" : "Solicitar consultoria online"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Avaliações recentes */}
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14 }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, marginBottom: 10 }}>Avaliações recentes</Text>
+          {provider.reviews && provider.reviews.length > 0 ? (
+            <View style={{ gap: 12 }}>
+              {provider.reviews.slice(0, 3).map((review) => (
+                <View key={review.id} style={{ borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 10 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>
+                      {review.user?.name ?? "Cliente"}
+                    </Text>
+                    <StarRow rating={review.rating} />
+                  </View>
+                  {review.comment ? (
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
+                      {review.comment}
+                    </Text>
                   ) : null}
-                  <MvButton
-                    variant="outline"
-                    label="Escolher dias"
-                    onPress={() => goToBookingWithOffer(offer)}
-                    style={{ marginTop: 4 }}
-                  />
                 </View>
               ))}
             </View>
-          </MvCard>
-        ) : null}
-
-        <MvCard>
-          <View
-            style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
-          >
-            <MvText variant="semi2">Consultoria online</MvText>
-            <MvBadge
-              label={consultancyCatalog?.onlineConsultancyEnabled ? "Disponivel" : "Indisponivel"}
-              variant={consultancyCatalog?.onlineConsultancyEnabled ? "green" : "orange"}
-            />
-          </View>
-          <MvText variant="body4" color="secondary" style={{ marginBottom: 8 }}>
-            Planos mensais, trimestrais, semestrais ou anuais.
-          </MvText>
-          {consultancyCatalog?.offers
-            .filter((item) => item.kind !== "PRESENTIAL")
-            .slice(0, 2)
-            .map((offer) => (
-              <View key={offer.id} style={{ marginBottom: 6 }}>
-                <MvText variant="semi3">{offer.title}</MvText>
-                <MvText variant="body4" color="secondary">
-                  {offer.kindDescription ?? offer.billingCycle} |{" "}
-                  {formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}
-                </MvText>
-              </View>
-            ))}
-          <MvButton
-            variant="outline"
-            label="Solicitar consultoria online"
-            onPress={() => navigation.navigate("ConsultancyRequest", { professionalId: providerId })}
-            style={{ marginTop: 4 }}
-          />
-        </MvCard>
-
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 8 }}>
-            Avaliacoes recentes
-          </MvText>
-          {provider.reviews && provider.reviews.length > 0 ? (
-            provider.reviews.slice(0, 2).map((review) => (
-              <View key={review.id} style={{ marginBottom: 8 }}>
-                <MvText variant="semi3">
-                  {`${review.user?.name ?? "Cliente"} — ${review.rating.toFixed(1)}`}
-                </MvText>
-                {review.comment ? (
-                  <MvText variant="body4" color="secondary">
-                    {review.comment}
-                  </MvText>
-                ) : null}
-              </View>
-            ))
           ) : (
-            <MvText variant="body4" color="secondary">
-              Ainda sem avaliacoes registradas.
-            </MvText>
+            <View style={{ alignItems: "center", paddingVertical: 16, gap: 6 }}>
+              <Ionicons name="star-outline" size={28} color={theme.labelColor} />
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>Ainda sem avaliações registradas.</Text>
+            </View>
           )}
-        </MvCard>
-
-        <View style={{ gap: 10 }}>
-          <MvButton
-            label="Criar agendamento"
-            onPress={() => navigation.navigate("CreateBooking", { professionalId: providerId })}
-          />
-          <MvButton
-            variant="outline"
-            label={favorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
-            loading={savingFavorite}
-            onPress={toggleFavorite}
-          />
         </View>
       </ScrollView>
+      </ScreenEntrance>
+
+      {/* Botões fixos no rodapé V2 — safe area */}
+      <View style={{
+        position: "absolute", bottom: 0, left: 0, right: 0,
+        paddingHorizontal: S.px, paddingBottom: Math.max(12, insets.bottom + 12), paddingTop: 12,
+        backgroundColor: `${theme.bg}f0`, borderTopWidth: 1, borderTopColor: theme.border,
+        flexDirection: "row", gap: 10,
+      }}>
+        {/* Favorito — secundário */}
+        <TouchableOpacity
+          onPress={toggleFavorite}
+          disabled={savingFavorite}
+          style={{
+            flex: 1, height: S.btnH, borderRadius: S.btnR,
+            backgroundColor: favorite ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.06)",
+            borderWidth: 1, borderColor: favorite ? "rgba(239,68,68,0.20)" : theme.border,
+            alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6,
+            opacity: savingFavorite ? 0.6 : 1,
+          }}
+        >
+          <Ionicons name={favorite ? "heart" : "heart-outline"} size={16} color={favorite ? theme.danger : theme.text1} />
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: favorite ? theme.danger : theme.text1 }}>
+            {savingFavorite ? "..." : favorite ? "Salvo" : "Salvar"}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Agendar aula — primário */}
+        <TouchableOpacity
+          onPress={handleGoToBooking}
+          style={{
+            flex: 1.4, height: S.btnH, borderRadius: S.btnR,
+            backgroundColor: theme.primary,
+            alignItems: "center", justifyContent: "center",
+            shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
+          }}
+        >
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>Agendar aula</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }

@@ -1,19 +1,21 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshControl, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { Booking, bookingsApi, ProviderStudentManagementDetail, providersApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvBadge, MvButton, MvCard, MvText } from "../../components/mv";
+import { MvAvatar, MvBadge, MvButton, MvCard, MvRefreshControl, MvText } from "../../components/mv";
+import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalStudentDetail">;
 
 function bookingBadge(status: Booking["status"]): { label: string; variant: "green" | "orange" | "red" | "gray" } {
-  if (status === "COMPLETED") return { label: "Concluido", variant: "green" };
+  if (status === "COMPLETED") return { label: "Concluído", variant: "green" };
   if (status === "CANCELLED") return { label: "Cancelado", variant: "red" };
   if (status === "CONFIRMED") return { label: "Confirmado", variant: "green" };
   return { label: "Pendente", variant: "orange" };
@@ -26,8 +28,8 @@ function renderValue(value: unknown): string {
   }
   if (typeof value === "boolean") return value ? "Sim" : "Não";
   if (typeof value === "number") return String(value);
-  if (Array.isArray(value)) return value.length ? value.join(", ") : "Nao informado";
-  return "Nao informado";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "Não informado";
+  return "Não informado";
 }
 
 function getInitials(name: string) {
@@ -47,13 +49,13 @@ function AssessmentRow({
   unit?: string;
 }) {
   const val = renderValue(value);
-  const display = val === "Nao informado" ? val : unit ? `${val} ${unit}` : val;
+  const display = val === "Não informado" ? val : unit ? `${val} ${unit}` : val;
   return (
     <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4, gap: 8 }}>
       <MvText variant="body4" color="secondary" style={{ flex: 1 }}>
         {label}
       </MvText>
-      <MvText variant="body4" style={{ flex: 1, textAlign: "right", opacity: val === "Nao informado" ? 0.5 : 1 }}>
+      <MvText variant="body4" style={{ flex: 1, textAlign: "right", opacity: val === "Não informado" ? 0.5 : 1 }}>
         {display}
       </MvText>
     </View>
@@ -63,7 +65,6 @@ function AssessmentRow({
 export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
-  const insets = useSafeAreaInsets();
 
   const iconColor = theme.mode === "dark" ? "#D8E0D8" : "#394239";
 
@@ -96,9 +97,7 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
     }
   }, [navigation, route.params.clientId, runWithAuth, showToast]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   const answers = detail?.anamnesis?.answers;
   const isAnamnesisComplete = detail?.anamnesis?.status === "COMPLETED";
@@ -125,42 +124,17 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
-      <View
-        style={{
-          paddingTop: insets.top + 12,
-          paddingHorizontal: 16,
-          paddingBottom: 10,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 10,
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 16,
-            backgroundColor: theme.backBtn,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Ionicons name="chevron-back" size={18} color={iconColor} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <MvText variant="semi1">Perfil do aluno</MvText>
-          <MvText variant="caption" color="secondary">
-            Visão consolidada da rotina e evolução do aluno.
-          </MvText>
-        </View>
-      </View>
+      <ProfessionalScreenHeader
+        title="Perfil do aluno"
+        subtitle="Visão consolidada da rotina e evolução do aluno."
+        onBack={() => navigation.goBack()}
+      />
 
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor="#22C55E" colors={["#22C55E"]} />
+          <MvRefreshControl refreshing={loading} onRefresh={() => void load()} />
         }
       >
         {loading && !detail ? (
@@ -200,7 +174,7 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                     </MvText>
                   ) : null}
                   <MvText variant="caption" color="secondary">
-                    Membro desde {new Date(detail.student.memberSince).toLocaleDateString("pt-BR")}
+                    Membro desde {new Date(detail.student.memberSince).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
                   </MvText>
                 </View>
               </View>
@@ -222,7 +196,7 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
             </MvCard>
 
             <MvCard style={{ gap: 8 }}>
-              <MvText variant="semi2">Resumo de servicos</MvText>
+              <MvText variant="semi2">Resumo de serviços</MvText>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {[
                   { label: "Presencial", value: summary?.presentialBookings ?? 0 },
@@ -324,6 +298,7 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                               year: "2-digit",
                               hour: "2-digit",
                               minute: "2-digit",
+                              timeZone: "America/Sao_Paulo",
                             })}
                           </MvText>
                           {booking.category?.name ? (

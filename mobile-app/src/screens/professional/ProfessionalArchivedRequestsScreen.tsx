@@ -1,13 +1,14 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { FlatList, RefreshControl, StatusBar, TouchableOpacity, View } from "react-native";
+import { FlatList, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { consultancyApi, ConsultancyRequest } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvCard, MvText } from "../../components/mv";
+import { MvBadge, MvCard, MvRefreshControl, MvText } from "../../components/mv";
+import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalArchivedRequests">;
@@ -37,7 +38,6 @@ function variantFromStatus(status: ConsultancyRequest["status"]): "orange" | "re
 export function ProfessionalArchivedRequestsScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
-  const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<ArchivedFilter>("ALL");
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<ConsultancyRequest[]>([]);
@@ -59,15 +59,7 @@ export function ProfessionalArchivedRequestsScreen({ navigation }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-        >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
-        </TouchableOpacity>
-        <MvText variant="semi1">Arquivados</MvText>
-      </View>
+      <ProfessionalScreenHeader title="Arquivados" onBack={() => navigation.goBack()} />
 
       <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
         <MvText variant="body4" color="secondary" style={{ marginBottom: 10 }}>
@@ -96,7 +88,7 @@ export function ProfessionalArchivedRequestsScreen({ navigation }: Props) {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 8 }}
         data={items}
         keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor="#22C55E" colors={["#22C55E"]} />}
+        refreshControl={<MvRefreshControl refreshing={loading} onRefresh={load} />}
         renderItem={({ item }) => (
           <MvCard>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
@@ -113,12 +105,18 @@ export function ProfessionalArchivedRequestsScreen({ navigation }: Props) {
         )}
         ListEmptyComponent={
           !loading ? (
-            <View style={{ paddingTop: 40, alignItems: "center" }}>
+            <View style={{ paddingTop: 40, alignItems: "center", gap: 12 }}>
               <MvText variant="body3" color="secondary">Nenhuma proposta arquivada neste filtro.</MvText>
+              <TouchableOpacity
+                onPress={() => navigation.navigate("ProfessionalConsultancyCenter")}
+                style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: "rgba(36,230,109,0.25)", backgroundColor: "rgba(36,230,109,0.08)" }}
+              >
+                <MvText variant="semi3" style={{ color: "#24E66D" }}>Ver central de consultoria</MvText>
+              </TouchableOpacity>
             </View>
           ) : null
         }
-        showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}
+        showsVerticalScrollIndicator={false}
       />
     </View>
   );

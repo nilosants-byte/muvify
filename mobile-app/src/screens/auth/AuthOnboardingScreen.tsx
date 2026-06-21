@@ -1,106 +1,152 @@
 import React, { useState } from "react";
-import { Pressable, StatusBar, TouchableOpacity, View } from "react-native";
+import { StatusBar, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Location from "expo-location";
 import { useAppState } from "../../state/AppState";
+import { MvButton } from "../../components/mv/MvButton";
+import { MvText } from "../../components/mv/MvText";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { C, S } from "../../theme/v2tokens";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvText } from "../../components/mv";
 
 const slides: Array<{
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
   title: string;
   desc: string;
+  cta: string;
 }> = [
   {
-    icon: "barbell-outline",
-    title: "Seu treino,\nseu ritmo.",
-    desc: "Conecte-se com personal trainers certificados e agende sessões presenciais ou online.",
+    icon: "people-outline",
+    label: "Encontre seu personal",
+    title: "Personais\nperto de você.",
+    desc: "Conecte-se com personal trainers certificados e agende sessões presenciais ou online, direto pelo app.",
+    cta: "Continuar",
   },
   {
     icon: "document-text-outline",
-    title: "Planos\npersonalizados.",
-    desc: "Receba treinos montados especialmente para você, com exercícios, cargas e descansos definidos.",
+    label: "Plano personalizado",
+    title: "Treinos feitos\npara você.",
+    desc: "Receba planos montados especialmente para seu perfil, com exercícios, cargas e descansos definidos pelo seu personal.",
+    cta: "Continuar",
   },
   {
-    icon: "calendar-clear-outline",
-    title: "Agende\ncom facilidade.",
-    desc: "Escolha data, horário e modalidade. Pague com PIX ou cartão diretamente no app.",
+    icon: "location-outline",
+    label: "Comece agora",
+    title: "Seu personal\nideal está aqui.",
+    desc: "Ative sua localização para ver os profissionais mais próximos de você e começar a treinar hoje.",
+    cta: "Ativar e começar",
   },
 ];
 
-export function AuthOnboardingScreen() {
-  const { completeOnboarding } = useAppState();
-  const { theme } = useMvTheme();
-  const insets = useSafeAreaInsets();
-  const isDark = theme.mode === "dark";
+interface AuthOnboardingScreenProps {
+  onDismiss?: () => void;
+}
 
+export function AuthOnboardingScreen({ onDismiss }: AuthOnboardingScreenProps = {}) {
+  const { theme } = useMvTheme();
+  const { completeOnboarding, showToast } = useAppState();
+  const insets = useSafeAreaInsets();
   const [idx, setIdx] = useState(0);
-  const slide = slides[idx];
+  const [requesting, setRequesting] = useState(false);
+  const slide = slides[idx]!;
   const isLast = idx === slides.length - 1;
+
+  const finish = async () => {
+    if (onDismiss) { onDismiss(); return; }
+    try {
+      setRequesting(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        showToast("Localização não ativada. Você pode habilitá-la depois em Configurações do celular.", "info");
+      }
+    } catch { /* best effort */ }
+    finally { setRequesting(false); }
+    void completeOnboarding();
+  };
+
+  const handleNext = async () => {
+    if (isLast) {
+      await finish();
+    } else {
+      setIdx((c) => c + 1);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
-      {/* Botão pular — topo direito */}
-      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 20, alignItems: "flex-end" }}>
-        <Pressable
-          accessibilityRole="button"
-          hitSlop={12}
-          onPress={() => void completeOnboarding()}
-        >
-          <MvText variant="body4" color="secondary">Pular</MvText>
-        </Pressable>
-      </View>
+      {/* Botão pular */}
+      {!isLast ? (
+        <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, alignItems: "flex-end" }}>
+          <PressableScale
+            onPress={finish}
+            accessibilityRole="button"
+            accessibilityLabel="Pular onboarding"
+            style={{ paddingHorizontal: 12, paddingVertical: 10, minHeight: 44, justifyContent: "center" }}
+          >
+            <MvText variant="body4" color="secondary">Pular</MvText>
+          </PressableScale>
+        </View>
+      ) : (
+        <View style={{ paddingTop: insets.top + 14 }} />
+      )}
 
-      {/* Área hero — ícone centralizado */}
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+      {/* Hero */}
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12 }}>
         <View style={{
-          width: 140,
-          height: 140,
-          borderRadius: 40,
-          backgroundColor: isDark ? "rgba(34,197,94,0.10)" : "rgba(34,197,94,0.08)",
-          borderWidth: 1,
-          borderColor: isDark ? "rgba(34,197,94,0.18)" : "rgba(34,197,94,0.14)",
-          alignItems: "center",
-          justifyContent: "center",
+          width: 140, height: 140, borderRadius: 44,
+          backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder,
+          alignItems: "center", justifyContent: "center",
+          shadowColor: theme.primary, shadowOpacity: 0.3, shadowRadius: 30, elevation: 10,
         }}>
-          <Ionicons name={slide.icon} size={58} color={theme.textGreen} />
+          <Ionicons name={slide.icon} size={60} color={theme.primary} />
+        </View>
+
+        <View style={{
+          backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder,
+          borderRadius: S.chipR, paddingHorizontal: 12, paddingVertical: 5,
+        }}>
+          <MvText variant="badge" style={{ color: theme.primary }}>{slide.label}</MvText>
         </View>
       </View>
 
       {/* Conteúdo inferior */}
-      <View style={{
-        paddingHorizontal: 28,
-        paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 32,
-        gap: 16,
-      }}>
+      <View style={{ paddingHorizontal: S.px, paddingBottom: Math.max(insets.bottom + 24, 40), gap: 16 }}>
         {/* Indicadores de progresso */}
         <View style={{ flexDirection: "row", gap: 6, justifyContent: "center" }}>
           {slides.map((_, i) => (
-            <TouchableOpacity key={i} onPress={() => setIdx(i)} hitSlop={6}>
+            <PressableScale
+              key={i}
+              onPress={() => setIdx(i)}
+              accessibilityRole="button"
+              accessibilityLabel={`Ir para slide ${i + 1}`}
+              style={{ padding: 8, minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}
+            >
               <View style={{
                 width: i === idx ? 24 : 8,
-                height: 4,
-                borderRadius: 3,
-                backgroundColor: i === idx ? theme.textGreen : theme.borderSub,
+                height: 4, borderRadius: 3,
+                backgroundColor: i === idx ? theme.primary : "rgba(255,255,255,0.20)",
               }} />
-            </TouchableOpacity>
+            </PressableScale>
           ))}
         </View>
 
-        <MvText variant="h2" style={{ lineHeight: 32 }}>{slide.title}</MvText>
-        <MvText variant="body3" color="secondary">{slide.desc}</MvText>
+        <MvText variant="hero" style={{ lineHeight: 36 }}>
+          {slide.title}
+        </MvText>
+
+        <MvText variant="body2" color="secondary" style={{ lineHeight: 24 }}>
+          {slide.desc}
+        </MvText>
 
         <MvButton
-          label={isLast ? "Começar" : "Continuar"}
-          onPress={() => {
-            if (isLast) {
-              void completeOnboarding();
-            } else {
-              setIdx((current) => current + 1);
-            }
-          }}
+          label={requesting ? "Ativando..." : slide.cta}
+          disabled={requesting}
+          loading={requesting}
+          onPress={() => void handleNext()}
           style={{ marginTop: 4 }}
         />
       </View>

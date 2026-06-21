@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,6 +30,7 @@ import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvCard, MvInput, MvMediaViewer, MvText } from "../../components/mv";
 import { handleScreenError } from "../shared/api-helpers";
+import { StepProgressBar } from "../../components/professional/UXReformComponents";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "TrainingCreation">;
 type ActiveTab = "mine" | "prebuilt";
@@ -133,14 +135,22 @@ function resolveExerciseMedia(mediaUrl?: string | null, mediaType?: ExerciseMedi
 
 function toDraftExercise(exercise: Exercise): DraftPlanExercise {
   const media = resolveExerciseMedia(exercise.mediaUrl, exercise.mediaType);
+  // Exercícios do banco Muvify (prebuilt) usam o padrão fixo da plataforma.
+  // Exercícios próprios do profissional usam os defaults salvos, com fallback para o padrão.
+  const repetitionsSets = exercise.isPrebuilt
+    ? "3x12"
+    : (exercise.defaultRepetitionsSets?.trim() || "3x12");
+  const restLabel = exercise.isPrebuilt
+    ? "60s"
+    : (exercise.defaultRestLabel?.trim() || "60s");
   return {
     uid: createUid(exercise.id),
     exerciseId: exercise.id,
     name: exercise.name,
     category: exercise.category,
-    repetitionsSets: exercise.defaultRepetitionsSets?.trim() || "4x12",
-    load: "A definir",
-    restLabel: exercise.defaultRestLabel?.trim() || "60s",
+    repetitionsSets,
+    load: "0 kg",
+    restLabel,
     demoVideoUrl:
       exercise.mediaType === "YOUTUBE" && exercise.mediaUrl
         ? exercise.mediaUrl
@@ -174,13 +184,13 @@ function toDraftExerciseFromPlanItem(
 
 function planValidationError(title: string, exercises: DraftPlanExercise[]): string | null {
   if (!title.trim()) return "Informe o nome do treino.";
-  if (!exercises.length) return "Adicione exercicios ao treino.";
+  if (!exercises.length) return "Adicione exercícios ao treino.";
   const hasInvalid = exercises.some(
     (exercise) =>
       !exercise.name.trim() || !exercise.repetitionsSets.trim() || !exercise.load.trim()
   );
   if (hasInvalid) {
-    return "Preencha nome, series x reps e carga de todos os exercicios.";
+    return "Preencha nome, séries x reps e carga de todos os exercícios.";
   }
   return null;
 }
@@ -266,7 +276,7 @@ function ExerciseThumb({
   );
 }
 
-export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
+export function ProfessionalTrainingCreationScreen({ navigation, route }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
@@ -305,6 +315,8 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
 
   const [targetExercise, setTargetExercise] = useState<Exercise | null>(null);
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewState>(null);
+  const [step, setStep] = useState(0);
+  const targetContractId = route.params?.contractId;
 
   const listIndicatorProps = useMemo(
     () => ({
@@ -350,7 +362,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
       handleScreenError({
         error,
         showToast,
-        fallbackMessage: "Falha ao carregar banco de exercicios.",
+        fallbackMessage: "Falha ao carregar banco de exercícios.",
         navigation,
       });
     } finally {
@@ -465,8 +477,8 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
 
     if (editingPlanId && editingPlanId !== planId) {
       Alert.alert(
-        "Trocar treino em edicao?",
-        "Existe um treino com alteracoes abertas. Se continuar, a edicao atual sera substituida.",
+        "Trocar treino em edição?",
+        "Existe um treino com alterações abertas. Se continuar, a edição atual será substituída.",
         [
           { text: "Cancelar", style: "cancel" },
           { text: "Continuar", onPress: execute },
@@ -615,7 +627,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
   }
 
   async function saveExercise() {
-    if (!exerciseForm.name.trim()) return showToast("Informe o nome do exercicio.", "error");
+    if (!exerciseForm.name.trim()) return showToast("Informe o nome do exercício.", "error");
     if (!exerciseForm.category) return showToast("Selecione uma categoria.", "error");
     if (!exerciseForm.repetitionsSets.trim()) return showToast("Informe series x reps.", "error");
 
@@ -649,7 +661,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
       handleScreenError({
         error,
         showToast,
-        fallbackMessage: "Falha ao criar exercicio.",
+        fallbackMessage: "Falha ao criar exercício.",
         navigation,
       });
     } finally {
@@ -658,7 +670,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
   }
 
   function removeExercise(exerciseId: string) {
-    Alert.alert("Remover exercicio", "Deseja remover este exercicio?", [
+    Alert.alert("Remover exercício", "Deseja remover este exercício?", [
       { text: "Cancelar", style: "cancel" },
       {
         text: "Remover",
@@ -675,7 +687,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
             handleScreenError({
               error,
               showToast,
-              fallbackMessage: "Falha ao remover exercicio.",
+              fallbackMessage: "Falha ao remover exercício.",
               navigation,
             });
           } finally {
@@ -692,25 +704,44 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
 
     try {
       setSavingNewPlan(true);
-      await runWithAuth((token) =>
-        consultancyApi.createProviderPlan(token, {
-          title: newPlanTitle.trim(),
-          description: newPlanDescription.trim() || undefined,
-          isPrebuilt: true,
-          exercises: newPlanExercises.map((exercise, index) => ({
-            sortOrder: index,
-            exerciseId: exercise.exerciseId,
-            name: exercise.name.trim(),
-            repetitionsSets: exercise.repetitionsSets.trim(),
-            load: exercise.load.trim(),
-            restLabel: exercise.restLabel.trim() || undefined,
-            demoVideoUrl: exercise.demoVideoUrl?.trim() || undefined,
-          })),
-        })
-      );
-      showToast("Treino criado com sucesso.", "success");
-      resetNewPlanBuilder();
-      await loadData();
+      const exercisesPayload = newPlanExercises.map((exercise, index) => ({
+        sortOrder: index,
+        exerciseId: exercise.exerciseId,
+        name: exercise.name.trim(),
+        repetitionsSets: exercise.repetitionsSets.trim(),
+        load: exercise.load.trim(),
+        restLabel: exercise.restLabel.trim() || undefined,
+        demoVideoUrl: exercise.demoVideoUrl?.trim() || undefined,
+      }));
+
+      if (targetContractId) {
+        await runWithAuth((token) =>
+          consultancyApi.deliverContract(token, targetContractId, {
+            title: newPlanTitle.trim(),
+            description: newPlanDescription.trim() || undefined,
+            exercises: exercisesPayload,
+          })
+        );
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast("Treino entregue ao aluno com sucesso.", "success");
+        navigation.goBack();
+      } else {
+        await runWithAuth((token) =>
+          consultancyApi.createProviderPlan(token, {
+            title: newPlanTitle.trim(),
+            description: newPlanDescription.trim() || undefined,
+            isPrebuilt: true,
+            exercises: exercisesPayload,
+          })
+        );
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await new Promise<void>(resolve => setTimeout(resolve, 200));
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        showToast("Treino criado com sucesso.", "success");
+        resetNewPlanBuilder();
+        setStep(0);
+        await loadData();
+      }
     } catch (error) {
       handleScreenError({
         error,
@@ -745,6 +776,9 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
           })),
         })
       );
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await new Promise<void>(resolve => setTimeout(resolve, 200));
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       showToast("Treino atualizado com sucesso.", "success");
       resetInlinePlanEdit();
       await loadData();
@@ -830,9 +864,9 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
         </TouchableOpacity>
 
         <View style={{ flex: 1 }}>
-          <MvText variant="semi1">Banco de Exercícios</MvText>
+          <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, letterSpacing: -0.3 }}>{targetContractId ? "Criar Treino" : "Banco de Exercícios"}</MvText>
           <MvText variant="body4" color="secondary">
-            Meus exercicios, Treinos Muvify e Criar Treinos
+            {targetContractId ? "Montagem e entrega de treino" : "Meus exercícios, Treinos Muvify e Criar Treinos"}
           </MvText>
         </View>
 
@@ -852,10 +886,16 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
           <Ionicons
             name={showCreateExerciseForm ? "close" : "add"}
             size={20}
-            color={showCreateExerciseForm ? "#f44336" : "#22C55E"}
+            color={showCreateExerciseForm ? "#f44336" : theme.primary}
           />
         </TouchableOpacity>
       </View>
+
+      {/* Indicador de etapas */}
+      <StepProgressBar
+        steps={["Dados gerais", "Exercícios", "Revisão"]}
+        currentStep={step + 1}
+      />
 
       {!crefApproved && !loading && (
         <View style={{
@@ -872,8 +912,8 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
       )}
 
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 90, gap: 12 }}
-        showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: Math.max(120, insets.bottom + 80), gap: 12 }}
+        showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         automaticallyAdjustKeyboardInsets
@@ -884,7 +924,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
               Salve seu perfil para liberar o cadastro completo
             </MvText>
             <MvText variant="body4" color="secondary" style={{ marginBottom: 10 }}>
-              O acesso as telas permanece normal. Para salvar exercicios e treinos, finalize seu
+              O acesso as telas permanece normal. Para salvar exercícios e treinos, finalize seu
               perfil profissional.
             </MvText>
             <MvButton
@@ -898,6 +938,102 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
             />
           </MvCard>
         ) : null}
+
+        {step === 0 ? (
+          <>
+            <MvCard>
+              <MvInput
+                placeholder="Nome do Treino *"
+                value={newPlanTitle}
+                onChangeText={setNewPlanTitle}
+                maxLength={100}
+              />
+              <MvInput
+                placeholder="Descrição (opcional)"
+                value={newPlanDescription}
+                onChangeText={setNewPlanDescription}
+                multiline
+                numberOfLines={2}
+                style={{ marginTop: 8 }}
+              />
+              {/* Chips de objetivo — adicionam texto ao nome do treino */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8, marginTop: 10, paddingBottom: 2 }}
+              >
+                {["Hipertrofia", "Emagrecimento", "Força", "Resistência", "Mobilidade", "Condicionamento"].map((obj) => (
+                  <TouchableOpacity
+                    key={obj}
+                    onPress={() => setNewPlanTitle((t) => t ? `${t} — ${obj}` : obj)}
+                    style={{
+                      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+                      borderWidth: 1, borderColor: "rgba(34,197,94,0.30)",
+                      backgroundColor: "rgba(34,197,94,0.08)",
+                    }}
+                  >
+                    <MvText variant="semi3" style={{ color: theme.textGreen, fontSize: 12 }}>{obj}</MvText>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              {targetContractId ? (
+                <View style={{ marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: "rgba(33,150,243,0.08)", borderWidth: 1, borderColor: "rgba(33,150,243,0.25)" }}>
+                  <MvText variant="body4" style={{ color: "#2196F3" }}>
+                    Este treino será entregue para a consultoria contratada.
+                  </MvText>
+                </View>
+              ) : null}
+            </MvCard>
+
+            {providerPlans.length > 0 ? (
+              <MvCard>
+                <MvText variant="semi2" style={{ marginBottom: 4 }}>Usar como base</MvText>
+                <MvText variant="body4" color="secondary" style={{ marginBottom: 10 }}>
+                  Copie os exercícios de um treino existente como ponto de partida.
+                </MvText>
+                <View style={{ gap: 8 }}>
+                  {providerPlans.map((plan) => (
+                    <TouchableOpacity
+                      key={plan.id}
+                      onPress={() => {
+                        const loaded = plan.exercises.map((item, idx) => toDraftExerciseFromPlanItem(item, idx));
+                        setNewPlanExercises(loaded);
+                        showToast(`${loaded.length} exercícios de "${plan.title}" carregados.`, "success");
+                      }}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        borderRadius: 10,
+                        backgroundColor: theme.bg,
+                        padding: 10,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <MvText variant="semi3">{plan.title}</MvText>
+                        <MvText variant="body4" color="secondary">{plan.exercises.length} exercícios</MvText>
+                      </View>
+                      <Ionicons name="copy-outline" size={18} color={theme.textGreen} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </MvCard>
+            ) : null}
+          </>
+        ) : null}
+
+        {step === 1 ? (
+          <>
+            {newPlanExercises.length > 0 ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4 }}>
+                <Ionicons name="checkmark-circle" size={16} color={theme.textGreen} />
+                <MvText variant="body4" style={{ color: theme.textGreen }}>
+                  {newPlanExercises.length} exercícios selecionado(s)
+                </MvText>
+              </View>
+            ) : null}
 
         <MvCard>
           <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
@@ -922,10 +1058,10 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
                     variant="semi3"
                     style={{ color: active ? theme.textGreen : theme.text2 }}
                   >
-                    {tab === "mine" ? "Meus exercicios" : "Treinos Muvify"}
+                    {tab === "mine" ? "Meus exercícios" : "Treinos Muvify"}
                   </MvText>
                   <MvText variant="badge" color="secondary">
-                    {count} exercicios
+                    {count} exercícios
                   </MvText>
                 </TouchableOpacity>
               );
@@ -933,7 +1069,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
           </View>
 
           <MvInput
-            placeholder="Buscar exercicios..."
+            placeholder="Buscar exercícios..."
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
@@ -974,8 +1110,9 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
           {showCreateExerciseForm ? (
             <View style={{ gap: 8, marginTop: 10 }}>
               <MvInput
-                placeholder="Nome do exercicio *"
+                placeholder="Nome do exercício *"
                 value={exerciseForm.name}
+                maxLength={80}
                 onChangeText={(value) =>
                   setExerciseForm((current) => ({ ...current, name: value }))
                 }
@@ -1109,10 +1246,11 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
                 }
                 multiline
                 numberOfLines={2}
+                maxLength={300}
               />
 
               <MvButton
-                label="Salvar exercicio"
+                label="Salvar exercício"
                 loading={savingExercise}
                 disabled={!crefApproved}
                 onPress={() => void saveExercise()}
@@ -1123,7 +1261,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
 
         <MvCard>
           <MvText variant="semi2" style={{ marginBottom: 8 }}>
-            Lista de exercicios
+            Lista de exercícios
           </MvText>
           {loading ? (
             <MvText variant="body4" color="secondary" style={{ marginBottom: 8 }}>
@@ -1141,282 +1279,142 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
           >
             <ScrollView
               style={{ maxHeight: LIST_BOX_MAX_HEIGHT }}
-              contentContainerStyle={{ padding: 10, gap: 8 }}
+              contentContainerStyle={{ padding: 10 }}
               {...listIndicatorProps}
             >
-              {displayExercises.map((exercise) => {
-                const media = resolveExerciseMedia(exercise.mediaUrl, exercise.mediaType);
-                return (
-                  <View
-                    key={exercise.id}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: theme.border,
-                      borderRadius: 10,
-                      backgroundColor: theme.bg,
-                      padding: 10,
-                      gap: 8,
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7 }}>
+                {displayExercises.map((exercise) => {
+                  const media = resolveExerciseMedia(exercise.mediaUrl, exercise.mediaType);
+                  return (
+                    <TouchableOpacity
+                      key={exercise.id}
+                      activeOpacity={0.8}
+                      onPress={() => addToNewPlanBuilder(exercise)}
+                      style={{
+                        width: "22%",
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        backgroundColor: theme.bg,
+                        padding: 8,
+                        alignItems: "center",
+                        gap: 5,
+                        minHeight: 108,
+                        justifyContent: "flex-start",
+                      }}
+                    >
+                      {/* Thumbnail — toque direto faz preview de mídia */}
                       {media ? (
-                        <TouchableOpacity
-                          onPress={() => openMediaPreview(media, exercise.name)}
-                          activeOpacity={0.85}
-                        >
+                        <TouchableOpacity onPress={() => openMediaPreview(media, exercise.name)} activeOpacity={0.85}>
                           <ExerciseThumb theme={theme as Record<string, any>} media={media} />
                         </TouchableOpacity>
                       ) : (
-                        <View
-                          style={{
-                            width: 56,
-                            height: 56,
-                            borderRadius: 10,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: theme.chipBg,
-                            borderWidth: 1,
-                            borderColor: theme.border,
-                          }}
-                        >
+                        <View style={{ width: 44, height: 44, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: theme.chipBg, borderWidth: 1, borderColor: theme.border }}>
                           <Ionicons name="barbell-outline" size={20} color={theme.text3} />
                         </View>
                       )}
-
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <MvText variant="semi3">{exercise.name}</MvText>
-                        <MvText variant="body4" color="secondary">
-                          {exercise.category}
-                        </MvText>
-                        <MvText variant="body4" color="secondary">
-                          Séries x Reps: {exercise.defaultRepetitionsSets?.trim() || "-"}
-                        </MvText>
-                        <MvText variant="body4" color="secondary">
-                          Descanso: {exercise.defaultRestLabel?.trim() || "-"}
-                        </MvText>
-                      </View>
-
-                      <View style={{ gap: 6 }}>
-                        <TouchableOpacity
-                          onPress={() => setTargetExercise(exercise)}
-                          style={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: 17,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: "rgba(34,197,94,0.12)",
-                            borderWidth: 1,
-                            borderColor: "rgba(34,197,94,0.35)",
-                          }}
-                        >
-                          <Ionicons name="add" size={16} color={theme.textGreen} />
-                        </TouchableOpacity>
-
-                        {media ? (
-                          <TouchableOpacity
-                            onPress={() => openMediaPreview(media, exercise.name)}
-                            style={{
-                              width: 34,
-                              height: 34,
-                              borderRadius: 17,
-                              alignItems: "center",
-                              justifyContent: "center",
-                              backgroundColor: "rgba(33,150,243,0.12)",
-                              borderWidth: 1,
-                              borderColor: "rgba(33,150,243,0.30)",
-                            }}
-                          >
-                            <Ionicons name="play-outline" size={16} color="#2196F3" />
-                          </TouchableOpacity>
-                        ) : null}
-
+                      <MvText
+                        numberOfLines={2}
+                        style={{ fontFamily: "DMSans_400Regular", fontSize: 10, textAlign: "center", color: theme.text1, lineHeight: 13 }}
+                      >
+                        {exercise.name}
+                      </MvText>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <Ionicons name="add-circle" size={14} color={theme.textGreen} />
                         {!exercise.isPrebuilt ? (
                           <TouchableOpacity
                             onPress={() => removeExercise(exercise.id)}
                             disabled={deletingExerciseId === exercise.id}
-                            style={{
-                              width: 34,
-                              height: 34,
-                              borderRadius: 17,
-                              alignItems: "center",
-                              justifyContent: "center",
-                              backgroundColor: "rgba(244,67,54,0.10)",
-                              borderWidth: 1,
-                              borderColor: "rgba(244,67,54,0.25)",
-                            }}
+                            hitSlop={4}
                           >
-                            <Ionicons name="trash-outline" size={14} color="#f44336" />
+                            <Ionicons name="trash-outline" size={12} color={deletingExerciseId === exercise.id ? theme.text3 : "#f44336"} />
                           </TouchableOpacity>
                         ) : null}
                       </View>
-                    </View>
-                  </View>
-                );
-              })}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
               {!loading && displayExercises.length === 0 ? (
-                <MvText variant="body4" color="secondary">
-                  Nenhum exercicio encontrado.
+                <MvText variant="body4" color="secondary" style={{ marginTop: 4 }}>
+                  Nenhum exercício encontrado.
                 </MvText>
               ) : null}
             </ScrollView>
           </View>
         </MvCard>
+          </>
+        ) : null}
 
-        <MvCard>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 8,
-            }}
-          >
-            <MvText variant="semi2">Criar Treinos</MvText>
-            <TouchableOpacity
-              onPress={() => setShowNewPlanBuilder((current) => !current)}
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 17,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "rgba(34,197,94,0.12)",
-                borderWidth: 1,
-                borderColor: "rgba(34,197,94,0.35)",
-              }}
-            >
-              <Ionicons name={showNewPlanBuilder ? "close" : "add"} size={16} color={theme.textGreen} />
-            </TouchableOpacity>
-          </View>
-          {showNewPlanBuilder ? (
-            <View style={{ gap: 8 }}>
-              <MvInput placeholder="Nome do Treino *" value={newPlanTitle} onChangeText={setNewPlanTitle} />
-              <MvInput
-                placeholder="Descrição (opcional)"
-                value={newPlanDescription}
-                onChangeText={setNewPlanDescription}
-                multiline
-                numberOfLines={2}
-              />
-
-              <MvText variant="body4" color="secondary">
-                {newPlanExercises.length} exercicio(s) selecionado(s)
-              </MvText>
-
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  borderRadius: 12,
-                  backgroundColor: theme.inputBg,
-                }}
-              >
-                <ScrollView
-                  style={{ maxHeight: LIST_BOX_MAX_HEIGHT }}
-                  contentContainerStyle={{ padding: 10, gap: 8 }}
-                  {...listIndicatorProps}
-                >
-                  {newPlanExercises.map((exercise, index) => {
-                    const media = resolveExerciseMedia(exercise.mediaUrl, exercise.mediaType);
-                    return (
-                      <View
-                        key={exercise.uid}
-                        style={{
-                          borderWidth: 1,
-                          borderColor: theme.border,
-                          borderRadius: 10,
-                          backgroundColor: theme.bg,
-                          padding: 10,
-                          gap: 6,
-                        }}
-                      >
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                          {media ? (
-                            <TouchableOpacity
-                              onPress={() => openMediaPreview(media, exercise.name)}
-                              activeOpacity={0.85}
-                            >
-                              <ExerciseThumb theme={theme as Record<string, any>} media={media} />
-                            </TouchableOpacity>
-                          ) : null}
-                          <View style={{ flex: 1 }}>
-                            <MvText variant="semi3">
-                              {index + 1}. {exercise.name}
-                            </MvText>
-                            {exercise.category ? (
-                              <MvText variant="body4" color="secondary">
-                                {exercise.category}
-                              </MvText>
-                            ) : null}
-                          </View>
-                          <TouchableOpacity onPress={() => removeDraftExercise(setNewPlanExercises, exercise.uid)}>
-                            <Ionicons name="trash-outline" size={16} color="#f44336" />
-                          </TouchableOpacity>
-                        </View>
-                        <MvInput
-                          placeholder="Séries x Reps (ex: 4x12)"
-                          value={exercise.repetitionsSets}
-                          onChangeText={(value) =>
-                            patchDraftExercise(setNewPlanExercises, exercise.uid, {
-                              repetitionsSets: value,
-                            })
-                          }
-                        />
-                        <MvInput
-                          placeholder="Carga *"
-                          value={exercise.load}
-                          onChangeText={(value) =>
-                            patchDraftExercise(setNewPlanExercises, exercise.uid, { load: value })
-                          }
-                        />
-                        <MvInput
-                          placeholder="Tempo de descanso (opcional)"
-                          value={exercise.restLabel}
-                          onChangeText={(value) =>
-                            patchDraftExercise(setNewPlanExercises, exercise.uid, {
-                              restLabel: value,
-                            })
-                          }
-                        />
-                      </View>
-                    );
-                  })}
-
-                  {newPlanExercises.length === 0 ? (
-                    <MvText variant="body4" color="secondary">
-                      Use o botao + nos exercicios para montar este treino.
-                    </MvText>
-                  ) : null}
-                </ScrollView>
-              </View>
-
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <View style={{ flex: 1 }}>
-                  <MvButton
-                    label="Salvar treino"
-                    loading={savingNewPlan}
-                    disabled={!crefApproved}
-                    onPress={() => void saveNewPlan()}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <MvButton variant="outline" label="Cancelar" onPress={resetNewPlanBuilder} />
-                </View>
-              </View>
-            </View>
-          ) : (
-            <MvText variant="body4" color="secondary">
-              Toque em + para criar um novo treino e usar os exercicios selecionados.
+        {step === 2 ? (
+          <MvCard>
+            <MvText variant="semi2" style={{ marginBottom: 8 }}>Revisão</MvText>
+            <MvText variant="body4" color="secondary" style={{ marginBottom: 10 }}>
+              {newPlanTitle.trim() || "(sem título)"} · {newPlanExercises.length} exercícios
             </MvText>
-          )}
-        </MvCard>
+            <View style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 12, backgroundColor: theme.inputBg }}>
+              <ScrollView
+                style={{ maxHeight: LIST_BOX_MAX_HEIGHT }}
+                contentContainerStyle={{ padding: 10, gap: 8 }}
+                {...listIndicatorProps}
+              >
+                {newPlanExercises.map((exercise, index) => {
+                  const media = resolveExerciseMedia(exercise.mediaUrl, exercise.mediaType);
+                  return (
+                    <View
+                      key={exercise.uid}
+                      style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 10, backgroundColor: theme.bg, padding: 10, gap: 6 }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        {media ? (
+                          <TouchableOpacity onPress={() => openMediaPreview(media, exercise.name)} activeOpacity={0.85}>
+                            <ExerciseThumb theme={theme as Record<string, any>} media={media} />
+                          </TouchableOpacity>
+                        ) : null}
+                        <View style={{ flex: 1 }}>
+                          <MvText variant="semi3">{index + 1}. {exercise.name}</MvText>
+                          {exercise.category ? (
+                            <MvText variant="body4" color="secondary">{exercise.category}</MvText>
+                          ) : null}
+                        </View>
+                        <TouchableOpacity onPress={() => removeDraftExercise(setNewPlanExercises, exercise.uid)}>
+                          <Ionicons name="trash-outline" size={16} color="#f44336" />
+                        </TouchableOpacity>
+                      </View>
+                      <MvInput
+                        placeholder="Séries x Reps (ex: 4x12)"
+                        value={exercise.repetitionsSets}
+                        onChangeText={(v) => patchDraftExercise(setNewPlanExercises, exercise.uid, { repetitionsSets: v })}
+                      />
+                      <MvInput
+                        placeholder="Carga *"
+                        value={exercise.load}
+                        onChangeText={(v) => patchDraftExercise(setNewPlanExercises, exercise.uid, { load: v })}
+                      />
+                      <MvInput
+                        placeholder="Tempo de descanso (opcional)"
+                        value={exercise.restLabel}
+                        onChangeText={(v) => patchDraftExercise(setNewPlanExercises, exercise.uid, { restLabel: v })}
+                      />
+                    </View>
+                  );
+                })}
+                {newPlanExercises.length === 0 ? (
+                  <MvText variant="body4" color="secondary">
+                    Nenhum exercício. Volte à etapa anterior para adicionar.
+                  </MvText>
+                ) : null}
+              </ScrollView>
+            </View>
+          </MvCard>
+        ) : null}
 
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 8 }}>
-            Treinos criados
-          </MvText>
+        {step === 0 ? (
+          <MvCard>
+            <MvText variant="semi2" style={{ marginBottom: 8 }}>
+              Treinos criados
+            </MvText>
 
           <View
             style={{
@@ -1470,7 +1468,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
                         <View style={{ flex: 1 }}>
                           <MvText variant="semi3">{plan.title}</MvText>
                           <MvText variant="body4" color="secondary">
-                            {plan.exercises.length} exercicio(s)
+                            {plan.exercises.length} exercícios
                           </MvText>
                         </View>
                         <Ionicons
@@ -1600,7 +1598,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
 
                             {editingPlanExercises.length === 0 ? (
                               <MvText variant="body4" color="secondary">
-                                Nenhum exercicio neste treino.
+                                Nenhum exercício neste treino.
                               </MvText>
                             ) : null}
                           </ScrollView>
@@ -1609,7 +1607,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
                         <View style={{ flexDirection: "row", gap: 8 }}>
                           <View style={{ flex: 1 }}>
                             <MvButton
-                              label="Salvar alteracoes"
+                              label="Salvar alterações"
                               loading={savingEditedPlan}
                               disabled={!crefApproved}
                               onPress={() => void saveEditedPlan()}
@@ -1684,7 +1682,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
                       </View>
                     ) : (
                       <MvText variant="body4" color="secondary">
-                        Toque no nome do treino para abrir a lista de exercicios.
+                        Toque no nome do treino para abrir a lista de exercícios.
                       </MvText>
                     )}
 
@@ -1715,7 +1713,49 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
             </ScrollView>
           </View>
         </MvCard>
+        ) : null}
       </ScrollView>
+
+      <View
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          paddingBottom: Math.max(16, insets.bottom),
+          paddingHorizontal: 16,
+          paddingTop: 10,
+          backgroundColor: theme.bg,
+          borderTopWidth: 1,
+          borderTopColor: theme.border,
+          flexDirection: "row",
+          gap: 10,
+        }}
+      >
+        {step > 0 ? (
+          <View style={{ flex: 1 }}>
+            <MvButton variant="outline" label="← Voltar" onPress={() => setStep((s) => s - 1)} />
+          </View>
+        ) : null}
+        {step < 2 ? (
+          <View style={{ flex: 1 }}>
+            <MvButton
+              label="Próximo →"
+              disabled={step === 0 ? !newPlanTitle.trim() : newPlanExercises.length === 0}
+              onPress={() => setStep((s) => s + 1)}
+            />
+          </View>
+        ) : (
+          <View style={{ flex: 1 }}>
+            <MvButton
+              label={targetContractId ? "Entregar treino" : "Salvar treino"}
+              loading={savingNewPlan}
+              disabled={!crefApproved}
+              onPress={() => void saveNewPlan()}
+            />
+          </View>
+        )}
+      </View>
 
       <Modal
         visible={Boolean(targetExercise)}
@@ -1748,7 +1788,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
               gap: 10,
             }}
           >
-            <MvText variant="semi2">Adicionar exercicio a um treino</MvText>
+            <MvText variant="semi2">Adicionar exercício a um treino</MvText>
             <MvText variant="body4" color="secondary">
               {targetExercise?.name}
             </MvText>
@@ -1780,7 +1820,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
                   >
                     <MvText variant="semi3">Treino em criacao</MvText>
                     <MvText variant="body4" color="secondary">
-                      {newPlanTitle.trim() || "Sem nome"} - {newPlanExercises.length} exercicio(s)
+                      {newPlanTitle.trim() || "Sem nome"} - {newPlanExercises.length} exercícios
                     </MvText>
                   </TouchableOpacity>
                 ) : null}
@@ -1797,7 +1837,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
                   }}
                 >
                   <MvText variant="semi3" style={{ color: theme.textGreen }}>
-                    Criar novo treino com este exercicio
+                    Criar novo treino com este exercício
                   </MvText>
                 </TouchableOpacity>
 
@@ -1822,7 +1862,7 @@ export function ProfessionalTrainingCreationScreen({ navigation }: Props) {
                   >
                     <MvText variant="semi3">{plan.title}</MvText>
                     <MvText variant="body4" color="secondary">
-                      {plan.exercises.length} exercicio(s)
+                      {plan.exercises.length} exercícios
                     </MvText>
                   </TouchableOpacity>
                 ))}

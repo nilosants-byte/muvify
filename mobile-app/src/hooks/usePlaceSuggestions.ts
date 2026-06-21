@@ -165,7 +165,7 @@ export function usePlaceSuggestions(
   userLat: number,
   userLng: number,
   enabled = true,
-  debounceMs = 400,
+  debounceMs = 600,
   /** When true: boosts fitness venues and formats results as "VenueName, Neighborhood, City" */
   fitnessPriority = false,
   /** When set, filters out results beyond this distance from the user (km) */
@@ -262,6 +262,7 @@ export function usePlaceSuggestions(
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      abortRef.current?.abort();
     };
   }, [query, userLat, userLng, enabled, debounceMs, fitnessPriority, maxDistKm]);
 

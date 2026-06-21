@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
   FlatList,
   Pressable,
+  Text,
   TouchableOpacity,
   View,
   ViewToken,
@@ -13,8 +14,9 @@ import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NotificationInboxItem, notificationsApi } from "../../../services/api/client";
 import { useAppState } from "../../../state/AppState";
+import { C, S, DISPLAY } from "../../../theme/v2tokens";
 import { useMvTheme } from "../../../theme/MvThemeContext";
-import { MvBadge, MvCard, MvText } from "../../../components/mv";
+import type { MvTheme } from "../../../theme/MvColors";
 import {
   countUnreadNotifications,
   loadDismissedNotificationIds,
@@ -29,12 +31,16 @@ type DrawerNotification = NotificationInboxItem & {
   dataRecord: Record<string, string>;
 };
 
+type NotifCategory = "Todas" | "Agenda" | "Pagamento" | "Treino" | "Oferta" | "Comunidade";
+
 interface ClientNotificationsDrawerProps {
   visible: boolean;
   navigation: any;
   onClose: () => void;
   onUnreadCountChange?: (count: number) => void;
 }
+
+const CATEGORIES: NotifCategory[] = ["Todas", "Agenda", "Pagamento", "Treino", "Oferta", "Comunidade"];
 
 function toMs(value?: string | null) {
   if (!value) return null;
@@ -60,13 +66,43 @@ function normalizeDataRecord(data?: NotificationInboxItem["data"] | null) {
 function formatTimeLabel(iso: string) {
   const date = new Date(iso);
   if (!Number.isFinite(date.getTime())) return "Agora";
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "Agora";
+  if (diffMin < 60) return `${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h`;
   return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+    day: "2-digit", month: "2-digit",
     timeZone: "America/Sao_Paulo",
   }).format(date);
+}
+
+function categoryFromNotif(item: DrawerNotification): NotifCategory {
+  const type = (item.dataRecord.type ?? item.dataRecord.event ?? "").toUpperCase();
+  if (type.includes("BOOKING") || type.includes("AGENDA")) return "Agenda";
+  if (type.includes("PAYMENT") || type.includes("PAYOUT")) return "Pagamento";
+  if (type.includes("TRAINING") || type.includes("PLAN")) return "Treino";
+  if (type.includes("OFFER") || type.includes("PROMO")) return "Oferta";
+  // Notificações de comunidade: seguidor, conquista, ranking, feed
+  if (
+    type.includes("COMMUNITY") || type.includes("ACHIEVE") || type.includes("RANK") ||
+    type.includes("FOLLOWER") || type.includes("LEVEL_UP") || type.includes("STREAK")
+  ) return "Comunidade";
+  return "Agenda";
+}
+
+function toneForCategory(
+  cat: NotifCategory,
+  theme: MvTheme
+): { text: string; border: string; bg: string; icon: React.ComponentProps<typeof Ionicons>["name"] } {
+  switch (cat) {
+    case "Pagamento": return { text: theme.primary, border: theme.primarySubtleBorder, bg: theme.primarySubtle, icon: "shield-checkmark-outline" };
+    case "Treino":    return { text: C.sky,   border: C.skyBorder,   bg: C.skyDim,   icon: "barbell-outline" };
+    case "Oferta":    return { text: C.amber, border: C.amberBorder, bg: C.amberDim, icon: "pricetag-outline" };
+    case "Comunidade":return { text: C.sky,   border: C.skyBorder,   bg: C.skyDim,   icon: "people-outline" };
+    default:          return { text: theme.primary, border: theme.primarySubtleBorder, bg: theme.primarySubtle, icon: "calendar-outline" };
+  }
 }
 
 export function ClientNotificationsDrawer({
@@ -75,16 +111,17 @@ export function ClientNotificationsDrawer({
   onClose,
   onUnreadCountChange,
 }: ClientNotificationsDrawerProps) {
+  const { theme, isDark } = useMvTheme();
   const { runWithAuth, user } = useAppState();
-  const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
-  const panelWidth = Math.min(Dimensions.get("window").width * 0.92, 420);
+  const panelWidth = Math.min(Dimensions.get("window").width * 0.87, 340);
   const slideAnim = useRef(new Animated.Value(panelWidth)).current;
 
   const [loading, setLoading] = useState(false);
   const [notifications, setNotifications] = useState<DrawerNotification[]>([]);
   const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [activeCategory, setActiveCategory] = useState<NotifCategory>("Todas");
   const loadSeqRef = useRef(0);
 
   const userId = user?.id ?? "anonymous";
@@ -168,7 +205,6 @@ export function ClientNotificationsDrawer({
       if (ids.length === 0) return;
       const unreadVisibleIds = ids.filter((id) => !seenIds.has(id));
       if (unreadVisibleIds.length === 0) return;
-
       const nextSeen = new Set(seenIds);
       unreadVisibleIds.forEach((id) => nextSeen.add(id));
       const nextNotifications = notifications.map((item) =>
@@ -221,6 +257,14 @@ export function ClientNotificationsDrawer({
     [dismissedIds, notifications, persistDismissed]
   );
 
+  const markAllRead = useCallback(() => {
+    const nextSeen = new Set(seenIds);
+    notifications.forEach((item) => nextSeen.add(item.id));
+    const nextNotifications = notifications.map((item) => ({ ...item, unread: false }));
+    setNotifications(nextNotifications);
+    void persistSeen(nextSeen);
+  }, [notifications, persistSeen, seenIds]);
+
   const clearAll = useCallback(() => {
     const nextDismissed = new Set(dismissedIds);
     notifications.forEach((item) => nextDismissed.add(item.id));
@@ -231,34 +275,20 @@ export function ClientNotificationsDrawer({
     (item: DrawerNotification) => {
       const type = (item.dataRecord.type ?? item.dataRecord.event ?? "").toUpperCase();
       const bookingId = item.dataRecord.bookingId;
-
       markNotificationAsRead(item.id);
       onClose();
-
       if (!navigation) return;
-
-      if (type.includes("CHAT")) {
-        navigation.navigate("ClientChatList");
-        return;
-      }
-
-      if (bookingId && type.includes("PAYMENT")) {
-        navigation.navigate("BookingPaymentStatus", { bookingId });
-        return;
-      }
-
-      if (bookingId) {
-        navigation.navigate("ClientBookingDetail", { bookingId });
-        return;
-      }
-
-      if (type.includes("CONSULTANCY")) {
-        navigation.navigate("ArchivedRequests");
-        return;
-      }
-
-      if (type.includes("PAYMENT") || type.includes("PAYOUT")) {
-        navigation.navigate("ClientPaymentMethod");
+      try {
+        if (type.includes("CHAT")) { navigation.navigate("ClientChatList"); return; }
+        if (bookingId && type.includes("PAYMENT")) { navigation.navigate("BookingPaymentStatus", { bookingId }); return; }
+        if (bookingId) { navigation.navigate("ClientBookingDetail", { bookingId }); return; }
+        if (type.includes("CONSULTANCY")) { navigation.navigate("ArchivedRequests"); return; }
+        if (type.includes("PAYMENT") || type.includes("PAYOUT")) { navigation.navigate("ClientPaymentMethod"); return; }
+        if (type.includes("FOLLOWER") || type.includes("RANK") || type.includes("ACHIEVE") || type.includes("LEVEL")) {
+          navigation.navigate("ClientTabs", { screen: "Community" });
+        }
+      } catch {
+        navigation.navigate("ClientTabs", { screen: "ClientHome" } as any);
       }
     },
     [markNotificationAsRead, navigation, onClose]
@@ -269,150 +299,191 @@ export function ClientNotificationsDrawer({
     [notifications]
   );
 
+  const visibleNotifications = useMemo(() => {
+    if (activeCategory === "Todas") return notifications;
+    return notifications.filter((item) => categoryFromNotif(item) === activeCategory);
+  }, [notifications, activeCategory]);
+
   if (!visible) return null;
 
   return (
-    <View
-      style={{
-        position: "absolute",
-        top: 0, left: 0, right: 0, bottom: 0,
-        zIndex: 40,
-      }}
-    >
-      {/* Backdrop escuro semitransparente */}
+    <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 90 }}>
+      {/* Backdrop */}
       <Pressable
-        style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "rgba(0,0,0,0.40)" }}
+        style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "rgba(0,0,0,0.65)" }}
         onPress={onClose}
       />
 
-      {/* Painel deslizante com BlurView — igual ao menu lateral */}
+      {/* Painel deslizante */}
       <Animated.View
         style={{
           position: "absolute",
-          top: 0,
-          right: 0,
-          bottom: 0,
+          top: 0, right: 0, bottom: 0,
           width: panelWidth,
           borderLeftWidth: 1,
-          borderLeftColor: theme.mode === "dark" ? "rgba(34,197,94,0.12)" : "rgba(22,163,74,0.10)",
+          borderLeftColor: theme.primarySubtleBorder,
           transform: [{ translateX: slideAnim }],
           overflow: "hidden",
         }}
       >
-        <BlurView
-          intensity={theme.mode === "dark" ? 70 : 55}
-          tint={theme.mode === "dark" ? "dark" : "light"}
-          style={{ flex: 1 }}
-        >
-          <View
-            style={{
-              paddingTop: insets.top + 14,
-              paddingHorizontal: 16,
-              paddingBottom: 12,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-              borderBottomWidth: 1,
-              borderBottomColor: theme.borderSub,
-            }}
-          >
-            <MvText variant="h4" style={{ flex: 1 }}>Notificações</MvText>
-            <MvBadge
-              label={unreadCount > 0 ? `${unreadCount} não lida(s)` : "Sem pendências"}
-              variant={unreadCount > 0 ? (theme.mode === "light" ? "blue" : "orange") : "gray"}
-            />
-            <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
-              <Ionicons name="close" size={20} color={theme.text2} />
-            </TouchableOpacity>
+        <BlurView intensity={80} tint={isDark ? "dark" : "light"} style={{ flex: 1, backgroundColor: `${theme.bg}f8` }}>
+          {/* Header V2 */}
+          <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 10 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.primary, letterSpacing: 0.1 * 10, textTransform: "uppercase" }}>
+                  Central de avisos
+                </Text>
+                <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.02 * 22, marginTop: 5 }}>
+                  Notificações
+                </Text>
+                <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                  <View style={{ backgroundColor: unreadCount > 0 ? theme.primarySubtle : theme.inputBg, borderWidth: 1, borderColor: unreadCount > 0 ? theme.primarySubtleBorder : theme.border, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3 }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: unreadCount > 0 ? theme.primary : theme.text2 }}>
+                      {unreadCount > 0 ? `${unreadCount} não lida${unreadCount !== 1 ? "s" : ""}` : "Em dia"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={onClose}
+                style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.backBtn, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
+              >
+                <Ionicons name="close" size={16} color={C.zinc300} />
+              </TouchableOpacity>
+            </View>
           </View>
 
+          {/* Filtros por categoria */}
           <FlatList
-            data={notifications}
+            horizontal
+            data={CATEGORIES}
+            keyExtractor={(item) => item}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 16, gap: 6, paddingBottom: 12 }}
+            renderItem={({ item }) => {
+              const active = activeCategory === item;
+              return (
+                <TouchableOpacity
+                  onPress={() => setActiveCategory(item)}
+                  style={{
+                    height: 32, paddingHorizontal: 12, borderRadius: S.chipR,
+                    borderWidth: 1,
+                    borderColor: active ? theme.primarySubtleBorder : theme.border,
+                    backgroundColor: active ? theme.primarySubtle : (isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)"),
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: active ? theme.text1 : theme.text2 }}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }}
+          />
+
+          {/* Lista de notificações */}
+          <FlatList
+            data={visibleNotifications}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: insets.bottom + 88 }}
+            contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingBottom: insets.bottom + 100 }}
             showsVerticalScrollIndicator={false}
             onViewableItemsChanged={onViewableItemsChanged.current}
             viewabilityConfig={viewabilityConfig.current}
-            renderItem={({ item }) => (
-              <MvCard style={{
-                opacity: item.unread ? 1 : 0.72,
-                backgroundColor: theme.mode === "dark"
-                  ? "rgba(14,26,17,0.55)"
-                  : "rgba(255,255,255,0.60)",
-                borderColor: theme.mode === "dark"
-                  ? "rgba(34,197,94,0.09)"
-                  : "rgba(0,0,0,0.07)",
-              }}>
+            renderItem={({ item }) => {
+              const cat = categoryFromNotif(item);
+              const tone = toneForCategory(cat, theme);
+              return (
                 <TouchableOpacity
                   activeOpacity={0.82}
                   onPress={() => openNotificationTarget(item)}
-                  style={{ flexDirection: "row", gap: 10, paddingRight: 34 }}
-                >
-                  <View
-                    style={{
-                      width: 34, height: 34, borderRadius: 10,
-                      alignItems: "center", justifyContent: "center",
-                      borderWidth: 1, borderColor: theme.border, backgroundColor: theme.chipBg,
-                    }}
-                  >
-                    <Ionicons name="notifications-outline" size={16} color={item.unread ? "#FF9800" : theme.text3} />
-                  </View>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <MvText variant="semi3">{item.title}</MvText>
-                    <MvText variant="body4" color="secondary">{item.body}</MvText>
-                    <MvText variant="body4" color="tertiary">{formatTimeLabel(item.createdAt)}</MvText>
-                  </View>
-                  {item.unread ? <MvBadge label="Novo" variant="orange" /> : null}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => removeNotification(item.id)}
-                  activeOpacity={0.7}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Apagar notificação"
                   style={{
-                    position: "absolute", top: 6, right: 6,
-                    width: 20, height: 20, borderRadius: 10,
-                    alignItems: "center", justifyContent: "center",
-                    opacity: item.unread ? 0.72 : 0.56,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: item.unread ? tone.border : theme.border,
+                    backgroundColor: item.unread ? "rgba(36,230,109,0.04)" : (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)"),
+                    padding: 12,
+                    opacity: item.unread ? 1 : 0.72,
                   }}
                 >
-                  <Ionicons name="close-outline" size={15} color={theme.text3} />
+                  <View style={{ flexDirection: "row", gap: 10 }}>
+                    {/* Ícone colorido por categoria */}
+                    <View style={{ width: 38, height: 38, borderRadius: 14, backgroundColor: tone.bg, borderWidth: 1, borderColor: tone.border, alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Ionicons name={tone.icon} size={16} color={tone.text} />
+                    </View>
+
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 6 }}>
+                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1, lineHeight: 18, flex: 1 }} numberOfLines={2}>
+                          {item.title}
+                        </Text>
+                        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 10, color: theme.text3, flexShrink: 0 }}>
+                          {formatTimeLabel(item.createdAt)}
+                        </Text>
+                      </View>
+
+                      <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text2, lineHeight: 16, marginTop: 4 }} numberOfLines={2}>
+                        {item.body}
+                      </Text>
+
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                        <View style={{ backgroundColor: tone.bg, borderWidth: 1, borderColor: tone.border, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2 }}>
+                          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: tone.text }}>{cat}</Text>
+                        </View>
+                        {item.unread && (
+                          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.primary, shadowColor: theme.primary, shadowOpacity: 1, shadowRadius: 3, elevation: 2 }} />
+                        )}
+                      </View>
+                    </View>
+                  </View>
                 </TouchableOpacity>
-              </MvCard>
-            )}
+              );
+            }}
             ListEmptyComponent={
               <View style={{ paddingTop: 36, alignItems: "center", gap: 8 }}>
                 <Ionicons name="notifications-off-outline" size={34} color={theme.text3} />
-                <MvText variant="body3" color="secondary">
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>
                   Nenhuma notificação disponível.
-                </MvText>
+                </Text>
               </View>
             }
           />
 
-          <View style={{ position: "absolute", left: 14, right: 14, bottom: insets.bottom + 14 }}>
+          {/* Footer V2 — dois botões 50/50 */}
+          <View style={{
+            position: "absolute", left: 16, right: 16,
+            bottom: Math.max(14, insets.bottom + 14),
+            flexDirection: "row", gap: 8,
+          }}>
             <TouchableOpacity
-              disabled={loading || notifications.length === 0}
               onPress={clearAll}
+              disabled={loading || notifications.length === 0}
               style={{
-                borderRadius: 10, alignItems: "center", justifyContent: "center",
-                paddingVertical: 12, borderWidth: 1,
-                borderColor: theme.borderSub,
-                backgroundColor: theme.mode === "dark"
-                  ? "rgba(14,26,17,0.55)"
-                  : "rgba(255,255,255,0.60)",
+                flex: 1, height: 48, borderRadius: 14,
+                backgroundColor: "rgba(0,0,0,0.3)",
+                borderWidth: 1, borderColor: theme.border,
+                alignItems: "center", justifyContent: "center",
                 opacity: loading || notifications.length === 0 ? 0.45 : 1,
               }}
             >
-              <MvText variant="semi3">
-                {loading ? "Atualizando..." : "Apagar todas"}
-              </MvText>
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text1 }}>Apagar todas</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={markAllRead}
+              disabled={loading || unreadCount === 0}
+              style={{
+                flex: 1, height: 48, borderRadius: 14,
+                backgroundColor: theme.primary,
+                alignItems: "center", justifyContent: "center",
+                opacity: loading || unreadCount === 0 ? 0.45 : 1,
+                shadowColor: theme.primary, shadowOpacity: 0.3, shadowRadius: 10, elevation: 4,
+              }}
+            >
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.textOnPrimary }}>Marcar lidas</Text>
             </TouchableOpacity>
           </View>
         </BlurView>
-        </Animated.View>
-      </View>
+      </Animated.View>
+    </View>
   );
 }

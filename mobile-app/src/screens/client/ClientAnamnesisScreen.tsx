@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -6,9 +6,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientStackParamList } from "../../navigation/route-types";
 import { AnamnesisAnswers, userApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
-import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvButton } from "../../components/mv/MvButton";
+import { MvCard } from "../../components/mv/MvCard";
+import { MvInput } from "../../components/mv/MvInput";
+import { MvText } from "../../components/mv/MvText";
 import { handleScreenError } from "../shared/api-helpers";
+import { useMvTheme } from "../../theme/MvThemeContext";
+import { C, S } from "../../theme/v2tokens";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ClientAnamnesis">;
 
@@ -17,6 +22,7 @@ type TextField = {
   label: string;
   maxLength: number;
   keyboardType?: "default" | "email-address" | "number-pad" | "phone-pad";
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
   optional?: boolean;
   multiline?: boolean;
 };
@@ -40,13 +46,12 @@ type SectionKey =
   | "imageAuthorization"
   | "parq";
 
-// sex, weightKg e heightM são renderizados de forma especial (chips / formatação automática)
 const personalDataFields: TextField[] = [
   { key: "fullName", label: "Nome completo", maxLength: 100 },
   { key: "birthDate", label: "Data de nascimento (ex: 15/08/1990)", maxLength: 10, keyboardType: "number-pad" },
   { key: "age", label: "Idade", maxLength: 5, keyboardType: "number-pad" },
   { key: "phone", label: "Telefone/WhatsApp", maxLength: 30, keyboardType: "phone-pad" },
-  { key: "email", label: "E-mail", maxLength: 120, keyboardType: "email-address" },
+  { key: "email", label: "E-mail", maxLength: 120, keyboardType: "email-address", autoCapitalize: "none" },
   { key: "fullAddress", label: "Endereço completo", maxLength: 200 },
   { key: "emergencyContact", label: "Contato de emergência (nome e telefone)", maxLength: 100 },
 ];
@@ -167,6 +172,8 @@ const goals = [
   { label: "Saúde geral", value: "SAUDE_GERAL" },
 ] as const;
 
+const TOTAL_REQUIRED = 28 + 24 + 2;
+
 const requiredPaths = [
   ["personalData", "fullName"], ["personalData", "birthDate"], ["personalData", "age"],
   ["personalData", "sex"], ["personalData", "weightKg"], ["personalData", "heightM"],
@@ -196,8 +203,6 @@ const requiredBooleans = [
   ["parq", "usesCardiacMedication"], ["parq", "hasOtherExerciseRestriction"],
 ] as const;
 
-// Remove null values from a section object so Zod enum/boolean schemas don't reject them.
-// Null can appear when the JSON column in DB was partially written with explicit nulls.
 function stripNulls<T extends Record<string, unknown>>(obj: T): T {
   const result: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -252,10 +257,31 @@ const lifestyleKeyLabel: Record<string, string> = {
   workRoutine: "Rotina de trabalho",
 };
 
+const STEPS = [
+  { icon: "person-outline" as const,           title: "Dados pessoais",      subtitle: "Informações básicas de identificação" },
+  { icon: "flag-outline" as const,             title: "Objetivos",           subtitle: "O que você quer alcançar" },
+  { icon: "heart-outline" as const,            title: "Histórico de saúde",  subtitle: "Condições médicas, medicamentos e família" },
+  { icon: "barbell-outline" as const,          title: "Atividade física",    subtitle: "Experiência e histórico de treinos" },
+  { icon: "sunny-outline" as const,            title: "Estilo de vida",      subtitle: "Rotina, sono e hábitos alimentares" },
+  { icon: "bulb-outline" as const,             title: "Limitações",          subtitle: "Restrições físicas e aspectos comportamentais" },
+  { icon: "shield-checkmark-outline" as const, title: "Finalização",         subtitle: "Triagem PAR-Q, imagem e termos" },
+];
+
+const TOTAL_STEPS = STEPS.length;
+
+const familyHistoryItems = [
+  { key: "hasCardiacDisease", label: "Doença cardíaca" },
+  { key: "hasHypertension", label: "Hipertensão" },
+  { key: "hasDiabetes", label: "Diabetes" },
+  { key: "hasObesity", label: "Obesidade" },
+  { key: "hasOrthopedicProblems", label: "Problemas ortopédicos" },
+];
+
 export function ClientAnamnesisScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
 
   const [answers, setAnswers] = useState<AnamnesisAnswers>(buildInitialAnswers());
   const [status, setStatus] = useState<"DRAFT" | "COMPLETED">("DRAFT");
@@ -263,9 +289,9 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
   const [savingDraft, setSavingDraft] = useState(false);
   const [savingFinal, setSavingFinal] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
-  // Campos especiais: exibição separada para edição fluente
   const [weightRaw, setWeightRaw] = useState("");
   const [heightRaw, setHeightRaw] = useState("");
+  const [currentStep, setCurrentStep] = useState(0);
 
   const patchSection = (section: SectionKey, patch: Record<string, unknown>) => {
     setAnswers((current) => ({
@@ -289,7 +315,6 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
 
   useEffect(() => { void load(); }, [load]);
 
-  // Sincroniza os inputs de peso/altura quando os dados carregam
   useEffect(() => {
     if (loading) return;
     setWeightRaw(stripUnit(answers.personalData?.weightKg ?? "", "kg"));
@@ -312,7 +337,6 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
       setErrorText(null);
       showToast(targetStatus === "COMPLETED" ? "Anamnese confirmada." : "Rascunho salvo.", "success");
     } catch (error) {
-      // Em dev: log detalhado dos erros Zod para diagnóstico
       if (__DEV__ && error instanceof Error) {
         const apiErr = error as any;
         if (apiErr.details?.errors) {
@@ -326,28 +350,71 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
     }
   };
 
+  const goNext = () => {
+    setCurrentStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+
+  const goPrev = () => {
+    if (currentStep === 0) {
+      navigation.goBack();
+      return;
+    }
+    setCurrentStep((s) => s - 1);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+
   function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
     return (
       <TouchableOpacity
         onPress={onPress}
+        activeOpacity={0.75}
+        accessibilityRole="button"
         style={{
-          paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-          backgroundColor: selected ? "rgba(76,175,80,0.12)" : theme.chipBg,
-          borderWidth: 1, borderColor: selected ? "rgba(76,175,80,0.30)" : theme.border,
+          paddingHorizontal: 14, paddingVertical: 9, borderRadius: S.chipR,
+          alignItems: "center", justifyContent: "center",
+          backgroundColor: selected ? theme.primarySubtle : "transparent",
+          borderWidth: 1, borderColor: selected ? theme.primarySubtleBorder : theme.border,
         }}
       >
-        <MvText variant="body4" style={{ color: selected ? theme.textGreen : theme.chipText }}>{label}</MvText>
+        <MvText variant="body4" style={{ color: selected ? theme.primary : theme.text2 }}>{label}</MvText>
       </TouchableOpacity>
     );
   }
 
   function BinaryChoice({ label, value, onChange }: { label: string; value?: boolean; onChange: (value: boolean) => void }) {
     return (
-      <View style={{ gap: 6 }}>
-        <MvText variant="semi3">{label}</MvText>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          <Chip label="Sim" selected={value === true} onPress={() => onChange(true)} />
-          <Chip label="Não" selected={value === false} onPress={() => onChange(false)} />
+      <View style={{ gap: 7 }}>
+        <MvText variant="label">{label}</MvText>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => onChange(true)}
+            activeOpacity={0.75}
+            style={{
+              flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+              paddingVertical: 11, borderRadius: 12, borderWidth: 1,
+              borderColor: value === true ? theme.primarySubtleBorder : theme.border,
+              backgroundColor: value === true ? theme.primarySubtle : "transparent",
+              gap: 6,
+            }}
+          >
+            <Ionicons name="checkmark-circle" size={15} color={value === true ? theme.primary : theme.text3} />
+            <MvText variant="body4" style={{ color: value === true ? theme.primary : theme.text2 }}>Sim</MvText>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => onChange(false)}
+            activeOpacity={0.75}
+            style={{
+              flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+              paddingVertical: 11, borderRadius: 12, borderWidth: 1,
+              borderColor: value === false ? "rgba(239,68,68,0.35)" : theme.border,
+              backgroundColor: value === false ? "rgba(239,68,68,0.08)" : "transparent",
+              gap: 6,
+            }}
+          >
+            <Ionicons name="close-circle" size={15} color={value === false ? theme.danger : theme.text3} />
+            <MvText variant="body4" style={{ color: value === false ? theme.danger : theme.text2 }}>Não</MvText>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -359,6 +426,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
         <MvInput
           key={`${section}-${field.key}`}
           keyboardType={field.keyboardType}
+          autoCapitalize={field.autoCapitalize ?? (field.keyboardType === "email-address" ? "none" : "sentences")}
           placeholder={`${field.label}${field.optional ? " (opcional)" : ""}`}
           maxLength={field.maxLength}
           multiline={field.multiline}
@@ -402,277 +470,441 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
 
   const selectedGoals = answers.objectives?.selected ?? [];
 
-  return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 14, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.borderSub }}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-        >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
-        </TouchableOpacity>
-        <MvText variant="h4" style={{ flex: 1 }}>Anamnese</MvText>
-        <MvBadge label={status === "COMPLETED" ? "Concluída" : "Rascunho"} variant={status === "COMPLETED" ? "green" : "orange"} />
-      </View>
+  function renderCurrentStep() {
+    switch (currentStep) {
+      // ── Passo 1: Dados pessoais ──────────────────────────────────────────────
+      case 0:
+        return (
+          <MvCard style={{ gap: 10 }}>
+            <View style={{ gap: 8 }}>
+              {renderTextFields("personalData", personalDataFields)}
 
-      <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
-        <MvText variant="body4" color="secondary">
-          Preencha seu questionário. O personal poderá apenas visualizar no perfil do aluno.
-        </MvText>
-
-        {loading ? <MvText variant="body4" color="secondary">Carregando...</MvText> : null}
-
-        {errorText ? (
-          <MvText variant="body4" color="danger">{errorText}</MvText>
-        ) : null}
-
-        {/* Dados pessoais */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Dados pessoais</MvText>
-          <View style={{ gap: 8 }}>
-            {renderTextFields("personalData", personalDataFields)}
-
-            {/* Gênero — chips */}
-            <View style={{ gap: 6 }}>
-              <MvText variant="semi3">Gênero</MvText>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                {genderOptions.map((opt) => (
-                  <Chip
-                    key={opt.value}
-                    label={opt.label}
-                    selected={answers.personalData?.sex === opt.value}
-                    onPress={() => patchSection("personalData", { sex: opt.value })}
-                  />
-                ))}
-              </View>
-            </View>
-
-            {/* Peso — formatação automática ao sair do campo */}
-            <MvInput
-              placeholder="Peso (ex: 80 ou 79.4)"
-              keyboardType="decimal-pad"
-              maxLength={15}
-              value={weightRaw}
-              onChangeText={setWeightRaw}
-              onBlur={() => {
-                const formatted = formatWeightDisplay(weightRaw);
-                setWeightRaw(formatted);
-                patchSection("personalData", { weightKg: formatted });
-              }}
-              onFocus={() => setWeightRaw(stripUnit(weightRaw, "kg"))}
-            />
-
-            {/* Altura — formatação automática ao sair do campo */}
-            <MvInput
-              placeholder="Altura (ex: 175 cm ou 1.75)"
-              keyboardType="decimal-pad"
-              maxLength={15}
-              value={heightRaw}
-              onChangeText={setHeightRaw}
-              onBlur={() => {
-                const formatted = formatHeightDisplay(heightRaw);
-                setHeightRaw(formatted);
-                patchSection("personalData", { heightM: formatted });
-              }}
-              onFocus={() => setHeightRaw(stripUnit(heightRaw, "m"))}
-            />
-          </View>
-        </MvCard>
-
-        {/* Objetivos */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Objetivos</MvText>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-            {goals.map((goal) => (
-              <Chip
-                key={goal.value}
-                label={goal.label}
-                selected={selectedGoals.includes(goal.value)}
-                onPress={() => {
-                  const next = selectedGoals.includes(goal.value)
-                    ? selectedGoals.filter((item) => item !== goal.value)
-                    : [...selectedGoals, goal.value];
-                  patchSection("objectives", { selected: next });
-                }}
-              />
-            ))}
-          </View>
-          <View style={{ gap: 8 }}>
-            {renderTextFields("objectives", objectiveFields)}
-          </View>
-        </MvCard>
-
-        {/* Histórico de saúde */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Histórico de saúde</MvText>
-          <View style={{ gap: 10 }}>
-            {renderBoolFields("healthHistory", healthFields)}
-          </View>
-        </MvCard>
-
-        {/* Medicamentos e suplementos */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Medicamentos e suplementos</MvText>
-          <View style={{ gap: 10 }}>
-            {renderBoolFields("medicationAndSupplements", medicationFields)}
-          </View>
-        </MvCard>
-
-        {/* Histórico familiar */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Histórico familiar (opcional)</MvText>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-            {[
-              { key: "hasCardiacDisease", label: "Doença cardíaca" },
-              { key: "hasHypertension", label: "Hipertensão" },
-              { key: "hasDiabetes", label: "Diabetes" },
-              { key: "hasObesity", label: "Obesidade" },
-              { key: "hasOrthopedicProblems", label: "Problemas ortopédicos" },
-            ].map((item) => (
-              <Chip
-                key={item.key}
-                label={item.label}
-                selected={Boolean((answers.familyHistory as Record<string, unknown>)?.[item.key])}
-                onPress={() => patchSection("familyHistory", { [item.key]: !(answers.familyHistory as Record<string, unknown>)?.[item.key] })}
-              />
-            ))}
-          </View>
-          <MvInput
-            placeholder="Outro"
-            maxLength={300}
-            multiline
-            numberOfLines={2}
-            value={answers.familyHistory?.other ?? ""}
-            onChangeText={(value) => patchSection("familyHistory", { other: value })}
-          />
-        </MvCard>
-
-        {/* Histórico de atividade física */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Histórico de atividade física</MvText>
-          <View style={{ gap: 10 }}>
-            {renderBoolFields("activityHistory", activityFields)}
-            {renderTextFields("activityHistory", activityTextFields)}
-          </View>
-        </MvCard>
-
-        {/* Estilo de vida */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Estilo de vida</MvText>
-          <View style={{ gap: 10 }}>
-            <MvInput
-              placeholder="Horas de sono por noite"
-              maxLength={10}
-              value={answers.lifestyle?.sleepHours ?? ""}
-              onChangeText={(value) => patchSection("lifestyle", { sleepHours: value })}
-            />
-            {Object.entries(lifestyleOptions).map(([key, options]) => (
-              <View key={key} style={{ gap: 6 }}>
-                <MvText variant="semi3">{lifestyleKeyLabel[key] ?? key}</MvText>
+              <View style={{ gap: 6 }}>
+                <MvText variant="label" color="secondary">Gênero</MvText>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                  {options.map((opt) => (
+                  {genderOptions.map((opt) => (
                     <Chip
                       key={opt.value}
                       label={opt.label}
-                      selected={(answers.lifestyle as Record<string, unknown>)?.[key] === opt.value}
-                      onPress={() => patchSection("lifestyle", { [key]: opt.value })}
+                      selected={answers.personalData?.sex === opt.value}
+                      onPress={() => patchSection("personalData", { sex: opt.value })}
                     />
                   ))}
                 </View>
               </View>
-            ))}
-            <BinaryChoice
-              label="Fuma?"
-              value={answers.lifestyle?.smokes}
-              onChange={(value) => patchSection("lifestyle", { smokes: value })}
-            />
+
+              <MvInput
+                placeholder="Peso (ex: 80 ou 79.4)"
+                keyboardType="decimal-pad"
+                maxLength={15}
+                value={weightRaw}
+                onChangeText={setWeightRaw}
+                onBlur={() => {
+                  const formatted = formatWeightDisplay(weightRaw);
+                  setWeightRaw(formatted);
+                  patchSection("personalData", { weightKg: formatted });
+                }}
+                onFocus={() => setWeightRaw(stripUnit(weightRaw, "kg"))}
+              />
+
+              <MvInput
+                placeholder="Altura (ex: 175 cm ou 1.75)"
+                keyboardType="decimal-pad"
+                maxLength={15}
+                value={heightRaw}
+                onChangeText={setHeightRaw}
+                onBlur={() => {
+                  const formatted = formatHeightDisplay(heightRaw);
+                  setHeightRaw(formatted);
+                  patchSection("personalData", { heightM: formatted });
+                }}
+                onFocus={() => setHeightRaw(stripUnit(heightRaw, "m"))}
+              />
+            </View>
+          </MvCard>
+        );
+
+      // ── Passo 2: Objetivos ───────────────────────────────────────────────────
+      case 1:
+        return (
+          <MvCard style={{ gap: 12 }}>
+            <View style={{ gap: 6 }}>
+              <MvText variant="label" color="secondary">Selecione seus objetivos (pode escolher mais de um)</MvText>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {goals.map((goal) => (
+                  <Chip
+                    key={goal.value}
+                    label={goal.label}
+                    selected={selectedGoals.includes(goal.value)}
+                    onPress={() => {
+                      const next = selectedGoals.includes(goal.value)
+                        ? selectedGoals.filter((item) => item !== goal.value)
+                        : [...selectedGoals, goal.value];
+                      patchSection("objectives", { selected: next });
+                    }}
+                  />
+                ))}
+              </View>
+            </View>
+            <View style={{ gap: 8 }}>
+              {renderTextFields("objectives", objectiveFields)}
+            </View>
+          </MvCard>
+        );
+
+      // ── Passo 3: Histórico de saúde ──────────────────────────────────────────
+      case 2:
+        return (
+          <View style={{ gap: 12 }}>
+            <MvCard style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="heart-outline" size={14} color={theme.primary} />
+                </View>
+                <MvText variant="semi2">Condições de saúde</MvText>
+              </View>
+              <View style={{ gap: 10 }}>
+                {renderBoolFields("healthHistory", healthFields)}
+              </View>
+            </MvCard>
+
+            <MvCard style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="medical-outline" size={14} color={theme.primary} />
+                </View>
+                <MvText variant="semi2">Medicamentos e suplementos</MvText>
+              </View>
+              <View style={{ gap: 10 }}>
+                {renderBoolFields("medicationAndSupplements", medicationFields)}
+              </View>
+            </MvCard>
+
+            <MvCard style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="people-outline" size={14} color={theme.primary} />
+                </View>
+                <MvText variant="semi2">
+                  Histórico familiar{" "}
+                  <MvText variant="body4" style={{ color: theme.text3 }}>(opcional)</MvText>
+                </MvText>
+              </View>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {familyHistoryItems.map((item) => (
+                  <Chip
+                    key={item.key}
+                    label={item.label}
+                    selected={Boolean((answers.familyHistory as Record<string, unknown>)?.[item.key])}
+                    onPress={() => patchSection("familyHistory", { [item.key]: !(answers.familyHistory as Record<string, unknown>)?.[item.key] })}
+                  />
+                ))}
+              </View>
+              <MvInput
+                placeholder="Outro"
+                maxLength={300}
+                multiline
+                numberOfLines={2}
+                value={answers.familyHistory?.other ?? ""}
+                onChangeText={(value) => patchSection("familyHistory", { other: value })}
+              />
+            </MvCard>
           </View>
-        </MvCard>
+        );
 
-        {/* Hábitos alimentares */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Hábitos alimentares</MvText>
-          <View style={{ gap: 10 }}>
-            {renderBoolFields("nutrition", nutritionFields)}
-            {renderTextFields("nutrition", nutritionTextFields)}
+      // ── Passo 4: Atividade física ────────────────────────────────────────────
+      case 3:
+        return (
+          <MvCard style={{ gap: 10 }}>
+            <View style={{ gap: 10 }}>
+              {renderBoolFields("activityHistory", activityFields)}
+              {renderTextFields("activityHistory", activityTextFields)}
+            </View>
+          </MvCard>
+        );
+
+      // ── Passo 5: Estilo de vida & Alimentação ────────────────────────────────
+      case 4:
+        return (
+          <View style={{ gap: 12 }}>
+            <MvCard style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="sunny-outline" size={14} color={theme.primary} />
+                </View>
+                <MvText variant="semi2">Estilo de vida</MvText>
+              </View>
+              <View style={{ gap: 10 }}>
+                <MvInput
+                  placeholder="Horas de sono por noite"
+                  maxLength={10}
+                  value={answers.lifestyle?.sleepHours ?? ""}
+                  onChangeText={(value) => patchSection("lifestyle", { sleepHours: value })}
+                />
+                {Object.entries(lifestyleOptions).map(([key, options]) => (
+                  <View key={key} style={{ gap: 6 }}>
+                    <MvText variant="label">{lifestyleKeyLabel[key] ?? key}</MvText>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                      {options.map((opt) => (
+                        <Chip
+                          key={opt.value}
+                          label={opt.label}
+                          selected={(answers.lifestyle as Record<string, unknown>)?.[key] === opt.value}
+                          onPress={() => patchSection("lifestyle", { [key]: opt.value })}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                ))}
+                <BinaryChoice
+                  label="Fuma?"
+                  value={answers.lifestyle?.smokes}
+                  onChange={(value) => patchSection("lifestyle", { smokes: value })}
+                />
+              </View>
+            </MvCard>
+
+            <MvCard style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="restaurant-outline" size={14} color={theme.primary} />
+                </View>
+                <MvText variant="semi2">Hábitos alimentares</MvText>
+              </View>
+              <View style={{ gap: 10 }}>
+                {renderBoolFields("nutrition", nutritionFields)}
+                {renderTextFields("nutrition", nutritionTextFields)}
+              </View>
+            </MvCard>
           </View>
-        </MvCard>
+        );
 
-        {/* Limitações e restrições */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Limitações e restrições</MvText>
-          <View style={{ gap: 8 }}>
-            {renderTextFields("limitations", [
-              { key: "physicalLimitations", label: "Possui alguma limitação física?", maxLength: 300, multiline: true },
-              { key: "restrictedExercises", label: "Algum exercício que não pode realizar?", maxLength: 300, multiline: true },
-            ])}
+      // ── Passo 6: Limitações & Comportamento ─────────────────────────────────
+      case 5:
+        return (
+          <View style={{ gap: 12 }}>
+            <MvCard style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(239,68,68,0.10)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="warning-outline" size={14} color={theme.danger} />
+                </View>
+                <MvText variant="semi2">Limitações e restrições</MvText>
+              </View>
+              <View style={{ gap: 8 }}>
+                {renderTextFields("limitations", [
+                  { key: "physicalLimitations", label: "Possui alguma limitação física?", maxLength: 300, multiline: true },
+                  { key: "restrictedExercises", label: "Algum exercício que não pode realizar?", maxLength: 300, multiline: true },
+                ])}
+              </View>
+            </MvCard>
+
+            <MvCard style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="bulb-outline" size={14} color={theme.primary} />
+                </View>
+                <MvText variant="semi2">Aspectos comportamentais</MvText>
+              </View>
+              <View style={{ gap: 8 }}>
+                {renderTextFields("behavior", [
+                  { key: "trainingMotivation", label: "O que te motiva a treinar?", maxLength: 300, multiline: true },
+                  { key: "biggestConsistencyDifficulty", label: "Maior dificuldade para manter constância", maxLength: 300, multiline: true },
+                  { key: "quitBeforeReason", label: "Já desistiu de treinos antes? Por quê?", maxLength: 300, multiline: true },
+                ])}
+              </View>
+            </MvCard>
           </View>
-        </MvCard>
+        );
 
-        {/* Aspectos comportamentais */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Aspectos comportamentais</MvText>
-          <View style={{ gap: 8 }}>
-            {renderTextFields("behavior", [
-              { key: "trainingMotivation", label: "O que te motiva a treinar?", maxLength: 300, multiline: true },
-              { key: "biggestConsistencyDifficulty", label: "Maior dificuldade para manter constância", maxLength: 300, multiline: true },
-              { key: "quitBeforeReason", label: "Já desistiu de treinos antes? Por quê?", maxLength: 300, multiline: true },
-            ])}
+      // ── Passo 7: Finalização ─────────────────────────────────────────────────
+      case 6:
+        return (
+          <View style={{ gap: 12 }}>
+            <MvCard style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="camera-outline" size={14} color={theme.primary} />
+                </View>
+                <MvText variant="semi2">Autorização de imagem</MvText>
+              </View>
+              <BinaryChoice
+                label="Autoriza uso da sua imagem para fins profissionais e divulgação?"
+                value={answers.imageAuthorization?.allowImageUse}
+                onChange={(value) => patchSection("imageAuthorization", { allowImageUse: value })}
+              />
+            </MvCard>
+
+            <MvCard style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(239,68,68,0.10)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="shield-checkmark-outline" size={14} color={theme.danger} />
+                </View>
+                <MvText variant="semi2">
+                  Triagem de prontidão{" "}
+                  <MvText variant="body4" style={{ color: theme.text3 }}>(PAR-Q)</MvText>
+                </MvText>
+              </View>
+              <View style={{ gap: 10 }}>
+                {renderBoolFields("parq", [
+                  { key: "hasHeartCondition", label: "Médico já disse que você tem problema cardíaco?" },
+                  { key: "chestPainDuringExercise", label: "Dor no peito durante exercício?" },
+                  { key: "chestPainAtRestLastMonth", label: "Dor no peito em repouso no último mês?" },
+                  { key: "dizzinessOrFainting", label: "Tontura ou perda de consciência?" },
+                  { key: "jointProblemsWithExercise", label: "Problemas articulares pioram com exercício?" },
+                  { key: "usesCardiacMedication", label: "Uso de medicação cardíaca/pressão?" },
+                  { key: "hasOtherExerciseRestriction", label: "Outro impedimento para exercício?" },
+                ])}
+              </View>
+            </MvCard>
+
+            <MvCard style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="document-text-outline" size={14} color={theme.primary} />
+                </View>
+                <MvText variant="semi2">Termo de responsabilidade</MvText>
+              </View>
+              <BinaryChoice
+                label="Declaro que as informações são verdadeiras e informarei alterações de saúde."
+                value={answers.responsibilityTermAccepted}
+                onChange={(value) => setAnswers((current) => ({ ...current, responsibilityTermAccepted: value }))}
+              />
+              <MvText variant="body4" style={{ fontSize: 12, color: theme.danger, marginTop: 4 }}>
+                O botão confirmar valida termo + campos obrigatórios de todas as etapas.
+              </MvText>
+            </MvCard>
           </View>
-        </MvCard>
+        );
 
-        {/* Autorização de imagem */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Autorização de imagem</MvText>
-          <BinaryChoice
-            label="Autoriza uso da sua imagem para fins profissionais e divulgação?"
-            value={answers.imageAuthorization?.allowImageUse}
-            onChange={(value) => patchSection("imageAuthorization", { allowImageUse: value })}
-          />
-        </MvCard>
+      default:
+        return null;
+    }
+  }
 
-        {/* PAR-Q */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Triagem de prontidão (PAR-Q)</MvText>
-          <View style={{ gap: 10 }}>
-            {renderBoolFields("parq", [
-              { key: "hasHeartCondition", label: "Médico já disse que você tem problema cardíaco?" },
-              { key: "chestPainDuringExercise", label: "Dor no peito durante exercício?" },
-              { key: "chestPainAtRestLastMonth", label: "Dor no peito em repouso no último mês?" },
-              { key: "dizzinessOrFainting", label: "Tontura ou perda de consciência?" },
-              { key: "jointProblemsWithExercise", label: "Problemas articulares pioram com exercício?" },
-              { key: "usesCardiacMedication", label: "Uso de medicação cardíaca/pressão?" },
-              { key: "hasOtherExerciseRestriction", label: "Outro impedimento para exercício?" },
-            ])}
+  const progressPct = Math.round(((TOTAL_REQUIRED - missingCount) / TOTAL_REQUIRED) * 100);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+
+      {/* Header */}
+      <View style={{
+        paddingTop: insets.top + 14,
+        paddingHorizontal: S.px,
+        paddingBottom: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.border,
+      }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <TouchableOpacity
+            onPress={goPrev}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={currentStep === 0 ? "Voltar" : "Etapa anterior"}
+            style={{
+              width: 44, height: 44, borderRadius: 22,
+              backgroundColor: theme.inputBg,
+              alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <Ionicons name="chevron-back" size={20} color={theme.text1} />
+          </TouchableOpacity>
+
+          <View style={{ flex: 1 }}>
+            <MvText variant="eyebrow" style={{ color: theme.primary }}>
+              Passo {currentStep + 1} de {TOTAL_STEPS}
+            </MvText>
+            <MvText variant="h1">{STEPS[currentStep].title}</MvText>
           </View>
-        </MvCard>
 
-        {/* Termo de responsabilidade */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>Termo de responsabilidade</MvText>
-          <BinaryChoice
-            label="Declaro que as informações são verdadeiras e informarei alterações de saúde."
-            value={answers.responsibilityTermAccepted}
-            onChange={(value) => setAnswers((current) => ({ ...current, responsibilityTermAccepted: value }))}
-          />
-          <MvText variant="body4" color="danger" style={{ marginTop: 6 }}>
-            O botão de confirmar valida termo + perguntas obrigatórias.
-          </MvText>
-        </MvCard>
-
-        {/* Acoes */}
-        <View style={{ gap: 10 }}>
-          <MvButton variant="outline" label="Salvar rascunho" loading={savingDraft} onPress={() => void save("DRAFT")} />
-          <MvButton label="Confirmar anamnese" loading={savingFinal} onPress={() => void save("COMPLETED")} />
+          <View style={{
+            backgroundColor: status === "COMPLETED" ? theme.primarySubtle : C.amberDim,
+            borderWidth: 1,
+            borderColor: status === "COMPLETED" ? theme.primarySubtleBorder : C.amberBorder,
+            borderRadius: S.chipR,
+            paddingHorizontal: 10,
+            paddingVertical: 3,
+          }}>
+            <MvText variant="caption" style={{ color: status === "COMPLETED" ? theme.primary : C.amber }}>
+              {status === "COMPLETED" ? "Concluída" : "Rascunho"}
+            </MvText>
+          </View>
         </View>
 
-        {!loading && missingCount > 0 ? (
-          <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
-            Pendências obrigatórias: {missingCount}
-          </MvText>
-        ) : null}
-      </ScrollView>
+        {/* Segmentos de progresso por etapa */}
+        <View style={{ flexDirection: "row", gap: 4, marginTop: 12 }}>
+          {STEPS.map((_, i) => (
+            <View
+              key={i}
+              style={{
+                flex: 1, height: 3, borderRadius: 99,
+                backgroundColor: i <= currentStep ? theme.primary : (theme.mode === "dark" ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)"),
+              }}
+            />
+          ))}
+        </View>
+
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 7 }}>
+          <MvText variant="body4" color="secondary">{STEPS[currentStep].subtitle}</MvText>
+          {!loading && (
+            <MvText variant="caption" style={{ color: missingCount === 0 ? theme.primary : theme.text3 }}>
+              {progressPct}% completo
+            </MvText>
+          )}
+        </View>
+      </View>
+
+      <ScreenEntrance>
+        {loading ? (
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+            <MvText variant="body4" color="secondary">Carregando...</MvText>
+          </View>
+        ) : (
+          <ScrollView
+            ref={scrollRef}
+            automaticallyAdjustKeyboardInsets
+            contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, gap: 12, paddingTop: 16 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {errorText ? (
+              <MvText variant="body4" style={{ color: theme.danger }}>{errorText}</MvText>
+            ) : null}
+
+            {renderCurrentStep()}
+
+            {/* Navegação */}
+            <View style={{ gap: 8, paddingTop: 4 }}>
+              {currentStep < TOTAL_STEPS - 1 ? (
+                <MvButton
+                  label="Próximo"
+                  disabled={savingDraft || savingFinal}
+                  onPress={goNext}
+                />
+              ) : (
+                <MvButton
+                  label="Confirmar anamnese"
+                  loading={savingFinal}
+                  disabled={savingDraft || savingFinal}
+                  onPress={() => void save("COMPLETED")}
+                />
+              )}
+              <MvButton
+                variant="outline"
+                label="Salvar rascunho"
+                loading={savingDraft}
+                disabled={savingDraft || savingFinal}
+                onPress={() => void save("DRAFT")}
+              />
+            </View>
+
+            {currentStep === TOTAL_STEPS - 1 && missingCount > 0 ? (
+              <MvText variant="body4" color="tertiary" style={{ textAlign: "center" }}>
+                {missingCount} {missingCount === 1 ? "campo obrigatório faltando" : "campos obrigatórios faltando"}
+              </MvText>
+            ) : null}
+          </ScrollView>
+        )}
+      </ScreenEntrance>
     </View>
   );
 }

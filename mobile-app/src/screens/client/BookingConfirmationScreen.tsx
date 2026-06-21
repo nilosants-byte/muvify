@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Linking, Modal, Pressable, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import { Linking, Modal, Pressable, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,9 +13,11 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvText } from "../../components/mv";
 import { formatBRDateTime, formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { C, S, DISPLAY } from "../../theme/v2tokens";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { hapticPaymentSuccess, hapticCta } from "../../utils/haptics";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "BookingConfirmation">;
 
@@ -59,7 +61,9 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
   const [pixCharging, setPixCharging] = useState(false);
   const [checkingPix, setCheckingPix] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
+  const [pixPollError, setPixPollError] = useState(false);
   const hasShownChatModalRef = useRef(false);
+  const pixFailCountRef = useRef(0);
 
   const load = useCallback(async () => {
     try {
@@ -77,21 +81,34 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
     }
   }, [bookingId, navigation, runWithAuth, showToast]);
 
+  const checkPaymentOnly = useCallback(async () => {
+    try {
+      const paymentStatus = await runWithAuth((token) => paymentsApi.bookingPayment(token, bookingId));
+      pixFailCountRef.current = 0;
+      setPixPollError(false);
+      setPayment(paymentStatus);
+      if (paymentStatus.status === "CAPTURED") hapticPaymentSuccess();
+    } catch {
+      pixFailCountRef.current += 1;
+      if (pixFailCountRef.current >= 3) setPixPollError(true);
+    }
+  }, [bookingId, runWithAuth]);
+
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (booking && !hasShownChatModalRef.current) {
+    if (booking?.status === "CONFIRMED" && !hasShownChatModalRef.current) {
       hasShownChatModalRef.current = true;
       setShowChatModal(true);
     }
-  }, [booking]);
+  }, [booking?.status]);
 
-  // Auto-poll PIX payment status every 5 seconds until confirmed
+  // Auto-poll PIX payment status every 5 seconds until confirmed or 3 consecutive failures
   useEffect(() => {
-    if (payment?.method !== "PIX" || payment?.status === "CAPTURED") return;
-    const interval = setInterval(() => { void load(); }, 5000);
+    if (payment?.method !== "PIX" || payment?.status === "CAPTURED" || pixPollError) return;
+    const interval = setInterval(() => { void checkPaymentOnly(); }, 5000);
     return () => clearInterval(interval);
-  }, [payment?.method, payment?.status, load]);
+  }, [payment?.method, payment?.status, checkPaymentOnly, pixPollError]);
 
   const providerDisplayName = booking?.provider?.displayName ?? "o profissional";
   const chatModalTitle = hasMultipleBookings
@@ -115,6 +132,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
   );
 
   async function confirmBooking() {
+    hapticPaymentSuccess(); // Momento 2 — pagamento confirmado
     if (hasMultipleBookings) {
       const parent = navigation.getParent();
       if (parent) {
@@ -173,7 +191,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
         <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-        <MvText variant="body3" color="secondary">Carregando resumo...</MvText>
+        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 14, color: theme.text2 }}>Carregando resumo...</Text>
       </View>
     );
   }
@@ -182,7 +200,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
         <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-        <MvText variant="body3" color="secondary">Serviço não encontrado.</MvText>
+        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 14, color: theme.text2 }}>Serviço não encontrado.</Text>
       </View>
     );
   }
@@ -190,14 +208,15 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 14, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.borderSub }}>
+      {/* Header V2 */}
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
         >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
+          <Ionicons name="chevron-back" size={18} color={theme.text1} />
         </TouchableOpacity>
-        <MvText variant="h4">Confirmação</MvText>
+        <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Confirmação</Text>
       </View>
 
       <Modal
@@ -212,126 +231,212 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
             style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0 }}
             onPress={() => setShowChatModal(false)}
           />
-          <View style={{ backgroundColor: theme.cardBg, borderRadius: 16, borderWidth: 1, borderColor: theme.border, padding: 22, width: "100%", maxWidth: 400, gap: 16 }}>
+          <View style={{ backgroundColor: theme.inputBg, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, padding: 22, width: "100%", maxWidth: 400, gap: 14 }}>
             <View style={{ alignItems: "center", gap: 10 }}>
-              <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: theme.chipBg, borderWidth: 1, borderColor: "rgba(34,197,94,0.25)", alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="checkmark" size={28} color={theme.textGreen} />
+              <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="checkmark" size={28} color={theme.primary} />
               </View>
-              <MvText variant="h4" style={{ textAlign: "center" }}>{chatModalTitle}</MvText>
-              <MvText variant="body3" color="secondary" style={{ textAlign: "center" }}>
-                {chatModalMessage}
-              </MvText>
+              <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: theme.text1, letterSpacing: -0.02 * 20, textAlign: "center" }}>{chatModalTitle}</Text>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center", lineHeight: 20 }}>{chatModalMessage}</Text>
             </View>
-            <MvButton
-              label="Ir para o chat"
-              onPress={() => {
-                setShowChatModal(false);
-                navigation.navigate("ClientChatList");
-              }}
-            />
-            <MvButton
-              variant="outline"
-              label="Agora não"
+            <TouchableOpacity
+              onPress={() => { setShowChatModal(false); navigation.navigate("ClientChatList"); }}
+              style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+            >
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>Ir para o chat</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={() => setShowChatModal(false)}
-            />
+              style={{ height: S.touchMin, alignItems: "center", justifyContent: "center" }}
+            >
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>Agora não</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
-        {/* Cabeçalho de sucesso */}
-        <View style={{ alignItems: "center", paddingVertical: 16, gap: 8 }}>
-          <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: theme.chipBg, borderWidth: 1, borderColor: "rgba(34,197,94,0.25)", alignItems: "center", justifyContent: "center" }}>
-            <Ionicons name="checkmark" size={28} color={theme.textGreen} />
+      <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, gap: 14, paddingTop: 16 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
+        {/* Cabeçalho de sucesso V2 */}
+        <View style={{ alignItems: "center", paddingVertical: 16, gap: 10 }}>
+          <View style={{ width: 72, height: 72, borderRadius: 24, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.3, shadowRadius: 16, elevation: 6 }}>
+            <Ionicons name="checkmark" size={36} color={theme.primary} />
           </View>
-          <MvText variant="h4">Confirmação concluída</MvText>
-          <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 26, color: theme.text1, letterSpacing: -0.02 * 26, textAlign: "center" }}>
+            {hasMultipleBookings ? `${bookingCount} agendamentos criados!` : "Agendamento confirmado!"}
+          </Text>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center", lineHeight: 20 }}>
             {hasMultipleBookings
-              ? `Mostrando um dos ${bookingCount} agendamentos criados. Abra Meus agendamentos para ver a lista completa.`
-              : "Revise os dados do serviço e siga para os próximos passos."}
-          </MvText>
+              ? `Mostrando um dos ${bookingCount} agendamentos. Abra Minha agenda para ver a lista completa.`
+              : "Revise os dados e siga para os próximos passos."}
+          </Text>
         </View>
 
+        {/* Aviso de disponibilidade parcial */}
         {hasPartialAvailability ? (
-          <MvCard>
-            <MvText variant="semi3" style={{ marginBottom: 6 }}>
-              Algumas datas ficaram indisponíveis
-            </MvText>
-            <MvText variant="body4" color="secondary">
-              Foram criados {bookingCount} agendamentos com sucesso. Use o chat para alinhar novas datas para os horários que não foram reservados.
-            </MvText>
-          </MvCard>
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: C.amberBorder, backgroundColor: C.amberDim, padding: 14, gap: 6 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Algumas datas ficaram indisponíveis</Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, lineHeight: 20 }}>
+              Foram criados {bookingCount} agendamentos com sucesso. Use o chat para alinhar novas datas.
+            </Text>
+          </View>
         ) : null}
 
         {/* Resumo */}
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 8 }}>
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 6 }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, marginBottom: 4 }}>
             {hasMultipleBookings ? "Resumo de um agendamento" : "Resumo da contratação"}
-          </MvText>
-          <MvText variant="body4" color="secondary">Profissional: {booking.provider?.displayName ?? "Profissional"}</MvText>
-          <MvText variant="body4" color="secondary" style={{ marginTop: 4 }}>Data e hora: {formatBRDateTime(booking.scheduledAt)}</MvText>
+          </Text>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Profissional: {booking.provider?.displayName ?? "Profissional"}</Text>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Data e hora: {formatBRDateTime(booking.scheduledAt)}</Text>
           {booking.notes ? (
-            <MvText variant="body4" color="secondary" style={{ marginTop: 4 }}>Observações: {booking.notes}</MvText>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Observações: {booking.notes}</Text>
           ) : null}
-        </MvCard>
+        </View>
 
         {/* Pagamento */}
-        <MvCard>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <MvText variant="semi2">Status de pagamento</MvText>
-            <MvBadge label={paymentLabel(payment?.status)} variant={paymentVariant(payment?.status)} />
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 8 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Status de pagamento</Text>
+            {(() => {
+              const v = paymentVariant(payment?.status);
+              const col = v === "green" ? theme.primary : v === "red" ? theme.danger : C.amber;
+              const bg = v === "green" ? theme.primarySubtle : v === "red" ? "rgba(239,68,68,0.12)" : C.amberDim;
+              const border = v === "green" ? theme.primarySubtleBorder : v === "red" ? "rgba(239,68,68,0.20)" : C.amberBorder;
+              return (
+                <View style={{ backgroundColor: bg, borderWidth: 1, borderColor: border, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3 }}>
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: col }}>{paymentLabel(payment?.status)}</Text>
+                </View>
+              );
+            })()}
           </View>
-          <MvText variant="body4" color="secondary">
-            Valor: {formatCurrencyBRL((payment?.amountCents ?? 0) / 100)}
-          </MvText>
-          <MvText variant="body4" color="secondary" style={{ marginTop: 6 }}>
+          {payment?.amountCents != null ? (
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>
+              Valor: {formatCurrencyBRL(payment.amountCents / 100)}
+            </Text>
+          ) : (
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>
+              Aguardando processamento do pagamento...
+            </Text>
+          )}
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3, lineHeight: 18 }}>
             {payment?.method === "PIX"
               ? "No PIX, a cobrança acontece por QR Code/cópia e cola. Em cancelamento, o valor é estornado."
               : "No cartão, a cobrança fica pré-autorizada e é capturada após a conclusão do atendimento."}
-          </MvText>
+          </Text>
 
-          {payment?.method === "PIX" ? (
-            <View style={{ marginTop: 12, gap: 8 }}>
-              <MvButton
-                label={payment.status === "CAPTURED" ? "PIX já confirmado" : "Gerar cobrança PIX"}
-                disabled={payment.status === "CAPTURED"}
-                loading={pixCharging}
-                onPress={() => void startPixCharge()}
-              />
-              {pixCharge?.pix?.copyAndPasteCode ? (
-                <MvCard>
-                  <MvText variant="semi3" style={{ marginBottom: 4 }}>Código PIX (cópia e cola)</MvText>
-                  <MvText variant="body4" color="secondary" selectable>{pixCharge.pix.copyAndPasteCode}</MvText>
-                </MvCard>
-              ) : null}
-              {pixCharge?.pix?.hostedInstructionsUrl ? (
-                <MvButton
-                  variant="outline"
-                  label="Abrir instruções PIX"
-                  onPress={() => void Linking.openURL(pixCharge.pix!.hostedInstructionsUrl!)}
-                />
-              ) : null}
-              {payment.status !== "CAPTURED" ? (
-                <MvButton
-                  variant="outline"
-                  label="Verificar se PIX foi pago"
-                  loading={checkingPix}
-                  onPress={() => void checkPixStatus()}
-                />
-              ) : null}
-            </View>
-          ) : null}
-        </MvCard>
+          {payment?.method === "PIX" ? (() => {
+            const pixPaid = payment.status === "CAPTURED";
+            const pixExpiresMs = pixCharge?.pix?.expiresAt ? new Date(pixCharge.pix.expiresAt).getTime() : NaN;
+            const pixExpired = Number.isFinite(pixExpiresMs) && pixExpiresMs < Date.now();
+            return (
+              <View style={{ marginTop: 4, gap: 8 }}>
+                {pixPollError && !pixPaid ? (
+                  <TouchableOpacity
+                    onPress={() => { pixFailCountRef.current = 0; setPixPollError(false); void checkPaymentOnly(); }}
+                    style={{ borderRadius: 12, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 12, flexDirection: "row", alignItems: "center", gap: 10 }}
+                  >
+                    <Ionicons name="wifi-outline" size={18} color={theme.text3} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Falha ao verificar pagamento</Text>
+                      <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>Toque para tentar novamente.</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : null}
+                {pixExpired && !pixPaid ? (
+                  <View style={{ borderRadius: 12, borderWidth: 1, borderColor: C.amberBorder, backgroundColor: C.amberDim, padding: 12, gap: 4 }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>PIX expirado</Text>
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
+                      {Number.isFinite(pixExpiresMs)
+                        ? `Expirou em ${new Date(pixExpiresMs).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })} de ${new Date(pixExpiresMs).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" })}. `
+                        : ""}
+                      Gere um novo código para continuar.
+                    </Text>
+                  </View>
+                ) : null}
+                <TouchableOpacity
+                  disabled={pixPaid || pixCharging}
+                  onPress={() => void startPixCharge()}
+                  style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: pixPaid ? "rgba(255,255,255,0.06)" : theme.primary, alignItems: "center", justifyContent: "center" }}
+                >
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: pixPaid ? theme.text3 : theme.textOnPrimary }}>
+                    {pixCharging ? "Gerando..." : pixPaid ? "PIX já confirmado" : pixExpired ? "Gerar novo PIX" : "Gerar cobrança PIX"}
+                  </Text>
+                </TouchableOpacity>
+                {pixCharge?.pix?.copyAndPasteCode && !pixExpired ? (
+                  <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, padding: 12, gap: 6 }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Código PIX (cópia e cola)</Text>
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: C.zinc300 }} selectable>{pixCharge.pix.copyAndPasteCode}</Text>
+                  </View>
+                ) : null}
+                {pixCharge?.pix?.hostedInstructionsUrl && !pixExpired ? (
+                  <TouchableOpacity onPress={() => void Linking.openURL(pixCharge.pix!.hostedInstructionsUrl!)} style={{ height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Abrir instruções PIX</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {!pixPaid && !pixExpired ? (
+                  <TouchableOpacity disabled={checkingPix} onPress={() => void checkPixStatus()} style={{ height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>{checkingPix ? "Verificando..." : "Verificar se PIX foi pago"}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            );
+          })() : null}
+        </View>
+
+        {/* Chat com o personal — sempre visível, não depende do modal */}
+        <PressableScale
+          onPress={() => navigation.navigate("ClientChatList")}
+          style={{
+            borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder,
+            backgroundColor: "rgba(36,230,109,0.09)", padding: 14,
+            flexDirection: "row", alignItems: "center", gap: 12,
+          }}
+        >
+          <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Ionicons name="chatbubbles-outline" size={20} color={theme.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>
+              Falar com {providerDisplayName}
+            </Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 2 }}>
+              Alinhe horário, local e objetivos antes da sessão
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={theme.primary} />
+        </PressableScale>
 
         {/* Ações */}
         <View style={{ gap: 10 }}>
-          <MvButton
-            label="Ver meus agendamentos"
-            loading={confirming}
-            disabled={!canConfirm || confirming}
-            onPress={() => void confirmBooking()}
-          />
-          <MvButton variant="outline" label="Voltar" onPress={() => navigation.goBack()} />
+          {payment?.status === "FAILED" ? (
+            <>
+              <TouchableOpacity
+                onPress={() => navigation.navigate("ClientPaymentMethod")}
+                style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+              >
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>Verificar método de pagamento</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigation.goBack()} style={{ height: S.touchMin, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>Voltar ao agendamento</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity
+                disabled={!canConfirm || confirming}
+                onPress={() => void confirmBooking()}
+                accessibilityRole="button"
+                style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: (!canConfirm || confirming) ? "rgba(36,230,109,0.4)" : theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: (!canConfirm || confirming) ? 0 : 0.28, shadowRadius: 10, elevation: (!canConfirm || confirming) ? 0 : 4 }}
+              >
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
+                  {confirming ? "Abrindo agenda..." : "Ver meus agendamentos"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigation.goBack()} style={{ height: S.touchMin, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>Voltar</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </ScrollView>
     </View>

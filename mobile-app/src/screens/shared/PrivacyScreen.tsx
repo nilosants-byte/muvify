@@ -1,9 +1,10 @@
 ﻿import React from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import { ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvCard, MvText } from "../../components/mv";
+import { C, S, DISPLAY } from "../../theme/v2tokens";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -40,18 +41,19 @@ export function PrivacyScreen({ navigation }: { navigation?: any }) {
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
-      <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 14, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.borderSub }}>
+      {/* Header V2 */}
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border, backgroundColor: theme.bg }}>
         {navigation?.canGoBack?.() ? (
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
           >
-            <Ionicons name="chevron-back" size={20} color={theme.text2} />
+            <Ionicons name="chevron-back" size={18} color={theme.text1} />
           </TouchableOpacity>
         ) : null}
         <View style={{ flex: 1 }}>
-          <MvText variant="semi1">Termos e Privacidade</MvText>
-          <MvText variant="body4" color="secondary">Versão 1.1 · Vigência: 03/05/2026</MvText>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Termos e Privacidade</Text>
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>Versão 1.1 · Vigência: 03/05/2026</Text>
         </View>
       </View>
 

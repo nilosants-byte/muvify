@@ -1,9 +1,11 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { Modal, Pressable, ScrollView, StatusBar, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { useAppState } from "../../state/AppState";
 import { userApi } from "../../services/api/client";
 
@@ -24,10 +26,11 @@ function ActionRow({
 }) {
   const { theme } = useMvTheme();
   return (
-    <TouchableOpacity
-      activeOpacity={onPress ? 0.8 : 1}
+    <PressableScale
+      scale={0.98}
       onPress={onPress}
-      style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12, gap: 12 }}
+      disabled={!onPress}
+      style={{ flexDirection: "row", alignItems: "center", paddingVertical: 14, gap: 12 }}
     >
       <View style={{
         width: 38,
@@ -37,8 +40,7 @@ function ActionRow({
         alignItems: "center",
         justifyContent: "center",
         flexShrink: 0,
-      }}
-      >
+      }}>
         <Ionicons name={icon} size={18} color={iconColor ?? theme.textGreen} />
       </View>
       <View style={{ flex: 1 }}>
@@ -47,13 +49,12 @@ function ActionRow({
       </View>
       {badge ? <MvBadge label={badge.label} variant={badge.variant} /> : null}
       {onPress && !badge ? <Ionicons name="chevron-forward" size={16} color={theme.text3} /> : null}
-    </TouchableOpacity>
+    </PressableScale>
   );
 }
 
 export function SecurityScreen({ navigation }: { navigation?: any }) {
   const { theme } = useMvTheme();
-  const insets = useSafeAreaInsets();
   const { refreshSession, runWithAuth, showToast } = useAppState();
 
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
@@ -180,7 +181,8 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
 
     try {
       setEmailSaving(true);
-      await runWithAuth((token) => userApi.updateMe(token, { email: normalized }));
+      // TODO: mudança de email requer endpoint dedicado — funcionalidade temporariamente desabilitada
+      throw new Error("Mudança de e-mail temporariamente indisponível. Contate o suporte.");
       await Promise.all([loadRecoveryEmail(), refreshSession()]);
       showToast("E-mail de login atualizado.", "success");
       setEmailModalVisible(false);
@@ -198,23 +200,10 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
     <>
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <ProfessionalScreenHeader title="Segurança" onBack={navigation?.canGoBack?.() ? () => navigation.goBack() : undefined} />
 
-        <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 14, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.borderSub }}>
-          {navigation?.canGoBack?.() ? (
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-            >
-              <Ionicons name="chevron-back" size={20} color={theme.text2} />
-            </TouchableOpacity>
-          ) : null}
-          <View style={{ flex: 1 }}>
-            <MvText variant="semi1">Segurança</MvText>
-            <MvText variant="body4" color="secondary">Proteja sua conta</MvText>
-          </View>
-        </View>
-
-        <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
+        <ScreenEntrance>
+        <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false}>
           <MvCard>
             <MvText variant="semi2" style={{ marginBottom: 4 }}>Acesso à conta</MvText>
             <View style={{ height: 1, backgroundColor: theme.borderSub, marginBottom: 4 }} />
@@ -263,6 +252,7 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
             Em caso de acesso não autorizado, entre em contato via Suporte imediatamente.
           </MvText>
         </ScrollView>
+        </ScreenEntrance>
       </View>
 
       <Modal

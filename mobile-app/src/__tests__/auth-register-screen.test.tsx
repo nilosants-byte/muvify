@@ -26,12 +26,15 @@ describe("RegisterScreen", () => {
     fireEvent.press(getByRole("button", { name: "Criar conta" }));
 
     await waitFor(() =>
-      expect(register).toHaveBeenCalledWith({
-        name: "Danilo",
-        email: "danilo@email.com",
-        password: "Senha@123",
-        phone: "11999998888"
-      })
+      expect(register).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Danilo",
+          email: "danilo@email.com",
+          password: "Senha@123",
+          phone: "11999998888",
+          consentAccepted: true,
+        })
+      )
     );
     expect(showToast).toHaveBeenCalledWith("Cadastro realizado com sucesso.", "success");
   });

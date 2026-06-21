@@ -1,19 +1,26 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { Modal, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { SelfieProofCapture } from "../../components/media/SelfieProofCapture";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { Booking, bookingsApi, CompletionProofInput } from "../../services/api/client";
+import { SkeletonBookingCard } from "../../components/polish/SkeletonCard";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatBRDateTime } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalConfirmCompletion">;
+
+// Cache de módulo: populado por BookingDetailProfessionalScreen antes de navegar,
+// evitando buscar todos os agendamentos só para encontrar um pelo ID.
+export const _bookingDetailCache = new Map<string, Booking>();
 
 function extractQrTokenFromPayload(payload: string) {
   const raw = payload.trim();
@@ -39,14 +46,20 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
   const [submitting, setSubmitting] = useState(false);
   const [completionProof, setCompletionProof] = useState<CompletionProofInput | null>(null);
   const [attendanceCode, setAttendanceCode] = useState("");
-  const [attendanceQrToken, setAttendanceQrToken] = useState("");
   const [validatingAttendance, setValidatingAttendance] = useState(false);
-  const [scannerVisible, setScannerVisible] = useState(false);
-  const [scannerReadLock, setScannerReadLock] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [showCodeFallback, setShowCodeFallback] = useState(false);
+  const scanLockRef = useRef(false);
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const load = useCallback(async () => {
+    const cached = _bookingDetailCache.get(bookingId);
+    if (cached) {
+      setBooking(cached);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       const bookings = await runWithAuth((token) => bookingsApi.me(token));
@@ -62,62 +75,79 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
 
   async function validateAttendanceCode() {
     const normalized = attendanceCode.replace(/\D/g, "");
-    if (normalized.length !== 6) { showToast("Informe o código de 6 dígitos.", "error"); return; }
+    if (normalized.length !== 6) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showToast("Informe o código de 6 dígitos.", "error");
+      return;
+    }
     try {
       setValidatingAttendance(true);
       await runWithAuth((token) => bookingsApi.verifyAttendanceCode(token, bookingId, normalized));
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast("Código presencial validado com sucesso.", "success");
       setAttendanceCode(normalized);
       await load();
     } catch (error) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao validar código presencial.", navigation });
     } finally {
       setValidatingAttendance(false);
     }
   }
 
-  async function validateAttendanceQr(tokenOverride?: string) {
-    const qrToken = (tokenOverride ?? attendanceQrToken).trim();
-    if (!qrToken) { showToast("Informe o token do QR para validar.", "error"); return; }
+  async function validateAttendanceQr(token: string) {
     try {
       setValidatingAttendance(true);
-      await runWithAuth((token) => bookingsApi.verifyAttendanceQr(token, bookingId, qrToken));
+      await runWithAuth((t) => bookingsApi.verifyAttendanceQr(t, bookingId, token));
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast("QR validado com sucesso.", "success");
-      setAttendanceQrToken(qrToken);
       await load();
     } catch (error) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao validar QR do atendimento.", navigation });
+      scanLockRef.current = false;
     } finally {
       setValidatingAttendance(false);
     }
   }
 
-  async function openQrScanner() {
+  async function openCamera() {
     if (!cameraPermission?.granted) {
-      const requested = await requestCameraPermission();
-      if (!requested.granted) { showToast("Permissão de câmera necessária para ler QR Code.", "error"); return; }
+      const result = await requestCameraPermission();
+      if (!result.granted) {
+        showToast("Permissão de câmera necessária para escanear o QR.", "error");
+        return;
+      }
     }
-    setScannerReadLock(false);
-    setScannerVisible(true);
+    scanLockRef.current = false;
+    setShowCamera(true);
   }
 
   function onQrScanned(rawData: string) {
-    if (scannerReadLock) return;
+    if (scanLockRef.current || validatingAttendance) return;
     const token = extractQrTokenFromPayload(rawData);
     if (!token) { showToast("QR inválido. Tente novamente.", "error"); return; }
-    setScannerReadLock(true);
-    setScannerVisible(false);
-    setAttendanceQrToken(token);
+    scanLockRef.current = true;
     showToast("QR lido. Validando...", "info");
     void validateAttendanceQr(token);
   }
 
   async function handleConfirm() {
-    if (!completionProof) { showToast("Salve a selfie para confirmar a conclusão.", "error"); return; }
+    if (!attendanceValidated) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showToast("Valide a presença do aluno antes de confirmar.", "error");
+      return;
+    }
+    if (!completionProof) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showToast("Salve a selfie para confirmar a conclusão.", "error");
+      return;
+    }
     try {
       setSubmitting(true);
       const updated = await runWithAuth((token) => bookingsApi.updateStatus(token, bookingId, "COMPLETED", completionProof));
       if (updated.status === "COMPLETED") {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast("Conclusão registrada com sucesso.", "success");
       } else {
         showToast("Sua confirmação foi registrada.", "info");
@@ -134,29 +164,25 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
   const isActive = booking?.status === "PENDING" || booking?.status === "CONFIRMED";
 
   return (
-    <>
-      <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-        <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-          >
-            <Ionicons name="chevron-back" size={20} color={theme.text2} />
-          </TouchableOpacity>
-          <MvText variant="semi1">Conclusão do atendimento</MvText>
-        </View>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <ProfessionalScreenHeader title="Conclusão do atendimento" onBack={() => navigation.goBack()} />
 
-        <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
-          <MvText variant="body4" color="secondary">
-            Capture uma selfie para confirmar que o treino foi realizado.
-          </MvText>
+      <ScrollView
+        automaticallyAdjustKeyboardInsets={true}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: Math.max(40, insets.bottom + 24), gap: 12 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <MvText variant="body4" color="secondary">
+          Valide a presença do aluno e capture uma selfie para registrar o treino.
+        </MvText>
 
-          {/* Info do agendamento */}
+        {/* Info do agendamento */}
+        {loading ? (
+          <SkeletonBookingCard />
+        ) : (
           <MvCard>
-            {loading ? (
-              <MvText variant="body4" color="secondary">Carregando dados do agendamento...</MvText>
-            ) : booking ? (
+            {booking ? (
               <View style={{ gap: 4 }}>
                 <MvText variant="semi2">Cliente: {booking.client?.name ?? "Aluno"}</MvText>
                 <MvText variant="body4" color="secondary">{booking.category?.name ?? "Treino presencial"}</MvText>
@@ -169,92 +195,128 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
               <MvText variant="body4" color="secondary">Agendamento não encontrado.</MvText>
             )}
           </MvCard>
+        )}
 
-          {/* Validação presencial */}
-          {isActive ? (
-            <MvCard>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <MvText variant="semi2">Validação presencial</MvText>
-                <MvBadge
-                  label={attendanceValidated ? "Validado" : "Pendente"}
-                  variant={attendanceValidated ? "green" : "orange"}
-                />
+        {/* Validação presencial */}
+        {isActive ? (
+          <MvCard>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <MvText variant="semi2">Validação presencial</MvText>
+              <MvBadge
+                label={attendanceValidated ? "Validado" : "Pendente"}
+                variant={attendanceValidated ? "green" : "orange"}
+              />
+            </View>
+
+            {attendanceValidated ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 }}>
+                <Ionicons name="checkmark-circle" size={20} color={theme.primary} />
+                <MvText variant="semi3" style={{ color: theme.primary }}>Presença confirmada</MvText>
               </View>
-              <MvText variant="body4" color="secondary" style={{ marginBottom: 10 }}>
-                Valide agora por código de 6 dígitos ou QR, sem precisar voltar.
-              </MvText>
+            ) : (
+              <>
+                {/* ── Estado inicial: botão para abrir câmera ── */}
+                {!showCamera && !showCodeFallback ? (
+                  <View style={{ gap: 10 }}>
+                    <MvText variant="body4" color="secondary">
+                      Escaneie o QR exibido no celular do aluno para validar a presença.
+                    </MvText>
+                    <MvButton
+                      label="Escanear QR do aluno"
+                      onPress={() => void openCamera()}
+                    />
+                  </View>
+                ) : null}
 
-              <MvInput
-                keyboardType="number-pad"
-                placeholder="Código de 6 dígitos"
-                maxLength={6}
-                value={attendanceCode}
-                onChangeText={(value) => setAttendanceCode(value.replace(/\D/g, "").slice(0, 6))}
-              />
-              <MvButton
-                variant="outline"
-                label="Validar código"
-                loading={validatingAttendance}
-                style={{ marginTop: 8 }}
-                onPress={() => void validateAttendanceCode()}
-              />
+                {/* ── Câmera inline (on-demand) ── */}
+                {showCamera && !showCodeFallback ? (
+                  <View style={{ gap: 8 }}>
+                    <View style={{ borderRadius: 12, overflow: "hidden", height: 280, borderWidth: 1, borderColor: theme.border }}>
+                      <CameraView
+                        barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                        onBarcodeScanned={validatingAttendance ? undefined : ({ data }) => onQrScanned(data)}
+                        style={{ width: "100%", height: "100%" }}
+                      />
+                      {validatingAttendance ? (
+                        <View
+                          style={{
+                            position: "absolute",
+                            top: 0, left: 0, right: 0, bottom: 0,
+                            backgroundColor: "rgba(0,0,0,0.50)",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 10,
+                          }}
+                        >
+                          <ActivityIndicator color={theme.primary} size="large" />
+                          <MvText variant="semi3" style={{ color: "#fff" }}>Validando...</MvText>
+                        </View>
+                      ) : null}
+                    </View>
+                    <TouchableOpacity onPress={() => setShowCamera(false)} style={{ alignItems: "center", paddingVertical: 4 }}>
+                      <MvText variant="body4" style={{ color: theme.textGreen }}>Fechar câmera</MvText>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
 
-              <MvInput
-                autoCapitalize="none"
-                placeholder="Token QR (cole ou escaneie)"
-                value={attendanceQrToken}
-                onChangeText={setAttendanceQrToken}
-                style={{ marginTop: 12 }}
-              />
-              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                <MvButton variant="outline" label="Ler QR pela câmera" loading={validatingAttendance} onPress={() => void openQrScanner()} />
-                <MvButton variant="outline" label="Validar QR" loading={validatingAttendance} onPress={() => void validateAttendanceQr()} />
-              </View>
-            </MvCard>
-          ) : null}
+                {/* ── Fallback: código manual ── */}
+                {showCodeFallback ? (
+                  <View style={{ gap: 8 }}>
+                    <MvInput
+                      keyboardType="number-pad"
+                      placeholder="Código de 6 dígitos"
+                      maxLength={6}
+                      value={attendanceCode}
+                      onChangeText={(value) => setAttendanceCode(value.replace(/\D/g, "").slice(0, 6))}
+                    />
+                    <MvButton
+                      variant="outline"
+                      label="Validar código"
+                      loading={validatingAttendance}
+                      onPress={() => void validateAttendanceCode()}
+                    />
+                  </View>
+                ) : null}
 
-          <SelfieProofCapture
-            disabled={submitting}
-            value={completionProof}
-            onChange={setCompletionProof}
-            showToast={showToast}
+                {/* Toggle câmera / código */}
+                <TouchableOpacity
+                  onPress={() => {
+                    if (showCodeFallback) {
+                      setShowCodeFallback(false);
+                      setShowCamera(false);
+                    } else {
+                      setShowCamera(false);
+                      setShowCodeFallback(true);
+                    }
+                  }}
+                  style={{ alignItems: "center", paddingVertical: 10 }}
+                >
+                  <MvText variant="body4" style={{ color: theme.textGreen }}>
+                    {showCodeFallback ? "Usar câmera" : "Prefiro informar o código manualmente"}
+                  </MvText>
+                </TouchableOpacity>
+              </>
+            )}
+          </MvCard>
+        ) : null}
+
+        <SelfieProofCapture
+          disabled={submitting}
+          value={completionProof}
+          onChange={setCompletionProof}
+          showToast={showToast}
+        />
+
+        <View style={{ gap: 10 }}>
+          <MvButton
+            label="Confirmar conclusão"
+            loading={submitting}
+            disabled={!completionProof || !attendanceValidated || !booking || booking.status === "CANCELLED" || booking.status === "COMPLETED"}
+            onPress={() => void handleConfirm()}
           />
-
-          <View style={{ gap: 10 }}>
-            <MvButton
-              label="Confirmar conclusão"
-              loading={submitting}
-              disabled={!completionProof || !booking || booking.status === "CANCELLED" || booking.status === "COMPLETED"}
-              onPress={() => void handleConfirm()}
-            />
-            <MvButton variant="outline" label="Voltar" onPress={() => navigation.goBack()} />
-          </View>
-        </ScrollView>
-      </View>
-
-      {/* QR Scanner modal */}
-      <Modal animationType="slide" transparent visible={scannerVisible} onRequestClose={() => setScannerVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 24 }}>
-          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16, gap: 12 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <MvText variant="semi2">Escanear QR da aula</MvText>
-              <TouchableOpacity onPress={() => setScannerVisible(false)}>
-                <MvText variant="semi3" style={{ color: theme.textGreen }}>Fechar</MvText>
-              </TouchableOpacity>
-            </View>
-            <View style={{ borderRadius: 12, overflow: "hidden", height: 320, borderWidth: 1, borderColor: theme.border }}>
-              <CameraView
-                barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                onBarcodeScanned={scannerReadLock ? undefined : ({ data }) => onQrScanned(data)}
-                style={{ width: "100%", height: "100%" }}
-              />
-            </View>
-            <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
-              Aponte para o QR exibido no celular do aluno.
-            </MvText>
-          </View>
+          <MvButton variant="outline" label="Voltar" onPress={() => navigation.goBack()} />
         </View>
-      </Modal>
-    </>
+      </ScrollView>
+    </View>
   );
 }

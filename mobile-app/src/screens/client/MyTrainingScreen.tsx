@@ -1,162 +1,444 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, Modal, Pressable, RefreshControl, StatusBar, TouchableOpacity, View } from "react-native";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  FlatList,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientTabParamList } from "../../navigation/route-types";
 import {
   consultancyApi,
+  ConsultancyContract,
   ConsultancyPaymentMethod,
   ConsultancyRequest,
   MyTrainingResponse,
+  TrainingPlan,
   TrainingPlanExercise,
 } from "../../services/api/client";
-import { useAppState } from "../../state/AppState";
-import { useMvTheme } from "../../theme/MvThemeContext";
-import {
-  MvBadge,
-  MvBottomNav,
-  MvButton,
-  MvCard,
-  MvMediaPreviewButton,
-  MvMediaViewer,
-  MvText,
-} from "../../components/mv";
-import { formatDateLabel } from "../../utils/formatters";
+import { useAppState, ToastType } from "../../state/AppState";
+import { hapticWorkoutStart, hapticWorkoutFinish, hapticCta } from "../../utils/haptics";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { MvMediaPreviewButton, MvMediaViewer } from "../../components/mv";
+import { formatDateLabel, formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useMvTheme } from "../../theme/MvThemeContext";
+import type { MvTheme } from "../../theme/MvColors";
+import { C, S, DISPLAY } from "../../theme/v2tokens";
+import { ClientBottomNavV2 } from "../../components/navigation/ClientBottomNavV2";
 
 type Props = BottomTabScreenProps<ClientTabParamList, "MyTraining">;
-type TrainingFilter = "all" | "active" | "delivered";
+type TrainingTab = "active" | "pending" | "history";
 
-function contractStatusLabel(status: string) {
-  if (status === "PENDING_PAYMENT") return "Pagamento pendente";
-  if (status === "ACTIVE") return "Ativo";
-  if (status === "DELIVERED") return "Entregue";
-  if (status === "REFUNDED_EXPIRED") return "Expirado/Estornado";
-  if (status === "ARCHIVED") return "Arquivado";
-  return status;
-}
-
-function contractStatusVariant(status: string): "green" | "blue" | "orange" | "red" | "gray" {
-  if (status === "ACTIVE") return "blue";
-  if (status === "PENDING_PAYMENT") return "orange";
-  if (status === "DELIVERED") return "green";
-  if (status === "REFUNDED_EXPIRED") return "red";
-  return "gray";
-}
-
-function parseRestSeconds(input?: string | null) {
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function parseRestSeconds(input?: string | null): number | null {
   if (!input) return null;
-  const normalized = input.trim().toLowerCase();
-  if (!normalized) return null;
-
-  const mmssMatch = normalized.match(/^(\d{1,2}):(\d{1,2})$/);
-  if (mmssMatch) {
-    const minutes = Number(mmssMatch[1]);
-    const seconds = Number(mmssMatch[2]);
-    if (Number.isFinite(minutes) && Number.isFinite(seconds)) return minutes * 60 + seconds;
-  }
-
-  const minuteMatch = normalized.match(/(\d+)\s*(min|m)\b/);
-  if (minuteMatch) {
-    const minutes = Number(minuteMatch[1]);
-    if (Number.isFinite(minutes)) return minutes * 60;
-  }
-
-  const numberMatch = normalized.match(/(\d+)/);
-  if (!numberMatch) return null;
-  const value = Number(numberMatch[1]);
-  if (!Number.isFinite(value)) return null;
-  return value;
+  const n = input.trim().toLowerCase();
+  const mmss = n.match(/^(\d{1,2}):(\d{1,2})$/);
+  if (mmss) return Number(mmss[1]) * 60 + Number(mmss[2]);
+  const min = n.match(/(\d+)\s*(min|m)\b/);
+  if (min) return Number(min[1]) * 60;
+  const num = n.match(/(\d+)/);
+  return num ? Number(num[1]) : null;
 }
 
-function formatTimer(totalSeconds: number) {
-  const safe = Math.max(0, totalSeconds);
-  const minutes = Math.floor(safe / 60);
-  const seconds = safe % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+function fmtTimer(total: number) {
+  const s = Math.max(0, total);
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function PaymentChip({
-  label,
-  selected,
-  onPress,
-  theme,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-  theme: any;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={{
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20,
-        backgroundColor: selected ? "rgba(76,175,80,0.12)" : theme.chipBg,
-        borderWidth: 1,
-        borderColor: selected ? "rgba(76,175,80,0.30)" : theme.border,
-      }}
-    >
-      <MvText variant="body4" style={{ color: selected ? theme.textGreen : theme.chipText }}>
-        {label}
-      </MvText>
-    </TouchableOpacity>
+function contractStatusStyle(status: string, theme: MvTheme) {
+  const isDark = theme.mode === "dark";
+  if (status === "ACTIVE") return { label: "Ativo", color: theme.primary, bg: theme.primarySubtle, border: theme.primarySubtleBorder };
+  if (status === "PENDING_PAYMENT") return { label: "Pagamento pendente", color: C.amber, bg: C.amberDim, border: C.amberBorder };
+  if (status === "DELIVERED") return { label: "Entregue", color: theme.text2, bg: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", border: theme.border };
+  return { label: "Arquivado", color: theme.text3, bg: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)", border: theme.border };
+}
+
+// ── Flat plan list helper ──────────────────────────────────────────────────────
+type FlatPlan = TrainingPlan & { contractStatus: string; providerName: string; contractId: string };
+
+function flatPlans(contracts: ConsultancyContract[]): FlatPlan[] {
+  return contracts.flatMap((c) =>
+    (c.trainingPlans ?? []).map((p) => ({
+      ...p,
+      contractStatus: c.status,
+      providerName: c.provider?.displayName ?? "Personal",
+      contractId: c.id,
+    }))
   );
 }
 
+// ── WorkoutDetailModal ────────────────────────────────────────────────────────
+function WorkoutDetailModal({
+  plan,
+  onClose,
+  showToast,
+}: {
+  plan: FlatPlan;
+  onClose: () => void;
+  showToast: (msg: string, type?: ToastType) => void;
+}) {
+  const { theme } = useMvTheme();
+  const insets = useSafeAreaInsets();
+  const [started, setStarted] = useState(false);
+  const [done, setDone] = useState<Set<string>>(new Set());
+  const [finished, setFinished] = useState(false);
+  const [showFinishConfirm, setShowFinishConfirm] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimestampRef = useRef<number | null>(null);
+
+  // Chave de persistência do timer — específica por plano (guard contra id undefined)
+  const TIMER_KEY = plan?.id ? `@muvify/workoutTimer_${plan.id}` : null;
+
+  // Ao montar: verifica se há um timer em andamento salvo (app foi fechado/bloqueado)
+  useEffect(() => {
+    if (!TIMER_KEY) return;
+    AsyncStorage.getItem(TIMER_KEY).then((saved) => {
+      if (!saved) return;
+      try {
+        const { startedAt } = JSON.parse(saved) as { startedAt: number };
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        startTimestampRef.current = startedAt;
+        setSeconds(elapsed);
+        setStarted(true);
+      } catch { /* dado corrompido — ignora */ }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Rest timer
+  const [restVisible, setRestVisible] = useState(false);
+  const [restLabel, setRestLabel] = useState("");
+  const [restInitial, setRestInitial] = useState(0);
+  const [restRemaining, setRestRemaining] = useState(0);
+  const [restBlink, setRestBlink] = useState(true);
+
+  // Media viewer
+  const [expandedMediaId, setExpandedMediaId] = useState<string | null>(null);
+
+  // Main timer — sincroniza com timestamp real para não acumular drift
+  useEffect(() => {
+    if (started && !finished) {
+      timerRef.current = setInterval(() => {
+        if (startTimestampRef.current !== null) {
+          setSeconds(Math.floor((Date.now() - startTimestampRef.current) / 1000));
+        } else {
+          setSeconds((s) => s + 1);
+        }
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [started, finished]);
+
+  // Rest timer countdown
+  useEffect(() => {
+    if (!restVisible) return;
+    if (restRemaining > 0) {
+      const t = setInterval(() => setRestRemaining((r) => Math.max(0, r - 1)), 1000);
+      return () => clearInterval(t);
+    }
+    const t = setInterval(() => setRestBlink((b) => !b), 450);
+    return () => clearInterval(t);
+  }, [restVisible, restRemaining]);
+
+  function openRest(exerciseName: string, secs: number) {
+    setRestLabel(exerciseName);
+    setRestInitial(secs);
+    setRestRemaining(secs);
+    setRestBlink(true);
+    setRestVisible(true);
+  }
+
+  function toggleDone(id: string) {
+    if (!started) return;
+    setDone((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function handleFinish() {
+    hapticWorkoutFinish(); // Momento 5 — treino finalizado
+    setShowFinishConfirm(false);
+    setFinished(true);
+    if (timerRef.current) clearInterval(timerRef.current);
+    // Limpa o timer persistido — treino encerrado manualmente
+    if (TIMER_KEY) AsyncStorage.removeItem(TIMER_KEY).catch(() => {});
+    showToast("Treino finalizado! +120 pts", "success");
+  }
+
+  const exercises = plan.exercises ?? [];
+
+  // ── Tela pós-treino ─────────────────────────────────────────────────────────
+  if (finished) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
+        <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: theme.border }}>
+          <TouchableOpacity onPress={onClose} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="close" size={18} color={theme.text1} />
+          </TouchableOpacity>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3, marginLeft: 10 }}>Tá pago!</Text>
+        </View>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, paddingTop: 20, gap: 16, alignItems: "center" }}>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 34, color: theme.text1, letterSpacing: -0.02 * 34, textAlign: "center" }}>Tá pago!</Text>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center" }}>
+            Tempo: {fmtTimer(seconds)} · {done.size}/{exercises.length} exercícios marcados
+          </Text>
+          {/* Badges de conquista */}
+          <View style={{ flexDirection: "row", gap: 12, justifyContent: "center" }}>
+            {[
+              { icon: "trophy" as const, label: "Nível 12", color: C.amber },
+              { icon: "flash" as const, label: "+120 pts", color: theme.primary },
+              { icon: "flame" as const, label: "Sequência", color: "#f97316" },
+            ].map((b) => (
+              <View key={b.label} style={{ alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 18, padding: 14 }}>
+                <Ionicons name={b.icon} size={24} color={b.color} />
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text1 }}>{b.label}</Text>
+              </View>
+            ))}
+          </View>
+          {/* CTA */}
+          <TouchableOpacity
+            onPress={onClose}
+            style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", width: "100%", marginTop: 8, shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+          >
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>Voltar para Treinos</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
+
+      {/* Header */}
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+        <TouchableOpacity onPress={onClose} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="chevron-back" size={18} color={theme.text1} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.02 * 22 }} numberOfLines={1}>{plan.title}</Text>
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>{plan.providerName} · treino personalizado</Text>
+        </View>
+        {started && (
+          <View style={{ backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 4 }}>
+            <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 14, color: theme.primary, letterSpacing: -0.013 * 14 }}>{fmtTimer(seconds)}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Timer banner (quando em andamento) */}
+      {started && (
+        <View style={{ marginHorizontal: S.px, marginTop: 12, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, borderRadius: 16, padding: "10px 16px" as any, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10 }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.primary }}>Treino em andamento</Text>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: theme.primary, letterSpacing: -0.013 * 20 }}>{fmtTimer(seconds)}</Text>
+        </View>
+      )}
+
+      {/* Lista de exercícios */}
+      <ScrollView contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, paddingTop: 14, gap: 10 }} showsVerticalScrollIndicator={false}>
+        {exercises.map((ex) => {
+          const isDone = done.has(ex.id);
+          const restSecs = ex.restSeconds ?? parseRestSeconds(ex.restLabel);
+          const restDisplay = restSecs
+            ? restSecs >= 60 ? `${Math.floor(restSecs / 60)}min${restSecs % 60 ? ` ${restSecs % 60}s` : ""}` : `${restSecs}s`
+            : ex.restLabel ?? null;
+          const mediaUrl = ex.exercise?.mediaUrl ?? ex.demoVideoUrl ?? null;
+          const mediaType = ex.exercise?.mediaType ?? (ex.demoVideoUrl ? "YOUTUBE" : null);
+          const hasMedia = Boolean(mediaUrl && mediaType);
+          const isExpanded = expandedMediaId === ex.id;
+
+          return (
+            <View key={ex.id} style={{
+              borderRadius: S.cardR, borderWidth: 1,
+              borderColor: isDone ? theme.primarySubtleBorder : theme.border,
+              backgroundColor: isDone ? theme.primarySubtle : theme.cardBg,
+              overflow: "hidden",
+            }}>
+              <View style={{ flexDirection: "row", gap: 12, padding: 14 }}>
+                {/* Check button — mínimo 44×44px */}
+                <TouchableOpacity
+                  onPress={() => toggleDone(ex.id)}
+                  disabled={!started}
+                  style={{
+                    width: 44, height: 44, flexShrink: 0, borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: isDone ? theme.primary : theme.border,
+                    backgroundColor: isDone ? theme.primary : "rgba(255,255,255,0.04)",
+                    alignItems: "center", justifyContent: "center",
+                    opacity: started ? 1 : 0.5,
+                  }}
+                >
+                  {isDone
+                    ? <Ionicons name="checkmark" size={18} color={theme.textOnPrimary} />
+                    : <Ionicons name="barbell-outline" size={18} color={theme.text3} />
+                  }
+                </TouchableOpacity>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }} numberOfLines={2}>{ex.name}</Text>
+                  {ex.exercise?.category && (
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, marginTop: 2 }}>{ex.exercise.category}</Text>
+                  )}
+
+                  {/* Stats grid 4 colunas */}
+                  <View style={{ flexDirection: "row", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                    {[
+                      { label: "séries/reps", value: ex.repetitionsSets },
+                      { label: "carga", value: ex.load || "—" },
+                      ...(restDisplay ? [{ label: "descanso", value: restDisplay, tappable: (restSecs ?? 0) > 0 }] : []),
+                    ].map((stat, i) => (
+                      <TouchableOpacity
+                        key={i}
+                        disabled={!stat.tappable}
+                        onPress={stat.tappable ? () => openRest(ex.name, restSecs!) : undefined}
+                        style={{
+                          backgroundColor: stat.tappable ? theme.primarySubtle : "rgba(0,0,0,0.24)",
+                          borderRadius: 12, padding: "8px 6px" as any, paddingHorizontal: 8, paddingVertical: 6,
+                          alignItems: "center", minWidth: 56,
+                          borderWidth: 1, borderColor: stat.tappable ? theme.primarySubtleBorder : "transparent",
+                        }}
+                      >
+                        <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 9, color: theme.labelColor, textTransform: "uppercase", letterSpacing: 0.5 }}>{stat.label}</Text>
+                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: stat.tappable ? theme.primary : theme.text1, marginTop: 3 }}>{stat.value}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    {hasMedia && (
+                      <MvMediaPreviewButton
+                        mediaUrl={mediaUrl!}
+                        mediaType={mediaType!}
+                        expanded={isExpanded}
+                        onToggle={() => setExpandedMediaId(isExpanded ? null : ex.id)}
+                      />
+                    )}
+                  </View>
+                </View>
+              </View>
+
+              {ex.exercise?.description && (
+                <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}>
+                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>{ex.exercise.description}</Text>
+                </View>
+              )}
+
+              {hasMedia && isExpanded && (
+                <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
+                  <MvMediaViewer mediaUrl={mediaUrl!} mediaType={mediaType!} height={200} borderRadius={10} />
+                </View>
+              )}
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      {/* Botões fixos com safe area — Finalizar (esq, secundário) + Iniciar (dir, primário) */}
+      <View style={{
+        position: "absolute", bottom: 0, left: 0, right: 0,
+        paddingHorizontal: S.px, paddingBottom: Math.max(12, insets.bottom + 12), paddingTop: 12,
+        backgroundColor: `${theme.bg}f0`, borderTopWidth: 1, borderTopColor: theme.border,
+        flexDirection: "row", gap: 10,
+      }}>
+        <TouchableOpacity
+          onPress={() => setShowFinishConfirm(true)}
+          style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
+        >
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Finalizar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            if (!started) {
+              hapticWorkoutStart(); // Momento 4 — treino iniciado
+              const now = Date.now();
+              startTimestampRef.current = now;
+              // Persiste o timestamp de início — sobrevive a fechamento/bloqueio do app
+              if (TIMER_KEY) AsyncStorage.setItem(TIMER_KEY, JSON.stringify({ startedAt: now })).catch(() => {});
+            }
+            setStarted(true);
+          }}
+          style={{ flex: 1.4, height: S.btnH, borderRadius: S.btnR, backgroundColor: started ? theme.primarySubtle : theme.primary, borderWidth: 1, borderColor: started ? theme.primarySubtleBorder : "transparent", alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: started ? 0 : 0.28, shadowRadius: 10, elevation: started ? 0 : 4 }}
+        >
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: started ? theme.primary : theme.textOnPrimary }}>
+            {started ? "Em andamento" : "Iniciar treino"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Modal de confirmação de finalização */}
+      <Modal animationType="slide" transparent visible={showFinishConfirm} onRequestClose={() => setShowFinishConfirm(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <Pressable style={{ flex: 1 }} onPress={() => setShowFinishConfirm(false)} />
+          <View style={{ backgroundColor: theme.inputBg, borderRadius: "24px 24px 0 0" as any, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, borderWidth: 1, borderColor: theme.border }}>
+            <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.02 * 22 }}>Finalizar treino?</Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, marginTop: 8 }}>
+              Você marcou {done.size} de {exercises.length} exercícios. Tem certeza?
+            </Text>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 20 }}>
+              <TouchableOpacity
+                onPress={() => setShowFinishConfirm(false)}
+                style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
+              >
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Continuar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleFinish}
+                style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+              >
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>Finalizar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de descanso */}
+      <Modal animationType="fade" transparent visible={restVisible} onRequestClose={() => setRestVisible(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center", padding: 24 }} onPress={() => setRestVisible(false)}>
+          <Pressable onPress={(e) => e.stopPropagation()} style={{ width: "90%", maxWidth: 340, borderRadius: 24, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, padding: 24, gap: 10, alignItems: "center" }}>
+            <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.02 * 22 }}>Descanso</Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>{restLabel}</Text>
+            <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 48, lineHeight: 56, color: restRemaining === 0 ? (restBlink ? theme.danger : theme.text3) : theme.primary, letterSpacing: -0.02 * 48 }}>
+              {fmtTimer(restRemaining)}
+            </Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3, textAlign: "center" }}>
+              {restRemaining === 0 ? "Tempo finalizado!" : `Tempo inicial: ${fmtTimer(restInitial)}`}
+            </Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.labelColor }}>Toque fora para fechar</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
+// ── MyTrainingScreen principal ────────────────────────────────────────────────
 export function MyTrainingScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
-
-  const iconColor = theme.mode === "dark" ? "#D8E0D8" : "#394239";
 
   const [data, setData] = useState<MyTrainingResponse | null>(null);
   const [requests, setRequests] = useState<ConsultancyRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [decidingRequestId, setDecidingRequestId] = useState<string | null>(null);
   const [paymentByRequestId, setPaymentByRequestId] = useState<Record<string, ConsultancyPaymentMethod>>({});
-  const [activeFilter, setActiveFilter] = useState<TrainingFilter>("all");
-
-  const [restTimerVisible, setRestTimerVisible] = useState(false);
-  const [restTimerExerciseName, setRestTimerExerciseName] = useState("");
-  const [restTimerInitial, setRestTimerInitial] = useState(0);
-  const [restTimerRemaining, setRestTimerRemaining] = useState(0);
-  const [restTimerBlinkOn, setRestTimerBlinkOn] = useState(true);
-  const [expandedMediaId, setExpandedMediaId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!restTimerVisible) return;
-    if (restTimerRemaining > 0) {
-      const countdown = setInterval(() => {
-        setRestTimerRemaining((current) => (current > 0 ? current - 1 : 0));
-      }, 1000);
-      return () => clearInterval(countdown);
-    }
-    const blink = setInterval(() => {
-      setRestTimerBlinkOn((current) => !current);
-    }, 450);
-    return () => clearInterval(blink);
-  }, [restTimerVisible, restTimerRemaining]);
-
-  const openRestTimer = (exerciseName: string, seconds: number) => {
-    setRestTimerExerciseName(exerciseName);
-    setRestTimerInitial(seconds);
-    setRestTimerRemaining(seconds);
-    setRestTimerBlinkOn(true);
-    setRestTimerVisible(true);
-  };
-
-  const closeRestTimer = () => {
-    setRestTimerVisible(false);
-    setRestTimerRemaining(0);
-    setRestTimerInitial(0);
-    setRestTimerExerciseName("");
-    setRestTimerBlinkOn(true);
-  };
+  const [activeTab, setActiveTab] = useState<TrainingTab>("active");
+  const [selectedPlan, setSelectedPlan] = useState<FlatPlan | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -169,592 +451,232 @@ export function MyTrainingScreen({ navigation }: Props) {
       setRequests(requestsResult);
       setPaymentByRequestId((current) => {
         const next = { ...current };
-        requestsResult.forEach((request) => {
-          if (!next[request.id]) next[request.id] = "CREDIT_CARD";
-        });
+        requestsResult.forEach((r) => { if (!next[r.id]) next[r.id] = "CREDIT_CARD"; });
         return next;
       });
     } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar Seu Treino.", navigation });
-    } finally {
-      setLoading(false);
-    }
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar treinos.", navigation });
+    } finally { setLoading(false); }
   }, [navigation, runWithAuth, showToast]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const goToSearch = () => {
-    const parent = navigation.getParent<any>();
-    if (parent) parent.navigate("SearchProfessionals");
-  };
-
-  const goToArchived = () => {
-    const parent = navigation.getParent<any>();
-    if (parent) parent.navigate("ArchivedRequests");
-  };
-
-  async function decideRequest(
-    requestId: string,
-    decision: "ACCEPT" | "REFUSE",
-    paymentMethod?: ConsultancyPaymentMethod
-  ) {
-    try {
-      setDecidingRequestId(requestId);
-      await runWithAuth((token) =>
-        consultancyApi.decideRequest(token, requestId, { decision, paymentMethod })
-      );
-      showToast(
-        decision === "ACCEPT"
-          ? "Proposta aceita com sucesso. Pagamento processado."
-          : "Proposta recusada e movida para o historico.",
-        "success"
-      );
-      await load();
-    } catch (error) {
-      handleScreenError({
-        error,
-        showToast,
-        fallbackMessage: "Falha ao registrar decisão da proposta.",
-        navigation,
-      });
-    } finally {
-      setDecidingRequestId(null);
-    }
-  }
+  useEffect(() => { void load(); }, [load]);
 
   const contracts = data?.contracts ?? [];
-  const respondedRequests = useMemo(
-    () => requests.filter((request) => request.status === "RESPONDED"),
-    [requests]
-  );
+  const respondedRequests = useMemo(() => requests.filter((r) => r.status === "RESPONDED"), [requests]);
   const waitingDelivery = data?.waitingDelivery ?? [];
-  const waitingCount = waitingDelivery.length;
-  const activeContractsCount = useMemo(
-    () => contracts.filter((item) => item.status === "ACTIVE" || item.status === "PENDING_PAYMENT").length,
-    [contracts]
-  );
-  const deliveredContractsCount = useMemo(
-    () => contracts.filter((item) => item.status === "DELIVERED").length,
-    [contracts]
-  );
-  const totalPlansCount = useMemo(
-    () => contracts.reduce((sum, contract) => sum + (contract.trainingPlans?.length ?? 0), 0),
-    [contracts]
-  );
-  const totalExercisesCount = useMemo(
-    () =>
-      contracts.reduce(
-        (sum, contract) =>
-          sum +
-          (contract.trainingPlans?.reduce((planSum, plan) => planSum + plan.exercises.length, 0) ?? 0),
-        0
-      ),
-    [contracts]
-  );
 
-  const filteredContracts = useMemo(() => {
-    if (activeFilter === "active") {
-      return contracts.filter((item) => item.status === "ACTIVE" || item.status === "PENDING_PAYMENT");
-    }
-    if (activeFilter === "delivered") {
-      return contracts.filter((item) => item.status === "DELIVERED");
-    }
-    return contracts;
-  }, [activeFilter, contracts]);
+  // Planos por tab
+  const activePlans = useMemo(() => flatPlans(contracts.filter((c) => c.status === "ACTIVE")), [contracts]);
+  const pendingPlans = useMemo(() => flatPlans(contracts.filter((c) => c.status === "PENDING_PAYMENT")), [contracts]);
+  const historyPlans = useMemo(() => flatPlans(contracts.filter((c) => c.status === "DELIVERED")), [contracts]);
 
-  const filterItems: Array<{ key: TrainingFilter; label: string; count: number }> = useMemo(
-    () => [
-      { key: "all", label: "Todos", count: contracts.length },
-      { key: "active", label: "Ativos", count: activeContractsCount },
-      { key: "delivered", label: "Entregues", count: deliveredContractsCount },
-    ],
-    [activeContractsCount, contracts.length, deliveredContractsCount]
-  );
+  const tabs: Array<{ key: TrainingTab; label: string; count: number }> = useMemo(() => [
+    { key: "active", label: "Ativos", count: activePlans.length },
+    { key: "pending", label: "Pendentes", count: pendingPlans.length + respondedRequests.length + waitingDelivery.length },
+    { key: "history", label: "Histórico", count: historyPlans.length },
+  ], [activePlans.length, historyPlans.length, pendingPlans.length, respondedRequests.length, waitingDelivery.length]);
 
-  const renderExercise = (item: TrainingPlanExercise, index: number) => {
-    const restSeconds = item.restSeconds ?? parseRestSeconds(item.restLabel);
-    const restLabel = restSeconds
-      ? restSeconds >= 60
-        ? `${Math.floor(restSeconds / 60)}min${restSeconds % 60 ? ` ${restSeconds % 60}s` : ""}`
-        : `${restSeconds}s`
-      : item.restLabel ?? null;
+  async function decideRequest(requestId: string, decision: "ACCEPT" | "REFUSE", pm?: ConsultancyPaymentMethod) {
+    try {
+      setDecidingRequestId(requestId);
+      await runWithAuth((token) => consultancyApi.decideRequest(token, requestId, { decision, paymentMethod: pm }));
+      showToast(decision === "ACCEPT" ? "Proposta aceita com sucesso." : "Proposta recusada.", "success");
+      await load();
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao registrar decisão.", navigation });
+    } finally { setDecidingRequestId(null); }
+  }
 
-    const mediaUrl = item.exercise?.mediaUrl ?? item.demoVideoUrl ?? null;
-    const mediaType = item.exercise?.mediaType ?? (item.demoVideoUrl ? "YOUTUBE" : null);
-    const hasMedia = Boolean(mediaUrl && mediaType);
-    const isExpanded = expandedMediaId === item.id;
+  function goToArchived() {
+    const parent = navigation.getParent<any>();
+    if (parent) parent.navigate("ArchivedRequests");
+  }
 
-    const description = item.exercise?.description ?? null;
-    const category = item.exercise?.category ?? null;
-
+  function renderPlanCard(item: FlatPlan) {
+    const bs = contractStatusStyle(item.contractStatus, theme);
+    const isActive = item.contractStatus === "ACTIVE";
+    const hasExercises = (item.exercises?.length ?? 0) > 0;
     return (
-      <View
+      <PressableScale
         key={item.id}
+        disabled={!isActive || !hasExercises}
+        onPress={() => isActive && hasExercises && setSelectedPlan(item)}
         style={{
-          backgroundColor: theme.inputBg,
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: theme.border,
-          overflow: "hidden",
+          borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border,
+          backgroundColor: theme.cardBg, padding: S.cardPad,
+          opacity: item.contractStatus === "DELIVERED" ? 0.65 : 1,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "flex-start", padding: 12, gap: 10 }}>
-          <View
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              backgroundColor: "rgba(76,175,80,0.14)",
-              borderWidth: 1,
-              borderColor: "rgba(76,175,80,0.28)",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <MvText variant="semi3" style={{ color: theme.textGreen, fontSize: 12 }}>
-              {index + 1}
-            </MvText>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: theme.text1, letterSpacing: -0.013 * 18, flex: 1, marginRight: 10 }} numberOfLines={2}>
+            {item.title}
+          </Text>
+          <View style={{ backgroundColor: bs.bg, borderWidth: 1, borderColor: bs.border, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3, flexShrink: 0 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: bs.color }}>{bs.label}</Text>
           </View>
-
-          <View style={{ flex: 1, gap: 2 }}>
-            <MvText variant="semi2">{item.name}</MvText>
-            {category ? (
-              <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>
-                {category}
-              </MvText>
-            ) : null}
-          </View>
-
-          {hasMedia ? (
-            <MvMediaPreviewButton
-              mediaUrl={mediaUrl!}
-              mediaType={mediaType!}
-              expanded={isExpanded}
-              onToggle={() => setExpandedMediaId(isExpanded ? null : item.id)}
-            />
-          ) : null}
         </View>
-
-        <View
-          style={{
-            flexDirection: "row",
-            gap: 6,
-            paddingHorizontal: 12,
-            paddingBottom: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          {[
-            { icon: "barbell-outline", label: item.repetitionsSets },
-            { icon: "fitness-outline", label: item.load || "--" },
-            ...(restLabel ? [{ icon: "timer-outline", label: restLabel, tappable: (restSeconds ?? 0) > 0 }] : []),
-          ].map((stat, indexItem) => (
-            <TouchableOpacity
-              key={indexItem}
-              disabled={!stat.tappable}
-              onPress={stat.tappable ? () => openRestTimer(item.name, restSeconds!) : undefined}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 5,
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                borderRadius: 10,
-                backgroundColor: stat.tappable ? "rgba(76,175,80,0.08)" : theme.chipBg,
-                borderWidth: 1,
-                borderColor: stat.tappable ? "rgba(76,175,80,0.28)" : theme.border,
-              }}
-            >
-              <Ionicons
-                name={stat.icon as any}
-                size={13}
-                color={stat.tappable ? theme.textGreen : theme.text3}
-              />
-              <MvText
-                variant="body4"
-                style={{ color: stat.tappable ? theme.textGreen : theme.text2, fontSize: 12 }}
-              >
-                {stat.label}
-              </MvText>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {description ? (
-          <View style={{ paddingHorizontal: 12, paddingBottom: 10 }}>
-            <MvText variant="body4" color="secondary" style={{ fontSize: 12 }}>
-              {description}
-            </MvText>
-          </View>
-        ) : null}
-
-        {hasMedia && isExpanded ? (
-          <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
-            <MvMediaViewer mediaUrl={mediaUrl!} mediaType={mediaType!} height={200} borderRadius={10} />
-          </View>
-        ) : null}
-      </View>
+        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 6 }}>
+          {item.description ? item.description : "Plano personalizado"}
+        </Text>
+        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: isActive ? theme.primary : theme.text3, marginTop: 10 }}>
+          {item.providerName} · {hasExercises ? `${item.exercises!.length} exercício${item.exercises!.length !== 1 ? "s" : ""}` : "Sem exercícios cadastrados"}
+        </Text>
+      </PressableScale>
     );
-  };
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.training">
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
-      <View
-        style={{
-          paddingTop: insets.top + 10,
-          paddingHorizontal: 14,
-          paddingBottom: 10,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 10,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.borderSub,
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => navigation.navigate("ClientHome")}
-          style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-        >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <MvText variant="semi1">Seu Treino</MvText>
-          <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>
-            Acompanhe propostas, entregas e sua biblioteca de treinos.
-          </MvText>
-        </View>
+      {/* Header V2 */}
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+        <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Treinos</Text>
+        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, marginTop: 4 }}>planos comprados e liberados</Text>
       </View>
 
+      <ScreenEntrance>
       <FlatList
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 90, gap: 12 }}
-        data={filteredContracts}
+        contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, paddingTop: 16, gap: 10 }}
+        data={activeTab === "active" ? activePlans : activeTab === "pending" ? pendingPlans : historyPlans}
         keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor="#4CAF50" colors={["#4CAF50"]} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={theme.primary} colors={[theme.primary]} />}
         ListHeaderComponent={
-          <View style={{ gap: 12 }}>
-            <MvCard style={{ gap: 10 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <MvText variant="semi2">Resumo do seu treino</MvText>
-                <Ionicons name="barbell-outline" size={16} color={iconColor} />
-              </View>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <View style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 8, backgroundColor: theme.inputBg }}>
-                  <MvText variant="h3" style={{ color: theme.textGreen }}>
-                    {respondedRequests.length}
-                  </MvText>
-                  <MvText variant="caption" color="secondary">
-                    Propostas
-                  </MvText>
-                </View>
-                <View style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 8, backgroundColor: theme.inputBg }}>
-                  <MvText variant="h3" style={{ color: theme.textGreen }}>
-                    {activeContractsCount}
-                  </MvText>
-                  <MvText variant="caption" color="secondary">
-                    Ativos
-                  </MvText>
-                </View>
-                <View style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 8, backgroundColor: theme.inputBg }}>
-                  <MvText variant="h3" style={{ color: theme.textGreen }}>
-                    {waitingCount}
-                  </MvText>
-                  <MvText variant="caption" color="secondary">
-                    Em entrega
-                  </MvText>
-                </View>
-              </View>
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  borderRadius: 10,
-                  backgroundColor: theme.inputBg,
-                  padding: 10,
-                  gap: 3,
-                }}
-              >
-                <MvText variant="body4" color="secondary">
-                  Biblioteca atual
-                </MvText>
-                <MvText variant="semi3">
-                  {totalPlansCount} plano(s) com {totalExercisesCount} exercício(s) disponíveis.
-                </MvText>
-              </View>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <MvButton variant="outline" style={{ flex: 1 }} label="Ver arquivados" onPress={goToArchived} />
-                <MvButton style={{ flex: 1 }} label="Buscar profissional" onPress={goToSearch} />
-              </View>
-            </MvCard>
-
-            {data?.locked ? (
-              <MvCard style={{ gap: 8 }}>
-                <MvBadge label="Acesso bloqueado" variant="orange" />
-                <MvText variant="body4" color="secondary">
-                  Para liberar esta area, aceite uma proposta e conclua o pagamento da consultoria.
-                </MvText>
-                <MvButton variant="outline" label="Buscar profissional" onPress={goToSearch} />
-              </MvCard>
-            ) : null}
-
-            {!data?.locked && waitingDelivery.length > 0 ? (
-              <MvCard style={{ gap: 8 }}>
-                <MvBadge label="Treino em preparo" variant="blue" />
-                {waitingDelivery.map((item) => (
-                  <View
-                    key={item.contractId}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: theme.border,
-                      borderRadius: 10,
-                      padding: 9,
-                      backgroundColor: theme.inputBg,
-                    }}
-                  >
-                    <MvText variant="semi3">{item.providerName}</MvText>
-                    <MvText variant="body4" color="secondary">
-                      Entrega ate {formatDateLabel(item.deliveryDeadlineAt)}
-                    </MvText>
-                  </View>
-                ))}
-              </MvCard>
-            ) : null}
-
-            {respondedRequests.length > 0 ? (
-              <MvCard style={{ gap: 8 }}>
-                <MvBadge label="Propostas aguardando decisão" variant="blue" />
-                {respondedRequests.map((request) => (
-                  <View
-                    key={request.id}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: theme.border,
-                      borderRadius: 10,
-                      padding: 12,
-                      gap: 8,
-                      backgroundColor: theme.inputBg,
-                    }}
-                  >
-                    <MvText variant="semi3">{request.provider?.displayName ?? "Profissional"}</MvText>
-                    <MvText variant="body4" color="secondary">
-                      Resposta: {request.providerResponseText ?? "Sem resposta detalhada."}
-                    </MvText>
-                    {request.quotedOffer ? (
-                      <MvText variant="semi3">
-                        Contratar por{" "}
-                        {(request.quotedOffer.priceCents / 100).toLocaleString("pt-BR", {
-                          style: "currency",
-                          currency: "BRL",
-                        })}
-                      </MvText>
-                    ) : null}
-
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                      <PaymentChip
-                        label="Credito"
-                        selected={paymentByRequestId[request.id] === "CREDIT_CARD"}
-                        onPress={() =>
-                          setPaymentByRequestId((current) => ({ ...current, [request.id]: "CREDIT_CARD" }))
-                        }
-                        theme={theme}
-                      />
-                      <PaymentChip
-                        label="Debito"
-                        selected={paymentByRequestId[request.id] === "DEBIT_CARD"}
-                        onPress={() =>
-                          setPaymentByRequestId((current) => ({ ...current, [request.id]: "DEBIT_CARD" }))
-                        }
-                        theme={theme}
-                      />
-                      <PaymentChip
-                        label="PIX"
-                        selected={paymentByRequestId[request.id] === "PIX"}
-                        onPress={() => setPaymentByRequestId((current) => ({ ...current, [request.id]: "PIX" }))}
-                        theme={theme}
-                      />
-                    </View>
-
-                    <MvButton
-                      label="Aceitar e contratar"
-                      loading={decidingRequestId === request.id}
-                      onPress={() =>
-                        void decideRequest(
-                          request.id,
-                          "ACCEPT",
-                          paymentByRequestId[request.id] ?? "CREDIT_CARD"
-                        )
-                      }
-                    />
-                    <MvButton
-                      variant="outline"
-                      label="Recusar oferta"
-                      loading={decidingRequestId === request.id}
-                      onPress={() => void decideRequest(request.id, "REFUSE")}
-                    />
-                  </View>
-                ))}
-              </MvCard>
-            ) : null}
-
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-              {filterItems.map((item) => {
-                const selected = item.key === activeFilter;
+          <View style={{ gap: 14, marginBottom: 4 }}>
+            {/* Tabs V2 */}
+            <View style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: S.chipR, padding: 3, gap: 3 }}>
+              {tabs.map((tab) => {
+                const active = tab.key === activeTab;
                 return (
                   <TouchableOpacity
-                    key={item.key}
-                    onPress={() => setActiveFilter(item.key)}
+                    key={tab.key}
+                    onPress={() => setActiveTab(tab.key)}
                     style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 6,
-                      borderRadius: 18,
-                      borderWidth: 1,
-                      borderColor: selected ? "rgba(76,175,80,0.35)" : theme.border,
-                      backgroundColor: selected ? "rgba(76,175,80,0.12)" : theme.inputBg,
-                      paddingHorizontal: 10,
-                      paddingVertical: 7,
+                      flex: 1, height: 34, borderRadius: S.chipR,
+                      backgroundColor: active ? theme.primarySubtle : "transparent",
+                      alignItems: "center", justifyContent: "center",
+                      borderWidth: active ? 1 : 0, borderColor: theme.primarySubtleBorder,
                     }}
                   >
-                    <MvText variant="body4" style={{ color: selected ? theme.textGreen : theme.text2 }}>
-                      {item.label}
-                    </MvText>
-                    <View
-                      style={{
-                        minWidth: 18,
-                        height: 18,
-                        borderRadius: 9,
-                        backgroundColor: selected ? "rgba(76,175,80,0.22)" : theme.backBtn,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        paddingHorizontal: 4,
-                      }}
-                    >
-                      <MvText variant="caption" style={{ color: selected ? theme.textGreen : theme.text2 }}>
-                        {item.count}
-                      </MvText>
-                    </View>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: active ? theme.primary : theme.text3 }}>
+                      {tab.label} {tab.count > 0 ? `(${tab.count})` : ""}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
+
+            {/* Seção extra: Propostas aguardando decisão (tab pending) */}
+            {activeTab === "pending" && respondedRequests.length > 0 && (
+              <View style={{ gap: 10 }}>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Propostas aguardando decisão</Text>
+                {respondedRequests.map((req) => (
+                  <View key={req.id} style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: C.amberBorder, backgroundColor: C.amberDim, padding: 14, gap: 10 }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{req.provider?.displayName ?? "Profissional"}</Text>
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>{req.providerResponseText ?? "Sem resposta detalhada."}</Text>
+                    {req.quotedOffer && (
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: C.amber }}>
+                        Contratar por {formatCurrencyBRL(req.quotedOffer.priceCents / 100)}
+                      </Text>
+                    )}
+                    {/* Método de pagamento */}
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {(["CREDIT_CARD", "DEBIT_CARD", "PIX"] as ConsultancyPaymentMethod[]).map((pm) => {
+                        const active = paymentByRequestId[req.id] === pm;
+                        return (
+                          <TouchableOpacity
+                            key={pm}
+                            onPress={() => setPaymentByRequestId((c) => ({ ...c, [req.id]: pm }))}
+                            style={{ flex: 1, height: S.touchMin, borderRadius: S.chipR, backgroundColor: active ? theme.primarySubtle : "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: active ? theme.primarySubtleBorder : theme.border, alignItems: "center", justifyContent: "center" }}
+                          >
+                            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: active ? theme.primary : theme.text2 }}>
+                              {pm === "CREDIT_CARD" ? "Crédito" : pm === "DEBIT_CARD" ? "Débito" : "PIX"}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                      <TouchableOpacity onPress={() => void decideRequest(req.id, "REFUSE")} disabled={decidingRequestId === req.id} style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
+                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Recusar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => void decideRequest(req.id, "ACCEPT", paymentByRequestId[req.id] ?? "CREDIT_CARD")} disabled={decidingRequestId === req.id} style={{ flex: 1.4, height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}>
+                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Aceitar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Em entrega (tab pending) */}
+            {activeTab === "pending" && waitingDelivery.length > 0 && (
+              <View style={{ gap: 8 }}>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Em preparação</Text>
+                {waitingDelivery.map((item) => (
+                  <View key={item.contractId} style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: C.skyBorder, backgroundColor: C.skyDim, padding: 14 }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{item.providerName}</Text>
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 4 }}>Entrega até {formatDateLabel(item.deliveryDeadlineAt)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Botão para arquivados (tab history) */}
+            {activeTab === "history" && (
+              <TouchableOpacity
+                onPress={goToArchived}
+                style={{ height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }}
+              >
+                <Ionicons name="archive-outline" size={16} color={theme.text2} />
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: C.zinc300 }}>Ver solicitações arquivadas</Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
-        renderItem={({ item }) => (
-          <MvCard>
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: 10,
-                marginBottom: 8,
-              }}
-            >
-              <View style={{ flex: 1, gap: 2 }}>
-                <MvText variant="semi2">{item.offer?.title ?? "Consultoria contratada"}</MvText>
-                <MvText variant="body4" color="secondary">
-                  Profissional: {item.provider?.displayName ?? "Personal"}
-                </MvText>
-                <MvText variant="caption" color="secondary">
-                  Prazo: {item.deliveryDeadlineAt ? formatDateLabel(item.deliveryDeadlineAt) : "Não informado"}
-                </MvText>
-              </View>
-              <MvBadge label={contractStatusLabel(item.status)} variant={contractStatusVariant(item.status)} />
-            </View>
-
-            {item.trainingPlans?.map((plan) => (
-              <View key={plan.id} style={{ marginTop: 8, gap: 6 }}>
-                <MvText variant="semi3">{plan.title}</MvText>
-                {plan.description ? <MvText variant="body4" color="secondary">{plan.description}</MvText> : null}
-                <View style={{ gap: 6, marginTop: 4 }}>
-                  {plan.exercises.map((exercise, index) => renderExercise(exercise, index))}
-                </View>
-              </View>
-            ))}
-          </MvCard>
-        )}
+        renderItem={({ item }) => renderPlanCard(item)}
         ListEmptyComponent={
           !loading ? (
-            <View style={{ paddingTop: 40, alignItems: "center", gap: 8 }}>
-              <MvText variant="body3" color="secondary">
-                Nenhum treino disponivel neste filtro no momento.
-              </MvText>
+            <View style={{ paddingTop: 40, alignItems: "center", gap: 10 }}>
+              <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="barbell-outline" size={28} color={theme.primary} />
+              </View>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, textAlign: "center" }}>
+                {activeTab === "active" ? "Nenhum plano ativo. Solicite uma consultoria para começar." :
+                 activeTab === "pending" ? "Nenhum item pendente." :
+                 "Nenhum treino finalizado ainda."}
+              </Text>
             </View>
           ) : null
         }
         showsVerticalScrollIndicator={false}
       />
+      </ScreenEntrance>
 
-      <MvBottomNav
-        items={[
-          { key: "home", icon: "compass-outline", label: "Início" },
-          { key: "bookings", icon: "calendar-clear-outline", label: "Agenda" },
-          { key: "promotions", icon: "flash-outline", label: "Promoções" },
-          { key: "training", icon: "barbell-outline", label: "Treino" },
-          { key: "profile", icon: "person-circle-outline", label: "Perfil" },
-        ]}
-        activeKey="training"
-        onPress={(key) => {
-          if (key === "home") navigation.navigate("ClientHome");
-          if (key === "bookings") navigation.navigate("ClientBookings");
-          if (key === "promotions") navigation.navigate("Promotions");
-          if (key === "profile") navigation.navigate("ClientProfile");
+      <ClientBottomNavV2
+        activeTab="trainings"
+        onNavigate={(tab) => {
+          if (tab === "home") navigation.navigate("ClientHome");
+          if (tab === "agenda") navigation.navigate("ClientBookings");
+          if (tab === "community") navigation.navigate("Community");
+          if (tab === "profile") navigation.navigate("ClientProfile");
         }}
       />
 
-      <Modal animationType="fade" transparent visible={restTimerVisible} onRequestClose={closeRestTimer}>
-        <Pressable
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.7)",
-            justifyContent: "center",
-            alignItems: "center",
-            padding: 24,
-          }}
-          onPress={closeRestTimer}
-        >
-          <Pressable
-            style={{
-              width: "90%",
-              maxWidth: 340,
-              borderRadius: 16,
-              borderWidth: 1,
-              borderColor: theme.border,
-              backgroundColor: theme.cardBg,
-              padding: 24,
-              gap: 8,
-              alignItems: "center",
-            }}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <MvText variant="semi1" style={{ textAlign: "center" }}>
-              Descanso
-            </MvText>
-            <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
-              {restTimerExerciseName || "Exercicio"}
-            </MvText>
-            <MvText
-              variant="h1"
-              style={{
-                fontSize: 48,
-                lineHeight: 56,
-                color: restTimerRemaining === 0 ? (restTimerBlinkOn ? "#f44336" : theme.text2) : theme.textGreen,
-              }}
-            >
-              {formatTimer(restTimerRemaining)}
-            </MvText>
-            <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
-              {restTimerRemaining === 0 ? "Tempo finalizado." : `Tempo inicial: ${formatTimer(restTimerInitial)}`}
-            </MvText>
-            <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
-              Toque fora para fechar e resetar.
-            </MvText>
-          </Pressable>
-        </Pressable>
+      {/* WorkoutDetailScreen como Modal full-screen */}
+      <Modal
+        visible={selectedPlan !== null}
+        animationType="slide"
+        onRequestClose={() => setSelectedPlan(null)}
+        statusBarTranslucent
+      >
+        {selectedPlan && (
+          <WorkoutDetailModal
+            plan={selectedPlan}
+            onClose={() => setSelectedPlan(null)}
+            showToast={showToast}
+          />
+        )}
       </Modal>
     </View>
   );

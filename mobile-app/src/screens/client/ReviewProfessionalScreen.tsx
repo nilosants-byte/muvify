@@ -1,91 +1,122 @@
-import React, { useState } from "react";
-import { Pressable, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+﻿import React, { useState } from "react";
+import { ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import { PressableScale } from "../../components/polish/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientStackParamList } from "../../navigation/route-types";
-import { reviewsApi } from "../../services/api/client";
+import { reviewsApi, ApiError } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvInput, MvText } from "../../components/mv";
+import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { handleScreenError } from "../shared/api-helpers";
+import { hapticCta } from "../../utils/haptics";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ReviewProfessional">;
+
+const REVIEW_TAGS = ["Didático", "Pontual", "Motivador", "Atencioso", "Técnico"];
 
 export function ReviewProfessionalScreen({ navigation, route }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const [rating, setRating] = useState(5);
-  const [comment, setComment] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit() {
     try {
       setLoading(true);
+      hapticCta();
       await runWithAuth((token) =>
         reviewsApi.create(token, {
           bookingId: route.params.bookingId,
           rating,
-          comment: comment.trim() || undefined,
+          comment: selectedTags.join(", ") || undefined,
         })
       );
       showToast("Avaliação enviada com sucesso.", "success");
       navigation.navigate("ClientTabs", { screen: "ClientBookings" });
     } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Não foi possível enviar avaliação.", navigation });
-    } finally {
-      setLoading(false);
-    }
+      if (error instanceof ApiError && error.status === 409) {
+        showToast("Esta aula já foi avaliada.", "info");
+        navigation.navigate("ClientTabs", { screen: "ClientBookings" });
+      } else {
+        handleScreenError({ error, showToast, fallbackMessage: "Não foi possível enviar avaliação.", navigation });
+      }
+    } finally { setLoading(false); }
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 14, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.borderSub }}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-        >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
+
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+        <TouchableOpacity onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Voltar" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="chevron-back" size={18} color={theme.text1} />
         </TouchableOpacity>
-        <MvText variant="h4">Avaliar profissional</MvText>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Avaliar profissional</Text>
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>sua opinião ajuda outros alunos</Text>
+        </View>
       </View>
 
-      <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 20 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
-        <MvText variant="body4" color="secondary">
+      <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, gap: 16, paddingTop: 20 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
+        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, lineHeight: 20 }}>
           Sua avaliação só fica disponível após a conclusão do atendimento.
-        </MvText>
+        </Text>
 
-        <View style={{ alignItems: "center", gap: 12 }}>
-          <MvText variant="semi2">Sua nota</MvText>
-          <View style={{ flexDirection: "row", gap: 12 }}>
+        {/* Estrelas */}
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: C.amberBorder, backgroundColor: "rgba(245,166,35,0.08)", padding: 20, gap: 14, alignItems: "center" }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1 }}>Sua nota</Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
             {[1, 2, 3, 4, 5].map((value) => (
-              <Pressable key={value} onPress={() => setRating(value)} style={{ padding: 4 }}>
-                <MvText variant="h3" style={{ color: value <= rating ? theme.textGreen : theme.border }}>
-                  ★
-                </MvText>
-              </Pressable>
+              <PressableScale
+                key={value}
+                onPress={() => setRating(value)}
+                accessibilityLabel={`${value} ${value === 1 ? "estrela" : "estrelas"}`}
+                style={{ padding: 4, minWidth: S.touchMin, alignItems: "center" }}
+              >
+                <Text style={{ fontSize: 30, color: value <= rating ? C.amber : theme.labelColor }}>★</Text>
+              </PressableScale>
             ))}
           </View>
-          <MvText variant="semi3" style={{ color: theme.textGreen }}>{rating} de 5</MvText>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: C.amber }}>{rating} de 5</Text>
         </View>
 
-        <MvInput
-          multiline
-          numberOfLines={5}
-          placeholder="Conte como foi sua experiência..."
-          value={comment}
-          onChangeText={setComment}
-          maxLength={500}
-        />
-
-        <MvButton
-          label="Enviar avaliação"
-          loading={loading}
-          onPress={() => void handleSubmit()}
-        />
+        {/* Chips de qualificação V2 */}
+        <View style={{ gap: 10 }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Como foi o atendimento?</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {REVIEW_TAGS.map((tag) => {
+              const active = selectedTags.includes(tag);
+              return (
+                <TouchableOpacity
+                  key={tag}
+                  onPress={() => setSelectedTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag])}
+                  style={{ height: 40, paddingHorizontal: 16, borderRadius: S.chipR, backgroundColor: active ? C.amber : "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: active ? C.amberBorder : theme.border, justifyContent: "center" }}
+                >
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: active ? theme.textOnPrimary : theme.text2 }}>{tag}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
       </ScrollView>
+
+      {/* Botão fixo com safe area */}
+      <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: S.px, paddingBottom: Math.max(16, insets.bottom + 12), paddingTop: 12, backgroundColor: `${theme.bg}f0`, borderTopWidth: 1, borderTopColor: theme.border }}>
+        <TouchableOpacity
+          disabled={loading}
+          onPress={() => void handleSubmit()}
+          accessibilityRole="button"
+          style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: loading ? "rgba(36,230,109,0.4)" : theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+        >
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
+            {loading ? "Enviando..." : "Enviar avaliação"}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }

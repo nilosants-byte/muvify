@@ -17,12 +17,16 @@ import { chatApi, ChatMessage, ChatSummary } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar, MvText } from "../../components/mv";
+import { S } from "../../theme/v2tokens";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { SkeletonChatItem } from "../../components/polish/SkeletonCard";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { formatBRTime } from "../../utils/formatters";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalChatList">;
 type Tab = "active" | "inactive";
-const POLL_MS = 12000;
+const POLL_MS = 4000;
 
 function initials(name: string) {
   return name.trim().split(/\s+/).filter(Boolean).slice(0, 2)
@@ -83,7 +87,7 @@ async function enrichMissingPhotos(
 }
 
 export function ProfessionalChatListScreen({ navigation }: Props) {
-  const { runWithAuth, user } = useAppState();
+  const { runWithAuth, user, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const myUserId = user?.id ?? "";
@@ -93,6 +97,7 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
   const [tab, setTab] = useState<Tab>("active");
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [chatsLoadError, setChatsLoadError] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatOpen, setChatOpen] = useState(true);
@@ -118,6 +123,7 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
 
   // ── Data loading ────────────────────────────────────────────────────────────
   const loadChats = useCallback(async () => {
+    setChatsLoadError(false);
     try {
       const data = await runWithAuth((t) => chatApi.myChats(t));
       if (!isMountedRef.current) return;
@@ -127,7 +133,9 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
       );
       if (!isMountedRef.current) return;
       setChats((prev) => mergeChatsPreservingPhoto(prev, enriched));
-    } catch { /* best effort */ }
+    } catch {
+      if (isMountedRef.current) setChatsLoadError(true);
+    }
     finally { if (isMountedRef.current) setLoading(false); }
   }, [runWithAuth]);
 
@@ -195,7 +203,10 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
       setInputText("");
       await runWithAuth((t) => chatApi.sendMessage(t, selectedId, text));
       await fetchMessages(selectedId, false);
-    } catch { setInputText(text); }
+    } catch {
+      setInputText(text);
+      showToast("Não foi possível enviar a mensagem.", "error");
+    }
     finally { setSending(false); }
   }, [inputText, selectedId, sending, runWithAuth, fetchMessages]);
 
@@ -208,7 +219,7 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
   const text2 = theme.text2;
   const text3 = theme.text3;
   const inputBg = theme.inputBg;
-  const navBg = isDark ? theme.navBg : "#FFFFFF";
+  const navBg = theme.navBg;
 
   // ── CHAT DETAIL VIEW (full screen) ──────────────────────────────────────────
   if (selectedId && selectedChat) {
@@ -224,7 +235,7 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
           {/* Header */}
           <View style={{
             paddingTop: insets.top + 12,
-            paddingHorizontal: 16,
+            paddingHorizontal: S.px,
             paddingBottom: 12,
             flexDirection: "row",
             alignItems: "center",
@@ -233,12 +244,13 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
             borderBottomColor: border,
             backgroundColor: bg,
           }}>
-            <TouchableOpacity
+            <PressableScale
+              scale={0.92}
               onPress={closeChat}
               style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
             >
               <Ionicons name="chevron-back" size={20} color={text2} />
-            </TouchableOpacity>
+            </PressableScale>
             <MvAvatar
               initials={initials(selectedChat.otherUser.name)}
               photoUri={selectedChat.otherUser.photoUrl ?? null}
@@ -254,13 +266,15 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
             </View>
 
             {/* Atalho rápido para ficha de anamnese do aluno */}
-            <TouchableOpacity
-              onPress={() =>
+            <PressableScale
+              scale={0.94}
+              onPress={() => {
+                if (!selectedChat.clientId) return;
                 navigation.navigate("ProfessionalStudentAnamnesis", {
                   clientId: selectedChat.clientId,
                   clientName: selectedChat.otherUser.name,
-                })
-              }
+                });
+              }}
               style={{
                 flexDirection: "row",
                 alignItems: "center",
@@ -277,8 +291,18 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
               <MvText variant="badge" style={{ color: isDark ? green : "#15803D", fontSize: 11, letterSpacing: 0 }}>
                 Anamnese
               </MvText>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
+
+          {/* Closed chat banner */}
+          {!chatOpen ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: S.px, marginTop: 10, backgroundColor: isDark ? "rgba(245,158,11,0.10)" : "rgba(245,158,11,0.07)", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: isDark ? "rgba(245,158,11,0.25)" : "rgba(245,158,11,0.20)" }}>
+              <Ionicons name="lock-closed-outline" size={14} color="#F59E0B" />
+              <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: "#F59E0B", flex: 1 }}>
+                Conversa encerrada — somente leitura.
+              </MvText>
+            </View>
+          ) : null}
 
           {/* Messages */}
           {panelLoading ? (
@@ -289,9 +313,9 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 10 }}>
               <Ionicons name="alert-circle-outline" size={32} color={text3} />
               <MvText variant="semi3" color="secondary">Falha ao carregar mensagens</MvText>
-              <TouchableOpacity onPress={() => void fetchMessages(selectedId, true)}>
+              <PressableScale scale={0.95} onPress={() => void fetchMessages(selectedId, true)}>
                 <MvText variant="semi3" style={{ color: green }}>Tentar novamente</MvText>
-              </TouchableOpacity>
+              </PressableScale>
             </View>
           ) : (
             <FlatList
@@ -299,7 +323,7 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
               data={messages}
               keyExtractor={(m) => m.id}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ padding: 16, gap: 10 }}
+              contentContainerStyle={{ paddingVertical: 12 }}
               ListEmptyComponent={
                 <View style={{ flex: 1, alignItems: "center", paddingTop: 60, gap: 8 }}>
                   <Ionicons name="chatbubble-outline" size={36} color={text3} />
@@ -310,14 +334,25 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
                 </View>
               }
               renderItem={({ item }) => {
+                if (item.isSystem) {
+                  return (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginHorizontal: 16, marginVertical: 4, backgroundColor: isDark ? "rgba(34,197,94,0.10)" : "rgba(22,163,74,0.07)", borderRadius: 12, padding: 10, borderWidth: 1, borderColor: isDark ? "rgba(34,197,94,0.20)" : "rgba(22,163,74,0.15)" }}>
+                      <Ionicons name="information-circle-outline" size={15} color={green} />
+                      <MvText variant="body4" style={{ flex: 1, color: text2, lineHeight: 17, fontSize: 12 }}>
+                        {item.content}
+                      </MvText>
+                    </View>
+                  );
+                }
                 const isMe = item.senderId === myUserId;
                 return (
-                  <View style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "80%", gap: 3 }}>
+                  <View style={{ flexDirection: "row", justifyContent: isMe ? "flex-end" : "flex-start", marginHorizontal: 12, marginVertical: 2 }}>
                     <View style={{
-                      backgroundColor: isMe ? green : cardBg,
-                      borderRadius: 18,
-                      borderBottomRightRadius: isMe ? 4 : 18,
-                      borderBottomLeftRadius: isMe ? 18 : 4,
+                      maxWidth: "80%",
+                      backgroundColor: isMe ? (isDark ? "#0e7a3e" : "#15803d") : cardBg,
+                      borderRadius: 20,
+                      borderBottomRightRadius: isMe ? 4 : 20,
+                      borderBottomLeftRadius: isMe ? 20 : 4,
                       paddingHorizontal: 14,
                       paddingVertical: 10,
                       borderWidth: isMe ? 0 : 1,
@@ -326,10 +361,15 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
                       <MvText variant="body3" style={{ color: isMe ? "#fff" : text1, lineHeight: 22 }}>
                         {item.content}
                       </MvText>
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 3, marginTop: 4 }}>
+                        <MvText style={{ fontSize: 10, color: isMe ? "rgba(255,255,255,0.6)" : text3 }}>
+                          {formatBRTime(item.createdAt)}
+                        </MvText>
+                        {isMe ? (
+                          <Ionicons name={item.readAt ? "checkmark-done" : "checkmark"} size={12} color={item.readAt ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.5)"} />
+                        ) : null}
+                      </View>
                     </View>
-                    <MvText style={{ fontSize: 11, color: text3, alignSelf: isMe ? "flex-end" : "flex-start", paddingHorizontal: 4 }}>
-                      {formatBRTime(item.createdAt)}
-                    </MvText>
                   </View>
                 );
               }}
@@ -338,62 +378,35 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
 
           {/* Input */}
           {chatOpen ? (
-            <View style={{
-              flexDirection: "row",
-              alignItems: "flex-end",
-              gap: 10,
-              paddingHorizontal: 16,
-              paddingVertical: 12,
-              paddingBottom: Math.max(12, insets.bottom),
-              borderTopWidth: 1,
-              borderTopColor: border,
-              backgroundColor: bg,
-            }}>
-              <TextInput
-                value={inputText}
-                onChangeText={setInputText}
-                placeholder="Mensagem..."
-                placeholderTextColor={text3}
-                multiline
-                style={{
-                  flex: 1,
-                  backgroundColor: inputBg,
-                  borderRadius: 22,
-                  paddingHorizontal: 16,
-                  paddingVertical: 10,
-                  fontSize: 15,
-                  color: text1,
-                  maxHeight: 120,
-                  borderWidth: 1,
-                  borderColor: border,
-                  lineHeight: 20,
-                }}
-              />
-              <TouchableOpacity
-                onPress={() => void sendMessage()}
-                disabled={!inputText.trim() || sending}
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  backgroundColor: !inputText.trim() ? inputBg : green,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: !inputText.trim() ? border : green,
-                }}
-              >
-                {sending
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : <Ionicons name="send" size={18} color={!inputText.trim() ? text3 : "#fff"} />
-                }
-              </TouchableOpacity>
+            <View style={{ paddingHorizontal: 10, paddingVertical: 10, paddingBottom: Math.max(16, insets.bottom + 8), backgroundColor: bg, borderTopWidth: 1, borderTopColor: border }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: inputBg, borderWidth: 1, borderColor: sending ? "rgba(34,197,94,0.3)" : border, borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8, opacity: sending ? 0.75 : 1 }}>
+                <TextInput
+                  value={inputText}
+                  onChangeText={setInputText}
+                  placeholder={sending ? "Enviando..." : "Mensagem para o aluno..."}
+                  placeholderTextColor={sending ? green : text3}
+                  editable={!sending}
+                  multiline
+                  maxLength={1000}
+                  selectionColor={green}
+                  style={{ flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: text1, maxHeight: 100, lineHeight: 19 }}
+                />
+                <PressableScale
+                  scale={0.90}
+                  onPress={() => void sendMessage()}
+                  disabled={!inputText.trim() || sending}
+                  accessibilityRole="button"
+                  accessibilityLabel="Enviar mensagem"
+                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: inputText.trim() ? green : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                >
+                  {sending
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Ionicons name="send" size={16} color={inputText.trim() ? "#fff" : text3} />
+                  }
+                </PressableScale>
+              </View>
             </View>
-          ) : (
-            <View style={{ padding: 16, alignItems: "center", borderTopWidth: 1, borderTopColor: border }}>
-              <MvText variant="body4" color="secondary">Esta conversa foi encerrada</MvText>
-            </View>
-          )}
+          ) : null}
         </KeyboardAvoidingView>
 
       </View>
@@ -408,81 +421,120 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
       {/* Header */}
       <View style={{
         paddingTop: insets.top + 14,
-        paddingHorizontal: 16,
+        paddingHorizontal: S.px,
         paddingBottom: 12,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
         borderBottomWidth: 1,
         borderBottomColor: border,
       }}>
-        <MvText variant="semi1">Mensagens</MvText>
+        <PressableScale
+          scale={0.92}
+          onPress={() => navigation.goBack()}
+          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+        >
+          <Ionicons name="chevron-back" size={20} color={text2} />
+        </PressableScale>
+        <View style={{ flex: 1 }}>
+          <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, color: text1, letterSpacing: -0.3 }}>Conversas</MvText>
+          <MvText variant="body4" color="secondary" style={{ fontSize: 11, marginTop: 2 }}>chats liberados por serviços ativos</MvText>
+        </View>
+        <PressableScale
+          scale={0.92}
+          onPress={() => void loadChats()}
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", borderWidth: 1, borderColor: border, alignItems: "center", justifyContent: "center" }}
+        >
+          <Ionicons name="refresh-outline" size={16} color={text2} />
+        </PressableScale>
       </View>
 
       {/* Tabs */}
-      <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingVertical: 12, gap: 8 }}>
-        {(["active", "inactive"] as Tab[]).map((t) => (
-          <TouchableOpacity
-            key={t}
-            onPress={() => setTab(t)}
-            style={{
-              paddingHorizontal: 18,
-              paddingVertical: 8,
-              borderRadius: 20,
-              backgroundColor: tab === t ? "rgba(34,197,94,0.14)" : inputBg,
-              borderWidth: 1,
-              borderColor: tab === t ? "rgba(34,197,94,0.35)" : border,
-            }}
-          >
-            <MvText variant="semi3" style={{ color: tab === t ? green : text2, fontSize: 13 }}>
-              {t === "active" ? "Ativas" : "Inativas"}
-            </MvText>
-          </TouchableOpacity>
-        ))}
+      <View style={{ paddingHorizontal: S.px, paddingTop: 12, paddingBottom: 8 }}>
+        <View style={{ flexDirection: "row", backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)", borderRadius: S.chipR, padding: 3, gap: 3 }}>
+          {(["active", "inactive"] as Tab[]).map((t) => {
+            const sel = tab === t;
+            const count = chats.filter((c) => (t === "active" ? c.isOpen : !c.isOpen)).length;
+            return (
+              <TouchableOpacity
+                key={t}
+                activeOpacity={0.7}
+                onPress={() => setTab(t)}
+                style={{ flex: 1, height: 34, borderRadius: S.chipR, backgroundColor: sel ? (isDark ? "rgba(34,197,94,0.14)" : "rgba(22,163,74,0.10)") : "transparent", borderWidth: sel ? 1 : 0, borderColor: isDark ? "rgba(34,197,94,0.30)" : "rgba(22,163,94,0.25)", alignItems: "center", justifyContent: "center" }}
+              >
+                <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: sel ? green : text3 }}>
+                  {t === "active" ? "Ativas" : "Inativas"}{count > 0 ? ` (${count})` : ""}
+                </MvText>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       {/* List */}
       {loading ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color={green} size="large" />
+        <View style={{ paddingTop: 8 }}>
+          <SkeletonChatItem />
+          <SkeletonChatItem />
+          <SkeletonChatItem />
         </View>
       ) : (
+        <ScreenEntrance>
         <FlatList
           data={filteredChats}
           keyExtractor={(c) => c.bookingId}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 100, paddingTop: 4, gap: 10 }}
           ListEmptyComponent={
-            <View style={{ paddingTop: 60, alignItems: "center", gap: 12, paddingHorizontal: 32 }}>
-              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(34,197,94,0.10)", alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="chatbubbles-outline" size={30} color={green} />
+            chatsLoadError ? (
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32, marginTop: 24 }}>
+                <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: "rgba(239,68,68,0.10)", borderWidth: 1, borderColor: "rgba(239,68,68,0.20)", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+                  <Ionicons name="cloud-offline-outline" size={30} color="#EF4444" />
+                </View>
+                <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: text1, textAlign: "center", marginBottom: 6 }}>Falha ao carregar conversas</MvText>
+                <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Verifique sua conexão e puxe para atualizar.</MvText>
               </View>
-              <MvText variant="semi2" color="secondary" style={{ textAlign: "center" }}>
-                {tab === "active" ? "Nenhuma conversa ativa" : "Nenhuma conversa inativa"}
-              </MvText>
-              <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
-                As conversas aparecerão aqui quando seus alunos iniciarem um agendamento.
-              </MvText>
-            </View>
+            ) : (
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32, marginTop: 24 }}>
+                <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: isDark ? "rgba(34,197,94,0.12)" : "rgba(22,163,74,0.09)", borderWidth: 1, borderColor: isDark ? "rgba(34,197,94,0.25)" : "rgba(22,163,74,0.18)", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+                  <Ionicons name="chatbubbles-outline" size={30} color={green} />
+                </View>
+                <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: text1, textAlign: "center", marginBottom: 6 }}>
+                  {tab === "active" ? "Nenhuma conversa ativa" : "Nenhuma conversa inativa"}
+                </MvText>
+                <MvText variant="body4" color="secondary" style={{ textAlign: "center", lineHeight: 20 }}>
+                  {tab === "active"
+                    ? "As conversas aparecerão aqui quando seus alunos iniciarem um agendamento."
+                    : "Conversas encerradas aparecem aqui."}
+                </MvText>
+              </View>
+            )
           }
           renderItem={({ item }) => {
             const hasUnread = item.unreadCount > 0;
+            const lastContent = (() => {
+              if (!item.lastMessage?.content) return "Iniciar conversa";
+              if (item.lastMessage?.isSystem) return "📌 " + item.lastMessage.content;
+              if (item.lastMessage?.isMine) return "Você: " + item.lastMessage.content;
+              return item.lastMessage.content;
+            })();
             return (
-              <TouchableOpacity
-                activeOpacity={0.82}
+              <PressableScale
+                scale={0.97}
                 onPress={() => openChat(item.bookingId)}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 14,
-                  paddingHorizontal: 16,
-                  paddingVertical: 14,
-                  borderBottomWidth: 1,
-                  borderBottomColor: border,
-                  backgroundColor: hasUnread
-                    ? (isDark ? "rgba(34,197,94,0.06)" : "rgba(34,197,94,0.04)")
-                    : "transparent",
+                  gap: 12,
+                  backgroundColor: cardBg,
+                  borderWidth: 1,
+                  borderColor: hasUnread ? (isDark ? "rgba(34,197,94,0.30)" : "rgba(22,163,74,0.25)") : border,
+                  borderRadius: S.cardR,
+                  padding: S.cardPad,
                 }}
               >
-                {/* Avatar */}
-                <View>
+                {/* Avatar with status dot + unread badge */}
+                <View style={{ position: "relative" }}>
                   <MvAvatar
                     initials={initials(item.otherUser.name)}
                     photoUri={item.otherUser.photoUrl ?? null}
@@ -490,78 +542,48 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
                     borderRadius={26}
                     color="green"
                   />
+                  {item.isOpen ? (
+                    <View style={{ position: "absolute", bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: green, borderWidth: 2, borderColor: cardBg }} />
+                  ) : null}
                   {hasUnread ? (
-                    <View style={{
-                      position: "absolute",
-                      bottom: 0,
-                      right: 0,
-                      width: 16,
-                      height: 16,
-                      borderRadius: 8,
-                      backgroundColor: green,
-                      borderWidth: 2,
-                      borderColor: bg,
-                    }} />
+                    <View style={{ position: "absolute", top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: green, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: bg, paddingHorizontal: 3 }}>
+                      <MvText style={{ color: "#fff", fontSize: 9, fontFamily: "DMSans_700Bold", lineHeight: 12 }}>
+                        {item.unreadCount > 99 ? "99+" : String(item.unreadCount)}
+                      </MvText>
+                    </View>
                   ) : null}
                 </View>
 
                 {/* Content */}
-                <View style={{ flex: 1, gap: 4 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                    <MvText variant="semi2" numberOfLines={1} style={{ flex: 1 }}>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <MvText style={{ fontFamily: hasUnread ? "DMSans_700Bold" : "DMSans_500Medium", fontSize: 15, color: text1, flex: 1 }} numberOfLines={1}>
                       {item.otherUser.name}
                     </MvText>
                     {item.lastMessage?.createdAt ? (
-                      <MvText style={{ fontSize: 12, color: hasUnread ? green : text3, marginLeft: 8 }}>
+                      <MvText style={{ fontSize: 11, color: hasUnread ? green : text3, fontFamily: "DMSans_400Regular" }}>
                         {relativeTime(item.lastMessage.createdAt)}
                       </MvText>
                     ) : null}
                   </View>
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                    <MvText
-                      variant="body4"
-                      color="secondary"
-                      numberOfLines={1}
-                      style={{ flex: 1, color: hasUnread ? text1 : text2, fontFamily: hasUnread ? "DMSans-SemiBold" : "DMSans-Regular" }}
-                    >
-                      {item.lastMessage?.content ?? "Iniciar conversa"}
-                    </MvText>
-                    {hasUnread && item.unreadCount > 0 ? (
-                      <View style={{
-                        minWidth: 20,
-                        height: 20,
-                        borderRadius: 10,
-                        backgroundColor: green,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        paddingHorizontal: 5,
-                        marginLeft: 8,
-                      }}>
-                        <MvText style={{ color: "#fff", fontSize: 11, fontFamily: "DMSans-Bold" }}>
-                          {item.unreadCount > 99 ? "99+" : String(item.unreadCount)}
-                        </MvText>
-                      </View>
-                    ) : null}
+                  <MvText numberOfLines={1} style={{ fontSize: 12, color: hasUnread ? text1 : text2, fontFamily: hasUnread ? "DMSans_500Medium" : "DMSans_400Regular" }}>
+                    {lastContent}
+                  </MvText>
+                  <View style={{ marginTop: 3 }}>
+                    <View style={{ backgroundColor: item.isOpen ? (isDark ? "rgba(34,197,94,0.12)" : "rgba(22,163,74,0.09)") : (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)"), borderWidth: 1, borderColor: item.isOpen ? (isDark ? "rgba(34,197,94,0.25)" : "rgba(22,163,74,0.20)") : border, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start" }}>
+                      <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: item.isOpen ? green : text3 }}>
+                        {item.isOpen ? "conversa ativa" : "histórico"}
+                      </MvText>
+                    </View>
                   </View>
                 </View>
-
-                <Ionicons name="chevron-forward" size={16} color={text3} />
-              </TouchableOpacity>
+              </PressableScale>
             );
           }}
         />
+        </ScreenEntrance>
       )}
 
-      <ProfessionalBottomNav
-        activeKey="conversas"
-        onPress={(key) => {
-          if (key === "conversas") return;
-          if (key === "home") navigation.navigate("ProfessionalTabs" as never);
-          else if (key === "agenda") navigation.navigate("ProfessionalTabs", { screen: "ProfessionalAgenda" } as never);
-          else if (key === "alunos") navigation.navigate("ProfessionalStudents" as never);
-          else if (key === "financeiro") navigation.navigate("PayoutStatus" as never);
-        }}
-      />
     </View>
   );
 }

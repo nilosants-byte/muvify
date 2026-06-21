@@ -1,26 +1,34 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  FlatList,
-  RefreshControl,
-  StatusBar,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { FlatList, RefreshControl, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientTabParamList } from "../../navigation/route-types";
 import { bookingsApi, Booking } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
-import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvBadge, MvBottomNav, MvButton, MvCard, MvText } from "../../components/mv";
+import { MvAvatar } from "../../components/mv";
 import { handleScreenError } from "../shared/api-helpers";
 import { resolveMediaUrl } from "../../utils/media";
+import { useMvTheme } from "../../theme/MvThemeContext";
+import type { MvTheme } from "../../theme/MvColors";
+import { C, S, DISPLAY } from "../../theme/v2tokens";
+import { ClientBottomNavV2 } from "../../components/navigation/ClientBottomNavV2";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { SkeletonBookingCard } from "../../components/polish/SkeletonCard";
+import { formatBRDateTime } from "../../utils/formatters";
 
 type Props = BottomTabScreenProps<ClientTabParamList, "ClientBookings">;
 type BookingFilter = "upcoming" | "pending" | "history" | "all";
+
+const MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+function isToday(dateIso: string) {
+  const d = new Date(dateIso);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
 
 function useTabNav() {
   const nav = useNavigation() as any;
@@ -30,49 +38,31 @@ function useTabNav() {
   };
 }
 
-const MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 function getInitials(name?: string | null): string {
   if (!name) return "?";
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? "")
-    .join("");
+  return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
 }
 
-function bookingBadge(status: Booking["status"]): { label: string; variant: "green" | "orange" | "gray" | "red" } {
-  switch (status) {
-    case "CONFIRMED":
-      return { label: "Confirmado", variant: "green" };
-    case "PENDING":
-      return { label: "Pendente", variant: "orange" };
-    case "COMPLETED":
-      return { label: "Concluido", variant: "gray" };
-    default:
-      return { label: "Cancelado", variant: "red" };
-  }
+function badgeStyle(status: Booking["status"], theme: MvTheme): { label: string; color: string; bg: string; border: string } {
+  const isDark = theme.mode === "dark";
+  if (status === "CONFIRMED") return { label: "Confirmado", color: theme.primary, bg: theme.primarySubtle, border: theme.primarySubtleBorder };
+  if (status === "PENDING") return { label: "Pendente", color: C.amber, bg: C.amberDim, border: C.amberBorder };
+  if (status === "COMPLETED") return { label: "Concluído", color: theme.text2, bg: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", border: theme.border };
+  return { label: "Cancelado", color: theme.danger, bg: isDark ? "rgba(239,68,68,0.12)" : "rgba(220,38,38,0.09)", border: isDark ? "rgba(239,68,68,0.20)" : "rgba(220,38,38,0.15)" };
 }
 
 function sortByDateAsc(list: Booking[]) {
-  return [...list].sort(
-    (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
-  );
+  return [...list].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
 }
-
 function sortByDateDesc(list: Booking[]) {
-  return [...list].sort(
-    (a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()
-  );
+  return [...list].sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
 }
 
 export function ClientBookingsScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
-  const { toTab, goBack } = useTabNav();
-
-  const iconColor = theme.mode === "dark" ? "#D8E0D8" : "#394239";
+  const { toTab } = useTabNav();
 
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -90,9 +80,7 @@ export function ClientBookingsScreen({ navigation }: Props) {
     }
   }, [runWithAuth, showToast]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   const goToStack = (screen: string, params?: object) => {
     const parent = navigation.getParent<any>();
@@ -104,138 +92,61 @@ export function ClientBookingsScreen({ navigation }: Props) {
     if (parent) parent.navigate("SearchProfessionals");
   };
 
-  const sortedBookings = useMemo(() => sortByDateAsc(bookings), [bookings]);
-  const upcomingBookings = useMemo(
-    () => sortedBookings.filter((item) => item.status === "PENDING" || item.status === "CONFIRMED"),
-    [sortedBookings]
-  );
-  const pendingBookings = useMemo(
-    () => sortedBookings.filter((item) => item.status === "PENDING"),
-    [sortedBookings]
-  );
-  const completedBookings = useMemo(
-    () => sortByDateDesc(bookings.filter((item) => item.status === "COMPLETED")),
-    [bookings]
-  );
-  const cancelledBookings = useMemo(
-    () => sortByDateDesc(bookings.filter((item) => item.status === "CANCELLED")),
-    [bookings]
-  );
-  const historyBookings = useMemo(
-    () => sortByDateDesc([...completedBookings, ...cancelledBookings]),
-    [cancelledBookings, completedBookings]
-  );
-  const nextBooking = upcomingBookings[0] ?? null;
+  const sorted = useMemo(() => sortByDateAsc(bookings), [bookings]);
+  const upcoming = useMemo(() => sorted.filter((b) => b.status === "PENDING" || b.status === "CONFIRMED"), [sorted]);
+  const pending = useMemo(() => sorted.filter((b) => b.status === "PENDING"), [sorted]);
+  const completed = useMemo(() => sortByDateDesc(bookings.filter((b) => b.status === "COMPLETED")), [bookings]);
+  const cancelled = useMemo(() => sortByDateDesc(bookings.filter((b) => b.status === "CANCELLED")), [bookings]);
+  const history = useMemo(() => sortByDateDesc([...completed, ...cancelled]), [cancelled, completed]);
+  const nextBooking = upcoming[0] ?? null;
 
-  const filteredBookings = useMemo(() => {
-    if (activeFilter === "upcoming") return upcomingBookings;
-    if (activeFilter === "pending") return pendingBookings;
-    if (activeFilter === "history") return historyBookings;
-    return sortedBookings;
-  }, [activeFilter, historyBookings, pendingBookings, sortedBookings, upcomingBookings]);
+  const HISTORY_LIMIT = 30;
+  const filtered = useMemo(() => {
+    if (activeFilter === "upcoming") return upcoming;
+    if (activeFilter === "pending") return pending;
+    if (activeFilter === "history") return history.slice(0, HISTORY_LIMIT);
+    return sorted.slice(0, HISTORY_LIMIT);
+  }, [activeFilter, history, pending, sorted, upcoming]);
 
-  const filterOptions: Array<{
-    key: BookingFilter;
-    label: string;
-    count: number;
-  }> = useMemo(
-    () => [
-      { key: "upcoming", label: "Próximos", count: upcomingBookings.length },
-      { key: "pending", label: "Pendentes", count: pendingBookings.length },
-      { key: "history", label: "Histórico", count: historyBookings.length },
-      { key: "all", label: "Todos", count: bookings.length },
-    ],
-    [bookings.length, historyBookings.length, pendingBookings.length, upcomingBookings.length]
-  );
+  const filterOptions: Array<{ key: BookingFilter; label: string; count: number }> = useMemo(() => [
+    { key: "upcoming", label: "Próximos", count: upcoming.length },
+    { key: "pending", label: "Pendentes", count: pending.length },
+    { key: "history", label: "Histórico", count: history.length },
+    { key: "all", label: "Todos", count: bookings.length },
+  ], [bookings.length, history.length, pending.length, upcoming.length]);
 
-  const renderFilterChip = (item: (typeof filterOptions)[number]) => {
-    const selected = item.key === activeFilter;
-    return (
-      <TouchableOpacity
-        key={item.key}
-        activeOpacity={0.85}
-        onPress={() => setActiveFilter(item.key)}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-          borderRadius: 18,
-          borderWidth: 1,
-          borderColor: selected ? "rgba(76,175,80,0.35)" : theme.border,
-          backgroundColor: selected ? "rgba(76,175,80,0.12)" : theme.inputBg,
-          paddingHorizontal: 10,
-          paddingVertical: 7,
-        }}
-      >
-        <MvText variant="body4" style={{ color: selected ? theme.textGreen : theme.text2 }}>
-          {item.label}
-        </MvText>
-        <View
-          style={{
-            minWidth: 18,
-            height: 18,
-            borderRadius: 9,
-            backgroundColor: selected ? "rgba(76,175,80,0.24)" : theme.backBtn,
-            alignItems: "center",
-            justifyContent: "center",
-            paddingHorizontal: 4,
-          }}
-        >
-          <MvText variant="caption" style={{ color: selected ? theme.textGreen : theme.text2 }}>
-            {item.count}
-          </MvText>
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  const emptyText =
+    activeFilter === "pending" ? "Tudo em dia. Nenhum agendamento pendente." :
+    activeFilter === "history" ? "Seu histórico ainda não possui agendamentos finalizados." :
+    activeFilter === "upcoming" ? "Nenhum treino futuro encontrado." :
+    "Nenhum agendamento nesta visão.";
 
   const renderItem = ({ item }: { item: Booking }) => {
     const date = new Date(item.scheduledAt);
-    const badge = bookingBadge(item.status);
+    const bs = badgeStyle(item.status, theme);
     const isFinished = item.status === "COMPLETED" || item.status === "CANCELLED";
 
     return (
-      <TouchableOpacity
-        activeOpacity={0.85}
+      <PressableScale
         onPress={() => goToStack("ClientBookingDetail", { bookingId: item.id })}
         testID={`booking.card.${item.id}`}
         style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 12,
-          backgroundColor: theme.cardBg,
-          borderWidth: 1,
-          borderColor: theme.border,
-          borderRadius: 12,
-          padding: 11,
-          marginBottom: 8,
-          opacity: isFinished ? 0.75 : 1,
+          flexDirection: "row", alignItems: "center", gap: 12,
+          backgroundColor: theme.cardBg, borderWidth: 1, borderColor: theme.border,
+          borderRadius: S.cardR, padding: S.cardPad,
+          opacity: isFinished ? 0.72 : 1,
         }}
       >
-        <View
-          style={{
-            width: 40,
-            borderRadius: 10,
-            backgroundColor: theme.mode === "dark" ? "rgba(76,175,80,0.10)" : "rgba(76,175,80,0.09)",
-            borderWidth: 1,
-            borderColor: theme.mode === "dark" ? "rgba(76,175,80,0.25)" : "rgba(76,175,80,0.22)",
-            paddingVertical: 7,
-            alignItems: "center",
-            flexShrink: 0,
-          }}
-        >
-          <Text style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 16, color: theme.textGreen, lineHeight: 20 }}>
+        {/* Data badge V2 */}
+        <View style={{
+          width: 44, borderRadius: 14,
+          backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder,
+          paddingVertical: 8, alignItems: "center", flexShrink: 0,
+        }}>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: theme.text1, letterSpacing: -0.013 * 18 }}>
             {date.getDate()}
           </Text>
-          <Text
-            style={{
-              fontFamily: "SpaceGrotesk-Regular",
-              fontSize: 9,
-              color: theme.text3,
-              textTransform: "uppercase",
-              letterSpacing: 0.4,
-            }}
-          >
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 9, color: theme.text2, textTransform: "uppercase", letterSpacing: 0.5 }}>
             {MONTHS_PT[date.getMonth()]}
           </Text>
         </View>
@@ -243,186 +154,163 @@ export function ClientBookingsScreen({ navigation }: Props) {
         <MvAvatar
           initials={getInitials(item.provider?.displayName)}
           photoUri={resolveMediaUrl(item.provider?.photoUrl)}
-          size={42}
-          borderRadius={21}
-          color="green"
+          tone="green"
+          size="md"
         />
 
         <View style={{ flex: 1, gap: 4 }}>
-          <MvText variant="semi1">{item.provider?.displayName ?? "Personal"}</MvText>
-          <MvText variant="body4" color="secondary">
-            {date.toLocaleDateString("pt-BR")} as{" "}
-            {date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-          </MvText>
-          <MvBadge label={badge.label} variant={badge.variant} />
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }} numberOfLines={1}>
+            {item.provider?.displayName ?? "Personal"}
+          </Text>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>
+            {formatBRDateTime(item.scheduledAt)}
+          </Text>
+          <View style={{ backgroundColor: bs.bg, borderWidth: 1, borderColor: bs.border, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start" }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: bs.color }}>{bs.label}</Text>
+          </View>
         </View>
 
-        <Ionicons name="chevron-forward" size={16} color={theme.text3} />
-      </TouchableOpacity>
+        <Ionicons name="chevron-forward" size={16} color={theme.labelColor} />
+      </PressableScale>
     );
   };
-
-  const navItems = [
-    { key: "home", icon: "compass-outline", label: "Início" },
-    { key: "bookings", icon: "calendar-clear-outline", label: "Agenda" },
-    { key: "promotions", icon: "flash-outline", label: "Promoções" },
-    { key: "training", icon: "barbell-outline", label: "Treino" },
-    { key: "profile", icon: "person-circle-outline", label: "Perfil" },
-  ];
-
-  const listEmptyText =
-    activeFilter === "pending"
-      ? "Tudo em dia. Nenhum agendamento pendente."
-      : activeFilter === "history"
-      ? "Seu histórico ainda não possui agendamentos finalizados."
-      : activeFilter === "upcoming"
-      ? "Nenhum treino futuro encontrado."
-      : "Nenhum agendamento encontrado nesta visão.";
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.bookings">
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
-      <View
-        style={{
-          paddingTop: insets.top + 10,
-          paddingHorizontal: 14,
-          paddingBottom: 10,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 10,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.borderSub,
-        }}
-      >
-        <TouchableOpacity
-          onPress={goBack}
-          style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-        >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
-        </TouchableOpacity>
+      {/* Header V2 */}
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: theme.border, flexDirection: "row", alignItems: "center", gap: 10 }}>
         <View style={{ flex: 1 }}>
-          <MvText variant="semi1">Agenda</MvText>
-          <MvText variant="body4" color="secondary">
-            Organize seus agendamentos e próximos treinos.
-          </MvText>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Agenda</Text>
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>somente aulas presenciais</Text>
         </View>
-        <MvBadge label={`${upcomingBookings.length} ativos`} variant={upcomingBookings.length ? "green" : "gray"} />
+        <TouchableOpacity
+          onPress={goToStack.bind(null, "SearchProfessionals")}
+          accessibilityRole="button"
+          accessibilityLabel="Novo agendamento"
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
+        >
+          <Ionicons name="add" size={20} color={theme.primary} />
+        </TouchableOpacity>
       </View>
 
+      <ScreenEntrance>
       <FlatList
-        data={filteredBookings}
+        data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 90, paddingTop: 4 }}
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={load} tintColor="#4CAF50" colors={["#4CAF50"]} />
-        }
+        contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, paddingTop: 16, gap: 10 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={theme.primary} colors={[theme.primary]} />}
         ListHeaderComponent={
-          <View style={{ gap: 10, marginBottom: 8 }}>
-            <MvCard style={{ gap: 10 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <MvText variant="semi2">Panorama da semana</MvText>
-                <Ionicons name="calendar-outline" size={16} color={iconColor} />
-              </View>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <View style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 8, backgroundColor: theme.inputBg }}>
-                  <MvText variant="h3" style={{ color: theme.textGreen }}>
-                    {upcomingBookings.length}
-                  </MvText>
-                  <MvText variant="caption" color="secondary">
-                    Proximos
-                  </MvText>
-                </View>
-                <View style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 8, backgroundColor: theme.inputBg }}>
-                  <MvText variant="h3" style={{ color: theme.textGreen }}>
-                    {pendingBookings.length}
-                  </MvText>
-                  <MvText variant="caption" color="secondary">
-                    Pendentes
-                  </MvText>
-                </View>
-                <View style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 8, backgroundColor: theme.inputBg }}>
-                  <MvText variant="h3" style={{ color: theme.textGreen }}>
-                    {completedBookings.length}
-                  </MvText>
-                  <MvText variant="caption" color="secondary">
-                    Concluidos
-                  </MvText>
-                </View>
-              </View>
-
+          <View style={{ gap: 14, marginBottom: 4 }}>
+            {/* Hero card panorama V2 */}
+            <View style={{ borderRadius: S.cardR, padding: 16, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: "rgba(36,230,109,0.09)" }}>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 10, color: theme.primary, letterSpacing: 0.1 * 10, textTransform: "uppercase", fontWeight: "700" }}>
+                próximo compromisso
+              </Text>
               {nextBooking ? (
-                <View
-                  style={{
-                    borderWidth: 1,
-                    borderColor: "rgba(76,175,80,0.30)",
-                    borderRadius: 10,
-                    backgroundColor: theme.mode === "dark" ? "rgba(76,175,80,0.08)" : "rgba(76,175,80,0.10)",
-                    padding: 10,
-                    gap: 3,
-                  }}
-                >
-                  <MvText variant="caption" color="secondary">
-                    Proximo treino
-                  </MvText>
-                  <MvText variant="semi3">{nextBooking.provider?.displayName ?? "Personal"}</MvText>
-                  <MvText variant="body4" color="secondary">
-                    {new Date(nextBooking.scheduledAt).toLocaleDateString("pt-BR")} as{" "}
-                    {new Date(nextBooking.scheduledAt).toLocaleTimeString("pt-BR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </MvText>
-                </View>
+                <>
+                  <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.02 * 22, marginTop: 8 }}>
+                    {isToday(nextBooking.scheduledAt)
+                      ? `Hoje às ${new Date(nextBooking.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}`
+                      : new Date(nextBooking.scheduledAt).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" }) +
+                        " às " +
+                        new Date(nextBooking.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}
+                  </Text>
+                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, marginTop: 6 }}>
+                    {nextBooking.provider?.displayName ?? "Personal"} · {nextBooking.notes ?? "Aula presencial"}
+                  </Text>
+                  {nextBooking.status === "PENDING" && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10, backgroundColor: C.amberDim, borderWidth: 1, borderColor: C.amberBorder, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 4, alignSelf: "flex-start" }}>
+                      <Ionicons name="time-outline" size={13} color={C.amber} />
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: C.amber }}>Aguardando confirmação do profissional</Text>
+                    </View>
+                  )}
+                </>
               ) : (
-                  <MvText variant="body4" color="secondary">
-                    Você ainda não tem treinos futuros. Encontre um novo personal para seguir evoluindo.
-                  </MvText>
-                )}
+                <>
+                  <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.02 * 22, marginTop: 8 }}>
+                    Nenhum treino agendado
+                  </Text>
+                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, marginTop: 6 }}>
+                    Encontre um personal e agende sua sessão.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={goToSearch}
+                    style={{ marginTop: 12, height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+                  >
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>Encontrar personal</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
 
-              <MvButton variant="outline" label="Encontrar personal" onPress={goToSearch} />
-            </MvCard>
+            {/* Stats mini */}
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {[
+                { label: "Próximos", value: upcoming.length, color: theme.primary },
+                { label: "Pendentes", value: pending.length, color: C.amber },
+                { label: "Concluídos", value: completed.length, color: theme.text2 },
+              ].map((s) => (
+                <View key={s.label} style={{ flex: 1, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: theme.border, borderRadius: 16, padding: 10, alignItems: "center" }}>
+                  <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: s.color, letterSpacing: -0.013 * 20 }}>{s.value}</Text>
+                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 10, color: theme.text3, marginTop: 2 }}>{s.label}</Text>
+                </View>
+              ))}
+            </View>
 
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-              {filterOptions.map((item) => renderFilterChip(item))}
+            {/* Filter tabs V2 */}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {filterOptions.map((item) => {
+                const active = item.key === activeFilter;
+                return (
+                  <TouchableOpacity
+                    key={item.key}
+                    onPress={() => setActiveFilter(item.key)}
+                    style={{
+                      height: 36, paddingHorizontal: 14, borderRadius: S.chipR,
+                      flexDirection: "row", alignItems: "center", gap: 6,
+                      borderWidth: 1,
+                      borderColor: active ? theme.primarySubtleBorder : theme.border,
+                      backgroundColor: active ? theme.primarySubtle : "rgba(255,255,255,0.04)",
+                    }}
+                  >
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: active ? theme.primary : theme.text2 }}>{item.label}</Text>
+                    <View style={{ backgroundColor: active ? "rgba(36,230,109,0.22)" : "rgba(255,255,255,0.08)", borderRadius: 99, minWidth: 20, height: 20, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 }}>
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: active ? theme.primary : theme.text3 }}>{item.count}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         }
         ListEmptyComponent={
-          !loading ? (
-            <View style={{ paddingTop: 34, alignItems: "center", gap: 8 }}>
-              <View
-                style={{
-                  width: 54,
-                  height: 54,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  backgroundColor: theme.cardBg,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="calendar-outline" size={25} color={theme.textGreen} />
-              </View>
-              <MvText variant="body3" color="secondary">
-                {listEmptyText}
-              </MvText>
+          loading ? (
+            <View style={{ gap: 10, paddingTop: 4 }}>
+              {[0, 1, 2].map((i) => <SkeletonBookingCard key={i} />)}
             </View>
-          ) : null
+          ) : (
+            <View style={{ paddingTop: 40, alignItems: "center", gap: 10 }}>
+              <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="calendar-outline" size={28} color={theme.primary} />
+              </View>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, textAlign: "center" }}>{emptyText}</Text>
+            </View>
+          )
         }
         showsVerticalScrollIndicator={false}
       />
+      </ScreenEntrance>
 
-      <MvBottomNav
-        items={navItems}
-        activeKey="bookings"
-        onPress={(key) => {
-          if (key === "home") toTab("ClientHome");
-          if (key === "promotions") toTab("Promotions");
-          if (key === "training") toTab("MyTraining");
-          if (key === "profile") toTab("ClientProfile");
+      <ClientBottomNavV2
+        activeTab="agenda"
+        onNavigate={(tab) => {
+          if (tab === "home") toTab("ClientHome");
+          if (tab === "trainings") toTab("MyTraining");
+          if (tab === "community") toTab("Community");
+          if (tab === "profile") toTab("ClientProfile");
         }}
       />
     </View>

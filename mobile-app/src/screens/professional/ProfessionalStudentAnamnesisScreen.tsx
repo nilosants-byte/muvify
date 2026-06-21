@@ -8,6 +8,7 @@ import { StudentAnamnesisResponse, providersApi } from "../../services/api/clien
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvCard, MvText } from "../../components/mv";
+import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalStudentAnamnesis">;
@@ -137,7 +138,7 @@ function AnamnesisSection({ sectionKey, data }: { sectionKey: string; data: Reco
 
   return (
     <MvCard style={{ marginBottom: 12 }}>
-      <MvText variant="semi3" style={{ marginBottom: 8, color: "#22C55E" }}>{label}</MvText>
+      <MvText variant="semi3" style={{ marginBottom: 8, color: theme.primary }}>{label}</MvText>
       {entries.map(([key, value]) => (
         <View key={key} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 3, gap: 8 }}>
           <MvText variant="body4" color="secondary" style={{ flex: 1 }}>{getFieldLabel(key)}</MvText>
@@ -189,30 +190,15 @@ export function ProfessionalStudentAnamnesisScreen({ navigation, route }: Props)
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
-      {/* Header */}
-      <View style={{
-        paddingTop: insets.top + 10,
-        paddingHorizontal: 16,
-        paddingBottom: 12,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.border,
-      }}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
-          <Ionicons name="chevron-back" size={24} color={theme.text1} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <MvText variant="semi2" numberOfLines={1}>Ficha de Anamnese</MvText>
-          <MvText variant="body4" color="secondary" numberOfLines={1}>{clientName}</MvText>
-        </View>
-        {statusBadge()}
-      </View>
+      <ProfessionalScreenHeader
+        title="Ficha de Anamnese"
+        subtitle={clientName}
+        onBack={() => navigation.goBack()}
+      />
 
       {loading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color="#22C55E" size="large" />
+          <ActivityIndicator color={theme.primary} size="large" />
         </View>
       ) : !anamnesis || anamnesis.status === "NONE" ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 }}>

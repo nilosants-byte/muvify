@@ -81,12 +81,14 @@ export function useAreaFitnessVenues(
   const [venues, setVenues] = useState<FitnessVenue[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Cache: avoid re-fetching if center moved < 500m and radius unchanged
+  // Cache: avoid re-fetching if center moved < 500m, radius unchanged, and cache < 5 min old
+  const CACHE_TTL_MS = 5 * 60 * 1000;
   const cacheRef = useRef<{
     lat: number;
     lon: number;
     radiusKm: number;
     venues: FitnessVenue[];
+    cachedAt: number;
   } | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
@@ -99,9 +101,11 @@ export function useAreaFitnessVenues(
     if (
       cache &&
       cache.radiusKm === radiusKm &&
-      haversineKm(cache.lat, cache.lon, lat, lon) < 0.5
+      haversineKm(cache.lat, cache.lon, lat, lon) < 0.5 &&
+      Date.now() - cache.cachedAt < CACHE_TTL_MS
     ) {
       setVenues(cache.venues);
+      setLoading(false);
       return;
     }
 
@@ -152,7 +156,7 @@ export function useAreaFitnessVenues(
           (a, b) => haversineKm(lat, lon, a.lat, a.lon) - haversineKm(lat, lon, b.lat, b.lon)
         );
 
-        cacheRef.current = { lat, lon, radiusKm, venues: result };
+        cacheRef.current = { lat, lon, radiusKm, venues: result, cachedAt: Date.now() };
         setVenues(result);
       } catch (err: unknown) {
         if (err instanceof Error && err.name !== "AbortError") {
@@ -165,6 +169,7 @@ export function useAreaFitnessVenues(
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      abortRef.current?.abort();
     };
   }, [lat, lon, radiusKm, enabled]);
 

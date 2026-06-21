@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, StatusBar, TouchableOpacity, View } from "react-native";
+import { FlatList, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,12 +7,21 @@ import { ClientStackParamList } from "../../navigation/route-types";
 import { ProviderServiceMode, providersApi, ProviderSummary } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvCard, MvText } from "../../components/mv";
 import { averageToFive, formatPriceFromCents, handleScreenError } from "../shared/api-helpers";
 import { formatCurrencyBRL } from "../../utils/formatters";
+import { S } from "../../theme/v2tokens";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { MvAvatar, MvText } from "../../components/mv";
+import { resolveMediaUrl } from "../../utils/media";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ProfessionalsList">;
 const PAGE_SIZE = 24;
+
+function getInitials(name?: string | null) {
+  const parts = (name ?? "?").trim().split(/\s+/);
+  if (parts.length <= 1) return (parts[0] ?? "?").slice(0, 2).toUpperCase();
+  return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
+}
 
 function serviceModeLabel(mode?: ProviderServiceMode | null): string {
   if (mode === "PRESENTIAL_ONLY") return "So academia";
@@ -106,107 +115,111 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 14, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.borderSub }}>
+      {/* Header V2 */}
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+          accessibilityRole="button" accessibilityLabel="Voltar" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
         >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
+          <Ionicons name="chevron-back" size={18} color={theme.text1} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <MvText variant="h4">{title}</MvText>
-          {hasGeo ? <MvText variant="body4" color="secondary">ordenado por distância</MvText> : null}
+          <MvText variant="h1" numberOfLines={1}>{title}</MvText>
+          {hasGeo && <MvText variant="caption" color="tertiary" style={{ marginTop: 2 }}>ordenado por distância</MvText>}
         </View>
       </View>
 
       <FlatList
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 8 }}
+        contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, gap: 10, paddingTop: 12 }}
         data={items}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={
-          <MvText variant="body4" color="secondary" style={{ marginBottom: 4 }}>
-            {initialLoading ? "Carregando resultados..." : `${items.length} profissionais encontrados`}
+          <MvText variant="caption" color="tertiary" style={{ marginBottom: 4 }}>
+            {initialLoading ? "Carregando resultados..." : `${items.length} profissiona${items.length === 1 ? "l" : "is"} encontrado${items.length === 1 ? "" : "s"}`}
           </MvText>
         }
         onEndReachedThreshold={0.35}
-        onEndReached={() => {
-          void loadMore();
-        }}
+        onEndReached={() => { void loadMore(); }}
         renderItem={({ item }) => {
           const rating = averageToFive(item.avgRating ?? item.averageRating);
           const modeLabel = serviceModeLabel(item.serviceMode);
           return (
-            <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate("ProfessionalDetail", { professionalId: item.id })}>
-              <MvCard>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-                  <View style={{ flex: 1 }}>
-                    <MvText variant="semi2">{item.displayName}</MvText>
-                    <MvText variant="body4" color="secondary" numberOfLines={2}>{item.bio}</MvText>
+            <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 10 }}>
+              {/* Linha superior: avatar + nome/bio + rating */}
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+                <MvAvatar
+                  initials={getInitials(item.displayName)}
+                  photoUri={resolveMediaUrl(item.photoUrl)}
+                  tone="green"
+                  size={52 as any}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }} numberOfLines={1}>{item.displayName}</Text>
+                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 2 }} numberOfLines={2}>{item.bio}</Text>
+                </View>
+                <View style={{ backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 4, alignSelf: "flex-start" }}>
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: theme.primary }}>★ {rating.toFixed(1)}</Text>
+                </View>
+              </View>
+
+              {/* Preço + distância + modo */}
+              <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>
+                  A partir de {formatCurrencyBRL(formatPriceFromCents(item.priceCents))}
+                </Text>
+                {typeof item.distanceKm === "number" && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                    <Ionicons name="location-outline" size={12} color={theme.text3} />
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>{item.distanceKm.toFixed(1)} km</Text>
                   </View>
-                  <MvBadge label={`${rating.toFixed(1)} *`} variant="green" />
-                </View>
+                )}
+                {modeLabel && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                    <Ionicons name={item.serviceMode === "HOME_VISIT_ONLY" ? "car-outline" : "barbell-outline"} size={12} color={theme.text3} />
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>{modeLabel}</Text>
+                  </View>
+                )}
+              </View>
 
-                <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-                  <MvText variant="semi3" style={{ color: theme.textGreen }}>
-                    A partir de {formatCurrencyBRL(formatPriceFromCents(item.priceCents))}
-                  </MvText>
-
-                  {typeof item.distanceKm === "number" ? (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-                      <Ionicons name="location-outline" size={12} color={theme.text3} />
-                      <MvText variant="body4" color="secondary">{item.distanceKm.toFixed(1)} km</MvText>
-                    </View>
-                  ) : null}
-
-                  {modeLabel ? (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-                      <Ionicons
-                        name={item.serviceMode === "HOME_VISIT_ONLY" ? "car-outline" : "barbell-outline"}
-                        size={12}
-                        color={theme.text3}
-                      />
-                      <MvText variant="body4" color="secondary">{modeLabel}</MvText>
-                    </View>
-                  ) : null}
-                </View>
-              </MvCard>
-            </TouchableOpacity>
+              {/* Ações */}
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <PressableScale
+                  onPress={() => navigation.navigate("ProfessionalDetail", { professionalId: item.id })}
+                  style={{ flex: 1, height: 38, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
+                >
+                  <Ionicons name="person-outline" size={14} color={theme.textGreen} />
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textGreen }}>Ver perfil</Text>
+                </PressableScale>
+                <PressableScale
+                  onPress={() => navigation.navigate("CreateBooking", { professionalId: item.id })}
+                  style={{ flex: 1, height: 38, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
+                >
+                  <Ionicons name="calendar-outline" size={14} color={theme.textOnPrimary} />
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Agendar</Text>
+                </PressableScale>
+              </View>
+            </View>
           );
         }}
         ListEmptyComponent={
           !initialLoading ? (
-            <View style={{ paddingTop: 60, alignItems: "center", gap: 8 }}>
-              <View
-                style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 16,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  backgroundColor: theme.cardBg,
-                }}
-              >
-                <Ionicons name="search-outline" size={28} color={theme.textGreen} />
+            <View style={{ paddingTop: 60, alignItems: "center", gap: 10 }}>
+              <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="search-outline" size={28} color={theme.primary} />
               </View>
-              <MvText variant="body3" color="secondary">Nenhum profissional encontrado.</MvText>
-              {hasGeo ? (
-                <MvText variant="body4" color="secondary" style={{ textAlign: "center", paddingHorizontal: 24 }}>
-                  Tente remover filtros ou buscar por outro termo.
-                </MvText>
-              ) : null}
+              <MvText variant="body4" color="tertiary">Nenhum profissional encontrado.</MvText>
+              {hasGeo && <MvText variant="caption" color="tertiary" style={{ textAlign: "center", paddingHorizontal: 24 }}>Tente remover filtros ou buscar por outro termo.</MvText>}
             </View>
           ) : null
         }
         ListFooterComponent={
-          loadingMore ? (
-            <MvText variant="body4" color="secondary" style={{ textAlign: "center", paddingVertical: 12 }}>
-              Carregando mais profissionais...
-            </MvText>
-          ) : null
+          loadingMore
+            ? <MvText variant="caption" color="tertiary" style={{ textAlign: "center", paddingVertical: 12 }}>Carregando mais...</MvText>
+            : !hasMore && items.length > 0
+            ? <MvText variant="caption" color="tertiary" style={{ textAlign: "center", paddingVertical: 16 }}>Você viu todos os profissionais disponíveis.</MvText>
+            : null
         }
-        showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}
+        showsVerticalScrollIndicator={false}
       />
     </View>
   );

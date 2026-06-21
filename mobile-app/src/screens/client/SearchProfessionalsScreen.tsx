@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { FlatList, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+﻿import React, { useEffect, useMemo, useState } from "react";
+import { FlatList, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,9 +14,10 @@ import {
   ProviderSummary
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
-import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { averageToFive, handleScreenError } from "../shared/api-helpers";
+import { useMvTheme } from "../../theme/MvThemeContext";
+import { C, S, DISPLAY } from "../../theme/v2tokens";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "SearchProfessionals">;
 
@@ -167,123 +168,114 @@ export function SearchProfessionalsScreen({ route, navigation }: Props) {
     } as never);
   };
 
-  const Chip = ({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) => (
-    <TouchableOpacity
-      onPress={onPress}
-      style={{
-        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-        backgroundColor: selected ? "rgba(76,175,80,0.12)" : theme.chipBg,
-        borderWidth: 1, borderColor: selected ? "rgba(76,175,80,0.30)" : theme.border,
-      }}
-    >
-      <MvText variant="body4" style={{ color: selected ? theme.textGreen : theme.chipText }}>{label}</MvText>
-    </TouchableOpacity>
-  );
-
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 14, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.borderSub }}>
+      {/* Header V2 */}
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
         >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
+          <Ionicons name="chevron-back" size={18} color={theme.text1} />
         </TouchableOpacity>
-        <MvText variant="h4">Buscar profissionais</MvText>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Buscar profissionais</Text>
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>nome, especialidade ou nota</Text>
+        </View>
       </View>
 
-      <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 14 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
-        <MvText variant="body4" color="secondary">Nome, especialidade ou nota.</MvText>
-
-        <MvInput
+      <ScreenEntrance>
+      <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, gap: 14, paddingTop: 16 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
+        {/* Campo de busca */}
+        <TextInput
           autoFocus
           placeholder="Ex.: personal, nutrição, pilates..."
+          placeholderTextColor={theme.text3}
           returnKeyType="search"
           onChangeText={setQuery}
           onSubmitEditing={() => goToList()}
           value={query}
+          selectionColor={theme.primary}
+          style={{ height: S.btnH, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.borderMid, backgroundColor: theme.inputBg, paddingHorizontal: 16, color: theme.text1, fontFamily: "DMSans_400Regular", fontSize: 14 }}
         />
 
         {/* GPS */}
         <TouchableOpacity
           onPress={clientLat ? clearGps : () => void requestGps()}
           disabled={locating}
-          style={{
-            flexDirection: "row", alignItems: "center", gap: 8, padding: 12,
-            borderRadius: 10, borderWidth: 1,
-            borderColor: clientLat ? "rgba(76,175,80,0.40)" : theme.border,
-            backgroundColor: clientLat ? "rgba(76,175,80,0.07)" : theme.inputBg,
-          }}
+          accessibilityRole="button"
+          accessibilityLabel={clientLat ? "Remover localização" : "Usar minha localização"}
+          style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: clientLat ? theme.primarySubtleBorder : theme.border, backgroundColor: clientLat ? theme.primarySubtle : theme.cardBg }}
         >
-          <Ionicons name="location-outline" size={16} color={clientLat ? "#4CAF50" : theme.text2} />
-          <MvText variant="body4" style={{ flex: 1, color: clientLat ? theme.textGreen : theme.text2 }}>
-            {locating ? "Obtendo localização..." : clientLat ? "Localização ativa - resultados ordenados por proximidade (toque para remover)" : "Usar minha localização para ordenar por proximidade"}
-          </MvText>
-          {clientLat ? <Ionicons name="close-circle-outline" size={16} color={theme.text3} /> : null}
+          <Ionicons name="location-outline" size={16} color={clientLat ? theme.primary : theme.text2} />
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: clientLat ? theme.primary : theme.text2, flex: 1 }} numberOfLines={2}>
+            {locating ? "Obtendo localização..." : clientLat ? "Localização ativa — ordenado por proximidade. Toque para remover." : "Usar minha localização para ordenar por proximidade"}
+          </Text>
+          {clientLat ? <Ionicons name="close-circle" size={16} color={theme.text3} /> : null}
         </TouchableOpacity>
 
-
-        <View style={{ gap: 8 }}>
-          <MvText variant="semi3">Especialidade</MvText>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-            <Chip label="Todas" selected={!selectedCategoryId} onPress={() => setSelectedCategoryId(undefined)} />
-            {categories.map((cat) => (
-              <Chip key={cat.id} label={cat.name} selected={selectedCategoryId === cat.id} onPress={() => setSelectedCategoryId(cat.id)} />
-            ))}
+        {/* Filtros */}
+        {[
+          { label: "Especialidade", chips: [{ label: "Todas", selected: !selectedCategoryId, onPress: () => setSelectedCategoryId(undefined) }, ...categories.map((cat) => ({ label: cat.name, selected: selectedCategoryId === cat.id, onPress: () => setSelectedCategoryId(cat.id) }))] },
+          { label: "Nota mínima", chips: ratingFilters.map((f) => ({ label: f.label, selected: f.key === ratingKey, onPress: () => setRatingKey(f.key) })) },
+          { label: "Modalidade", chips: serviceModeFilters.map((f) => ({ label: f.label, selected: f.key === serviceModeKey, onPress: () => setServiceModeKey(f.key) })) },
+        ].map(({ label, chips }) => (
+          <View key={label} style={{ gap: 8 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>{label}</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              {chips.map((chip) => (
+                <TouchableOpacity
+                  key={chip.label}
+                  onPress={chip.onPress}
+                  style={{ height: 36, paddingHorizontal: 12, borderRadius: S.chipR, backgroundColor: chip.selected ? theme.primarySubtle : "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: chip.selected ? theme.primarySubtleBorder : theme.border }}
+                >
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: chip.selected ? theme.primary : theme.text2, lineHeight: 36 }}>{chip.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-        </View>
+        ))}
 
-        <View style={{ gap: 8 }}>
-          <MvText variant="semi3">Nota mínima</MvText>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-            {ratingFilters.map((filter) => (
-              <Chip key={filter.key} label={filter.label} selected={filter.key === ratingKey} onPress={() => setRatingKey(filter.key)} />
-            ))}
-          </View>
-        </View>
+        {/* Botão de busca */}
+        <TouchableOpacity
+          onPress={() => goToList()}
+          accessibilityRole="button"
+          accessibilityLabel="Ver resultados da busca"
+          style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+        >
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>Ver resultados</Text>
+        </TouchableOpacity>
 
-        <View style={{ gap: 8 }}>
-          <MvText variant="semi3">Modalidade de atendimento</MvText>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-            {serviceModeFilters.map((filter) => (
-              <Chip key={filter.key} label={filter.label} selected={filter.key === serviceModeKey} onPress={() => setServiceModeKey(filter.key)} />
-            ))}
-          </View>
-        </View>
-
-        <MvButton label="Ver resultados" onPress={() => goToList()} />
-
+        {/* Sugestões */}
         <FlatList
           scrollEnabled={false}
           contentContainerStyle={{ gap: 8 }}
           data={suggestions}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <TouchableOpacity onPress={() => goToList(item.displayName)}>
-              <MvCard>
-                <MvText variant="semi2">{item.displayName}</MvText>
-                <MvText variant="body4" color="secondary" numberOfLines={1}>{item.bio}</MvText>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 2 }}>
-                  <MvText variant="body4" style={{ color: theme.textGreen }}>
-                    Nota {averageToFive(item.avgRating ?? item.averageRating).toFixed(1)}
-                  </MvText>
-                  {typeof item.distanceKm === "number" ? (
-                    <MvText variant="body4" color="secondary">{item.distanceKm.toFixed(1)} km</MvText>
-                  ) : null}
-                </View>
-              </MvCard>
+            <TouchableOpacity
+              onPress={() => goToList(item.displayName)}
+              style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 4 }}
+            >
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{item.displayName}</Text>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }} numberOfLines={1}>{item.bio}</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 2 }}>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.primary }}>★ {averageToFive(item.avgRating ?? item.averageRating).toFixed(1)}</Text>
+                {typeof item.distanceKm === "number" ? (
+                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>{item.distanceKm.toFixed(1)} km</Text>
+                ) : null}
+              </View>
             </TouchableOpacity>
           )}
           ListEmptyComponent={
-            loading ? (
-              <MvText variant="body4" color="secondary">Buscando...</MvText>
-            ) : (
-              <MvText variant="body4" color="secondary">Nenhuma sugestão encontrada.</MvText>
-            )
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>
+              {loading ? "Buscando..." : "Nenhuma sugestão. Digite para buscar."}
+            </Text>
           }
         />
       </ScrollView>
+      </ScreenEntrance>
     </View>
   );
 }

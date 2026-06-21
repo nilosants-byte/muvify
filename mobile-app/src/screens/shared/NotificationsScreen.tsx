@@ -1,11 +1,9 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { FlatList, RefreshControl, StatusBar, StyleSheet, TouchableOpacity, View } from "react-native";
+import { FlatList, RefreshControl, StatusBar, View } from "react-native";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvCard, MvText } from "../../components/mv";
 import {
   Booking,
   bookingsApi,
@@ -19,6 +17,12 @@ import {
 import { useAppState } from "../../state/AppState";
 import { handleScreenError } from "./api-helpers";
 import { formatCurrencyBRL } from "../../utils/formatters";
+import { MvButton } from "../../components/mv/MvButton";
+import { MvText } from "../../components/mv/MvText";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { C, S } from "../../theme/v2tokens";
+import { useMvTheme } from "../../theme/MvThemeContext";
+import { MvTheme } from "../../theme/MvColors";
 
 const CLIENT_SEARCH_RADIUS_KEY = "@personalapp/clientSearchRadiusKm";
 const CLIENT_SEARCH_CENTER_KEY = "@personalapp/clientSearchCenter";
@@ -58,6 +62,23 @@ type NotificationItem = {
   data?: Record<string, string>;
 };
 
+type ScreenCategory = "Todas" | "Agenda" | "Mercado" | "Aviso";
+const SCREEN_CATEGORIES: ScreenCategory[] = ["Todas", "Agenda", "Mercado", "Aviso"];
+
+function itemCategory(item: NotificationItem): ScreenCategory {
+  if (item.source === "market") return "Mercado";
+  if (item.source === "config") return "Aviso";
+  return "Agenda";
+}
+
+function variantTone(variant: NotificationVariant, theme: MvTheme) {
+  if (variant === "green") return { text: theme.primary, border: theme.primarySubtleBorder, bg: theme.primarySubtle };
+  if (variant === "orange") return { text: C.amber, border: C.amberBorder, bg: C.amberDim };
+  if (variant === "red") return { text: theme.danger, border: "rgba(239,68,68,0.20)", bg: "rgba(239,68,68,0.10)" };
+  if (variant === "blue") return { text: C.sky, border: C.skyBorder, bg: C.skyDim };
+  return { text: theme.text2, border: theme.border, bg: theme.inputBg };
+}
+
 function toMs(value?: string | null) {
   if (!value) return null;
   const ms = new Date(value).getTime();
@@ -92,7 +113,6 @@ function normalizeDataRecord(data?: NotificationInboxItem["data"] | null) {
   if (!data || typeof data !== "object") {
     return {};
   }
-
   const record: Record<string, string> = {};
   for (const [key, value] of Object.entries(data)) {
     const normalized = stringValue(value);
@@ -340,22 +360,21 @@ function uniqueById(items: NotificationItem[]) {
 }
 
 export function NotificationsScreen({ navigation }: { navigation?: any }) {
-  const { runWithAuth, showToast, role } = useAppState();
   const { theme } = useMvTheme();
+  const { runWithAuth, showToast, role } = useAppState();
   const insets = useSafeAreaInsets();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [bookingsById, setBookingsById] = useState<Record<string, Booking>>({});
+  const [, setBookingsById] = useState<Record<string, Booking>>({});
   const [loading, setLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState<ScreenCategory>("Todas");
 
   const loadNearbyMarketNotifications = useCallback(async (): Promise<NotificationItem[]> => {
     if (role !== "CLIENT") return [];
-
     try {
       const [savedRadius, savedCenter] = await Promise.all([
         AsyncStorage.getItem(CLIENT_SEARCH_RADIUS_KEY),
         AsyncStorage.getItem(CLIENT_SEARCH_CENTER_KEY),
       ]);
-
       const parsedRadius = Number(savedRadius);
       const radiusKm = Number.isFinite(parsedRadius)
         ? Math.max(1, Math.min(10, Math.round(parsedRadius)))
@@ -370,50 +389,32 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
             lat = parsed.lat;
             lng = parsed.lng;
           }
-        } catch {
-          // ignore invalid stored center
-        }
+        } catch { /* ignore */ }
       }
 
       const permission = await Location.getForegroundPermissionsAsync();
       if (permission.granted) {
         const currentPosition =
-          (await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          }).catch(() => null)) ??
+          (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null)) ??
           (await Location.getLastKnownPositionAsync().catch(() => null));
-
         if (currentPosition) {
           lat = currentPosition.coords.latitude;
           lng = currentPosition.coords.longitude;
         }
       }
 
-      if (typeof lat !== "number" || typeof lng !== "number") {
-        return [];
-      }
+      if (typeof lat !== "number" || typeof lng !== "number") return [];
 
-      const nearbyProviders = await providersApi.list({
-        lat,
-        lng,
-        maxDistanceKm: radiusKm,
-      });
-
+      const nearbyProviders = await providersApi.list({ lat, lng, maxDistanceKm: radiusKm });
       if (nearbyProviders.length === 0) return [];
 
       const providerCatalogs = await Promise.all(
         nearbyProviders.slice(0, MAX_NEARBY_PROVIDERS).map(async (provider) => {
           try {
             const catalog = await consultancyApi.providerCatalog(provider.id);
-            return {
-              providerName: catalog.provider.displayName || provider.displayName,
-              offers: catalog.offers,
-            };
+            return { providerName: catalog.provider.displayName || provider.displayName, offers: catalog.offers };
           } catch {
-            return {
-              providerName: provider.displayName,
-              offers: [] as ProviderServiceOffer[],
-            };
+            return { providerName: provider.displayName, offers: [] as ProviderServiceOffer[] };
           }
         })
       );
@@ -423,15 +424,10 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
       for (const catalog of providerCatalogs) {
         for (const offer of catalog.offers) {
           const nextItem = toMarketNotification(catalog.providerName, offer, nowMs);
-          if (nextItem) {
-            marketItems.push(nextItem);
-          }
+          if (nextItem) marketItems.push(nextItem);
         }
       }
-
-      return uniqueById(marketItems)
-        .sort((a, b) => b.createdAtMs - a.createdAtMs)
-        .slice(0, 25);
+      return uniqueById(marketItems).sort((a, b) => b.createdAtMs - a.createdAtMs).slice(0, 25);
     } catch {
       return [];
     }
@@ -442,23 +438,19 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
 
     if (role === "CLIENT") {
       const paymentStatus = await runWithAuth((token) => paymentsApi.customerStatus(token)).catch(() => null);
-      if (!paymentStatus || paymentStatus.configured) {
-        return [] as NotificationItem[];
-      }
-      return [
-        {
-          id: "config-client-payment-method",
-          source: "config",
-          title: "Configuração pendente",
-          body: "Adicione um método de pagamento para concluir solicitações e atualizações de agendamento.",
-          timeLabel: "Agora",
-          icon: "card-outline",
-          variant: "orange" as NotificationVariant,
-          unread: true,
-          createdAtMs: now,
-          action: { type: "CLIENT_PAYMENT_METHOD" as const },
-        },
-      ];
+      if (!paymentStatus || paymentStatus.configured) return [] as NotificationItem[];
+      return [{
+        id: "config-client-payment-method",
+        source: "config",
+        title: "Configuração pendente",
+        body: "Adicione um método de pagamento para concluir solicitações e atualizações de agendamento.",
+        timeLabel: "Agora",
+        icon: "card-outline",
+        variant: "orange" as NotificationVariant,
+        unread: true,
+        createdAtMs: now,
+        action: { type: "CLIENT_PAYMENT_METHOD" as const },
+      }];
     }
 
     if (role === "PROVIDER") {
@@ -490,11 +482,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
         const isRejected = credentials?.crefValidationStatus === "REJECTED";
         const isInReview = credentials?.crefValidationStatus === "IN_REVIEW";
         pending.push({
-          id: isRejected
-            ? "config-provider-cref-rejected"
-            : isInReview
-              ? "config-provider-cref-in-review"
-              : "config-provider-cref-pending",
+          id: isRejected ? "config-provider-cref-rejected" : isInReview ? "config-provider-cref-in-review" : "config-provider-cref-pending",
           source: "config",
           title: isRejected ? "CREF reprovado" : isInReview ? "CREF em análise" : "CREF pendente",
           body: isRejected
@@ -534,19 +522,14 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
       );
 
       const inboxNotifications = inbox.map((item) => toInboxNotification(item, role));
-      const hasBookingContext = inboxNotifications.some((item) => {
-        return (
-          item.action.type === "BOOKING_DETAIL" ||
-          item.action.type === "BOOKING_CHAT" ||
-          item.action.type === "BOOKING_PAYMENT_STATUS"
-        );
-      });
-      const fallbackBookingNotifications =
-        !hasBookingContext
-          ? bookings
-            .slice(0, 12)
-            .map(toBookingNotification)
-          : [];
+      const hasBookingContext = inboxNotifications.some((item) =>
+        item.action.type === "BOOKING_DETAIL" ||
+        item.action.type === "BOOKING_CHAT" ||
+        item.action.type === "BOOKING_PAYMENT_STATUS"
+      );
+      const fallbackBookingNotifications = !hasBookingContext
+        ? bookings.slice(0, 12).map(toBookingNotification)
+        : [];
       const [marketNotifications, pendingConfigNotifications] = await Promise.all([
         loadNearbyMarketNotifications(),
         loadPendingConfigNotifications(),
@@ -567,9 +550,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
     }
   }, [loadNearbyMarketNotifications, loadPendingConfigNotifications, role, runWithAuth, showToast]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   const unreadCount = useMemo(
     () => notifications.filter((item) => item.unread).length,
@@ -579,22 +560,9 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
   const clearAll = useCallback(async () => {
     try {
       await runWithAuth((token) => notificationsApi.markAllRead(token));
-    } catch {
-      // best effort
-    }
+    } catch { /* best effort */ }
     setNotifications([]);
   }, [runWithAuth]);
-
-  const variantColor = useCallback(
-    (variant: NotificationVariant) => {
-      if (variant === "green") return "#22C55E";
-      if (variant === "orange") return "#FF9800";
-      if (variant === "red") return "#f44336";
-      if (variant === "blue") return "#2196F3";
-      return theme.text3;
-    },
-    [theme.text3]
-  );
 
   const openBookingDetail = useCallback(
     (bookingId: string) => {
@@ -610,7 +578,6 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
 
   const openBookingChat = useCallback(() => {
     if (!navigation) return;
-    // Todos os chats ficam concentrados na tela Conversas
     if (role === "PROVIDER") {
       navigation.navigate("ProfessionalChatList");
     } else {
@@ -621,162 +588,157 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
   const handleNotificationPress = useCallback(
     (item: NotificationItem) => {
       setNotifications((current) =>
-        current.map((entry) =>
-          entry.id === item.id
-            ? {
-                ...entry,
-                unread: false,
-              }
-            : entry
-        )
+        current.map((entry) => entry.id === item.id ? { ...entry, unread: false } : entry)
       );
-
       if (!navigation) return;
-
       switch (item.action.type) {
-        case "BOOKING_DETAIL":
-          openBookingDetail(item.action.bookingId);
-          return;
-        case "BOOKING_CHAT":
-          openBookingChat();
-          return;
+        case "BOOKING_DETAIL": openBookingDetail(item.action.bookingId); return;
+        case "BOOKING_CHAT": openBookingChat(); return;
         case "BOOKING_PAYMENT_STATUS":
           if (role === "PROVIDER") {
-            if (item.action.bookingId) {
-              navigation.navigate("BookingPaymentStatus", { bookingId: item.action.bookingId });
-            } else {
-              navigation.navigate("PayoutStatus");
-            }
+            if (item.action.bookingId) navigation.navigate("BookingPaymentStatus", { bookingId: item.action.bookingId });
+            else navigation.navigate("PayoutStatus");
             return;
           }
-          if (item.action.bookingId) {
-            navigation.navigate("BookingPaymentStatus", { bookingId: item.action.bookingId });
-          } else {
-            navigation.navigate("ClientPaymentMethod");
-          }
+          if (item.action.bookingId) navigation.navigate("BookingPaymentStatus", { bookingId: item.action.bookingId });
+          else navigation.navigate("ClientPaymentMethod");
           return;
         case "CLIENT_BOOKINGS":
-          if (role === "PROVIDER") {
-            navigation.navigate("ProfessionalTabs", { screen: "ProfessionalAgenda" });
-          } else {
-            navigation.navigate("ClientBookings");
-          }
+          if (role === "PROVIDER") navigation.navigate("ProfessionalTabs", { screen: "ProfessionalAgenda" });
+          else navigation.navigate("ClientBookings");
           return;
-        case "CLIENT_PAYMENT_METHOD":
-          if (role === "CLIENT") {
-            navigation.navigate("ClientPaymentMethod");
-          }
-          return;
-        case "CLIENT_TRAINING":
-          if (role === "CLIENT") {
-            navigation.navigate("ClientTabs", { screen: "MyTraining" });
-          }
-          return;
-        case "CLIENT_ARCHIVED_REQUESTS":
-          if (role === "CLIENT") {
-            navigation.navigate("ArchivedRequests");
-          }
-          return;
-        case "CLIENT_PROMOTIONS":
-          if (role === "CLIENT") {
-            navigation.navigate("ClientTabs", { screen: "Promotions" });
-          }
-          return;
-        case "PROVIDER_AGENDA":
-          if (role === "PROVIDER") {
-            navigation.navigate("ProfessionalTabs", { screen: "ProfessionalAgenda" });
-          }
-          return;
-        case "PROVIDER_CONSULTANCY_CENTER":
-          if (role === "PROVIDER") {
-            navigation.navigate("ProfessionalConsultancyCenter");
-          }
-          return;
-        case "PROVIDER_ARCHIVED_REQUESTS":
-          if (role === "PROVIDER") {
-            navigation.navigate("ProfessionalArchivedRequests");
-          }
-          return;
-        case "PROVIDER_CREDENTIALS":
-          if (role === "PROVIDER") {
-            navigation.navigate("ProfessionalCredentials");
-          }
-          return;
-        case "PROVIDER_PAYOUT_SETUP":
-          if (role === "PROVIDER") {
-            navigation.navigate("ConnectPayoutAccount");
-          }
-          return;
-        case "SUPPORT":
-          navigation.navigate("Support");
-          return;
-        case "NONE":
-          return;
-        default:
-          return;
+        case "CLIENT_PAYMENT_METHOD": if (role === "CLIENT") navigation.navigate("ClientPaymentMethod"); return;
+        case "CLIENT_TRAINING": if (role === "CLIENT") navigation.navigate("ClientTabs", { screen: "MyTraining" }); return;
+        case "CLIENT_ARCHIVED_REQUESTS": if (role === "CLIENT") navigation.navigate("ArchivedRequests"); return;
+        case "CLIENT_PROMOTIONS": if (role === "CLIENT") navigation.navigate("ClientTabs", { screen: "Promotions" }); return;
+        case "PROVIDER_AGENDA": if (role === "PROVIDER") navigation.navigate("ProfessionalTabs", { screen: "ProfessionalAgenda" }); return;
+        case "PROVIDER_CONSULTANCY_CENTER": if (role === "PROVIDER") navigation.navigate("ProfessionalConsultancyCenter"); return;
+        case "PROVIDER_ARCHIVED_REQUESTS": if (role === "PROVIDER") navigation.navigate("ProfessionalArchivedRequests"); return;
+        case "PROVIDER_CREDENTIALS": if (role === "PROVIDER") navigation.navigate("ProfessionalCredentials"); return;
+        case "PROVIDER_PAYOUT_SETUP": if (role === "PROVIDER") navigation.navigate("ConnectPayoutAccount"); return;
+        case "SUPPORT": navigation.navigate("Support"); return;
+        case "NONE": return;
+        default: return;
       }
     },
     [navigation, openBookingChat, openBookingDetail, role]
   );
 
+  const filteredNotifications = useMemo(() => {
+    if (activeCategory === "Todas") return notifications;
+    return notifications.filter((item) => itemCategory(item) === activeCategory);
+  }, [notifications, activeCategory]);
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar
-        barStyle={theme.mode === "dark" ? "light-content" : "dark-content"}
-        backgroundColor={theme.bg}
-      />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
-      <View
-        style={{
-          paddingTop: insets.top + 10,
-          paddingHorizontal: 14,
-          paddingBottom: 10,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 10,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.borderSub,
-        }}
-      >
-        {navigation?.canGoBack?.() ? (
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-          >
-            <Ionicons name="chevron-back" size={20} color={theme.text2} />
-          </TouchableOpacity>
-        ) : null}
-        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <MvText variant="semi1">Notificações</MvText>
-          {!loading ? (
-            <MvBadge
-              label={unreadCount > 0 ? `${unreadCount} nova(s)` : "Em dia"}
-              variant={unreadCount > 0 ? (theme.mode === "light" ? "blue" : "orange") : "gray"}
-            />
+      {/* Header */}
+      <View style={{
+        paddingTop: insets.top + 10, paddingHorizontal: S.px, paddingBottom: 12,
+        borderBottomWidth: 1, borderBottomColor: theme.border,
+      }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+          {navigation?.canGoBack?.() ? (
+            <PressableScale
+              onPress={() => navigation.goBack()}
+              accessibilityRole="button"
+              accessibilityLabel="Voltar"
+              style={{
+                width: 44, height: 44, borderRadius: 12,
+                backgroundColor: theme.inputBg,
+                alignItems: "center", justifyContent: "center",
+                marginTop: 4,
+              }}
+            >
+              <Ionicons name="chevron-back" size={20} color={theme.text1} />
+            </PressableScale>
+          ) : null}
+
+          <View style={{ flex: 1 }}>
+            <MvText variant="badge" style={{ color: theme.primary, letterSpacing: 1 }}>
+              Central de avisos
+            </MvText>
+            <MvText variant="h1" style={{ marginTop: 4 }}>Notificações</MvText>
+            {!loading ? (
+              <View style={{ flexDirection: "row", gap: 6, marginTop: 8 }}>
+                <View style={{
+                  backgroundColor: unreadCount > 0 ? theme.primarySubtle : theme.inputBg,
+                  borderWidth: 1,
+                  borderColor: unreadCount > 0 ? theme.primarySubtleBorder : theme.border,
+                  borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3,
+                }}>
+                  <MvText variant="badge" style={{ color: unreadCount > 0 ? theme.primary : theme.text2 }}>
+                    {unreadCount > 0 ? `${unreadCount} não lida${unreadCount !== 1 ? "s" : ""}` : "Em dia"}
+                  </MvText>
+                </View>
+              </View>
+            ) : null}
+          </View>
+
+          {notifications.length > 0 ? (
+            <PressableScale
+              onPress={() => void clearAll()}
+              accessibilityRole="button"
+              accessibilityLabel="Limpar notificações"
+              style={{
+                width: 44, height: 44, borderRadius: 12,
+                backgroundColor: theme.inputBg,
+                alignItems: "center", justifyContent: "center",
+                marginTop: 4,
+              }}
+            >
+              <Ionicons name="trash-outline" size={16} color={theme.text2} />
+            </PressableScale>
           ) : null}
         </View>
-        {notifications.length > 0 ? (
-          <TouchableOpacity
-            onPress={() => void clearAll()}
-            style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-          >
-            <Ionicons name="trash-outline" size={16} color={theme.text3} />
-          </TouchableOpacity>
-        ) : null}
       </View>
 
+      {/* Filtros de categoria */}
       <FlatList
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80, gap: 8 }}
-        data={notifications}
+        horizontal
+        data={SCREEN_CATEGORIES}
+        keyExtractor={(item) => item}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: S.px, gap: 6, paddingVertical: 10 }}
+        renderItem={({ item }) => {
+          const active = activeCategory === item;
+          return (
+            <PressableScale
+              onPress={() => setActiveCategory(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`Filtrar por ${item}`}
+              accessibilityState={{ selected: active }}
+              style={{
+                minHeight: 44, paddingHorizontal: 14, paddingVertical: 10,
+                borderRadius: S.chipR, borderWidth: 1,
+                borderColor: active ? theme.primarySubtleBorder : theme.border,
+                backgroundColor: active ? theme.primarySubtle : "rgba(255,255,255,0.03)",
+                justifyContent: "center",
+              }}
+            >
+              <MvText variant="badge" style={{ color: active ? theme.text1 : theme.text2 }}>
+                {item}
+              </MvText>
+            </PressableScale>
+          );
+        }}
+      />
+
+      {/* Lista de notificações */}
+      <FlatList
+        contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 100, gap: 8 }}
+        data={filteredNotifications}
         keyExtractor={(item) => item.id}
         refreshControl={
           <RefreshControl
             refreshing={loading}
             onRefresh={load}
-            tintColor="#22C55E"
-            colors={["#22C55E"]}
+            tintColor={theme.primary}
+            colors={[theme.primary]}
           />
         }
+        showsVerticalScrollIndicator={false}
         renderItem={({ item }) => {
           const isBookingCreatedClient =
             role === "CLIENT" &&
@@ -791,43 +753,61 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
             item.data?.bookingId;
 
           if (isBookingCreatedClient) {
-            const bookingId = item.data!.bookingId!;
             return (
-              <MvCard style={[ntfStyles.specialCard, ntfStyles.clientBookingCard, { opacity: item.unread ? 1 : 0.82 }]}>
-                <View style={ntfStyles.specialRow}>
-                  <View style={[ntfStyles.specialIcon, { backgroundColor: "rgba(34,197,94,0.12)" }]}>
-                    <Ionicons name="calendar-outline" size={22} color="#22C55E" />
+              <View style={{
+                borderRadius: 20, borderWidth: 1, borderColor: theme.primarySubtleBorder,
+                backgroundColor: "rgba(36,230,109,0.05)", padding: 12, gap: 12,
+                opacity: item.unread ? 1 : 0.82,
+              }}>
+                <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                  <View style={{
+                    width: 38, height: 38, borderRadius: 14,
+                    backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder,
+                    alignItems: "center", justifyContent: "center",
+                  }}>
+                    <Ionicons name="calendar-outline" size={18} color={theme.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <MvText variant="semi3">{item.title}</MvText>
-                    <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>{item.body}</MvText>
-                    <MvText variant="body4" color="tertiary" style={{ marginTop: 2 }}>{item.timeLabel}</MvText>
+                    <MvText variant="semi3" style={{ lineHeight: 18 }}>{item.title}</MvText>
+                    <MvText variant="body4" color="secondary" style={{ lineHeight: 16, marginTop: 4, fontSize: 11 }}>{item.body}</MvText>
+                    <MvText variant="body4" color="tertiary" style={{ marginTop: 2, fontSize: 10 }}>{item.timeLabel}</MvText>
                   </View>
-                  {item.unread ? <MvBadge label="Novo" variant="green" /> : null}
+                  {item.unread ? (
+                    <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.primary, shadowColor: theme.primary, shadowOpacity: 1, shadowRadius: 3, elevation: 2, marginTop: 6 }} />
+                  ) : null}
                 </View>
-                <View style={ntfStyles.ctaRow}>
-                  <TouchableOpacity
-                    style={ntfStyles.ctaBtn}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  <PressableScale
                     onPress={() => openBookingChat()}
-                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Abrir conversas"
+                    style={{
+                      flexDirection: "row", alignItems: "center", gap: 5,
+                      backgroundColor: theme.primary, paddingHorizontal: 14,
+                      paddingVertical: 12, borderRadius: 12, minHeight: 44,
+                    }}
                   >
-                    <Ionicons name="chatbubble-ellipses-outline" size={15} color="#fff" />
-                    <MvText variant="semi3" style={{ color: "#fff", fontSize: 13 }}>Abrir Conversas</MvText>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[ntfStyles.ctaSecondaryBtn, { borderColor: "#22C55E" }]}
+                    <Ionicons name="chatbubble-ellipses-outline" size={14} color={theme.textOnPrimary} />
+                    <MvText variant="semi3" style={{ color: theme.textOnPrimary, fontSize: 12 }}>Abrir Conversas</MvText>
+                  </PressableScale>
+                  <PressableScale
                     onPress={() => handleNotificationPress(item)}
-                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Ver agendamento"
+                    style={{
+                      flexDirection: "row", alignItems: "center", gap: 5,
+                      borderWidth: 1, borderColor: theme.primarySubtleBorder,
+                      paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12, minHeight: 44,
+                    }}
                   >
-                    <MvText variant="semi3" style={{ color: "#22C55E", fontSize: 13 }}>Ver Agendamento</MvText>
-                  </TouchableOpacity>
+                    <MvText variant="semi3" style={{ color: theme.primary, fontSize: 12 }}>Ver Agendamento</MvText>
+                  </PressableScale>
                 </View>
-              </MvCard>
+              </View>
             );
           }
 
           if (isBookingCreatedProvider) {
-            const bookingId = item.data!.bookingId!;
             const clientId = item.data?.clientId;
             const clientName = item.data?.clientName ?? "Aluno";
             const anamnesisStatus = item.data?.anamnesisStatus ?? "NONE";
@@ -836,185 +816,151 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
               anamnesisStatus === "DRAFT" ? "Ficha incompleta" :
               "Sem ficha ainda";
             const anamnesisColor =
-              anamnesisStatus === "COMPLETED" ? "#22C55E" :
-              anamnesisStatus === "DRAFT" ? "#FF9800" : "#9E9E9E";
+              anamnesisStatus === "COMPLETED" ? theme.primary :
+              anamnesisStatus === "DRAFT" ? C.amber : theme.text3;
 
             return (
-              <MvCard style={[ntfStyles.specialCard, ntfStyles.providerBookingCard, { opacity: item.unread ? 1 : 0.82, borderColor: "rgba(33,150,243,0.3)" }]}>
-                <View style={ntfStyles.specialRow}>
-                  <View style={[ntfStyles.specialIcon, { backgroundColor: "rgba(33,150,243,0.12)" }]}>
-                    <Ionicons name="person-add-outline" size={22} color="#2196F3" />
+              <View style={{
+                borderRadius: 20, borderWidth: 1, borderColor: C.skyBorder,
+                backgroundColor: C.skyDim, padding: 12, gap: 12,
+                opacity: item.unread ? 1 : 0.82,
+              }}>
+                <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                  <View style={{
+                    width: 38, height: 38, borderRadius: 14,
+                    backgroundColor: C.skyDim, borderWidth: 1, borderColor: C.skyBorder,
+                    alignItems: "center", justifyContent: "center",
+                  }}>
+                    <Ionicons name="person-add-outline" size={18} color={C.sky} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <MvText variant="semi3">{item.title}</MvText>
-                    <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>{item.body}</MvText>
-                    <MvText variant="body4" style={{ color: anamnesisColor, marginTop: 4, fontSize: 12 }}>
-                      {anamnesisLabel}
-                    </MvText>
-                    <MvText variant="body4" color="tertiary" style={{ marginTop: 2 }}>{item.timeLabel}</MvText>
+                    <MvText variant="semi3" style={{ lineHeight: 18 }}>{item.title}</MvText>
+                    <MvText variant="body4" color="secondary" style={{ lineHeight: 16, marginTop: 4, fontSize: 11 }}>{item.body}</MvText>
+                    <MvText variant="semi3" style={{ color: anamnesisColor, marginTop: 4, fontSize: 11 }}>{anamnesisLabel}</MvText>
+                    <MvText variant="body4" color="tertiary" style={{ marginTop: 2, fontSize: 10 }}>{item.timeLabel}</MvText>
                   </View>
-                  {item.unread ? <MvBadge label="Novo" variant="blue" /> : null}
-                </View>
-                <View style={ntfStyles.ctaRow}>
-                  <TouchableOpacity
-                    style={[ntfStyles.ctaBtn, { backgroundColor: "#2196F3" }]}
-                    onPress={() => openBookingChat()}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="chatbubble-ellipses-outline" size={15} color="#fff" />
-                    <MvText variant="semi3" style={{ color: "#fff", fontSize: 13 }}>Conversas</MvText>
-                  </TouchableOpacity>
-                  {clientId ? (
-                    <TouchableOpacity
-                      style={[ntfStyles.ctaSecondaryBtn, { borderColor: "#2196F3" }]}
-                      onPress={() => {
-                        if (!navigation) return;
-                        navigation.navigate("ProfessionalStudentAnamnesis", { clientId, clientName });
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="document-text-outline" size={14} color="#2196F3" />
-                      <MvText variant="semi3" style={{ color: "#2196F3", fontSize: 13 }}>Ficha do Aluno</MvText>
-                    </TouchableOpacity>
+                  {item.unread ? (
+                    <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: C.sky, shadowColor: C.sky, shadowOpacity: 1, shadowRadius: 3, elevation: 2, marginTop: 6 }} />
                   ) : null}
-                  <TouchableOpacity
-                    style={[ntfStyles.ctaSecondaryBtn, { borderColor: "#9E9E9E" }]}
-                    onPress={() => handleNotificationPress(item)}
-                    activeOpacity={0.8}
-                  >
-                    <MvText variant="semi3" style={{ color: "#9E9E9E", fontSize: 13 }}>Detalhes</MvText>
-                  </TouchableOpacity>
                 </View>
-              </MvCard>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  <PressableScale
+                    onPress={() => openBookingChat()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Abrir conversas"
+                    style={{
+                      flexDirection: "row", alignItems: "center", gap: 5,
+                      backgroundColor: C.sky, paddingHorizontal: 14,
+                      paddingVertical: 12, borderRadius: 12, minHeight: 44,
+                    }}
+                  >
+                    <Ionicons name="chatbubble-ellipses-outline" size={14} color={theme.textOnPrimary} />
+                    <MvText variant="semi3" style={{ color: theme.textOnPrimary, fontSize: 12 }}>Conversas</MvText>
+                  </PressableScale>
+                  {clientId ? (
+                    <PressableScale
+                      onPress={() => navigation?.navigate("ProfessionalStudentAnamnesis", { clientId, clientName })}
+                      accessibilityRole="button"
+                      accessibilityLabel="Ver ficha do aluno"
+                      style={{
+                        flexDirection: "row", alignItems: "center", gap: 5,
+                        borderWidth: 1, borderColor: C.skyBorder,
+                        paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12, minHeight: 44,
+                      }}
+                    >
+                      <Ionicons name="document-text-outline" size={13} color={C.sky} />
+                      <MvText variant="semi3" style={{ color: C.sky, fontSize: 12 }}>Ficha do Aluno</MvText>
+                    </PressableScale>
+                  ) : null}
+                  <PressableScale
+                    onPress={() => handleNotificationPress(item)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Ver detalhes"
+                    style={{
+                      flexDirection: "row", alignItems: "center", gap: 5,
+                      borderWidth: 1, borderColor: theme.border,
+                      paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12, minHeight: 44,
+                    }}
+                  >
+                    <MvText variant="semi3" color="secondary" style={{ fontSize: 12 }}>Detalhes</MvText>
+                  </PressableScale>
+                </View>
+              </View>
             );
           }
 
+          const tone = variantTone(item.variant, theme);
           return (
-            <TouchableOpacity
-              activeOpacity={0.86}
+            <PressableScale
               onPress={() => handleNotificationPress(item)}
+              accessibilityRole="button"
+              style={{
+                borderRadius: 20, borderWidth: 1,
+                borderColor: item.unread ? tone.border : theme.border,
+                backgroundColor: item.unread ? "rgba(36,230,109,0.04)" : "rgba(255,255,255,0.025)",
+                padding: 12,
+                opacity: item.unread ? 1 : 0.72,
+                minHeight: 44,
+              }}
             >
-              <MvCard style={{ opacity: item.unread ? 1 : 0.78 }}>
-                <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
-                  <View
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      backgroundColor: theme.chipBg,
-                      borderWidth: 1,
-                      borderColor: theme.border,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Ionicons name={item.icon} size={18} color={variantColor(item.variant)} />
-                  </View>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <MvText variant="semi3">{item.title}</MvText>
-                    <MvText variant="body4" color="secondary">
-                      {item.body}
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <View style={{
+                  width: 38, height: 38, borderRadius: 14,
+                  backgroundColor: tone.bg, borderWidth: 1, borderColor: tone.border,
+                  alignItems: "center", justifyContent: "center", flexShrink: 0,
+                }}>
+                  <Ionicons name={item.icon} size={16} color={tone.text} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 6 }}>
+                    <MvText variant="semi3" style={{ lineHeight: 18, flex: 1, fontSize: 13 }} numberOfLines={2}>
+                      {item.title}
                     </MvText>
-                    <MvText variant="body4" color="tertiary">
+                    <MvText variant="body4" color="tertiary" style={{ flexShrink: 0, fontSize: 10 }}>
                       {item.timeLabel}
                     </MvText>
                   </View>
-                  <View style={{ alignItems: "flex-end", gap: 6 }}>
-                    <MvBadge
-                      label={item.unread ? "Novo" : "Lido"}
-                      variant={item.unread ? item.variant : "gray"}
-                    />
-                    <Ionicons name="chevron-forward" size={16} color={theme.text3} />
+                  <MvText variant="body4" color="secondary" style={{ lineHeight: 16, marginTop: 4, fontSize: 11 }} numberOfLines={2}>
+                    {item.body}
+                  </MvText>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                    <View style={{
+                      backgroundColor: tone.bg, borderWidth: 1, borderColor: tone.border,
+                      borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2,
+                    }}>
+                      <MvText variant="badge" style={{ color: tone.text, fontSize: 10 }}>{itemCategory(item)}</MvText>
+                    </View>
+                    {item.unread ? (
+                      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.primary, shadowColor: theme.primary, shadowOpacity: 1, shadowRadius: 3, elevation: 2 }} />
+                    ) : null}
                   </View>
                 </View>
-              </MvCard>
-            </TouchableOpacity>
+              </View>
+            </PressableScale>
           );
         }}
         ListEmptyComponent={
           !loading ? (
             <View style={{ paddingTop: 60, alignItems: "center", gap: 8 }}>
-              <Ionicons name="notifications-outline" size={38} color={theme.text3} />
-              <MvText variant="body3" color="secondary">
-                Nenhuma notificação encontrada.
-              </MvText>
+              <Ionicons name="notifications-off-outline" size={38} color={theme.text3} />
+              <MvText variant="body4" color="tertiary">Nenhuma notificação encontrada.</MvText>
             </View>
           ) : null
         }
-        showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}
       />
 
-      <TouchableOpacity
+      {/* Footer — Atualizar */}
+      <MvButton
+        variant="outline"
+        label={loading ? "Atualizando..." : "Atualizar"}
         disabled={loading}
+        loading={loading}
         onPress={load}
         style={{
-          marginHorizontal: 14,
-          marginBottom: insets.bottom + 14,
-          borderRadius: 10,
-          paddingVertical: 12,
-          alignItems: "center",
-          flexDirection: "row",
-          justifyContent: "center",
-          gap: 6,
-          borderWidth: 1,
-          borderColor: theme.borderSub,
-          backgroundColor: "transparent",
-          opacity: loading ? 0.4 : 1,
+          marginHorizontal: S.px,
+          marginBottom: Math.max(14, insets.bottom + 14),
         }}
-      >
-        <Ionicons name="refresh-outline" size={15} color={theme.text3} />
-        <MvText variant="semi3" color="secondary">{loading ? "Atualizando..." : "Atualizar"}</MvText>
-      </TouchableOpacity>
+      />
     </View>
   );
 }
-
-const ntfStyles = StyleSheet.create({
-  specialCard: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 12,
-  },
-  clientBookingCard: {
-    borderColor: "rgba(34,197,94,0.28)",
-  },
-  providerBookingCard: {
-    borderColor: "rgba(33,150,243,0.3)",
-  },
-  specialRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  specialIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  ctaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  ctaBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "#22C55E",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  ctaSecondaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-});

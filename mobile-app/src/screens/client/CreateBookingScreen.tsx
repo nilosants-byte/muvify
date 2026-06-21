@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,9 +18,13 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvAvatar } from "../../components/mv";
 import { formatCurrencyBRL, getInitials } from "../../utils/formatters";
 import { formatPriceFromCents, handleScreenError } from "../shared/api-helpers";
+import { C, S, DISPLAY } from "../../theme/v2tokens";
+import { hapticCta } from "../../utils/haptics";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { SkeletonShimmer } from "../../components/polish/SkeletonCard";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "CreateBooking">;
 
@@ -110,39 +114,31 @@ function Chip({
   selected,
   disabled = false,
   onPress,
-  theme,
 }: {
   label: string;
   selected: boolean;
   disabled?: boolean;
   onPress: () => void;
-  theme: any;
 }) {
+  const { theme } = useMvTheme();
   return (
     <TouchableOpacity
       disabled={disabled}
       onPress={onPress}
       style={{
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-        borderRadius: 20,
-        backgroundColor: disabled
-          ? theme.chipBg
-          : selected
-          ? "rgba(76,175,80,0.12)"
-          : theme.chipBg,
+        paddingHorizontal: 14,
+        height: 40,
+        borderRadius: S.chipR,
+        backgroundColor: disabled ? "rgba(255,255,255,0.04)" : selected ? theme.primarySubtle : "rgba(255,255,255,0.04)",
         borderWidth: 1,
-        borderColor: disabled
-          ? theme.border
-          : selected
-          ? "rgba(76,175,80,0.35)"
-          : theme.border,
+        borderColor: disabled ? theme.border : selected ? theme.primarySubtleBorder : theme.border,
         opacity: disabled ? 0.45 : 1,
+        justifyContent: "center",
       }}
     >
-      <MvText variant="body4" style={{ color: selected ? theme.textGreen : theme.chipText }}>
+      <Text style={{ fontFamily: selected ? "DMSans_700Bold" : "DMSans_400Regular", fontSize: 13, color: selected ? theme.primary : theme.text2 }}>
         {label}
-      </MvText>
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -168,6 +164,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
   const [calendarCursor, setCalendarCursor] = useState<Date>(() => startOfMonth(new Date()));
   const [scheduleByDate, setScheduleByDate] = useState<Record<string, string[]>>({});
   const [loadingCalendarMonth, setLoadingCalendarMonth] = useState(false);
+  const [calendarMonthError, setCalendarMonthError] = useState(false);
   const loadedMonthKeysRef = useRef<Set<string>>(new Set());
 
   const [selectedDateKeys, setSelectedDateKeys] = useState<string[]>([]);
@@ -247,13 +244,8 @@ export function CreateBookingScreen({ navigation, route }: Props) {
 
         setScheduleByDate((current) => ({ ...current, ...monthMap }));
         loadedMonthKeysRef.current.add(monthKey);
-      } catch (error) {
-        handleScreenError({
-          error,
-          showToast,
-          fallbackMessage: "Não foi possível carregar a disponibilidade deste mês.",
-          navigation,
-        });
+      } catch {
+        setCalendarMonthError(true);
       } finally {
         setLoadingCalendarMonth(false);
       }
@@ -315,6 +307,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
   }, [load]);
 
   useEffect(() => {
+    setCalendarMonthError(false);
     void loadMonthSchedule(calendarCursor);
   }, [calendarCursor, loadMonthSchedule]);
 
@@ -427,6 +420,8 @@ export function CreateBookingScreen({ navigation, route }: Props) {
           firstErrorMessage ?? "Não foi possível criar agendamento para as datas escolhidas.",
           "error"
         );
+        setSelectedDateKeys([]);
+        setSelectedSlotsByDate({});
         return;
       }
 
@@ -460,442 +455,341 @@ export function CreateBookingScreen({ navigation, route }: Props) {
 
   if (loading) {
     return (
-      <View
-        style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}
-      >
-        <StatusBar
-          barStyle={theme.mode === "dark" ? "light-content" : "dark-content"}
-          backgroundColor={theme.bg}
-        />
-        <MvText variant="body3" color="secondary">
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 14, color: theme.text2 }}>
           Preparando agendamento...
-        </MvText>
+        </Text>
       </View>
     );
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar
-        barStyle={theme.mode === "dark" ? "light-content" : "dark-content"}
-        backgroundColor={theme.bg}
-      />
-      <View
-        style={{
-          paddingTop: insets.top + 10,
-          paddingHorizontal: 14,
-          paddingBottom: 10,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 10,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.borderSub,
-        }}
-      >
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+
+      {/* Header V2 */}
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+          accessibilityRole="button" accessibilityLabel="Voltar" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
         >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
+          <Ionicons name="chevron-back" size={18} color={theme.text1} />
         </TouchableOpacity>
-        <MvText variant="h4">Agendar</MvText>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>
+            Criar agendamento
+          </Text>
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>
+            local, data e horário
+          </Text>
+        </View>
       </View>
 
+      <ScreenEntrance>
       <ScrollView automaticallyAdjustKeyboardInsets={true}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }}
+        contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, gap: 14, paddingTop: 16 }}
         showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}
       >
-        <MvText variant="body4" color="secondary">
+        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>
           Escolha categoria, datas e horários livres do personal para reservar seu atendimento.
-        </MvText>
+        </Text>
 
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 4 }}>
-            Profissional
-          </MvText>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <MvAvatar
-              initials={getInitials(provider?.displayName ?? "Personal")}
-              size={44}
-              borderRadius={22}
-              color="green"
-              photoUri={provider?.photoUrl ?? null}
-            />
+        {/* Card: Profissional */}
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, marginBottom: 10 }}>Profissional</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <MvAvatar initials={getInitials(provider?.displayName ?? "Personal")} tone="green" size="md" photoUri={provider?.photoUrl ?? null} />
             <View style={{ flex: 1 }}>
-              <MvText variant="semi3">{provider?.displayName ?? "Profissional"}</MvText>
-              <MvText variant="body4" color="secondary">
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{provider?.displayName ?? "Profissional"}</Text>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 2 }}>
                 {formatCurrencyBRL(formatPriceFromCents(provider?.priceCents))} por sessão
-              </MvText>
+              </Text>
             </View>
           </View>
-        </MvCard>
+        </View>
 
-        {(provider?.serviceMode === "PRESENTIAL_ONLY" || provider?.serviceMode === "BOTH") &&
-          (provider?.fixedLocations ?? []).length > 0 ? (
-          <MvCard>
-            <MvText variant="semi2" style={{ marginBottom: 10 }}>
-              Local do atendimento{" "}
-              <MvText variant="body4" color="secondary">(obrigatório)</MvText>
-            </MvText>
+        {/* Card: Local */}
+        {(provider?.serviceMode === "PRESENTIAL_ONLY" || provider?.serviceMode === "BOTH") && (provider?.fixedLocations ?? []).length === 0 ? (
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad }}>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>
+              Nenhum local de atendimento cadastrado. Entre em contato com o profissional pelo chat para combinar o local.
+            </Text>
+          </View>
+        ) : (provider?.serviceMode === "PRESENTIAL_ONLY" || provider?.serviceMode === "BOTH") && (provider?.fixedLocations ?? []).length > 0 ? (
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 10 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>
+              Local do atendimento <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>(obrigatório)</Text>
+            </Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
               {provider?.serviceMode === "BOTH" ? (
-                <Chip
-                  label="A domicílio"
-                  selected={sessionLocation === "A domicílio"}
-                  onPress={() => setSessionLocation("A domicílio")}
-                  theme={theme}
-                />
+                <Chip label="A domicílio" selected={sessionLocation === "A domicílio"} onPress={() => setSessionLocation("A domicílio")} />
               ) : null}
               {(provider?.fixedLocations ?? []).map((loc) => (
-                <Chip
-                  key={loc.id}
-                  label={loc.name}
-                  selected={sessionLocation === loc.name}
-                  onPress={() => setSessionLocation(loc.name)}
-                  theme={theme}
-                />
+                <Chip key={loc.id} label={loc.name} selected={sessionLocation === loc.name} onPress={() => setSessionLocation(loc.name)} />
               ))}
             </View>
-            {sessionLocation ? (
-              <MvText variant="body4" color="secondary" style={{ marginTop: 8 }}>
-                Local selecionado: {sessionLocation}
-              </MvText>
-            ) : (
-              <MvText variant="body4" color="secondary" style={{ marginTop: 8 }}>
-                Selecione onde a aula será realizada.
-              </MvText>
-            )}
-          </MvCard>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: sessionLocation ? theme.primary : theme.text3 }}>
+              {sessionLocation ? `Local selecionado: ${sessionLocation}` : "Selecione onde a aula será realizada."}
+            </Text>
+          </View>
         ) : null}
 
+        {/* Card: Oferta selecionada */}
         {offerTitleFromRoute ? (
-          <MvCard>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <MvText variant="semi2">Oferta selecionada</MvText>
-              <MvBadge label={isPromotionalOffer ? "Promocao" : offerKindLabel(offerKindFromRoute)} variant={isPromotionalOffer ? "green" : "blue"} />
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: "rgba(36,230,109,0.09)", padding: S.cardPad, gap: 6 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Oferta selecionada</Text>
+              <View style={{ backgroundColor: isPromotionalOffer ? theme.primarySubtle : C.skyDim, borderWidth: 1, borderColor: isPromotionalOffer ? theme.primarySubtleBorder : C.skyBorder, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 3 }}>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: isPromotionalOffer ? theme.primary : C.sky }}>{isPromotionalOffer ? "Promoção" : offerKindLabel(offerKindFromRoute)}</Text>
+              </View>
             </View>
-            <MvText variant="semi3" style={{ marginBottom: 4 }}>
-              {offerTitleFromRoute}
-            </MvText>
-            <MvText variant="body4" color="secondary">
-              Valor por aula desta oferta: {formatCurrencyBRL(unitPriceCents / 100)}
-            </MvText>
-          </MvCard>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>{offerTitleFromRoute}</Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>Valor por aula: {formatCurrencyBRL(unitPriceCents / 100)}</Text>
+          </View>
         ) : null}
 
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>
-            Especialidade
-          </MvText>
+        {/* Card: Especialidade */}
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 10 }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Especialidade</Text>
           {categories.length > 0 ? (
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
               {categories.map((item) => (
-                <Chip
-                  key={item.id}
-                  label={item.name}
-                  selected={selectedCategoryId === item.id}
-                  onPress={() => setSelectedCategoryId(item.id)}
-                  theme={theme}
-                />
+                <Chip key={item.id} label={item.name} selected={selectedCategoryId === item.id} onPress={() => setSelectedCategoryId(item.id)} />
               ))}
             </View>
           ) : (
-            <MvText variant="body4" color="secondary">
-              Este personal ainda não configurou especialidades para agendamento.
-            </MvText>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>Este personal ainda não configurou especialidades para agendamento.</Text>
           )}
-        </MvCard>
+        </View>
 
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>
-            Calendario
-          </MvText>
-
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 8,
-            }}
-          >
-            <TouchableOpacity
-              onPress={() => shiftMonth(-1)}
-              style={{ paddingHorizontal: 10, paddingVertical: 6 }}
-            >
-              <MvText variant="semi2">{"<"}</MvText>
+        {/* Card: Calendário */}
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+            <TouchableOpacity onPress={() => shiftMonth(-1)} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }} accessibilityLabel="Mês anterior">
+              <Ionicons name="chevron-back" size={18} color={theme.text1} />
             </TouchableOpacity>
-            <MvText variant="semi2" style={{ textTransform: "capitalize" }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, textTransform: "capitalize" }}>
               {`${MONTHS_PT[calendarCursor.getMonth()]} ${calendarCursor.getFullYear()}`}
-            </MvText>
-            <TouchableOpacity
-              onPress={() => shiftMonth(1)}
-              style={{ paddingHorizontal: 10, paddingVertical: 6 }}
-            >
-              <MvText variant="semi2">{">"}</MvText>
+            </Text>
+            <TouchableOpacity onPress={() => shiftMonth(1)} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }} accessibilityLabel="Próximo mês">
+              <Ionicons name="chevron-forward" size={18} color={theme.text1} />
             </TouchableOpacity>
           </View>
 
           <View style={{ flexDirection: "row" }}>
             {WEEKDAY_SHORT_PT.map((dayLabel) => (
-              <View
-                key={`weekday-${dayLabel}`}
-                style={{ width: "14.285%", alignItems: "center", paddingVertical: 4 }}
-              >
-                <MvText variant="body4" color="secondary">
-                  {dayLabel}
-                </MvText>
+              <View key={`weekday-${dayLabel}`} style={{ width: "14.285%", alignItems: "center", paddingVertical: 4 }}>
+                <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3 }}>{dayLabel}</Text>
               </View>
             ))}
           </View>
 
-          <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 2 }}>
+          {/* Grade do calendário — células com mínimo 44px (touch target V2) */}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 4, gap: 4 }}>
             {monthCells.map((cell, index) => {
-              if (!cell) {
-                return (
-                  <View
-                    key={`calendar-blank-${index}`}
-                    style={{ width: "14.285%", paddingVertical: 12 }}
-                  />
-                );
-              }
-
+              if (!cell) return <View key={`calendar-blank-${index}`} style={{ width: "13.5%", minHeight: S.touchMin }} />;
               const isoDate = toIsoDate(cell);
               const selected = selectedDateSet.has(isoDate);
               const selectable = isSelectableDate(cell);
-
+              const isPast = isoDate < todayIso;
               return (
                 <TouchableOpacity
                   key={`calendar-day-${isoDate}`}
                   disabled={!selectable}
                   onPress={() => toggleDate(cell)}
-                  style={{
-                    width: "14.285%",
-                    alignItems: "center",
-                    paddingVertical: 8,
-                    opacity: selectable ? 1 : 0.35,
-                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Dia ${cell.getDate()}`}
+                  style={{ width: "13.5%", minHeight: S.touchMin, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: selected ? theme.primary : selectable ? theme.border : "transparent", backgroundColor: selected ? theme.primary : selectable ? "rgba(255,255,255,0.03)" : "transparent", opacity: isPast || (!selectable && !isPast) ? 0.3 : 1 }}
                 >
-                  <View
-                    style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: 15,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: selected ? "rgba(76,175,80,0.14)" : "transparent",
-                      borderWidth: selected ? 1 : 0,
-                      borderColor: selected ? "rgba(76,175,80,0.35)" : "transparent",
-                    }}
-                  >
-                    <MvText variant="body4" style={{ color: selected ? theme.textGreen : theme.text1 }}>
-                      {cell.getDate()}
-                    </MvText>
-                  </View>
+                  <Text style={{ fontFamily: selected ? "DMSans_700Bold" : "DMSans_400Regular", fontSize: 12, color: selected ? theme.textOnPrimary : selectable ? C.zinc300 : theme.labelColor, textDecorationLine: isPast && !selectable ? "line-through" : "none" }}>
+                    {cell.getDate()}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
 
-          <MvText variant="body4" color="secondary" style={{ marginTop: 8 }}>
-            Dias sem horário livre ficam bloqueados.
-          </MvText>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3, marginTop: 4 }}>Dias sem horário livre ficam bloqueados.</Text>
           {loadingCalendarMonth ? (
-            <MvText variant="body4" color="secondary" style={{ marginTop: 4 }}>
-              Atualizando disponibilidade do mes...
-            </MvText>
+            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+              {[72, 56, 88, 64, 80, 56].map((w, i) => (
+                <SkeletonShimmer key={i} width={w} height={26} borderRadius={12} />
+              ))}
+            </View>
+          ) : calendarMonthError ? (
+            <TouchableOpacity
+              onPress={() => {
+                setCalendarMonthError(false);
+                loadedMonthKeysRef.current.delete(
+                  `${calendarCursor.getFullYear()}-${String(calendarCursor.getMonth() + 1).padStart(2, "0")}`
+                );
+                void loadMonthSchedule(calendarCursor);
+              }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg }}
+            >
+              <Ionicons name="refresh-outline" size={16} color={theme.primary} />
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>
+                Falha ao carregar horários. Toque para tentar novamente.
+              </Text>
+            </TouchableOpacity>
           ) : null}
-        </MvCard>
+        </View>
 
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>
-            Horários por dia selecionado
-          </MvText>
-
+        {/* Card: Horários */}
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 10 }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Horários por dia selecionado</Text>
           {selectedSchedules.length === 0 ? (
-            <MvText variant="body4" color="secondary">
-              Selecione um ou mais dias no calendário para escolher os horários.
-            </MvText>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>Selecione um ou mais dias no calendário para escolher os horários.</Text>
           ) : (
             <View style={{ gap: 12 }}>
               {selectedSchedules.map((item) => (
-                <View
-                  key={`selected-day-${item.dateKey}`}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: theme.border,
-                    borderRadius: 12,
-                    padding: 10,
-                    backgroundColor: theme.inputBg,
-                    gap: 8,
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <MvText variant="semi3">{formatSelectedDayLabel(item.dateKey)}</MvText>
-                    {item.selectedSlot ? (
-                      <MvBadge label={item.selectedSlot} variant="green" />
-                    ) : (
-                      <MvBadge label="Sem horário" variant="orange" />
-                    )}
+                <View key={`selected-day-${item.dateKey}`} style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 16, padding: 12, backgroundColor: theme.inputBg, gap: 8 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>{formatSelectedDayLabel(item.dateKey)}</Text>
+                    <View style={{ backgroundColor: item.selectedSlot ? theme.primarySubtle : C.amberDim, borderWidth: 1, borderColor: item.selectedSlot ? theme.primarySubtleBorder : C.amberBorder, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: item.selectedSlot ? theme.primary : C.amber }}>{item.selectedSlot ?? "Sem horário"}</Text>
+                    </View>
                   </View>
 
                   {item.slots.length === 0 ? (
-                    <MvText variant="body4" color="secondary">
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>
                       Sem horários livres para este dia.
-                    </MvText>
+                    </Text>
                   ) : (
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                      {item.slots.map((slot) => (
-                        <Chip
-                          key={`${item.dateKey}-${slot}`}
-                          label={slot}
-                          selected={item.selectedSlot === slot}
-                          onPress={() => selectSlotForDate(item.dateKey, slot)}
-                          theme={theme}
-                        />
-                      ))}
+                    // Grid 2 colunas com botões de 52px — regra V2
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                      {item.slots.map((slot) => {
+                        const active = item.selectedSlot === slot;
+                        return (
+                          <TouchableOpacity
+                            key={`${item.dateKey}-${slot}`}
+                            onPress={() => selectSlotForDate(item.dateKey, slot)}
+                            style={{
+                              width: "47%",
+                              height: S.btnH,
+                              borderRadius: 16,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              borderWidth: 1,
+                              borderColor: active ? theme.primary : theme.border,
+                              backgroundColor: active ? theme.primary : "rgba(255,255,255,0.04)",
+                            }}
+                          >
+                            <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: active ? theme.textOnPrimary : C.zinc300, letterSpacing: -0.013 * 18 }}>
+                              {slot}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
                   )}
                 </View>
               ))}
             </View>
           )}
-        </MvCard>
+        </View>
 
-        <MvCard>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 10,
-            }}
-          >
-            <MvText variant="semi2">Pagamento</MvText>
-            <MvBadge
-              label={
-                selectedPaymentMethod === "CARD"
-                  ? paymentReady
-                    ? "Cartão configurado"
-                    : "Cartão pendente"
-                  : "PIX habilitado"
-              }
-              variant={
-                selectedPaymentMethod === "CARD"
-                  ? paymentReady
-                    ? "green"
-                    : "orange"
-                  : "blue"
-              }
-            />
+        {/* Card: Pagamento */}
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 10 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Pagamento</Text>
+            {(() => {
+              const isCard = selectedPaymentMethod === "CARD";
+              const label = isCard ? (paymentReady ? "Cartão configurado" : "Cartão pendente") : "PIX habilitado";
+              const col = isCard ? (paymentReady ? theme.primary : C.amber) : C.sky;
+              const bg = isCard ? (paymentReady ? theme.primarySubtle : C.amberDim) : C.skyDim;
+              const border = isCard ? (paymentReady ? theme.primarySubtleBorder : C.amberBorder) : C.skyBorder;
+              return (
+                <View style={{ backgroundColor: bg, borderWidth: 1, borderColor: border, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 3 }}>
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: col }}>{label}</Text>
+                </View>
+              );
+            })()}
           </View>
-
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-            <Chip
-              label="Cartão (crédito/débito)"
-              selected={selectedPaymentMethod === "CARD"}
-              onPress={() => setSelectedPaymentMethod("CARD")}
-              theme={theme}
-            />
-            <Chip
-              label="PIX"
-              selected={selectedPaymentMethod === "PIX"}
-              onPress={() => setSelectedPaymentMethod("PIX")}
-              theme={theme}
-            />
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <Chip label="Cartão" selected={selectedPaymentMethod === "CARD"} onPress={() => setSelectedPaymentMethod("CARD")} />
+            <Chip label="PIX" selected={selectedPaymentMethod === "PIX"} onPress={() => setSelectedPaymentMethod("PIX")} />
           </View>
-
-          <MvText variant="body4" color="secondary">
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3, lineHeight: 18 }}>
             {selectedPaymentMethod === "CARD"
               ? "No cartão, o valor fica pré-autorizado antes da sessão e capturado após a confirmação."
-              : "No PIX, o pagamento eh feito via QR Code/copia e cola e registrado no agendamento."}
-          </MvText>
-        </MvCard>
+              : "No PIX, o pagamento é feito via QR Code/cópia e cola e registrado no agendamento."}
+          </Text>
+        </View>
 
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 10 }}>
-            Observações
-          </MvText>
-          <MvInput
+        {/* Card: Observações */}
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 8 }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Observações</Text>
+          <TextInput
             multiline
             numberOfLines={4}
+            maxLength={300}
             placeholder="Ex.: foco em alongamento, evitar joelho direito..."
+            placeholderTextColor={theme.text3}
             value={notes}
             onChangeText={setNotes}
+            selectionColor={theme.primary}
+            style={{ borderWidth: 1, borderColor: theme.borderMid, borderRadius: 14, backgroundColor: theme.inputBg, padding: 12, color: theme.text1, fontFamily: "DMSans_400Regular", fontSize: 13, lineHeight: 20, minHeight: 90, textAlignVertical: "top" }}
           />
-        </MvCard>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: notes.length > 250 ? C.amber : theme.text3, textAlign: "right" }}>
+            {notes.length}/300
+          </Text>
+        </View>
 
-        {/* Card de anamnese — sempre visível */}
-        <MvCard style={{
-          borderColor: !anamnesisCompleted
-            ? "rgba(244,67,54,0.35)"
-            : anamnesisOutdated
-            ? "rgba(255,152,0,0.35)"
-            : "rgba(76,175,80,0.25)",
-          borderWidth: 1,
-        }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Ionicons
-                name={!anamnesisCompleted ? "alert-circle-outline" : anamnesisOutdated ? "warning-outline" : "checkmark-circle-outline"}
-                size={18}
-                color={!anamnesisCompleted ? "#f44336" : anamnesisOutdated ? "#FF9800" : "#4CAF50"}
-              />
-              <MvText variant="semi3" style={{ color: !anamnesisCompleted ? "#f44336" : anamnesisOutdated ? "#FF9800" : theme.textGreen }}>
+        {/* Card: Ficha de saúde */}
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: !anamnesisCompleted ? "rgba(239,68,68,0.35)" : anamnesisOutdated ? C.amberBorder : theme.primarySubtleBorder, backgroundColor: !anamnesisCompleted ? "rgba(239,68,68,0.08)" : anamnesisOutdated ? C.amberDim : "rgba(36,230,109,0.08)", padding: S.cardPad, gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+              <Ionicons name={!anamnesisCompleted ? "alert-circle-outline" : anamnesisOutdated ? "warning-outline" : "checkmark-circle-outline"} size={18} color={!anamnesisCompleted ? theme.danger : anamnesisOutdated ? C.amber : theme.primary} />
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: !anamnesisCompleted ? theme.danger : anamnesisOutdated ? C.amber : theme.primary }}>
                 {!anamnesisCompleted ? "Ficha de saúde pendente" : anamnesisOutdated ? "Ficha desatualizada" : "Ficha de saúde OK"}
-              </MvText>
+              </Text>
             </View>
-            <TouchableOpacity
-              onPress={() => navigation.navigate("ClientAnamnesis")}
-              style={{
-                paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
-                borderWidth: 1, borderColor: theme.border, backgroundColor: theme.chipBg,
-              }}
-            >
-              <MvText variant="body4" style={{ color: theme.textGreen, fontSize: 12 }}>
-                {!anamnesisCompleted ? "Preencher ficha" : "Editar ficha"}
-              </MvText>
+            <TouchableOpacity onPress={() => navigation.navigate("ClientAnamnesis")} accessibilityRole="button" style={{ backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: theme.border }}>
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text1 }}>{!anamnesisCompleted ? "Preencher" : "Editar"}</Text>
             </TouchableOpacity>
           </View>
           {!anamnesisCompleted ? (
-            <MvText variant="body4" style={{ color: "#f44336", lineHeight: 18 }}>
-              Preencha sua ficha de saúde para liberar o agendamento. Isso ajuda o personal a preparar um atendimento seguro e personalizado.
-            </MvText>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.danger, lineHeight: 18 }}>
+              Preencha sua ficha de saúde para liberar o agendamento. Ajuda o personal a preparar um atendimento seguro.
+            </Text>
           ) : anamnesisOutdated ? (
-            <MvText variant="body4" style={{ color: "#FF9800", lineHeight: 18 }}>
-              Recomendamos atualizar sua ficha a cada 6 meses para que o personal tenha informações precisas sobre você.
-            </MvText>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: C.amber, lineHeight: 18 }}>
+              Recomendamos atualizar sua ficha a cada 6 meses.
+            </Text>
           ) : null}
-        </MvCard>
+        </View>
 
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 8 }}>
-            Resumo financeiro
-          </MvText>
-          <MvText variant="body4" color="secondary">
-            Valor por aula: {formatCurrencyBRL(unitPriceCents / 100)}
-          </MvText>
-          <MvText variant="body4" color="secondary">
-            Aulas selecionadas: {selectedLessonsCount}
-          </MvText>
-          <MvText variant="semi2" style={{ color: theme.textGreen, marginTop: 6 }}>
-            Total previsto: {formatCurrencyBRL(totalSelectedPriceCents / 100)}
-          </MvText>
-        </MvCard>
+        {/* Card: Resumo financeiro */}
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 6 }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, marginBottom: 4 }}>Resumo financeiro</Text>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Valor por aula: {formatCurrencyBRL(unitPriceCents / 100)}</Text>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Aulas selecionadas: {selectedLessonsCount}</Text>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.primary, marginTop: 4 }}>Total previsto: {formatCurrencyBRL(totalSelectedPriceCents / 100)}</Text>
+        </View>
 
-        <MvButton
-          label={!anamnesisCompleted ? "Ficha de saúde pendente" : selectedDateKeys.length > 1 ? "Criar agendamentos" : "Continuar"}
-          loading={creating}
-          disabled={creating || !anamnesisCompleted || (selectedPaymentMethod === "CARD" && !paymentReady)}
-          onPress={() => void handleContinue()}
-        />
+        {/* Botão CTA V2 com safe area */}
+        <View style={{ paddingBottom: Math.max(16, insets.bottom) }}>
+          <TouchableOpacity
+            disabled={creating || !anamnesisCompleted || (selectedPaymentMethod === "CARD" && !paymentReady)}
+            onPress={() => { hapticCta(); void handleContinue(); }}
+            style={{
+              height: S.btnH, borderRadius: S.btnR,
+              backgroundColor: (!anamnesisCompleted || (selectedPaymentMethod === "CARD" && !paymentReady)) ? "rgba(36,230,109,0.4)" : theme.primary,
+              alignItems: "center", justifyContent: "center",
+              shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
+              opacity: creating ? 0.7 : 1,
+            }}
+          >
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary, letterSpacing: -0.02 * 14 }}>
+              {creating ? "Criando..." : !anamnesisCompleted ? "Ficha de saúde pendente" : selectedDateKeys.length > 1 ? "Criar agendamentos" : "Ir para pagamento"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
       </ScrollView>
+      </ScreenEntrance>
     </View>
   );
 }

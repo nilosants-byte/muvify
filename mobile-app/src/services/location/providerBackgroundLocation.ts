@@ -156,8 +156,9 @@ async function sendProviderLocation(lat: number, lng: number) {
     ]);
     await providersApi.updateProfile(refreshed.accessToken, { latitude: lat, longitude: lng });
     await writeLastSentState({ lat, lng, at: Date.now() });
-  } catch {
-    // If session is invalid in background, stop task to avoid noisy retries.
+  } catch (refreshError) {
+    // Sessão inválida em background — para a task para evitar retries desnecessários
+    console.warn("[BgLocation] Refresh falhou, parando task:", refreshError);
     await stopTaskSilently();
   }
 }
@@ -228,7 +229,7 @@ export async function startProviderBackgroundLocation(): Promise<StartResult> {
     return {
       enabled: false,
       message:
-        "Localizacao em background indisponivel neste ambiente. Use build de desenvolvimento ou app instalado.",
+        "Localização em background indisponível neste ambiente. Use build de desenvolvimento ou app instalado.",
     };
   }
 
@@ -236,7 +237,7 @@ export async function startProviderBackgroundLocation(): Promise<StartResult> {
   if (foreground.status !== "granted") {
     return {
       enabled: false,
-      message: "Permissao de localizacao em uso negada.",
+      message: "Permissão de localização em uso negada.",
     };
   }
 
@@ -244,7 +245,7 @@ export async function startProviderBackgroundLocation(): Promise<StartResult> {
   if (background.status !== "granted") {
     return {
       enabled: false,
-      message: "Permissao de localizacao em segundo plano negada.",
+      message: "Permissão de localização em segundo plano negada.",
     };
   }
 
@@ -261,8 +262,8 @@ export async function startProviderBackgroundLocation(): Promise<StartResult> {
         activityType: Location.ActivityType.Fitness,
         showsBackgroundLocationIndicator: false,
         foregroundService: {
-          notificationTitle: "Muvify: localizacao ativa",
-          notificationBody: "Atualizando sua localizacao para exibicao no mapa de alunos.",
+          notificationTitle: "Muvify: localização ativa",
+          notificationBody: "Atualizando sua localização para exibição no mapa de alunos.",
           notificationColor: "#4CAF50",
         },
       });
@@ -284,7 +285,7 @@ export async function startProviderBackgroundLocation(): Promise<StartResult> {
   } catch {
     return {
       enabled: false,
-      message: "Nao foi possivel iniciar a localizacao em background.",
+      message: "Não foi possível iniciar a localização em background.",
     };
   }
 }
