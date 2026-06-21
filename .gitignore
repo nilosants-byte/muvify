@@ -69,6 +69,21 @@ splash-preview.html
 mobile-app/App.tsx.preview.bak
 *.bak
 *.tsbuildinfo
+logo-dark-inline.html
+logo-light-inline.html
+muvify-client-home-reference-prototype.html
+muvify-logo-dark.html
+muvify-logo-dark.png
+muvify-logo-dark.svg
+muvify-logo-light.html
+muvify-logo-light.png
+muvify-logo-light.svg
+muvify-part1.html
+muvify-profissional-completo.txt
+render-logo.js
+gen_logo_png.py
+tsc-errors.txt
+.chrome-tmp/
 
 # ── Scripts utilitários locais / obsoletos ────────────────────
 fix-private.js
