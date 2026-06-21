@@ -8,6 +8,7 @@ import { ClientProfileScreen } from "../screens/client/ClientProfileScreen";
 import { FavoritesScreen } from "../screens/client/FavoritesScreen";
 import { MyTrainingScreen } from "../screens/client/MyTrainingScreen";
 import { PromotionsScreen } from "../screens/client/PromotionsScreen";
+import { CommunityScreen } from "../screens/client/CommunityScreen";
 
 const Tab = createBottomTabNavigator<ClientTabParamList>();
 
@@ -22,10 +23,11 @@ export function ClientTabsNavigator() {
       <Tab.Screen component={ClientHomeScreen} name="ClientHome" options={{ title: "Início" }} />
       <Tab.Screen component={CategoriesScreen} name="Categories" options={{ title: "Categorias" }} />
       <Tab.Screen component={PromotionsScreen} name="Promotions" options={{ title: "Promoções" }} />
-      <Tab.Screen component={MyTrainingScreen} name="MyTraining" options={{ title: "Seu Treino" }} />
+      <Tab.Screen component={MyTrainingScreen} name="MyTraining" options={{ title: "Treino" }} />
       <Tab.Screen component={ClientBookingsScreen} name="ClientBookings" options={{ title: "Agenda" }} />
       <Tab.Screen component={FavoritesScreen} name="Favorites" options={{ title: "Favoritos" }} />
       <Tab.Screen component={ClientProfileScreen} name="ClientProfile" options={{ title: "Perfil" }} />
+      <Tab.Screen component={CommunityScreen} name="Community" options={{ title: "Comunidade" }} />
     </Tab.Navigator>
   );
 }
