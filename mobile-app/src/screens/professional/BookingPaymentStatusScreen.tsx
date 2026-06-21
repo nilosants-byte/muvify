@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -8,6 +8,7 @@ import { paymentsApi, PaymentStatusResponse } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvButton, MvCard, MvText } from "../../components/mv";
+import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 
@@ -25,7 +26,6 @@ function paymentBadge(status: PaymentStatusResponse["status"]): { label: string;
 export function BookingPaymentStatusScreen({ route, navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
-  const insets = useSafeAreaInsets();
   const bookingId = route.params.bookingId;
   const [payment, setPayment] = useState<PaymentStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,17 +49,9 @@ export function BookingPaymentStatusScreen({ route, navigation }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-        >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
-        </TouchableOpacity>
-        <MvText variant="semi1">Status do pagamento</MvText>
-      </View>
+      <ProfessionalScreenHeader title="Status do pagamento" onBack={() => navigation.goBack()} />
 
-      <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
+      <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false}>
         <MvText variant="body4" color="secondary">Agendamento: {bookingId.slice(0, 8)}...</MvText>
 
         <MvCard>
@@ -74,6 +66,12 @@ export function BookingPaymentStatusScreen({ route, navigation }: Props) {
               <MvText variant="body4" color="secondary">ID pagamento: {payment.id}</MvText>
               <MvText variant="body4" color="secondary">Moeda: {payment.currency}</MvText>
               <MvText variant="body4" color="secondary">Método: {payment.method ?? "-"}</MvText>
+              {payment.status === "FAILED" && payment.failureReason ? (
+                <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, paddingTop: 4 }}>
+                  <Ionicons name="alert-circle-outline" size={14} color={theme.danger} style={{ marginTop: 1 }} />
+                  <MvText variant="body4" style={{ color: theme.danger, flex: 1 }}>{payment.failureReason}</MvText>
+                </View>
+              ) : null}
             </View>
           ) : (
             <MvText variant="body4" color="secondary">Pagamento não encontrado para este agendamento.</MvText>

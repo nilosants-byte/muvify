@@ -40,12 +40,27 @@ export function startPaymentJobs() {
         return;
       }
 
-      await bookingService.releaseDueAttendanceCodes();
-      await bookingService.autoExpireStaleBookings();
-      await paymentService.autoRefundExpiredBookings();
-      await paymentService.authorizeDuePayments();
-      await paymentService.autoCaptureSingleConfirmation();
-      await consultancyService.autoRefundExpiredContracts();
+      const JOB_TIMEOUT_MS = 5 * 60 * 1000; // 5 min por job
+      const runWithTimeout = (fn: () => Promise<void>, name: string) =>
+        Promise.race([
+          fn(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`${name} timeout after 5min`)), JOB_TIMEOUT_MS)
+          ),
+        ]).catch((err) => {
+          // Erros de DB indisponível são re-lançados para incrementar consecutiveDatabaseFailures
+          if (isPrismaDatabaseUnavailableError(err)) throw err;
+          console.error(`[payment-jobs] ${name} failed:`, err);
+        });
+
+      // Cada job é isolado — falha de um não impede os demais
+      await runWithTimeout(() => bookingService.releaseDueAttendanceCodes(), "releaseDueAttendanceCodes");
+      await runWithTimeout(() => bookingService.autoExpireStaleBookings(), "autoExpireStaleBookings");
+      await runWithTimeout(() => paymentService.autoExpirePixPayments(), "autoExpirePixPayments");
+      await runWithTimeout(() => paymentService.autoRefundExpiredBookings(), "autoRefundExpiredBookings");
+      await runWithTimeout(() => paymentService.authorizeDuePayments(), "authorizeDuePayments");
+      await runWithTimeout(() => paymentService.autoCaptureSingleConfirmation(), "autoCaptureSingleConfirmation");
+      await runWithTimeout(() => consultancyService.autoRefundExpiredContracts(), "autoRefundExpiredContracts");
       consecutiveDatabaseFailures = 0;
       nextAllowedRunAt = 0;
     } catch (error) {

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
+import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { PaymentController } from "../controllers/payment.controller";
 import {
@@ -29,6 +30,7 @@ paymentRoutes.post(
 );
 paymentRoutes.post(
   "/customer/setup-intent/confirm",
+  uploadRateLimiter,
   validate(confirmCustomerSetupIntentSchema),
   paymentController.confirmCustomerSetupIntent
 );
@@ -71,11 +73,13 @@ paymentRoutes.get(
 );
 paymentRoutes.post(
   "/booking/:bookingId/pix/charge",
+  uploadRateLimiter,
   validate(createPixChargeSchema),
   paymentController.createBookingPixCharge
 );
 paymentRoutes.patch(
   "/booking/:bookingId/method",
+  uploadRateLimiter,
   validate(selectBookingPaymentMethodSchema),
   paymentController.selectBookingPaymentMethod
 );

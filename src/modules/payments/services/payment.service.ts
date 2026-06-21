@@ -252,12 +252,16 @@ export class PaymentService {
     }
 
     const customerId = String(customer.id);
-    await prisma.user.update({
-      where: { id: user.id },
+    // updateMany WHERE mpCustomerId IS NULL previne race condition:
+    // se outro request já criou o customer, não sobrescreve.
+    await prisma.user.updateMany({
+      where: { id: user.id, mpCustomerId: null },
       data: { mpCustomerId: customerId }
     });
 
-    return { user, customerId };
+    // Re-fetch para garantir que temos o customerId definitivo (o que foi gravado primeiro)
+    const finalUser = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    return { user: finalUser, customerId: finalUser.mpCustomerId! };
   }
 
   private mapFundingToPaymentMethod(funding?: string | null) {
@@ -809,6 +813,12 @@ export class PaymentService {
           failureReason: null
         }
       });
+      // Gamificação: XP por serviço contratado via PIX (confirmação imediata)
+      const pixBooking = await prisma.booking.findUnique({ where: { id: bookingId }, select: { clientId: true } });
+      if (pixBooking?.clientId) {
+        const { onServicePurchased } = await import("../../gamification/services/gamification-events.service");
+        void onServicePurchased(pixBooking.clientId, bookingId);
+      }
       return {
         paymentId: payment.id, bookingId,
         status: PaymentStatus.CAPTURED, method: payment.method,
@@ -849,15 +859,20 @@ export class PaymentService {
           scheduledAt: { gt: referenceDate, lte: upper }
         }
       },
-      include: { booking: { include: { client: true, provider: true } } }
+      include: { booking: { include: { client: true, provider: true } } },
+      orderBy: { createdAt: "asc" },
+      take: 500,
     });
 
-    for (const payment of payments) {
-      try {
-        await this.authorizePayment(payment.id);
-      } catch (error) {
-        console.error("Failed to authorize payment", { paymentId: payment.id, error });
-      }
+    const CONCURRENCY = 10;
+    for (let i = 0; i < payments.length; i += CONCURRENCY) {
+      await Promise.allSettled(
+        payments.slice(i, i + CONCURRENCY).map((p) =>
+          this.authorizePayment(p.id).catch((err) =>
+            console.error("Failed to authorize payment", { paymentId: p.id, error: err })
+          )
+        )
+      );
     }
   }
 
@@ -893,10 +908,14 @@ export class PaymentService {
       throw new AppError("Cliente sem método de pagamento configurado.", StatusCodes.BAD_REQUEST);
     }
 
-    await prisma.payment.update({
-      where: { id: payment.id },
+    const claimed = await prisma.payment.updateMany({
+      where: { id: payment.id, status: { in: [PaymentStatus.PENDING_AUTH, PaymentStatus.FAILED] } },
       data: { status: PaymentStatus.AUTHORIZING, attempts: { increment: 1 } }
     });
+    if (claimed.count === 0) {
+      // Já sendo autorizado por outro worker — retorna estado atual do banco
+      return prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    }
 
     try {
       // Create server-side token from saved card for off-session charge
@@ -958,6 +977,12 @@ export class PaymentService {
         body: "Pre-autorização concluída com sucesso para este agendamento.",
         data: { type: "PAYMENT_AUTHORIZED" }
       });
+      // Gamificação: XP por serviço contratado (pré-autorização = serviço confirmado)
+      const clientId = payment.booking.client.id;
+      if (clientId) {
+        const { onServicePurchased } = await import("../../gamification/services/gamification-events.service");
+        void onServicePurchased(clientId, payment.bookingId);
+      }
       return authorizedPayment;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha na pre-autorização";
@@ -1048,14 +1073,16 @@ export class PaymentService {
       transaction_amount: payment.amountCents / 100
     });
 
-    const capturedPayment = await prisma.payment.update({
-      where: { id: payment.id },
+    // Marca como CAPTURED só se ainda AUTHORIZED (idempotência via updateMany)
+    const capturedCount = await prisma.payment.updateMany({
+      where: { id: payment.id, status: PaymentStatus.AUTHORIZED },
       data: {
         status: PaymentStatus.CAPTURED,
         capturedAt: new Date(),
         mpChargeId: payment.mpPaymentId
       }
     });
+    const capturedPayment = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     void writeAuditLog({
       paymentId: payment.id,
       fromStatus: PaymentStatus.AUTHORIZED,
@@ -1089,15 +1116,21 @@ export class PaymentService {
           { clientConfirmedAt: null, providerConfirmedAt: { not: null } }
         ],
         payment: { status: PaymentStatus.AUTHORIZED }
-      }
+      },
+      take: 200,
     });
 
-    for (const booking of bookings) {
-      await prisma.booking.update({
-        where: { id: booking.id },
-        data: { status: BookingStatus.COMPLETED, completedAt: referenceDate }
-      });
-      await this.capturePaymentForBooking(booking.id);
+    const CONCURRENCY = 10;
+    for (let i = 0; i < bookings.length; i += CONCURRENCY) {
+      await Promise.allSettled(
+        bookings.slice(i, i + CONCURRENCY).map(async (booking) => {
+          await prisma.booking.update({
+            where: { id: booking.id },
+            data: { status: BookingStatus.COMPLETED, completedAt: referenceDate }
+          });
+          await this.capturePaymentForBooking(booking.id);
+        })
+      );
     }
   }
 
@@ -1173,6 +1206,11 @@ export class PaymentService {
         throw new AppError("Assinatura de webhook invalida.", StatusCodes.BAD_REQUEST);
       }
 
+      const tsMs = Number(ts);
+      if (isNaN(tsMs) || Date.now() - tsMs > 5 * 60 * 1000) {
+        throw new AppError("Assinatura de webhook invalida.", StatusCodes.BAD_REQUEST);
+      }
+
       const message = `id:${dataId};request-id:${requestId};ts:${ts};`;
       const expected = createHmac("sha256", env.MP_WEBHOOK_SECRET).update(message).digest("hex");
       const expectedBuffer = Buffer.from(expected, "utf8");
@@ -1225,10 +1263,33 @@ export class PaymentService {
       }
     });
 
+    if (!payment && !consultancyContract) {
+      console.warn(`[webhook] mpPaymentId ${mpPaymentId} nao encontrado em payment ou contract. Status: ${mpStatus}`);
+      return;
+    }
+
+    if (mpStatus === MP_STATUS_PENDING || mpStatus === MP_STATUS_IN_PROCESS) {
+      if (payment) {
+        await prisma.payment.updateMany({
+          where: { id: payment.id, status: PaymentStatus.PENDING_AUTH },
+          data: { status: PaymentStatus.AUTHORIZING }
+        });
+      }
+    }
+
+    if (mpStatus === MP_STATUS_AUTHORIZED) {
+      if (payment) {
+        await prisma.payment.updateMany({
+          where: { id: payment.id, status: PaymentStatus.PENDING_AUTH },
+          data: { status: PaymentStatus.AUTHORIZED, authorizedAt: new Date(), failureReason: null }
+        });
+      }
+    }
+
     if (mpStatus === MP_STATUS_APPROVED) {
-      if (payment && payment.status !== PaymentStatus.CAPTURED) {
-        await prisma.payment.update({
-          where: { id: payment.id },
+      if (payment) {
+        const updatedPayment = await prisma.payment.updateMany({
+          where: { id: payment.id, status: { not: PaymentStatus.CAPTURED } },
           data: {
             status: PaymentStatus.CAPTURED,
             authorizedAt: new Date(),
@@ -1236,31 +1297,39 @@ export class PaymentService {
             failureReason: null
           }
         });
-        await this.notifyBookingUsers(payment.bookingId, {
-          title: "Pagamento confirmado",
-          body: "Pagamento confirmado com sucesso para este agendamento.",
-          data: { type: "PAYMENT_CAPTURED" }
-        });
+        if (updatedPayment.count > 0) {
+          await this.notifyBookingUsers(payment.bookingId, {
+            title: "Pagamento confirmado",
+            body: "Pagamento confirmado com sucesso para este agendamento.",
+            data: { type: "PAYMENT_CAPTURED" }
+          });
+        }
       }
 
-      if (consultancyContract && consultancyContract.paymentStatus !== ConsultancyPaymentStatus.CAPTURED) {
-        await prisma.consultancyContract.update({
-          where: { id: consultancyContract.id },
+      if (consultancyContract) {
+        const updatedContract = await prisma.consultancyContract.updateMany({
+          where: {
+            id: consultancyContract.id,
+            status: ConsultancyContractStatus.PENDING_PAYMENT,
+            paymentStatus: { not: ConsultancyPaymentStatus.CAPTURED }
+          },
           data: {
             paymentStatus: ConsultancyPaymentStatus.CAPTURED,
             paymentCapturedAt: new Date(),
             status: ConsultancyContractStatus.ACTIVE
           }
         });
-        await notificationService.sendToUsers(
-          [consultancyContract.clientId, consultancyContract.provider.userId],
-          {
-            preferenceType: "PAYMENTS",
-            title: "Pagamento da consultoria confirmado",
-            body: "Pagamento confirmado. A consultoria foi ativada com sucesso.",
-            data: { type: "CONSULTANCY_PAYMENT_CAPTURED", contractId: consultancyContract.id }
-          }
-        );
+        if (updatedContract.count > 0) {
+          await notificationService.sendToUsers(
+            [consultancyContract.clientId, consultancyContract.provider.userId],
+            {
+              preferenceType: "PAYMENTS",
+              title: "Pagamento da consultoria confirmado",
+              body: "Pagamento confirmado. A consultoria foi ativada com sucesso.",
+              data: { type: "CONSULTANCY_PAYMENT_CAPTURED", contractId: consultancyContract.id }
+            }
+          );
+        }
       }
     }
 
@@ -1305,6 +1374,21 @@ export class PaymentService {
       }
     }
 
+    if (mpStatus === MP_STATUS_REFUNDED) {
+      if (payment) {
+        await prisma.payment.updateMany({
+          where: { id: payment.id, status: { not: PaymentStatus.REFUNDED } },
+          data: { status: PaymentStatus.REFUNDED, refundedAt: new Date() }
+        });
+      }
+      if (consultancyContract) {
+        await prisma.consultancyContract.updateMany({
+          where: { id: consultancyContract.id, paymentStatus: { not: ConsultancyPaymentStatus.REFUNDED } },
+          data: { paymentStatus: ConsultancyPaymentStatus.REFUNDED }
+        });
+      }
+    }
+
     if (mpStatus === "charged_back") {
       void writeAuditLog({
         paymentId: payment?.id ?? null,
@@ -1338,25 +1422,40 @@ export class PaymentService {
     }
   }
 
+  async autoExpirePixPayments(referenceDate = new Date()) {
+    const threshold = new Date(referenceDate.getTime() - 26 * 60 * 60 * 1000); // 26h (margem extra)
+    const expired = await prisma.payment.updateMany({
+      where: {
+        method: PaymentMethod.PIX,
+        status: { in: [PaymentStatus.PENDING_AUTH, PaymentStatus.AUTHORIZING] },
+        updatedAt: { lte: threshold },
+      },
+      data: { status: PaymentStatus.FAILED, failureReason: "PIX expirou apos 24 horas sem confirmacao" },
+    });
+    if (expired.count > 0) {
+      console.info(`[payment-jobs] Auto-expired ${expired.count} PIX payments`);
+    }
+  }
+
   async autoRefundExpiredBookings() {
     const payments = await prisma.payment.findMany({
       where: {
-        status: { in: [PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED] },
+        status: { in: [PaymentStatus.AUTHORIZING, PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED] },
         booking: { status: BookingStatus.CANCELLED }
       },
-      select: { id: true, bookingId: true }
+      select: { id: true, bookingId: true },
+      take: 200,
     });
 
-    for (const payment of payments) {
-      try {
-        await this.cancelPaymentForBooking(payment.bookingId);
-      } catch (error) {
-        console.error("Auto-refund for expired booking failed", {
-          paymentId: payment.id,
-          bookingId: payment.bookingId,
-          error
-        });
-      }
+    const CONCURRENCY = 5;
+    for (let i = 0; i < payments.length; i += CONCURRENCY) {
+      await Promise.allSettled(
+        payments.slice(i, i + CONCURRENCY).map((p) =>
+          this.cancelPaymentForBooking(p.bookingId).catch((err) =>
+            console.error("Auto-refund for expired booking failed", { paymentId: p.id, bookingId: p.bookingId, error: err })
+          )
+        )
+      );
     }
   }
 }

@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useState } from "react";
-import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import { ScrollView, StatusBar, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
@@ -8,6 +9,9 @@ import { ProviderBankAccount, userApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ConnectPayoutAccount">;
@@ -29,8 +33,8 @@ function initialBankForm(input?: ProviderBankAccount | null) {
 export function ConnectPayoutAccountScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
-  const isLight = theme.mode === "light";
   const insets = useSafeAreaInsets();
+  const isLight = theme.mode === "light";
 
   const [activeTab, setActiveTab] = useState<Tab>("bank");
   const [bankForm, setBankForm] = useState(initialBankForm());
@@ -52,11 +56,24 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
     }
   }, [navigation, runWithAuth, showToast]);
 
-  useEffect(() => { void load(); }, [load]);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   async function saveBank() {
     if (!bankForm.bankName.trim() || !bankForm.agency.trim() || !bankForm.accountNumber.trim() || !bankForm.accountDigit.trim() || !bankForm.holderName.trim() || !bankForm.holderDocument.trim()) {
       showToast("Preencha todos os campos obrigatórios da conta.", "error");
+      return;
+    }
+    if (!/^\d{4,6}$/.test(bankForm.agency.replace(/\D/g, ""))) {
+      showToast("Agência deve ter 4 a 6 dígitos numéricos.", "error");
+      return;
+    }
+    if (!/^\d{3,12}$/.test(bankForm.accountNumber.replace(/\D/g, ""))) {
+      showToast("Número de conta deve ter entre 3 e 12 dígitos.", "error");
+      return;
+    }
+    const docDigits = bankForm.holderDocument.replace(/\D/g, "");
+    if (docDigits.length !== 11 && docDigits.length !== 14) {
+      showToast("Documento do titular deve ser CPF (11 dígitos) ou CNPJ (14 dígitos).", "error");
       return;
     }
     try {
@@ -80,22 +97,36 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
   }
 
   async function savePix() {
-    if (!pixKey.trim()) {
+    const pix = pixKey.trim();
+    if (!pix) {
       showToast("Informe sua chave PIX.", "error");
+      return;
+    }
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pix);
+    const isCpf = /^\d{11}$/.test(pix.replace(/\D/g, "")) && pix.replace(/\D/g, "").length === 11;
+    const isCnpj = /^\d{14}$/.test(pix.replace(/\D/g, ""));
+    const isPhone = /^\+?55?\d{10,11}$/.test(pix.replace(/[\s\-()]/g, ""));
+    const isRandom = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pix);
+    if (!isEmail && !isCpf && !isCnpj && !isPhone && !isRandom) {
+      showToast("Chave PIX inválida. Use e-mail, CPF, celular ou chave aleatória.", "error");
       return;
     }
     try {
       setSavingPix(true);
       // Load current bank data to preserve it while updating only the PIX key
       const current = await runWithAuth((token) => userApi.providerBankAccount(token));
+      if (!current?.bankName || !current?.agency || !current?.accountNumber) {
+        showToast("Preencha os dados bancários antes de salvar a chave PIX.", "error");
+        return;
+      }
       await runWithAuth((token) => userApi.upsertProviderBankAccount(token, {
-        bankName: current?.bankName ?? (bankForm.bankName.trim() || "—"),
-        accountType: current?.accountType ?? bankForm.accountType,
-        agency: current?.agency ?? (bankForm.agency.trim() || "0"),
-        accountNumber: current?.accountNumber ?? (bankForm.accountNumber.trim() || "0"),
-        accountDigit: current?.accountDigit ?? (bankForm.accountDigit.trim() || "0"),
-        holderName: current?.holderName ?? (bankForm.holderName.trim() || "—"),
-        holderDocument: current?.holderDocument ?? (bankForm.holderDocument.trim() || "00000000000"),
+        bankName: current.bankName,
+        accountType: current.accountType,
+        agency: current.agency,
+        accountNumber: current.accountNumber,
+        accountDigit: current.accountDigit,
+        holderName: current.holderName,
+        holderDocument: current.holderDocument,
         pixKey: pixKey.trim(),
       }));
       showToast("Chave PIX salva com sucesso.", "success");
@@ -109,23 +140,14 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
   const tabStyle = (tab: Tab) => ({
     flex: 1, paddingVertical: 10, alignItems: "center" as const,
     borderBottomWidth: 2,
-    borderBottomColor: activeTab === tab ? "#22C55E" : "transparent",
+    borderBottomColor: activeTab === tab ? theme.primary : "transparent",
   });
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
-      {/* Header */}
-      <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: 0, flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-        >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
-        </TouchableOpacity>
-        <MvText variant="semi1">Conta bancária</MvText>
-      </View>
+      <ProfessionalScreenHeader title="Conta bancária" onBack={() => navigation.goBack()} />
 
       {/* Tabs */}
       <View style={{
@@ -134,31 +156,40 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
         overflow: "hidden",
         backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)",
       }}>
-        <TouchableOpacity style={tabStyle("bank")} onPress={() => setActiveTab("bank")}>
+        <PressableScale scale={0.97} style={tabStyle("bank")} onPress={() => setActiveTab("bank")}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Ionicons name="card-outline" size={16} color={activeTab === "bank" ? "#22C55E" : theme.text3} />
-            <MvText variant="semi3" style={{ color: activeTab === "bank" ? "#22C55E" : theme.text3 }}>
+            <Ionicons name="card-outline" size={16} color={activeTab === "bank" ? theme.primary : theme.text3} />
+            <MvText variant="semi3" style={{ color: activeTab === "bank" ? theme.primary : theme.text3 }}>
               Transferência Bancária
             </MvText>
           </View>
           <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>para pagamentos no cartão</MvText>
-        </TouchableOpacity>
+        </PressableScale>
 
         <View style={{ width: 1, backgroundColor: theme.border }} />
 
-        <TouchableOpacity style={tabStyle("pix")} onPress={() => setActiveTab("pix")}>
+        <PressableScale scale={0.97} style={tabStyle("pix")} onPress={() => setActiveTab("pix")}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Ionicons name="flash-outline" size={16} color={activeTab === "pix" ? "#22C55E" : theme.text3} />
-            <MvText variant="semi3" style={{ color: activeTab === "pix" ? "#22C55E" : theme.text3 }}>
+            <Ionicons name="flash-outline" size={16} color={activeTab === "pix" ? theme.primary : theme.text3} />
+            <MvText variant="semi3" style={{ color: activeTab === "pix" ? theme.primary : theme.text3 }}>
               Chave PIX
             </MvText>
           </View>
           <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>para pagamentos em PIX</MvText>
-        </TouchableOpacity>
+        </PressableScale>
       </View>
 
-      <ScrollView automaticallyAdjustKeyboardInsets={true}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40, gap: 12 }}
+      {loading ? (
+        <View style={{ paddingHorizontal: 16, paddingTop: 20, gap: 12 }}>
+          {[52, 52, 44, 44, 44, 44].map((h, i) => (
+            <View key={i} style={{ height: h, borderRadius: 12, backgroundColor: theme.chipBg }} />
+          ))}
+        </View>
+      ) : null}
+
+      <ScreenEntrance key={loading ? "loading" : "ready"}>
+      <ScrollView automaticallyAdjustKeyboardInsets={true} style={{ display: loading ? "none" : "flex" }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: Math.max(40, insets.bottom + 24), gap: 12 }}
         showsVerticalScrollIndicator={false}
       >
         {activeTab === "bank" ? (
@@ -181,8 +212,9 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
                   {(["CHECKING", "SAVINGS"] as AccountType[]).map((type) => {
                     const selected = bankForm.accountType === type;
                     return (
-                      <TouchableOpacity
+                      <PressableScale
                         key={type}
+                        scale={0.95}
                         onPress={() => setBankForm((c) => ({ ...c, accountType: type }))}
                         style={{
                           paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
@@ -190,10 +222,10 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
                           borderWidth: 1, borderColor: selected ? "rgba(34,197,94,0.38)" : theme.border,
                         }}
                       >
-                        <MvText variant="semi3" style={{ color: selected ? "#22C55E" : theme.text2 }}>
+                        <MvText variant="semi3" style={{ color: selected ? theme.primary : theme.text2 }}>
                           {type === "CHECKING" ? "Conta corrente" : "Conta poupança"}
                         </MvText>
-                      </TouchableOpacity>
+                      </PressableScale>
                     );
                   })}
                 </View>
@@ -236,8 +268,8 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
                 />
                 {pixKey.trim() ? (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 }}>
-                    <Ionicons name="flash" size={14} color="#22C55E" />
-                    <MvText variant="body4" style={{ color: "#22C55E", fontSize: 12 }}>
+                    <Ionicons name="flash" size={14} color={theme.primary} />
+                    <MvText variant="body4" style={{ color: theme.primary, fontSize: 12 }}>
                       Pagamentos PIX serão enviados para esta chave
                     </MvText>
                   </View>
@@ -251,6 +283,7 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
 
         <MvButton variant="ghost" label="Voltar ao financeiro" onPress={() => navigation.replace("PayoutStatus")} />
       </ScrollView>
+      </ScreenEntrance>
     </View>
   );
 }

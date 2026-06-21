@@ -1,20 +1,28 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { ScrollView, StatusBar, TextInput, TouchableOpacity, View } from "react-native";
+﻿import React, { useCallback, useEffect, useState } from "react";
+import {
+  ScrollView,
+  StatusBar,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { paymentsApi } from "../../services/api/client";
 import { ClientStackParamList } from "../../navigation/route-types";
 import { useAppState } from "../../state/AppState";
-import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvText } from "../../components/mv";
 import { handleScreenError } from "../shared/api-helpers";
+import { useMvTheme } from "../../theme/MvThemeContext";
+import { C, S, DISPLAY } from "../../theme/v2tokens";
+import { hapticCta, hapticPaymentSuccess } from "../../utils/haptics";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ClientPaymentMethod">;
 
 type CardForm = {
   number: string;
-  expiry: string; // MM/YY
+  expiry: string;
   cvv: string;
   holderName: string;
   cpf: string;
@@ -22,6 +30,35 @@ type CardForm = {
 };
 
 const MP_TOKENIZE_URL = "https://api.mercadopago.com/v1/card_tokens";
+
+const MP_ERROR_MAP: Record<string, string> = {
+  "Invalid card number":                      "Número do cartão inválido.",
+  "Invalid expiration date":                  "Data de validade inválida.",
+  "Invalid CVV":                              "Código de segurança (CVV) inválido.",
+  "Invalid cardholder name":                  "Nome do titular inválido.",
+  "Invalid identification number":            "CPF inválido.",
+  "card_number invalid":                      "Número do cartão inválido.",
+  "expiration_month invalid":                 "Mês de validade inválido.",
+  "expiration_year invalid":                  "Ano de validade inválido.",
+  "security_code invalid":                    "Código de segurança inválido.",
+  "cardholder.name invalid":                  "Nome do titular inválido.",
+  "cardholder.identification.number invalid": "CPF inválido.",
+  "cc_rejected_bad_filled_card_number":       "Número do cartão preenchido incorretamente.",
+  "cc_rejected_bad_filled_date":              "Data de validade preenchida incorretamente.",
+  "cc_rejected_bad_filled_security_code":     "Código de segurança preenchido incorretamente.",
+  "cc_rejected_bad_filled_other":             "Dados do cartão inválidos.",
+  "cc_rejected_insufficient_amount":          "Saldo insuficiente no cartão.",
+  "cc_rejected_card_disabled":                "Cartão bloqueado ou inativo.",
+  "cc_rejected_other_reason":                 "Cartão recusado. Tente outro cartão.",
+};
+
+function translateMpError(raw?: string): string {
+  if (!raw) return "Dados do cartão inválidos.";
+  for (const [key, msg] of Object.entries(MP_ERROR_MAP)) {
+    if (raw.toLowerCase().includes(key.toLowerCase())) return msg;
+  }
+  return "Dados do cartão inválidos. Verifique as informações e tente novamente.";
+}
 
 async function tokenizeMpCard(publicKey: string, form: CardForm): Promise<string> {
   const [expMonth, expYear] = form.expiry.split("/");
@@ -43,9 +80,9 @@ async function tokenizeMpCard(publicKey: string, form: CardForm): Promise<string
   });
 
   if (!res.ok) {
-    const err = (await res.json()) as { message?: string; cause?: { description?: string }[] };
-    const detail = err.cause?.[0]?.description ?? err.message ?? "Dados do cartão inválidos.";
-    throw new Error(detail);
+    const err = (await res.json()) as { message?: string; cause?: { description?: string; code?: string }[] };
+    const raw = err.cause?.[0]?.description ?? err.cause?.[0]?.code ?? err.message;
+    throw new Error(translateMpError(raw));
   }
 
   const data = (await res.json()) as { id: string };
@@ -60,6 +97,53 @@ function formatExpiry(raw: string) {
   const digits = raw.replace(/\D/g, "").slice(0, 4);
   if (digits.length > 2) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
   return digits;
+}
+
+// Campo de input padronizado V2
+function PaymentInput({
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  secureTextEntry,
+  autoCapitalize,
+  maxLength,
+  style,
+}: {
+  value: string;
+  onChangeText: (t: string) => void;
+  placeholder: string;
+  keyboardType?: React.ComponentProps<typeof TextInput>["keyboardType"];
+  secureTextEntry?: boolean;
+  autoCapitalize?: React.ComponentProps<typeof TextInput>["autoCapitalize"];
+  maxLength?: number;
+  style?: object;
+}) {
+  const { theme } = useMvTheme();
+  return (
+    <TextInput
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      placeholderTextColor={theme.text3}
+      keyboardType={keyboardType}
+      secureTextEntry={secureTextEntry}
+      autoCapitalize={autoCapitalize ?? "none"}
+      maxLength={maxLength}
+      selectionColor={theme.primary}
+      style={[{
+        height: S.btnH,
+        borderWidth: 1,
+        borderColor: theme.borderMid,
+        borderRadius: S.btnR,
+        paddingHorizontal: 16,
+        color: theme.text1,
+        fontFamily: "DMSans_400Regular",
+        fontSize: 14,
+        backgroundColor: theme.inputBg,
+      }, style]}
+    />
+  );
 }
 
 export function ClientPaymentMethodScreen({ navigation }: Props) {
@@ -98,12 +182,22 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
       showToast("Preencha todos os campos do cartão.", "error");
       return;
     }
+    const cpfDigits = form.cpf.replace(/\D/g, "");
+    if (cpfDigits.length !== 11) {
+      showToast("CPF deve ter 11 dígitos.", "error");
+      return;
+    }
+    if (/^(\d)\1{10}$/.test(cpfDigits)) {
+      showToast("CPF inválido. Verifique os dados.", "error");
+      return;
+    }
     if (!mpPublicKey) {
-      showToast("Chave pública do Mercado Pago não carregada. Tente novamente.", "error");
+      showToast("Chave pública não carregada. Tente novamente.", "error");
       return;
     }
     try {
       setSaving(true);
+      hapticCta();
       const cardToken = await tokenizeMpCard(mpPublicKey, form);
       await runWithAuth((token) =>
         paymentsApi.confirmCustomerSetupIntentWithMetadata(token, {
@@ -112,6 +206,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
           makeDefault: true
         })
       );
+      hapticPaymentSuccess();
       showToast("Cartão salvo com sucesso.", "success");
       setForm({ number: "", expiry: "", cvv: "", holderName: "", cpf: "", nickname: "" });
       await loadStatus();
@@ -122,140 +217,158 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
     }
   }
 
-  const inputStyle = {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: theme.inputText,
-    fontSize: 14,
-    backgroundColor: theme.inputBg,
-    marginBottom: 10
-  };
-
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 14, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.borderSub }}>
+
+      {/* Header V2 */}
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
         <TouchableOpacity
           onPress={() => {
             if (navigation.canGoBack()) { navigation.goBack(); return; }
             navigation.navigate("ClientTabs", { screen: "ClientProfile" });
           }}
-          style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
         >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
+          <Ionicons name="chevron-back" size={18} color={theme.text1} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <MvText variant="h4">Pagamento</MvText>
-          <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>
-            Cadastre ou atualize seu cartão de pagamento.
-          </MvText>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Pagamentos</Text>
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>métodos e histórico</Text>
         </View>
       </View>
 
       <ScrollView
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }}
+        contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, gap: 14, paddingTop: 16 }}
         showsVerticalScrollIndicator={false}
         pinchGestureEnabled
         maximumZoomScale={3}
       >
-        <MvCard>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <MvText variant="semi2">Status do cartão</MvText>
-            <MvBadge label={configured ? "Configurado" : "Pendente"} variant={configured ? "green" : "orange"} />
+        {/* Status do cartão */}
+        <View style={{
+          borderRadius: S.cardR, borderWidth: 1,
+          borderColor: configured ? theme.primarySubtleBorder : C.amberBorder,
+          backgroundColor: configured ? "rgba(36,230,109,0.09)" : "rgba(245,166,35,0.08)",
+          padding: 16,
+        }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Cartão de pagamento</Text>
+            <View style={{
+              backgroundColor: configured ? theme.primarySubtle : C.amberDim,
+              borderWidth: 1, borderColor: configured ? theme.primarySubtleBorder : C.amberBorder,
+              borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3,
+            }}>
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: configured ? theme.primary : C.amber }}>
+                {loadingStatus ? "Verificando..." : configured ? "Configurado" : "Pendente"}
+              </Text>
+            </View>
           </View>
-          <MvText variant="body4" color="secondary">
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, lineHeight: 20 }}>
             {configured
-              ? "Seu cartão está pronto para novas contratações."
+              ? "Seu cartão está pronto. Você pode atualizá-lo a qualquer momento."
               : "Adicione um cartão para contratar serviços com pré-autorização segura."}
-          </MvText>
-        </MvCard>
+          </Text>
+        </View>
 
-        <MvCard>
-          <MvText variant="semi2" style={{ marginBottom: 12 }}>{configured ? "Atualizar cartão" : "Adicionar cartão"}</MvText>
+        {/* Formulário do cartão */}
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 10 }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, marginBottom: 4 }}>
+            {configured ? "Atualizar cartão" : "Adicionar cartão"}
+          </Text>
 
-          <TextInput
-            style={inputStyle}
-            placeholder="Número do cartão"
-            placeholderTextColor={theme.text2}
-            keyboardType="numeric"
+          <PaymentInput
             value={form.number}
             onChangeText={(t) => setForm((p) => ({ ...p, number: formatCardNumber(t) }))}
+            placeholder="Número do cartão"
+            keyboardType="numeric"
             maxLength={19}
           />
 
           <View style={{ flexDirection: "row", gap: 10 }}>
-            <TextInput
-              style={[inputStyle, { flex: 1 }]}
-              placeholder="Validade MM/AA"
-              placeholderTextColor={theme.text2}
-              keyboardType="numeric"
+            <PaymentInput
               value={form.expiry}
               onChangeText={(t) => setForm((p) => ({ ...p, expiry: formatExpiry(t) }))}
-              maxLength={5}
-            />
-            <TextInput
-              style={[inputStyle, { flex: 1 }]}
-              placeholder="CVV"
-              placeholderTextColor={theme.text2}
+              placeholder="MM/AA"
               keyboardType="numeric"
-              secureTextEntry
+              maxLength={5}
+              style={{ flex: 1 }}
+            />
+            <PaymentInput
               value={form.cvv}
               onChangeText={(t) => setForm((p) => ({ ...p, cvv: t.replace(/\D/g, "").slice(0, 4) }))}
+              placeholder="CVV"
+              keyboardType="numeric"
+              secureTextEntry
               maxLength={4}
+              style={{ flex: 1 }}
             />
           </View>
 
-          <TextInput
-            style={inputStyle}
-            placeholder="Nome do titular (como no cartão)"
-            placeholderTextColor={theme.text2}
-            autoCapitalize="characters"
+          <PaymentInput
             value={form.holderName}
             onChangeText={(t) => setForm((p) => ({ ...p, holderName: t }))}
+            placeholder="Nome do titular (como no cartão)"
+            autoCapitalize="characters"
           />
 
-          <TextInput
-            style={inputStyle}
-            placeholder="CPF do titular"
-            placeholderTextColor={theme.text2}
-            keyboardType="numeric"
+          <PaymentInput
             value={form.cpf}
             onChangeText={(t) => setForm((p) => ({ ...p, cpf: t.replace(/\D/g, "").slice(0, 11) }))}
+            placeholder="CPF do titular"
+            keyboardType="numeric"
             maxLength={11}
           />
 
-          <TextInput
-            style={inputStyle}
-            placeholder="Apelido do cartão (opcional)"
-            placeholderTextColor={theme.text2}
+          <PaymentInput
             value={form.nickname}
             onChangeText={(t) => setForm((p) => ({ ...p, nickname: t }))}
+            placeholder="Apelido do cartão (opcional)"
           />
+        </View>
 
-          <MvText variant="body4" color="secondary" style={{ marginBottom: 12 }}>
-            Seus dados são tokenizados pelo Mercado Pago e não ficam armazenados no nosso servidor.
-          </MvText>
+        {/* Nota de segurança — destaque V2 */}
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start", padding: 14, backgroundColor: theme.primarySubtle, borderRadius: 16, borderWidth: 1, borderColor: theme.primarySubtleBorder }}>
+          <Ionicons name="shield-checkmark" size={18} color={theme.primary} style={{ marginTop: 1 }} />
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: C.zinc300, lineHeight: 18, flex: 1 }}>
+            Seus dados são tokenizados pelo <Text style={{ fontFamily: "DMSans_700Bold", color: theme.text1 }}>Mercado Pago</Text> e nunca ficam armazenados nos nossos servidores.
+          </Text>
+        </View>
 
-          <MvButton
-            label={configured ? "Atualizar cartão" : "Salvar cartão"}
-            loading={saving}
-            disabled={loadingStatus || saving}
-            onPress={() => void saveCard()}
-          />
-        </MvCard>
-
-        <MvButton
-          variant="outline"
-          label="Atualizar status"
+        {/* Botão de atualizar status */}
+        <TouchableOpacity
           disabled={loadingStatus}
           onPress={() => void loadStatus()}
-        />
+          style={{ height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", opacity: loadingStatus ? 0.5 : 1 }}
+        >
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: C.zinc300 }}>
+            {loadingStatus ? "Verificando..." : "Verificar status do cartão"}
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      {/* Botão CTA fixo com safe area */}
+      <View style={{
+        position: "absolute", bottom: 0, left: 0, right: 0,
+        paddingHorizontal: S.px, paddingBottom: Math.max(16, insets.bottom + 12), paddingTop: 12,
+        backgroundColor: `${theme.bg}f0`, borderTopWidth: 1, borderTopColor: theme.border,
+      }}>
+        <TouchableOpacity
+          disabled={loadingStatus || saving}
+          onPress={() => void saveCard()}
+          style={{
+            height: S.btnH, borderRadius: S.btnR,
+            backgroundColor: (loadingStatus || saving) ? "rgba(36,230,109,0.4)" : theme.primary,
+            alignItems: "center", justifyContent: "center",
+            shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
+          }}
+        >
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
+            {saving ? "Salvando..." : configured ? "Atualizar cartão" : "Salvar cartão"}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
