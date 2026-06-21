@@ -76,7 +76,8 @@ export class UserController {
   }
 
   async deleteMe(request: Request, response: Response) {
-    await userService.deleteMe(request.user!.id);
+    const { password } = request.body as { password: string };
+    await userService.deleteMe(request.user!.id, password);
     return response.status(204).send();
   }
 

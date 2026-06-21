@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Alert, Linking, Platform, ScrollView, Share, StatusBar, TouchableOpacity, View } from "react-native";
+import { userApi } from "../../services/api/client";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,12 +9,13 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar, MvText, MvToggle } from "../../components/mv";
 import { useAppState } from "../../state/AppState";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
+import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalSettings">;
 
 // IDs da loja — substitua pelos IDs reais quando publicar
 const APP_STORE_ID = "000000000";        // Apple App Store ID
-const PLAY_STORE_ID = "com.personalapp.mobile"; // Google Play package name
+const PLAY_STORE_ID = "com.muvify.app";
 
 function rateApp() {
   const url = Platform.OS === "ios"
@@ -28,9 +30,8 @@ function rateApp() {
 }
 
 export function ProfessionalSettingsScreen({ navigation }: Props) {
-  const { signOut, user } = useAppState();
+  const { signOut, user, runWithAuth } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
-  const insets = useSafeAreaInsets();
   const [pushEnabled, setPushEnabled] = useState(true);
   const lightModeEnabled = !isDark;
   const isLight = theme.mode === "light";
@@ -53,6 +54,48 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
       { text: "Cancelar", style: "cancel" },
       { text: "Sair", style: "destructive", onPress: () => void signOut() },
     ]);
+  }
+
+  function handleDeleteAccount() {
+    Alert.alert(
+      "Excluir minha conta",
+      "Esta ação é permanente e irreversível. Todos os seus dados serão removidos. Deseja continuar?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Continuar",
+          style: "destructive",
+          onPress: () => {
+            Alert.prompt(
+              "Confirme sua senha",
+              "Digite sua senha para confirmar a exclusão da conta.",
+              async (password) => {
+                if (!password) return;
+                try {
+                  await runWithAuth((token) => userApi.deleteMe(token, password));
+                  await signOut();
+                } catch (error) {
+                  Alert.alert("Erro", error instanceof Error ? error.message : "Não foi possível excluir a conta.");
+                }
+              },
+              "secure-text"
+            );
+          },
+        },
+      ]
+    );
+  }
+
+  async function handleExportData() {
+    try {
+      const data = await runWithAuth((token) => userApi.exportMyData(token));
+      await Share.share({
+        message: JSON.stringify(data, null, 2),
+        title: "Meus dados — Muvify",
+      });
+    } catch {
+      Alert.alert("Erro", "Não foi possível exportar seus dados.");
+    }
   }
 
   function handleLightModeToggle(enabled: boolean) {
@@ -114,10 +157,10 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
         backgroundColor: danger ? "rgba(239,68,68,0.08)" : "rgba(156,163,175,0.10)",
         alignItems: "center", justifyContent: "center",
       }}>
-        <Ionicons name={icon} size={18} color={danger ? "#EF4444" : text2} />
+        <Ionicons name={icon} size={18} color={danger ? theme.danger : text2} />
       </View>
       <View style={{ flex: 1 }}>
-        <MvText variant="semi2" style={{ color: danger ? "#EF4444" : text1 }} numberOfLines={1}>
+        <MvText variant="semi2" style={{ color: danger ? theme.danger : text1 }} numberOfLines={1}>
           {label}
         </MvText>
         {sub ? <MvText variant="body4" color="secondary" numberOfLines={1}>{sub}</MvText> : null}
@@ -140,16 +183,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
     <View style={{ flex: 1, backgroundColor: bg }} testID="screen.professional.settings">
       <StatusBar barStyle={isLight ? "dark-content" : "light-content"} backgroundColor={bg} />
 
-      {/* ── HEADER ── */}
-      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-        >
-          <Ionicons name="chevron-back" size={20} color={text2} />
-        </TouchableOpacity>
-        <MvText variant="semi1" style={{ flex: 1 }}>Mais</MvText>
-      </View>
+      <ProfessionalScreenHeader title="Mais" onBack={() => navigation.goBack()} />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
 
@@ -204,7 +238,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
           <MenuItem
             icon={lightModeEnabled ? "sunny-outline" : "moon-outline"}
             label="Aparência"
-            sub="Modo light"
+            sub={lightModeEnabled ? "Modo claro ativo" : "Modo escuro ativo"}
             right={<MvToggle value={lightModeEnabled} onValueChange={handleLightModeToggle} />}
           />
         </View>
@@ -214,6 +248,8 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
           <MenuItem icon="card-outline" label="Conta bancária" onPress={() => goToStack("ConnectPayoutAccount")} isFirst />
           <MenuItem icon="shield-checkmark-outline" label="CREF e documentos" onPress={() => goToStack("ProfessionalCredentials")} />
           <MenuItem icon="lock-closed-outline" label="Segurança" onPress={() => goToStack("Security")} />
+          <MenuItem icon="download-outline" label="Baixar meus dados" sub="Exportar todas as suas informações" onPress={() => void handleExportData()} />
+          <MenuItem icon="trash-outline" label="Excluir minha conta" sub="Remover permanentemente todos os dados" onPress={handleDeleteAccount} danger />
         </View>
 
         {/* ── SUPORTE ── */}

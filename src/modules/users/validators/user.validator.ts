@@ -5,6 +5,8 @@ const optionalTrimmedString = z
   .string()
   .trim()
   .min(1)
+  .max(100)
+  .regex(/^[a-zA-ZÀ-ÿ\s'\-\.]+$/, "Nome contém caracteres inválidos.")
   .optional();
 
 const photoUrlSchema = z
@@ -26,11 +28,24 @@ export const updateMeSchema = z.object({
   body: z
     .object({
       name: optionalTrimmedString,
-      phone: z.string().trim().min(8).optional(),
-      email: z.string().trim().email().max(120).optional(),
+      apelido: z
+        .string()
+        .trim()
+        .min(3)
+        .max(30)
+        .regex(/^[a-z0-9_]+$/, "Apelido deve conter apenas letras minúsculas, números e _.")
+        .optional(),
+      phone: z
+        .string()
+        .trim()
+        .regex(
+          /^(?=(?:\D*\d){8,15}\D*$)[\d\s()+-]+$/,
+          "Telefone deve conter entre 8 e 15 digitos."
+        )
+        .optional(),
       photoUrl: photoUrlSchema,
     })
-    .refine((value) => value.name || value.phone || value.email || value.photoUrl, {
+    .refine((value) => value.name || value.apelido || value.phone || value.photoUrl !== undefined, {
       message: "Informe ao menos um campo para atualizar.",
       path: ["name"]
     })
@@ -38,12 +53,12 @@ export const updateMeSchema = z.object({
 
 export const upsertProviderBankAccountSchema = z.object({
   body: z.object({
-    bankName: z.string().trim().min(2),
+    bankName: z.string().trim().min(2).max(100),
     accountType: z.enum(["CHECKING", "SAVINGS"]),
     agency: z.string().trim().min(2).max(20),
     accountNumber: z.string().trim().min(2).max(30),
     accountDigit: z.string().trim().min(1).max(5),
-    holderName: z.string().trim().min(3),
+    holderName: z.string().trim().min(3).max(120),
     holderDocument: z.string().trim().min(11).max(18),
     pixKey: z.string().trim().min(3).max(120).optional()
   })
@@ -52,12 +67,13 @@ export const upsertProviderBankAccountSchema = z.object({
 export const changeMyPasswordSchema = z.object({
   body: z
     .object({
-      currentPassword: z.string().min(8),
+      currentPassword: z.string().min(8).max(72),
       newPassword: z
         .string()
         .min(8)
+        .max(72)
         .regex(/^(?=.*[A-Za-z])(?=.*\d).+$/, "Senha deve conter letras e números."),
-      confirmNewPassword: z.string().min(8)
+      confirmNewPassword: z.string().min(8).max(72)
     })
     .refine((value) => value.newPassword === value.confirmNewPassword, {
       message: "A confirmação da nova senha não confere.",
@@ -68,6 +84,12 @@ export const changeMyPasswordSchema = z.object({
 export const upsertRecoveryEmailSchema = z.object({
   body: z.object({
     recoveryEmail: z.string().trim().email().max(120)
+  })
+});
+
+export const deleteMeSchema = z.object({
+  body: z.object({
+    password: z.string().min(1).max(72, "Senha obrigatória para confirmar exclusão da conta.")
   })
 });
 

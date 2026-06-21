@@ -7,6 +7,7 @@ import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { UserController } from "../controllers/user.controller";
 import {
   changeMyPasswordSchema,
+  deleteMeSchema,
   recordConsentSchema,
   sendSupportMessageSchema,
   userPhotoParamsSchema,
@@ -38,6 +39,7 @@ userRoutes.get(
 userRoutes.put(
   "/me/anamnesis",
   ensureRole(UserRole.CLIENT),
+  uploadRateLimiter,
   validate(upsertMyAnamnesisSchema),
   userController.upsertMyAnamnesis
 );
@@ -49,32 +51,37 @@ userRoutes.get(
 userRoutes.put(
   "/me/provider-bank-account",
   ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
   validate(upsertProviderBankAccountSchema),
   userController.upsertProviderBankAccount
 );
 userRoutes.post(
   "/me/security/password",
+  uploadRateLimiter,
   validate(changeMyPasswordSchema),
   userController.changeMyPassword
 );
 userRoutes.get("/me/security/recovery-email", userController.getRecoveryEmail);
 userRoutes.put(
   "/me/security/recovery-email",
+  uploadRateLimiter,
   validate(upsertRecoveryEmailSchema),
   userController.upsertRecoveryEmail
 );
 userRoutes.post(
   "/me/support-message",
+  uploadRateLimiter,
   validate(sendSupportMessageSchema),
   userController.sendSupportMessage
 );
 
-userRoutes.delete("/me", userController.deleteMe);
-userRoutes.get("/me/data-export", userController.exportMyData);
+userRoutes.delete("/me", uploadRateLimiter, validate(deleteMeSchema), userController.deleteMe);
+userRoutes.get("/me/data-export", uploadRateLimiter, userController.exportMyData);
 userRoutes.post("/me/consent", validate(recordConsentSchema), userController.recordConsent);
 userRoutes.get("/me/notifications/preferences", userController.getNotificationPreferences);
 userRoutes.put(
   "/me/notifications/preferences",
+  uploadRateLimiter,
   validate(upsertNotificationPreferencesSchema),
   userController.upsertNotificationPreferences
 );

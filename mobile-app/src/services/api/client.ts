@@ -16,6 +16,7 @@ export type ProviderFixedLocation = {
 export type AuthUser = {
   id: string;
   name: string;
+  apelido?: string | null;
   email: string;
   role: UserRole;
   phone?: string | null;
@@ -50,6 +51,13 @@ export type AuthResponse = {
   refreshToken: string;
 };
 
+export type AuthLoginTwoFactorChallenge = {
+  requiresTwoFactor: true;
+  challengeToken: string;
+};
+
+export type AuthLoginResponse = AuthResponse | AuthLoginTwoFactorChallenge;
+
 export type ForgotPasswordResponse = {
   message: string;
   resetToken?: string;
@@ -72,10 +80,10 @@ export type ProviderSummary = {
   age?: number | null;
   experienceYears: number;
   priceCents: number;
-  avgRating?: number;
-  reviewCount?: number;
   averageRating?: number;
   totalReviews?: number;
+  /** @deprecated use averageRating */ avgRating?: number;
+  /** @deprecated use totalReviews */ reviewCount?: number;
   serviceRadiusKm?: number | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -527,6 +535,94 @@ export type AdminChatAuditSessionMessagesResponse = {
   nextCursor: string | null;
 };
 
+export type AdminLookupUser = {
+  id: string;
+  name: string;
+  email?: string;
+  documentMasked?: string | null; // Backend retorna mascarado: "***.***.***-XX"
+  /** @deprecated Usar documentMasked */
+  document?: string | null;
+};
+
+export type AdminLookupCrefResult = {
+  user: AdminLookupUser;
+  cref: {
+    id: string;
+    crefNumber: string | null;
+    crefDocumentUrl: string | null;
+    credentialDocuments: unknown;
+    crefValidationStatus: string;
+    crefValidatedAt: string | null;
+    crefRejectionReason: string | null;
+    crefReviewedAt: string | null;
+  };
+} | null;
+
+export type AdminLookupChatItem = {
+  bookingId: string;
+  scheduledAt: string;
+  sessionLocation: string | null;
+  chatStartedAt: string;
+  messageCount: number;
+};
+
+export type AdminLookupChatsResult = {
+  provider: AdminLookupUser | null;
+  client: AdminLookupUser | null;
+  items: AdminLookupChatItem[];
+};
+
+export type AdminLookupBookingItem = {
+  bookingId: string;
+  scheduledAt: string;
+  sessionLocation: string | null;
+  status: string;
+  priceCents: number;
+  currency: string;
+  paymentMethod: string | null;
+  paymentStatus: string | null;
+};
+
+export type AdminLookupBookingsResult = {
+  provider: Pick<AdminLookupUser, "id" | "name" | "documentMasked"> | null;
+  client: Pick<AdminLookupUser, "id" | "name" | "documentMasked"> | null;
+  items: AdminLookupBookingItem[];
+};
+
+export type AdminLookupBookingDetail = {
+  id: string;
+  scheduledAt: string;
+  sessionLocation: string | null;
+  notes: string | null;
+  status: string;
+  priceCents: number;
+  currency: string;
+  attendanceCodeValidatedAt: string | null;
+  clientConfirmedAt: string | null;
+  providerConfirmedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  client: { id: string; name: string; email: string; documentMasked?: string | null };
+  provider: {
+    id: string;
+    displayName: string;
+    crefNumber: string | null;
+    user: { id: string; email: string; documentMasked?: string | null };
+  };
+  category: { name: string } | null;
+  payment: {
+    method: string;
+    status: string;
+    amountCents: number;
+    currency: string;
+    authorizedAt: string | null;
+    capturedAt: string | null;
+    canceledAt: string | null;
+    refundedAt: string | null;
+    failureReason: string | null;
+  } | null;
+};
+
 export const PROFESSIONAL_SPECIALTIES = [
   "Hipertrofia",
   "Emagrecimento",
@@ -739,6 +835,7 @@ export type ProviderAccountCreate = {
 export type PaymentStatusResponse = {
   id: string;
   method: PaymentMethod;
+  failureReason?: string | null;
   status:
     | "PENDING_AUTH"
     | "AUTHORIZING"
@@ -897,6 +994,41 @@ export const exerciseApi = {
   },
 };
 
+export const adminExerciseApi = {
+  list(token: string, params?: { category?: string; q?: string }) {
+    const query = new URLSearchParams();
+    if (params?.category) query.set("category", params.category);
+    if (params?.q) query.set("q", params.q);
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<Exercise[]>(`/admin/exercises${suffix}`, { token });
+  },
+  create(token: string, body: {
+    name: string;
+    category: string;
+    description?: string;
+    defaultRepetitionsSets?: string;
+    defaultRestLabel?: string;
+    mediaUrl?: string;
+    mediaType?: ExerciseMediaType;
+  }) {
+    return apiRequest<Exercise>("/admin/exercises", { method: "POST", token, body });
+  },
+  update(token: string, exerciseId: string, body: {
+    name?: string;
+    category?: string;
+    description?: string;
+    defaultRepetitionsSets?: string;
+    defaultRestLabel?: string;
+    mediaUrl?: string;
+    mediaType?: ExerciseMediaType;
+  }) {
+    return apiRequest<Exercise>(`/admin/exercises/${exerciseId}`, { method: "PATCH", token, body });
+  },
+  delete(token: string, exerciseId: string) {
+    return apiRequest<void>(`/admin/exercises/${exerciseId}`, { method: "DELETE", token });
+  },
+};
+
 export class ApiError extends Error {
   status: number;
   details?: unknown;
@@ -934,14 +1066,20 @@ function resolveApiBaseUrl() {
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();
-const API_REQUEST_TIMEOUT_MS = 15000;
+const API_REQUEST_TIMEOUT_MS = 30000;
 
 function buildNetworkErrorMessage() {
-  return `Falha de rede ao conectar com a API. Verifique sua internet, confirme se o backend está ativo e se o celular está na mesma rede. URL atual: ${API_BASE_URL}`;
+  if (__DEV__) {
+    return `Falha de rede. URL: ${API_BASE_URL}`;
+  }
+  return "Sem conexão com a internet. Verifique sua rede e tente novamente.";
 }
 
 function buildTimeoutErrorMessage() {
-  return `Tempo limite ao conectar com a API (${Math.round(API_REQUEST_TIMEOUT_MS / 1000)}s). Verifique sua internet e tente novamente. URL atual: ${API_BASE_URL}`;
+  if (__DEV__) {
+    return `Tempo limite (${Math.round(API_REQUEST_TIMEOUT_MS / 1000)}s). URL: ${API_BASE_URL}`;
+  }
+  return "A conexão demorou muito. Verifique sua internet e tente novamente.";
 }
 
 async function parseResponse(response: Response) {
@@ -991,10 +1129,30 @@ export async function apiRequest<T = unknown>(
 
   const payload = await parseResponse(response);
   if (!response.ok) {
-    const message =
-      typeof payload === "string"
-        ? payload
-        : (payload as { message?: string })?.message ?? `HTTP ${response.status}`;
+    let message: string;
+    if (typeof payload === "string") {
+      message = payload;
+    } else if (payload && typeof payload === "object") {
+      const p = payload as Record<string, unknown>;
+      if (Array.isArray(p.errors) && p.errors.length > 0) {
+        message = (p.errors as Array<{ message?: string }>)
+          .map((e) => e.message)
+          .filter(Boolean)
+          .join(", ") || `HTTP ${response.status}`;
+      } else {
+        message = (p.message as string | undefined) ?? (p.error as string | undefined) ?? (p.detail as string | undefined) ?? `HTTP ${response.status}`;
+      }
+    } else {
+      message = `HTTP ${response.status}`;
+    }
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("Retry-After");
+      const wait = retryAfter ? parseInt(retryAfter, 10) : 60;
+      message = `Muitas requisições. Aguarde ${wait}s e tente novamente.`;
+    } else if (response.status === 503 || response.status === 502 || response.status === 504) {
+      message = (payload as Record<string, unknown> | null)?.message as string | undefined
+        ?? "Serviço temporariamente indisponível. Tente novamente em alguns minutos.";
+    }
     throw new ApiError(response.status, message, payload);
   }
   return payload as T;
@@ -1003,6 +1161,7 @@ export async function apiRequest<T = unknown>(
 export const authApi = {
   register(input: {
     name: string;
+    apelido?: string;
     email: string;
     password: string;
     phone: string;
@@ -1013,7 +1172,7 @@ export const authApi = {
     return apiRequest<AuthResponse>("/auth/register", { method: "POST", body: input });
   },
   login(input: { email: string; password: string }) {
-    return apiRequest<AuthResponse>("/auth/login", { method: "POST", body: input });
+    return apiRequest<AuthLoginResponse>("/auth/login", { method: "POST", body: input });
   },
   refresh(refreshToken: string) {
     return apiRequest<AuthResponse>("/auth/refresh", {
@@ -1044,6 +1203,18 @@ export const authApi = {
       method: "POST",
       token
     });
+  },
+  loginWithTwoFactor(input: { challengeToken: string; code: string }) {
+    return apiRequest<AuthResponse>("/auth/2fa/login", {
+      method: "POST",
+      body: input
+    });
+  },
+  loginWithBackupCode(input: { challengeToken: string; code: string }) {
+    return apiRequest<AuthResponse>("/auth/2fa/login", {
+      method: "POST",
+      body: input
+    });
   }
 };
 
@@ -1051,7 +1222,8 @@ export const userApi = {
   me(token: string) {
     return apiRequest<AuthUser>("/users/me", { token });
   },
-  updateMe(token: string, input: { name?: string; phone?: string; email?: string; photoUrl?: string }) {
+  updateMe(token: string, input: { name?: string; apelido?: string; phone?: string; photoUrl?: string }) {
+    // Nota: email foi removido — mudança de email requer endpoint dedicado no futuro
     return apiRequest<AuthUser>("/users/me", { method: "PATCH", token, body: input });
   },
   providerBankAccount(token: string) {
@@ -1130,7 +1302,13 @@ export const userApi = {
       token,
       body: input
     });
-  }
+  },
+  deleteMe(token: string, password: string) {
+    return apiRequest<void>("/users/me", { method: "DELETE", token, body: { password } });
+  },
+  exportMyData(token: string) {
+    return apiRequest<Record<string, unknown>>("/users/me/data-export", { token });
+  },
 };
 
 export const adminApi = {
@@ -1231,6 +1409,26 @@ export const adminApi = {
       `/admin/chat-audit/sessions/${bookingId}/messages${suffix}`,
       { token }
     );
+  },
+  lookupCref(token: string, providerDocument: string) {
+    return apiRequest<AdminLookupCrefResult>(
+      `/admin/lookup/cref?providerDocument=${encodeURIComponent(providerDocument)}`,
+      { token }
+    );
+  },
+  lookupChats(token: string, providerDocument: string, clientDocument: string) {
+    return apiRequest<AdminLookupChatsResult>(
+      `/admin/lookup/chats?providerDocument=${encodeURIComponent(providerDocument)}&clientDocument=${encodeURIComponent(clientDocument)}`,
+      { token }
+    );
+  },
+  lookupBookings(token: string, providerDocument: string, clientDocument: string, date?: string) {
+    const q = new URLSearchParams({ providerDocument, clientDocument });
+    if (date) q.set("date", date);
+    return apiRequest<AdminLookupBookingsResult>(`/admin/lookup/bookings?${q}`, { token });
+  },
+  lookupBookingDetail(token: string, bookingId: string) {
+    return apiRequest<AdminLookupBookingDetail>(`/admin/lookup/bookings/${bookingId}`, { token });
   }
 };
 
@@ -2181,6 +2379,29 @@ export const consultancyApi = {
       token
     });
   },
+  deliverContract(
+    token: string,
+    contractId: string,
+    body: {
+      title: string;
+      description?: string;
+      exercises: Array<{
+        sortOrder?: number;
+        exerciseId?: string;
+        name: string;
+        repetitionsSets: string;
+        load: string;
+        restLabel?: string;
+        demoVideoUrl?: string;
+      }>;
+    }
+  ) {
+    return apiRequest<TrainingPlan>(`/consultancy/contracts/${contractId}/deliver`, {
+      method: "POST",
+      token,
+      body
+    });
+  },
   respondRequest(
     token: string,
     requestId: string,
@@ -2195,4 +2416,199 @@ export const consultancyApi = {
       body
     });
   }
+};
+
+// ── Tipos Community ────────────────────────────────────────────────────────────
+export type CommunityUser = {
+  id: string;
+  name: string;
+  apelido?: string | null;
+  photoUrl?: string | null;
+  isFollowing?: boolean;
+  followedAt?: string;
+};
+
+export type UserPublicProfile = {
+  id: string;
+  name: string;
+  apelido?: string | null;
+  photoUrl?: string | null;
+  followerCount: number;
+  followingCount: number;
+  isFollowing: boolean;
+  totalXp: number;
+  currentLevel: number;
+  levelName: string;
+  currentStreak: number;
+  longestStreak: number;
+};
+
+export type RankingEntry = {
+  position: number;
+  userId: string;
+  name: string | null;
+  apelido?: string | null;
+  photoUrl?: string | null;
+  xpEarned: number;
+  isViewer: boolean;
+};
+
+export type RankingResponse = {
+  items: RankingEntry[];
+  viewerPosition: number | null;
+  viewerXp: number;
+  total: number;
+  page: number;
+  totalPages: number;
+  period: "WEEKLY" | "MONTHLY" | "ALLTIME";
+  periodKey: string;
+};
+
+export type FeedPostMetadata = {
+  type?: "PRESENTIAL" | "ONLINE";
+  providerId?: string;
+  providerName?: string;
+  providerPhotoUrl?: string | null;
+  [key: string]: unknown;
+};
+
+export type FeedPost = {
+  id: string;
+  userId: string;
+  type: string;
+  referenceId?: string | null;
+  imageUrl?: string | null;
+  caption?: string | null;
+  metadata?: FeedPostMetadata | null;
+  createdAt: string;
+  user?: { id: string; name: string; apelido?: string | null; photoUrl?: string | null };
+  likesCount?: number;
+  commentsCount?: number;
+  likedByViewer?: boolean;
+};
+
+export type FeedComment = {
+  id: string;
+  content: string;
+  createdAt: string;
+  user: { id: string; name: string; photoUrl?: string | null };
+};
+
+export type GamificationProfile = {
+  totalXp: number;
+  currentLevel: number;
+  levelName: string;
+  nextLevelMinXp: number | null;
+  xpToNextLevel: number | null;
+  currentStreak: number;
+  longestStreak: number;
+  weeklyXp: number;
+  monthlyXp: number;
+  unlockedAchievements?: Array<{
+    id: string;
+    achievement: { key: string; name: string; medalType: string; xpReward: number };
+    unlockedAt: string;
+  }>;
+};
+
+// ── communityApi ───────────────────────────────────────────────────────────────
+export const communityApi = {
+  follow(token: string, userId: string) {
+    return apiRequest<void>(`/community/follow/${userId}`, { method: "POST", token });
+  },
+  unfollow(token: string, userId: string) {
+    return apiRequest<void>(`/community/follow/${userId}`, { method: "DELETE", token });
+  },
+  getFollowers(token: string, page = 1, limit = 20) {
+    return apiRequest<{ items: CommunityUser[]; total: number; page: number; totalPages: number }>(
+      `/community/followers?page=${page}&limit=${limit}`,
+      { token }
+    );
+  },
+  getFollowing(token: string, page = 1, limit = 20) {
+    return apiRequest<{ items: CommunityUser[]; total: number; page: number; totalPages: number }>(
+      `/community/following?page=${page}&limit=${limit}`,
+      { token }
+    );
+  },
+  searchUsers(token: string, query: string, page = 1, limit = 20) {
+    return apiRequest<{ items: CommunityUser[]; total: number; page: number; totalPages: number }>(
+      `/community/users/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
+      { token }
+    );
+  },
+  getUserPublicProfile(token: string, userId: string) {
+    return apiRequest<UserPublicProfile>(`/community/users/${userId}`, { token });
+  },
+  getRanking(token: string, period: "WEEKLY" | "MONTHLY" | "ALLTIME" = "WEEKLY", page = 1, limit = 50) {
+    return apiRequest<RankingResponse>(
+      `/community/ranking?period=${period}&page=${page}&limit=${limit}`,
+      { token }
+    );
+  },
+  getFeed(token: string, page = 1, limit = 20) {
+    return apiRequest<{ items: FeedPost[]; total: number; page: number; totalPages: number }>(
+      `/community/feed?page=${page}&limit=${limit}`,
+      { token }
+    );
+  },
+  createPost(token: string, body: { imageUrl?: string; caption?: string }) {
+    return apiRequest<void>(`/community/feed/posts`, { method: "POST", token, body });
+  },
+  deletePost(token: string, postId: string) {
+    return apiRequest<void>(`/community/feed/posts/${postId}`, { method: "DELETE", token });
+  },
+  likePost(token: string, postId: string) {
+    return apiRequest<{ liked: boolean }>(`/community/feed/posts/${postId}/like`, { method: "POST", token });
+  },
+  getComments(token: string, postId: string, page = 1, limit = 5) {
+    return apiRequest<{ items: FeedComment[]; total: number; page: number; totalPages: number }>(
+      `/community/feed/posts/${postId}/comments?page=${page}&limit=${limit}`,
+      { token }
+    );
+  },
+  addComment(token: string, postId: string, content: string) {
+    return apiRequest<FeedComment>(`/community/feed/posts/${postId}/comments`, {
+      method: "POST",
+      token,
+      body: { content },
+    });
+  },
+  deleteComment(token: string, postId: string, commentId: string) {
+    return apiRequest<void>(`/community/feed/posts/${postId}/comments/${commentId}`, {
+      method: "DELETE",
+      token,
+    });
+  },
+  editComment(token: string, postId: string, commentId: string, content: string) {
+    return apiRequest<FeedComment>(`/community/feed/posts/${postId}/comments/${commentId}`, {
+      method: "PATCH",
+      token,
+      body: { content },
+    });
+  },
+  getSuggestions(token: string, limit = 10) {
+    return apiRequest<CommunityUser[]>(`/community/suggestions?limit=${limit}`, { token });
+  },
+};
+
+// ── gamificationApi ────────────────────────────────────────────────────────────
+export const gamificationApi = {
+  getMyProfile(token: string) {
+    return apiRequest<GamificationProfile>("/gamification/me", { token });
+  },
+  getAchievements(token: string) {
+    return apiRequest<Array<{
+      id: string;
+      key: string;
+      name: string;
+      description: string;
+      category: string;
+      medalType: string;
+      xpReward: number;
+      conditionType: string;
+      conditionValue: number;
+      unlockedAt?: string | null;
+    }>>("/gamification/achievements", { token });
+  },
 };

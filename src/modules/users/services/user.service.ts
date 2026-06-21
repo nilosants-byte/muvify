@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   AnamnesisStatus,
   BankAccountType,
@@ -12,6 +13,7 @@ import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
 import { getCache, setCache } from "../../../shared/utils/cache";
+import { setTokenBlacklist } from "../../../shared/security/token-blacklist";
 import {
   decryptSensitiveText,
   encryptSensitiveText
@@ -22,8 +24,8 @@ import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-
 
 type UpdateMeInput = {
   name?: string;
+  apelido?: string;
   phone?: string;
-  email?: string;
   photoUrl?: string;
 };
 
@@ -187,6 +189,7 @@ export class UserService {
       select: {
         id: true,
         name: true,
+        apelido: true,
         email: true,
         phone: true,
         photoUrl: true,
@@ -211,7 +214,7 @@ export class UserService {
       return user;
     }
 
-    const effectiveRole = resolveEffectiveUserRole(user.email, user.role);
+    const effectiveRole = resolveEffectiveUserRole(user.email, user.role, user.emailVerifiedAt);
     return {
       ...user,
       photoUrl: this.mapUserPhotoUrl(user),
@@ -228,40 +231,48 @@ export class UserService {
 
   async updateMe(userId: string, input: UpdateMeInput) {
     const nextName = input.name?.trim();
-    const nextPhone = input.phone?.trim();
-    const nextEmail = input.email?.trim().toLowerCase();
+    const nextApelido = input.apelido?.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 30);
+    const nextPhoneRaw = input.phone?.trim();
+    const nextPhone = nextPhoneRaw ? nextPhoneRaw.replace(/\D/g, "") : undefined;
     // Empty string means "remove photo" (set to null); undefined means "don't change"
     const nextPhotoUrl = input.photoUrl === "" ? null : input.photoUrl;
 
-    if (!nextName && !nextPhone && !nextEmail && input.photoUrl === undefined) {
+    if (!nextName && !nextApelido && !nextPhone && input.photoUrl === undefined) {
       throw new AppError("Informe ao menos um campo para atualizar.", StatusCodes.BAD_REQUEST);
     }
-
-    if (nextEmail) {
-      const existingByEmail = await prisma.user.findUnique({
-        where: { email: nextEmail },
+    if (nextApelido) {
+      if (!/^[a-z0-9_]{3,30}$/.test(nextApelido)) {
+        throw new AppError("Apelido inválido. Use apenas letras minúsculas, números e _.", StatusCodes.BAD_REQUEST);
+      }
+      const existingByApelido = await prisma.user.findFirst({
+        where: { apelido: nextApelido },
         select: { id: true }
       });
-      if (existingByEmail && existingByEmail.id !== userId) {
-        throw new AppError("E-mail já está em uso.", StatusCodes.BAD_REQUEST);
+      if (existingByApelido && existingByApelido.id !== userId) {
+        throw new AppError("Apelido já está em uso.", StatusCodes.BAD_REQUEST);
       }
+    }
+    if (nextPhone && !/^\d{8,15}$/.test(nextPhone)) {
+      throw new AppError("Telefone invalido. Informe entre 8 e 15 digitos.", StatusCodes.BAD_REQUEST);
     }
 
     const updated = await prisma.user.update({
       where: { id: userId },
       data: {
         ...(nextName ? { name: nextName } : {}),
+        ...(nextApelido ? { apelido: nextApelido } : {}),
         ...(nextPhone ? { phone: nextPhone } : {}),
-        ...(nextEmail ? { email: nextEmail } : {}),
         ...(nextPhotoUrl !== undefined ? { photoUrl: nextPhotoUrl } : {})
       },
       select: {
         id: true,
         name: true,
+        apelido: true,
         email: true,
         phone: true,
         photoUrl: true,
         role: true,
+        emailVerifiedAt: true,
         createdAt: true,
         updatedAt: true
       }
@@ -270,7 +281,7 @@ export class UserService {
     return {
       ...updated,
       photoUrl: this.mapUserPhotoUrl(updated),
-      role: resolveEffectiveUserRole(updated.email, updated.role)
+      role: resolveEffectiveUserRole(updated.email, updated.role, updated.emailVerifiedAt)
     };
   }
 
@@ -304,10 +315,25 @@ export class UserService {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: {
-        password: await hashValue(input.newPassword)
-      }
+      data: { password: await hashValue(input.newPassword) }
     });
+
+    // Revogar todas as sessões ativas (outros dispositivos)
+    await prisma.session.updateMany({
+      where: { userId: user.id, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+    // Blacklistar tokens de acesso ativos
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const accessTtlSeconds = (() => {
+      const d = env.ACCESS_TOKEN_EXPIRES_IN?.trim() ?? "900";
+      const m = /^(\d+)([smhd]?)$/.exec(d);
+      if (!m) return 900;
+      const n = parseInt(m[1]!, 10);
+      const unit = m[2] ?? "s";
+      return unit === "m" ? n * 60 : unit === "h" ? n * 3600 : unit === "d" ? n * 86400 : n;
+    })();
+    await setTokenBlacklist(user.id, nowSeconds, accessTtlSeconds).catch(() => {/* best effort */});
 
     if (emailService.canSendEmail()) {
       void emailService
@@ -585,66 +611,87 @@ export class UserService {
     });
   }
 
-  async deleteMe(userId: string) {
+  async deleteMe(userId: string, password: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true }
+      select: { id: true, password: true }
     });
 
     if (!user) {
       throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
     }
 
+    const valid = await compareHash(password, user.password);
+    if (!valid) {
+      throw new AppError("Senha incorreta. Confirme sua senha para excluir a conta.", StatusCodes.UNAUTHORIZED);
+    }
+
     const anonymizedEmail = `deleted_${userId}@removed.invalid`;
-    await prisma.$transaction([
-      prisma.session.updateMany({
-        where: { userId, revokedAt: null },
-        data: { revokedAt: new Date() }
-      }),
-      prisma.pushDevice.updateMany({
-        where: { userId },
-        data: {
-          isActive: false,
-          invalidAt: new Date()
-        }
-      }),
-      prisma.notificationPreference.deleteMany({
-        where: { userId }
-      }),
-      prisma.userNotification.deleteMany({
-        where: { userId }
-      }),
-      prisma.passwordResetToken.deleteMany({
-        where: { userId }
-      }),
-      prisma.emailVerificationToken.deleteMany({
-        where: { userId }
-      }),
-      prisma.clientAnamnesis.deleteMany({
-        where: { clientId: userId }
-      }),
-      prisma.completionEvidence.deleteMany({
-        where: { userId }
-      }),
-      prisma.supportTicket.updateMany({
-        where: { userId },
-        data: {
-          subject: "Conta removida",
-          message: "Conteudo removido por solicitacao do usuario."
-        }
-      }),
-      prisma.user.update({
+    const newPassword = await hashValue(randomUUID());
+
+    // Interactive transaction garante atomicidade total, incluindo o lookup do providerProfile
+    await prisma.$transaction(async (tx) => {
+      await tx.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
+      await tx.pushDevice.updateMany({ where: { userId }, data: { isActive: false, invalidAt: new Date() } });
+      await tx.notificationPreference.deleteMany({ where: { userId } });
+      await tx.userNotification.deleteMany({ where: { userId } });
+      await tx.passwordResetToken.deleteMany({ where: { userId } });
+      await tx.emailVerificationToken.deleteMany({ where: { userId } });
+      await tx.twoFactorLoginChallenge.deleteMany({ where: { userId } });
+      await tx.twoFactorBackupCode.deleteMany({ where: { userId } });
+      await tx.customerPaymentMethod.deleteMany({ where: { userId } });
+      await tx.payment.updateMany({
+        where: { booking: { clientId: userId } },
+        data: { mpPaymentId: null, mpCardToken: null, mpChargeId: null, failureReason: null }
+      });
+      await tx.clientAnamnesis.deleteMany({ where: { clientId: userId } });
+      await tx.bookingMessage.updateMany({ where: { senderId: userId }, data: { content: "[Mensagem removida]", senderId: null } });
+      await tx.completionEvidence.deleteMany({ where: { userId } });
+      await tx.supportTicket.updateMany({ where: { userId }, data: { subject: "Conta removida", message: "Conteudo removido por solicitacao do usuario." } });
+      await tx.follow.deleteMany({ where: { OR: [{ followerId: userId }, { followingId: userId }] } });
+      await tx.feedPost.deleteMany({ where: { userId } });
+      await tx.review.updateMany({ where: { userId }, data: { comment: null } });
+      await tx.providerStudentAssessment.deleteMany({ where: { clientId: userId } });
+      await tx.consultancyRequest.updateMany({ where: { clientId: userId }, data: { trainingNeedText: null, limitationText: null, extraInfoText: null, providerResponseText: null } });
+      await tx.consultancyContract.updateMany({ where: { clientId: userId }, data: { mpPaymentId: null, mpRefundId: null } });
+      await tx.booking.updateMany({ where: { clientId: userId }, data: { notes: null, sessionLocation: null } });
+      await tx.trainingPlanCompletion.updateMany({ where: { clientId: userId }, data: { notes: null } });
+      await tx.userAchievement.deleteMany({ where: { userId } });
+      await tx.userXpTransaction.deleteMany({ where: { userId } });
+      await tx.userStreak.deleteMany({ where: { userId } });
+      await tx.rankingSnapshot.deleteMany({ where: { userId } });
+
+      // Lookup dentro da transação garante atomicidade do delete do provider
+      const provProfile = await tx.providerProfile.findUnique({ where: { userId }, select: { id: true } });
+      if (provProfile) {
+        await tx.providerBankAccount.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.availability.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.providerCalendarEvent.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.providerManualBlock.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.onlineConsultancySetting.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.exercise.deleteMany({ where: { providerId: provProfile.id, isPrebuilt: false } });
+        await tx.trainingPlan.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.financialIncome.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.financialExpense.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.financialStudent.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.financialGoal.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.financialClassSession.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.providerStudentAssessment.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.providerProfile.updateMany({
+          where: { userId },
+          data: {
+            displayName: "Personal removido", bio: "", photoUrl: null, presentationVideoUrl: null,
+            latitude: null, longitude: null, fixedLocations: Prisma.DbNull, excludedLocations: Prisma.DbNull,
+            crefNumber: null, crefDocumentUrl: null, credentialDocuments: Prisma.DbNull
+          }
+        });
+      }
+
+      await tx.user.update({
         where: { id: userId },
-        data: {
-          name: "Usuário removido",
-          email: anonymizedEmail,
-          phone: null,
-          photoUrl: null,
-          recoveryEmailEncrypted: null,
-          password: ""
-        }
-      })
-    ]);
+        data: { name: "Usuário removido", email: anonymizedEmail, phone: null, photoUrl: null, recoveryEmailEncrypted: null, password: newPassword }
+      });
+    }, { timeout: 30_000 }); // 30s timeout para contas com muito histórico
   }
 
   async exportMyData(userId: string) {
@@ -670,7 +717,10 @@ export class UserService {
             priceCents: true,
             currency: true,
             notes: true,
-            createdAt: true
+            createdAt: true,
+            payment: {
+              select: { method: true, status: true, amountCents: true, authorizedAt: true, capturedAt: true, refundedAt: true }
+            }
           },
           orderBy: { scheduledAt: "desc" }
         },
@@ -687,11 +737,63 @@ export class UserService {
           }
         },
         anamnesisProfile: {
-          select: { status: true, completedAt: true, createdAt: true }
+          select: { answers: true, status: true, completedAt: true, createdAt: true }
+        },
+        consultancyContracts: {
+          select: {
+            id: true,
+            status: true,
+            paymentMethod: true,
+            paymentStatus: true,
+            paymentAmountCents: true,
+            deliveryDeadlineAt: true,
+            deliveredAt: true,
+            refundedAt: true,
+            createdAt: true,
+            trainingPlans: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                createdAt: true,
+                exercises: {
+                  select: { id: true, name: true, repetitionsSets: true, load: true, sortOrder: true }
+                }
+              }
+            }
+          },
+          orderBy: { createdAt: "desc" },
+          take: 200,
+        },
+        trainingPlanCompletions: {
+          select: { id: true, notes: true, completedAt: true, createdAt: true },
+          orderBy: { completedAt: "desc" },
+          take: 200,
         },
         notificationPreferences: {
           select: { type: true, enabled: true }
-        }
+        },
+        chatMessages: {
+          select: { id: true, bookingId: true, senderId: true, content: true, isSystem: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take: 500,
+        },
+        favorites: {
+          select: { id: true, providerId: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+        },
+        following: {
+          select: { id: true, followingId: true, createdAt: true },
+        },
+        feedPosts: {
+          select: { id: true, type: true, imageUrl: true, caption: true, isAutomatic: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take: 200,
+        },
+        unlockedAchievements: {
+          select: { id: true, achievement: { select: { key: true, name: true } }, unlockedAt: true },
+          orderBy: { unlockedAt: "desc" },
+        },
       }
     });
 
@@ -717,8 +819,15 @@ export class UserService {
       bookings: user.bookings,
       reviews: user.reviews,
       consultancyRequests: user.consultancyRequestsSent,
+      consultancyContracts: user.consultancyContracts,
+      trainingPlanCompletions: user.trainingPlanCompletions,
       anamnesis: user.anamnesisProfile,
-      notificationPreferences: user.notificationPreferences
+      notificationPreferences: user.notificationPreferences,
+      chatMessages: user.chatMessages,
+      favorites: user.favorites,
+      following: user.following,
+      feedPosts: user.feedPosts,
+      unlockedAchievements: user.unlockedAchievements,
     };
   }
 
