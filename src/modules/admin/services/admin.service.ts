@@ -29,6 +29,7 @@ type DataRetentionRunsInput = {
 type RunDataRetentionInput = {
   dryRun?: boolean;
   triggeredBy?: string;
+  legalHoldUserIds?: string[];
 };
 
 type ChatAuditSessionsInput = {
@@ -341,20 +342,20 @@ export class AdminService {
             expiresAt: { gt: now }
           },
           distinct: ["userId"],
-          select: { userId: true }
+          select: { userId: true },
+          take: 100000,
         }),
         prisma.user.findMany({
-          where: {
-            createdAt: {
-              gte: start,
-              lt: end
-            }
-          },
-          select: { createdAt: true }
+          where: { createdAt: { gte: start, lt: end } },
+          select: { createdAt: true },
+          take: 10000,
         }),
         prisma.booking.groupBy({
           by: ["providerId"],
-          _count: { _all: true }
+          where: { scheduledAt: { gte: start, lt: end } },
+          _count: { _all: true },
+          orderBy: { _count: { providerId: "desc" } },
+          take: 5000,
         })
       ]);
 
@@ -365,7 +366,8 @@ export class AdminService {
           select: {
             id: true,
             fixedLocations: true
-          }
+          },
+          take: 2000,
         })
       : [];
     const providersById = new Map(providers.map((provider) => [provider.id, provider]));
@@ -503,10 +505,15 @@ export class AdminService {
       input.triggeredBy?.trim() ||
       `ADMIN_MANUAL:${admin.email.toLowerCase()}`;
 
+    // input.legalHoldUserIds tem precedência sobre a env var
+    const legalHoldUserIds = (input.legalHoldUserIds?.length ?? 0) > 0
+      ? input.legalHoldUserIds!
+      : this.parseLegalHoldUserIds();
+
     const result = await this.dataRetentionService.run({
       dryRun,
       triggeredBy,
-      legalHoldUserIds: this.parseLegalHoldUserIds()
+      legalHoldUserIds,
     });
 
     return result;
@@ -903,5 +910,204 @@ export class AdminService {
     );
 
     return updated;
+  }
+
+  // ─── Lookup por CPF ───────────────────────────────────────────────────────
+
+  private normalizeDocument(doc: string) {
+    return doc.replace(/\D/g, "");
+  }
+
+  private maskDocument(doc: string | null | undefined): string {
+    if (!doc) return "***";
+    const d = doc.replace(/\D/g, "");
+    return d.length >= 4 ? `***.***.***-${d.slice(-2)}` : "***";
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private userByDoc(doc: string, extraSelect: Record<string, unknown> = {}) {
+    return (prisma.user.findFirst as any)({
+      where: { document: doc },
+      select: { id: true, name: true, email: true, document: true, ...extraSelect }
+    }) as Promise<any>;
+  }
+
+  async lookupCrefByDocument(adminId: string, providerDocument: string) {
+    const doc = this.normalizeDocument(providerDocument);
+    console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupCref document=${doc}`);
+    const user = await this.userByDoc(doc, {
+      providerProfile: {
+        select: {
+          id: true,
+          crefNumber: true,
+          crefDocumentUrl: true,
+          credentialDocuments: true,
+          crefValidationStatus: true,
+          crefValidatedAt: true,
+          crefRejectionReason: true,
+          crefReviewedAt: true
+        }
+      }
+    });
+
+    if (!user || !user.providerProfile) return null;
+    return {
+      user: { id: user.id, name: user.name, email: user.email, documentMasked: this.maskDocument(user.document) },
+      cref: user.providerProfile
+    };
+  }
+
+  async lookupChatsByDocuments(
+    adminId: string,
+    providerDocument: string,
+    clientDocument: string
+  ) {
+    const provDoc = this.normalizeDocument(providerDocument);
+    const cliDoc = this.normalizeDocument(clientDocument);
+    console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupChats provDoc=${provDoc} cliDoc=${cliDoc}`);
+
+    const [provider, client] = await Promise.all([
+      this.userByDoc(provDoc, { providerProfile: { select: { id: true } } }),
+      this.userByDoc(cliDoc)
+    ]);
+
+    if (!provider?.providerProfile || !client) return { provider: null, client: null, items: [] };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bookings = await (prisma.booking.findMany as any)({
+      where: {
+        clientId: client.id,
+        providerId: provider.providerProfile.id,
+        messages: { some: {} }
+      },
+      select: {
+        id: true,
+        scheduledAt: true,
+        sessionLocation: true,
+        messages: { orderBy: { createdAt: "asc" }, take: 1, select: { createdAt: true } },
+        _count: { select: { messages: true } }
+      },
+      orderBy: { scheduledAt: "desc" },
+      take: 100,
+    }) as Array<any>;
+
+    return {
+      provider: { id: provider.id, name: provider.name, email: provider.email, documentMasked: this.maskDocument(provider.document) },
+      client: { id: client.id, name: client.name, email: client.email, documentMasked: this.maskDocument(client.document) },
+      items: bookings.map((b: any) => ({
+        bookingId: b.id,
+        scheduledAt: b.scheduledAt.toISOString(),
+        sessionLocation: b.sessionLocation,
+        chatStartedAt: b.messages[0]?.createdAt.toISOString() ?? b.scheduledAt.toISOString(),
+        messageCount: b._count.messages
+      }))
+    };
+  }
+
+  async lookupBookingsByDocuments(
+    adminId: string,
+    providerDocument: string,
+    clientDocument: string,
+    date?: string
+  ) {
+    const provDoc = this.normalizeDocument(providerDocument);
+    const cliDoc = this.normalizeDocument(clientDocument);
+    console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupBookings provDoc=${provDoc} cliDoc=${cliDoc} date=${date ?? "all"}`);
+
+    const [provider, client] = await Promise.all([
+      this.userByDoc(provDoc, { providerProfile: { select: { id: true } } }),
+      this.userByDoc(cliDoc)
+    ]);
+
+    if (!provider?.providerProfile || !client) {
+      return { provider: null, client: null, items: [] };
+    }
+
+    const dateFilter: Prisma.BookingWhereInput = {};
+    if (date) {
+      const start = new Date(`${date}T00:00:00.000Z`);
+      const end = new Date(`${date}T23:59:59.999Z`);
+      dateFilter.scheduledAt = { gte: start, lte: end };
+    }
+
+    const bookings = await prisma.booking.findMany({
+      where: { clientId: client.id, providerId: provider.providerProfile.id, ...dateFilter },
+      select: {
+        id: true,
+        scheduledAt: true,
+        sessionLocation: true,
+        status: true,
+        priceCents: true,
+        currency: true,
+        payment: { select: { method: true, status: true, amountCents: true } }
+      },
+      orderBy: { scheduledAt: "desc" },
+      take: 500,
+    });
+
+    return {
+      provider: { id: provider.id, name: provider.name, documentMasked: this.maskDocument(provider.document) },
+      client: { id: client.id, name: client.name, documentMasked: this.maskDocument(client.document) },
+      items: bookings.map((b) => ({
+        bookingId: b.id,
+        scheduledAt: b.scheduledAt.toISOString(),
+        sessionLocation: b.sessionLocation,
+        status: b.status,
+        priceCents: b.priceCents,
+        currency: b.currency,
+        paymentMethod: b.payment?.method ?? null,
+        paymentStatus: b.payment?.status ?? null
+      }))
+    };
+  }
+
+  async lookupBookingDetail(adminId: string, bookingId: string) {
+    console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupBookingDetail bookingId=${bookingId}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const booking = await (prisma.booking.findUnique as any)({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        scheduledAt: true,
+        sessionLocation: true,
+        notes: true,
+        status: true,
+        priceCents: true,
+        currency: true,
+        attendanceCodeValidatedAt: true,
+        clientConfirmedAt: true,
+        providerConfirmedAt: true,
+        completedAt: true,
+        createdAt: true,
+        client: {
+          select: { id: true, name: true, email: true, document: true }
+        },
+        provider: {
+          select: {
+            id: true,
+            displayName: true,
+            crefNumber: true,
+            user: { select: { id: true, email: true, document: true } }
+          }
+        },
+        category: { select: { name: true } },
+        payment: {
+          select: {
+            method: true,
+            status: true,
+            amountCents: true,
+            currency: true,
+            authorizedAt: true,
+            capturedAt: true,
+            canceledAt: true,
+            refundedAt: true,
+            failureReason: true
+          }
+        }
+      }
+    });
+
+    if (!booking) throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
+    return booking;
   }
 }

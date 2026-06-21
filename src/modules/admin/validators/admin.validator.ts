@@ -47,8 +47,8 @@ export const adminSupportReplySchema = z.object({
 
 export const adminChatAuditSessionsQuerySchema = z.object({
   query: z.object({
-    clientEmail: z.string().trim().email().optional(),
-    providerEmail: z.string().trim().email().optional(),
+    clientEmail: z.string().trim().email().max(254).optional(),
+    providerEmail: z.string().trim().email().max(254).optional(),
     startedFrom: z.string().trim().min(10).max(40).optional(),
     startedTo: z.string().trim().min(10).max(40).optional(),
     take: z.coerce.number().int().min(1).max(50).optional(),
@@ -75,6 +75,41 @@ export const adminDataRetentionRunsQuerySchema = z.object({
 export const adminRunDataRetentionSchema = z.object({
   body: z.object({
     dryRun: z.boolean().optional(),
-    triggeredBy: z.string().trim().min(3).max(120).optional()
+    triggeredBy: z.string().trim().min(3).max(120).optional(),
+    legalHoldUserIds: z.array(z.string().uuid()).max(500).optional()
   })
+});
+
+const documentSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{11}$|^\d{3}\.\d{3}\.\d{3}-\d{2}$/, "CPF inválido.");
+
+export const adminLookupCrefSchema = z.object({
+  query: z.object({ providerDocument: documentSchema })
+});
+
+export const adminLookupChatsSchema = z.object({
+  query: z.object({
+    providerDocument: documentSchema,
+    clientDocument: documentSchema
+  })
+});
+
+export const adminLookupBookingsSchema = z.object({
+  query: z.object({
+    providerDocument: documentSchema,
+    clientDocument: documentSchema,
+    date: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).refine(
+      (d) => {
+        const date = new Date(`${d}T12:00:00Z`);
+        return !isNaN(date.getTime()) && date.toISOString().slice(0, 10) === d;
+      },
+      { message: "Data invalida (ex: 2024-02-30 nao existe)" }
+    ).optional()
+  })
+});
+
+export const adminLookupBookingDetailSchema = z.object({
+  params: z.object({ bookingId: z.string().uuid() })
 });

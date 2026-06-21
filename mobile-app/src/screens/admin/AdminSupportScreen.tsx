@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
+import { Alert, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { adminApi, AdminSupportTicket } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
+import { useMvTheme } from "../../theme/MvThemeContext";
 import { AdminScaffold } from "./AdminScaffold";
 import { formatBRDateTime } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
@@ -15,6 +17,7 @@ type SupportStatus = "OPEN" | "ANSWERED";
 
 export function AdminSupportScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
+  const { theme } = useMvTheme();
   const [loading, setLoading] = useState(false);
   const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
   const [status, setStatus] = useState<SupportStatus>("OPEN");
@@ -41,9 +44,11 @@ export function AdminSupportScreen({ navigation }: Props) {
     }
   }, [navigation, runWithAuth, showToast, status]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
+    setAnsweringId(null);
+    setResponseMessage("");
     void load();
-  }, [load]);
+  }, [load]));
 
   async function submitReply(ticketId: string) {
     const message = responseMessage.trim();
@@ -78,12 +83,13 @@ export function AdminSupportScreen({ navigation }: Props) {
   return (
     <AdminScaffold title="Suporte ao usuário" navigation={navigation} currentScreen="AdminSupport">
       <ScrollView
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={loading}
             onRefresh={() => void load()}
-            tintColor="#4CAF50"
-            colors={["#4CAF50"]}
+            tintColor={theme.primary}
+            colors={[theme.primary]}
           />
         }
         contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 10 }}
@@ -93,13 +99,24 @@ export function AdminSupportScreen({ navigation }: Props) {
             <TouchableOpacity
               key={option}
               onPress={() => {
-                setStatus(option);
-                setAnsweringId(null);
-                setResponseMessage("");
+                if (responseMessage.trim()) {
+                  Alert.alert(
+                    "Descartar resposta?",
+                    "Você tem uma resposta em andamento. Deseja descartá-la?",
+                    [
+                      { text: "Continuar editando", style: "cancel" },
+                      { text: "Descartar", style: "destructive", onPress: () => { setStatus(option); setAnsweringId(null); setResponseMessage(""); } },
+                    ]
+                  );
+                } else {
+                  setStatus(option);
+                  setAnsweringId(null);
+                  setResponseMessage("");
+                }
               }}
               style={{
                 borderWidth: 1,
-                borderColor: status === option ? "rgba(76,175,80,0.8)" : "rgba(127,127,127,0.35)",
+                borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
                 borderRadius: 20,
                 paddingHorizontal: 12,
                 paddingVertical: 8
@@ -122,9 +139,9 @@ export function AdminSupportScreen({ navigation }: Props) {
           return (
             <MvCard key={ticket.id}>
               <View style={{ gap: 8 }}>
-                <MvText variant="semi2">{ticket.subject?.trim() || "Solicitacao sem assunto"}</MvText>
-                <MvText variant="body4" color="secondary">{ticket.user.name} - {ticket.user.email}</MvText>
-                <MvText variant="body3">{ticket.message}</MvText>
+                <MvText variant="semi2">{ticket.subject?.trim() || "Solicitação sem assunto"}</MvText>
+                <MvText variant="body4" color="secondary">{ticket.user.name ?? "Usuário"} - {ticket.user.email ?? "—"}</MvText>
+                <MvText variant="body3" numberOfLines={4}>{ticket.message ?? "Mensagem não disponível"}</MvText>
                 <MvText variant="caption" color="secondary">
                   Aberto em: {formatBRDateTime(ticket.createdAt)}
                 </MvText>
@@ -145,7 +162,8 @@ export function AdminSupportScreen({ navigation }: Props) {
                         value={responseMessage}
                         onChangeText={setResponseMessage}
                         placeholder="Digite a devolutiva para o usuário (máximo 300 caracteres)"
-                        style={{ textAlignVertical: "top" } as any}
+                        editable={!isSubmittingThis}
+                        style={{ textAlignVertical: "top", opacity: isSubmittingThis ? 0.6 : 1 } as any}
                       />
                       <MvText variant="caption" color="secondary">
                         {responseMessage.length}/300

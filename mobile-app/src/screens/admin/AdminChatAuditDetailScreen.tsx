@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, RefreshControl, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { MvButton, MvCard, MvText } from "../../components/mv";
 import {
@@ -9,6 +10,7 @@ import {
 } from "../../services/api/client";
 import { AdminStackParamList } from "../../navigation/route-types";
 import { useAppState } from "../../state/AppState";
+import { useMvTheme } from "../../theme/MvThemeContext";
 import { formatBRDateTime, formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { AdminScaffold } from "./AdminScaffold";
@@ -19,11 +21,12 @@ const PAGE_SIZE = 80;
 
 function messageAuthor(item: AdminChatAuditMessage) {
   if (item.isSystem) return "Sistema";
-  return item.senderName ?? "Usuario";
+  return item.senderName ?? "Usuário desconhecido";
 }
 
 export function AdminChatAuditDetailScreen({ navigation, route }: Props) {
   const { runWithAuth, showToast } = useAppState();
+  const { theme } = useMvTheme();
   const bookingId = route.params.bookingId;
 
   const [session, setSession] = useState<AdminChatAuditSessionSummary | null>(null);
@@ -82,7 +85,7 @@ export function AdminChatAuditDetailScreen({ navigation, route }: Props) {
 
   const participants = useMemo(() => {
     if (!session) return null;
-    return `${session.client.name} x ${session.provider.name}`;
+    return `${session.client.name ?? "Cliente"} x ${session.provider.name ?? "Profissional"}`;
   }, [session]);
 
   return (
@@ -95,8 +98,8 @@ export function AdminChatAuditDetailScreen({ navigation, route }: Props) {
           <RefreshControl
             refreshing={loading}
             onRefresh={() => void load(false)}
-            tintColor="#4CAF50"
-            colors={["#4CAF50"]}
+            tintColor={theme.primary}
+            colors={[theme.primary]}
           />
         }
         ListHeaderComponent={
@@ -116,28 +119,28 @@ export function AdminChatAuditDetailScreen({ navigation, route }: Props) {
                 <View style={{ gap: 5 }}>
                   <MvText variant="semi2">{participants}</MvText>
                   <MvText variant="body4" color="secondary">
-                    Cliente: {session.client.email}
+                    Cliente: {session.client.email ?? "—"}
                   </MvText>
                   <MvText variant="body4" color="secondary">
-                    Prestador: {session.provider.email}
+                    Profissional: {session.provider.email ?? "—"}
                   </MvText>
                   <MvText variant="body4" color="secondary">
-                    Inicio da conversa: {formatBRDateTime(session.chatStartedAt)}
+                    Início da conversa: {formatBRDateTime(session.chatStartedAt)}
                   </MvText>
                   <MvText variant="body4" color="secondary">
-                    Ultima mensagem: {formatBRDateTime(session.chatLastMessageAt)}
+                    Última mensagem: {formatBRDateTime(session.chatLastMessageAt)}
                   </MvText>
                   <MvText variant="body4" color="secondary">
                     Agendamento: {formatBRDateTime(session.bookingScheduledAt)}
                   </MvText>
                   <MvText variant="body4" color="secondary">
-                    Local: {session.sessionLocation?.trim() || "Nao informado"}
+                    Local: {session.sessionLocation?.trim() || "Não informado"}
                   </MvText>
                   <MvText variant="body4" color="secondary">
                     Valor: {formatCurrencyBRL(session.priceCents / 100)} {session.currency}
                   </MvText>
                   <MvText variant="body4" color="secondary">
-                    Servico: {session.serviceType}
+                    Serviço: {session.serviceType ?? "Não informado"}
                   </MvText>
                   <MvText variant="caption" color="secondary">
                     Total de mensagens: {session.messageCount}
@@ -161,15 +164,18 @@ export function AdminChatAuditDetailScreen({ navigation, route }: Props) {
             style={{
               marginLeft: item.isSystem ? 0 : item.senderEmail === session?.provider.email ? 28 : 0,
               marginRight: item.isSystem ? 0 : item.senderEmail === session?.client.email ? 28 : 0,
-              borderColor: item.isSystem ? "rgba(76,175,80,0.35)" : undefined
+              borderColor: item.isSystem ? theme.primarySubtleBorder : undefined
             }}
           >
             <View style={{ gap: 4 }}>
-              <MvText variant="semi3">{messageAuthor(item)}</MvText>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                {item.isSystem && <Ionicons name="notifications-outline" size={13} color="#24E66D" />}
+                <MvText variant="semi3">{messageAuthor(item)}</MvText>
+              </View>
               <MvText variant="body4" color="secondary">
-                {item.senderEmail ?? (item.isSystem ? "Mensagem do sistema" : "Sem e-mail")}
+                {item.senderEmail ?? (item.isSystem ? "Notificação automática do sistema" : "Sem e-mail")}
               </MvText>
-              <MvText variant="body3">{item.content}</MvText>
+              <MvText variant="body3">{item.content ?? "Mensagem vazia"}</MvText>
               <MvText variant="caption" color="secondary">
                 {formatBRDateTime(item.createdAt)}
               </MvText>

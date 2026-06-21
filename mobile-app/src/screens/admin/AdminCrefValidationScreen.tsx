@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   Image,
   Linking,
@@ -45,11 +46,13 @@ function DocViewerModal({
   label,
   visible,
   onClose,
+  onError,
 }: {
   uri: string;
   label: string;
   visible: boolean;
   onClose: () => void;
+  onError?: (msg: string) => void;
 }) {
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
@@ -60,7 +63,7 @@ function DocViewerModal({
       const resolved = resolveDocUri(uri);
       if (resolved) await Linking.openURL(resolved);
     } catch {
-      // silent
+      onError?.("Não foi possível abrir o documento. Verifique sua conexão.");
     }
   }
 
@@ -93,6 +96,7 @@ function DocViewerModal({
             source={{ uri }}
             style={{ flex: 1 }}
             resizeMode="contain"
+            onError={() => onError?.("Falha ao carregar a imagem. Tente abrir externamente.")}
           />
         ) : (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 24 }}>
@@ -110,14 +114,14 @@ function DocViewerModal({
                 alignItems: "center",
                 gap: 8,
                 borderWidth: 1,
-                borderColor: "rgba(76,175,80,0.6)",
+                borderColor: "rgba(255,255,255,0.3)",
                 borderRadius: 10,
                 paddingHorizontal: 18,
                 paddingVertical: 10,
               }}
             >
-              <Ionicons name="open-outline" size={18} color="#4CAF50" />
-              <MvText variant="semi3" style={{ color: "#4CAF50" }}>Abrir externamente</MvText>
+              <Ionicons name="open-outline" size={18} color="#fff" />
+              <MvText variant="semi3" style={{ color: "#fff" }}>Abrir externamente</MvText>
             </TouchableOpacity>
           </View>
         )}
@@ -128,6 +132,7 @@ function DocViewerModal({
 
 function DocButtons({ item }: { item: AdminCrefQueueItem }) {
   const { theme } = useMvTheme();
+  const { showToast } = useAppState();
   const [modalUri, setModalUri] = useState<string | null>(null);
   const [modalLabel, setModalLabel] = useState("");
 
@@ -156,18 +161,18 @@ function DocButtons({ item }: { item: AdminCrefQueueItem }) {
               justifyContent: "center",
               gap: 6,
               borderWidth: 1,
-              borderColor: "rgba(76,175,80,0.45)",
+              borderColor: theme.primarySubtleBorder,
               borderRadius: 8,
               paddingVertical: 9,
-              backgroundColor: "rgba(76,175,80,0.06)",
+              backgroundColor: theme.primarySubtle,
             }}
           >
             {isImageUri(frontUri) ? (
-              <Ionicons name="image-outline" size={16} color="#4CAF50" />
+              <Ionicons name="image-outline" size={16} color={theme.primary} />
             ) : (
-              <Ionicons name="document-outline" size={16} color="#4CAF50" />
+              <Ionicons name="document-outline" size={16} color={theme.primary} />
             )}
-            <MvText variant="caption" style={{ color: "#4CAF50" }}>Frente</MvText>
+            <MvText variant="caption" style={{ color: theme.primary }}>Frente</MvText>
           </TouchableOpacity>
         ) : (
           <View style={{
@@ -194,18 +199,18 @@ function DocButtons({ item }: { item: AdminCrefQueueItem }) {
               justifyContent: "center",
               gap: 6,
               borderWidth: 1,
-              borderColor: "rgba(76,175,80,0.45)",
+              borderColor: theme.primarySubtleBorder,
               borderRadius: 8,
               paddingVertical: 9,
-              backgroundColor: "rgba(76,175,80,0.06)",
+              backgroundColor: theme.primarySubtle,
             }}
           >
             {isImageUri(backUri) ? (
-              <Ionicons name="image-outline" size={16} color="#4CAF50" />
+              <Ionicons name="image-outline" size={16} color={theme.primary} />
             ) : (
-              <Ionicons name="document-outline" size={16} color="#4CAF50" />
+              <Ionicons name="document-outline" size={16} color={theme.primary} />
             )}
-            <MvText variant="caption" style={{ color: "#4CAF50" }}>Verso</MvText>
+            <MvText variant="caption" style={{ color: theme.primary }}>Verso</MvText>
           </TouchableOpacity>
         ) : (
           <View style={{
@@ -229,6 +234,7 @@ function DocButtons({ item }: { item: AdminCrefQueueItem }) {
           label={modalLabel}
           visible={true}
           onClose={() => setModalUri(null)}
+          onError={(msg) => showToast(msg, "error")}
         />
       ) : null}
     </>
@@ -236,6 +242,7 @@ function DocButtons({ item }: { item: AdminCrefQueueItem }) {
 }
 
 export function AdminCrefValidationScreen({ navigation }: Props) {
+  const { theme } = useMvTheme();
   const { runWithAuth, showToast } = useAppState();
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<AdminCrefQueueItem[]>([]);
@@ -263,9 +270,11 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
     }
   }, [navigation, runWithAuth, showToast, status]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
+    setRejectingId(null);
+    setJustification("");
     void load();
-  }, [load]);
+  }, [load]));
 
   async function approve(providerId: string) {
     try {
@@ -328,12 +337,13 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
       currentScreen="AdminCrefValidation"
     >
       <ScrollView
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={loading}
             onRefresh={() => void load()}
-            tintColor="#4CAF50"
-            colors={["#4CAF50"]}
+            tintColor={theme.primary}
+            colors={[theme.primary]}
           />
         }
         contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 10 }}
@@ -349,7 +359,7 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
               }}
               style={{
                 borderWidth: 1,
-                borderColor: status === option ? "rgba(76,175,80,0.8)" : "rgba(127,127,127,0.35)",
+                borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
                 borderRadius: 20,
                 paddingHorizontal: 12,
                 paddingVertical: 8
@@ -368,7 +378,7 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
           ))}
         </View>
 
-        {items.length === 0 ? (
+        {items.length === 0 && !loading ? (
           <MvCard>
             <MvText variant="body3">Nenhum CREF encontrado nessa fila.</MvText>
           </MvCard>
@@ -382,9 +392,9 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
           return (
             <MvCard key={item.providerId}>
               <View style={{ gap: 8 }}>
-                <MvText variant="semi2">{item.user.name}</MvText>
-                <MvText variant="body4" color="secondary">{item.user.email}</MvText>
-                <MvText variant="body4">CREF: {item.crefNumber ?? "-"}</MvText>
+                <MvText variant="semi2">{item.user.name ?? "Profissional desconhecido"}</MvText>
+                <MvText variant="body4" color="secondary">{item.user.email ?? "—"}</MvText>
+                <MvText variant="body4">CREF: {item.crefNumber ?? "—"}</MvText>
                 <MvText variant="body4">
                   Documentos enviados: {docCount}{docCount > 0 ? " (frente e verso abaixo)" : ""}
                 </MvText>
@@ -412,8 +422,14 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
                     <MvButton
                       label="Aprovar CREF"
                       loading={isSubmittingThis}
+                      disabled={docCount === 0}
                       onPress={() => void approve(item.providerId)}
                     />
+                    {docCount === 0 && (
+                      <MvText variant="caption" color="secondary" style={{ textAlign: "center" }}>
+                        Nenhum documento enviado — aguarde envio antes de aprovar.
+                      </MvText>
+                    )}
                     {isRejectingThis ? (
                       <View style={{ gap: 8 }}>
                         <MvInput

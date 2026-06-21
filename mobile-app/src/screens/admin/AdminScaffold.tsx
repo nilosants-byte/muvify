@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { ReactNode, useMemo, useState } from "react";
-import { Pressable, StatusBar, TouchableOpacity, View } from "react-native";
+import React, { ReactNode, useCallback, useMemo, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { Alert, Pressable, StatusBar, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MvText } from "../../components/mv";
 import type { AdminStackParamList } from "../../navigation/route-types";
@@ -25,9 +26,13 @@ export function AdminScaffold({
   children
 }: AdminScaffoldProps) {
   const insets = useSafeAreaInsets();
-  const { signOut, setThemePreference } = useAppState();
+  const { signOut, setThemePreference, user } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  useFocusEffect(useCallback(() => {
+    return () => setMenuOpen(false);
+  }, []));
 
   const menuItems = useMemo(
     () => [
@@ -39,7 +44,7 @@ export function AdminScaffold({
       },
       {
         key: "AdminCrefValidation" as const,
-        label: "Validacao de CREF",
+        label: "Validação de CREF",
         icon: "shield-checkmark-outline" as const,
         action: () => navigation.navigate("AdminCrefValidation")
       },
@@ -56,6 +61,18 @@ export function AdminScaffold({
         action: () => navigation.navigate("AdminChatAudit")
       },
       {
+        key: "AdminConsultas" as const,
+        label: "Consultas",
+        icon: "search-outline" as const,
+        action: () => navigation.navigate("AdminConsultas")
+      },
+      {
+        key: "AdminExercises" as const,
+        label: "Banco de exercícios",
+        icon: "barbell-outline" as const,
+        action: () => navigation.navigate("AdminExercises")
+      },
+      {
         key: "toggleTheme" as const,
         label: isDark ? "Modo claro" : "Modo escuro",
         icon: (isDark ? "sunny-outline" : "moon-outline") as keyof typeof Ionicons.glyphMap,
@@ -70,7 +87,14 @@ export function AdminScaffold({
         icon: "log-out-outline" as const,
         danger: true,
         action: () => {
-          void signOut();
+          Alert.alert(
+            "Sair",
+            "Deseja encerrar a sessão de administrador?",
+            [
+              { text: "Cancelar", style: "cancel" },
+              { text: "Sair", style: "destructive", onPress: () => void signOut() },
+            ]
+          );
         }
       }
     ],
@@ -99,6 +123,8 @@ export function AdminScaffold({
         <TouchableOpacity
           testID="button.admin.menu-toggle"
           onPress={() => setMenuOpen((current) => !current)}
+          accessibilityRole="button"
+          accessibilityLabel={menuOpen ? "Fechar menu" : "Abrir menu de navegação"}
           style={{
             width: 36,
             height: 36,
@@ -110,7 +136,12 @@ export function AdminScaffold({
         >
           <Ionicons name="menu-outline" size={20} color={theme.text2} />
         </TouchableOpacity>
-        <MvText variant="h4">{title}</MvText>
+        <View style={{ flex: 1, alignItems: "center" }}>
+          <MvText variant="h1">{title}</MvText>
+          {user?.email ? (
+            <MvText variant="caption" color="secondary" numberOfLines={1}>{user.email}</MvText>
+          ) : null}
+        </View>
         <View style={{ width: 36, height: 36 }} />
       </View>
 
@@ -133,7 +164,7 @@ export function AdminScaffold({
               borderColor: theme.border,
               backgroundColor: theme.mode === "dark" ? "#0d1a0d" : "#ffffff",
               overflow: "hidden",
-              shadowColor: "#000",
+              shadowColor: theme.textOnPrimary,
               shadowOffset: { width: 0, height: 8 },
               shadowOpacity: 0.25,
               shadowRadius: 16,
@@ -145,7 +176,9 @@ export function AdminScaffold({
                 (item.key === "AdminHome" ||
                   item.key === "AdminCrefValidation" ||
                   item.key === "AdminSupport" ||
-                  item.key === "AdminChatAudit") &&
+                  item.key === "AdminChatAudit" ||
+                  item.key === "AdminConsultas" ||
+                  item.key === "AdminExercises") &&
                 item.key === currentScreen;
               return (
                 <TouchableOpacity
@@ -162,11 +195,7 @@ export function AdminScaffold({
                     flexDirection: "row",
                     alignItems: "center",
                     gap: 12,
-                    backgroundColor: active
-                      ? theme.mode === "dark"
-                        ? "rgba(76,175,80,0.12)"
-                        : "rgba(76,175,80,0.1)"
-                      : "transparent"
+                    backgroundColor: active ? theme.primarySubtle : "transparent"
                   }}
                 >
                   <Ionicons

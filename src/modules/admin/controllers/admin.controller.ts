@@ -1,9 +1,12 @@
 import { Request, Response } from "express";
+import { StatusCodes } from "http-status-codes";
 import { AdminService } from "../services/admin.service";
 import { ProviderService } from "../../providers/services/provider.service";
+import { ExerciseService } from "../../exercises/services/exercise.service";
 
 const adminService = new AdminService();
 const providerService = new ProviderService();
+const exerciseService = new ExerciseService();
 
 export class AdminController {
   async dashboardOverview(request: Request, response: Response) {
@@ -89,5 +92,68 @@ export class AdminController {
       cursor: request.query.cursor ? String(request.query.cursor) : undefined
     });
     return response.json(payload);
+  }
+
+  async lookupCref(request: Request, response: Response) {
+    const payload = await adminService.lookupCrefByDocument(
+      request.user!.id,
+      String(request.query.providerDocument)
+    );
+    return response.json(payload);
+  }
+
+  async lookupChats(request: Request, response: Response) {
+    const payload = await adminService.lookupChatsByDocuments(
+      request.user!.id,
+      String(request.query.providerDocument),
+      String(request.query.clientDocument)
+    );
+    return response.json(payload);
+  }
+
+  async lookupBookings(request: Request, response: Response) {
+    const payload = await adminService.lookupBookingsByDocuments(
+      request.user!.id,
+      String(request.query.providerDocument),
+      String(request.query.clientDocument),
+      request.query.date ? String(request.query.date) : undefined
+    );
+    return response.json(payload);
+  }
+
+  async lookupBookingDetail(request: Request, response: Response) {
+    const payload = await adminService.lookupBookingDetail(
+      request.user!.id,
+      request.params.bookingId
+    );
+    return response.json(payload);
+  }
+
+  async listPrebuiltExercises(request: Request, response: Response) {
+    const { category, q } = request.query as Record<string, string | undefined>;
+    const exercises = await exerciseService.listPrebuilt(category, q);
+    return response.json(exercises);
+  }
+
+  async createPrebuiltExercise(request: Request, response: Response) {
+    const { name, category, description, defaultRepetitionsSets, defaultRestLabel, mediaUrl, mediaType } = request.body;
+    const exercise = await exerciseService.createPrebuilt({
+      name, category, description, defaultRepetitionsSets, defaultRestLabel, mediaUrl, mediaType,
+    });
+    return response.status(StatusCodes.CREATED).json(exercise);
+  }
+
+  async updatePrebuiltExercise(request: Request, response: Response) {
+    const { exerciseId } = request.params;
+    const { name, category, description, defaultRepetitionsSets, defaultRestLabel, mediaUrl, mediaType } = request.body;
+    const exercise = await exerciseService.updatePrebuilt(exerciseId, {
+      name, category, description, defaultRepetitionsSets, defaultRestLabel, mediaUrl, mediaType,
+    });
+    return response.json(exercise);
+  }
+
+  async deletePrebuiltExercise(request: Request, response: Response) {
+    await exerciseService.deletePrebuilt(request.params.exerciseId);
+    return response.status(StatusCodes.NO_CONTENT).send();
   }
 }

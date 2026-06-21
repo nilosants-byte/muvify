@@ -6,11 +6,12 @@ import {
   AdminChatAuditSessionSummary
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
+import { useMvTheme } from "../../theme/MvThemeContext";
 import { formatBRDateTime, formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { AdminScaffold } from "./AdminScaffold";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 50;
 
 type Props = {
   navigation: any;
@@ -22,11 +23,15 @@ function sanitizeDateInput(value: string) {
 
 function isValidDateInput(value: string) {
   if (!value.trim()) return true;
-  return /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return false;
+  const d = new Date(value.trim());
+  if (isNaN(d.getTime())) return false;
+  return d <= new Date();
 }
 
 export function AdminChatAuditScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
+  const { theme } = useMvTheme();
   const [clientEmail, setClientEmail] = useState("");
   const [providerEmail, setProviderEmail] = useState("");
   const [startedFrom, setStartedFrom] = useState("");
@@ -50,6 +55,19 @@ export function AdminChatAuditScreen({ navigation }: Props) {
       }
       if (!isValidDateInput(startedFrom) || !isValidDateInput(startedTo)) {
         showToast("Use o formato AAAA-MM-DD para as datas.", "error");
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (clientEmail.trim() && !emailRegex.test(clientEmail.trim())) {
+        showToast("E-mail do cliente inválido.", "error");
+        return;
+      }
+      if (providerEmail.trim() && !emailRegex.test(providerEmail.trim())) {
+        showToast("E-mail do profissional inválido.", "error");
+        return;
+      }
+      if (startedFrom.trim() && startedTo.trim() && new Date(startedFrom) > new Date(startedTo)) {
+        showToast("A data inicial deve ser anterior ou igual à data final.", "error");
         return;
       }
 
@@ -80,6 +98,7 @@ export function AdminChatAuditScreen({ navigation }: Props) {
         });
         setNextCursor(payload.nextCursor);
       } catch (error) {
+        if (append) setNextCursor(null);
         handleScreenError({
           error,
           showToast,
@@ -107,6 +126,8 @@ export function AdminChatAuditScreen({ navigation }: Props) {
   return (
     <AdminScaffold title="Auditoria de chats" navigation={navigation} currentScreen="AdminChatAudit">
       <FlatList
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         data={items}
         keyExtractor={(item) => item.bookingId}
         contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 10 }}
@@ -114,8 +135,8 @@ export function AdminChatAuditScreen({ navigation }: Props) {
           <RefreshControl
             refreshing={loading}
             onRefresh={() => void load(false)}
-            tintColor="#4CAF50"
-            colors={["#4CAF50"]}
+            tintColor={theme.primary}
+            colors={[theme.primary]}
           />
         }
         ListHeaderComponent={
@@ -130,30 +151,35 @@ export function AdminChatAuditScreen({ navigation }: Props) {
                   placeholder="E-mail do cliente"
                   value={clientEmail}
                   onChangeText={setClientEmail}
+                  maxLength={254}
                 />
                 <MvInput
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="email-address"
-                  placeholder="E-mail do prestador"
+                  placeholder="E-mail do profissional"
                   value={providerEmail}
                   onChangeText={setProviderEmail}
+                  maxLength={254}
                 />
                 <MvInput
-                  placeholder="Data de inicio da conversa (AAAA-MM-DD)"
+                  placeholder="Data de início da conversa (AAAA-MM-DD)"
                   value={startedFrom}
                   onChangeText={setStartedFrom}
+                  maxLength={10}
                 />
                 <MvInput
                   placeholder="Data final da conversa (AAAA-MM-DD, opcional)"
                   value={startedTo}
                   onChangeText={setStartedTo}
+                  maxLength={10}
                 />
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   <View style={{ flex: 1 }}>
                     <MvButton
                       label="Buscar"
                       loading={loading}
+                      disabled={loading || !hasAnyFilter}
                       onPress={() => void load(false)}
                     />
                   </View>
@@ -182,18 +208,20 @@ export function AdminChatAuditScreen({ navigation }: Props) {
         renderItem={({ item }) => (
           <TouchableOpacity
             activeOpacity={0.86}
+            accessibilityRole="button"
+            accessibilityLabel={`Ver chat: ${item.client.name ?? "Cliente"} x ${item.provider.name ?? "Profissional"}`}
             onPress={() => navigation.navigate("AdminChatAuditDetail", { bookingId: item.bookingId })}
           >
             <MvCard>
               <View style={{ gap: 5 }}>
                 <MvText variant="semi2">
-                  {item.client.name} x {item.provider.name}
+                  {item.client.name ?? "Cliente"} x {item.provider.name ?? "Profissional"}
                 </MvText>
                 <MvText variant="body4" color="secondary">
-                  Cliente: {item.client.email}
+                  Cliente: {item.client.email ?? "—"}
                 </MvText>
                 <MvText variant="body4" color="secondary">
-                  Prestador: {item.provider.email}
+                  Profissional: {item.provider.email ?? "—"}
                 </MvText>
                 <MvText variant="body4" color="secondary">
                   Início da conversa: {formatBRDateTime(item.chatStartedAt)}
@@ -202,13 +230,13 @@ export function AdminChatAuditScreen({ navigation }: Props) {
                   Agendamento: {formatBRDateTime(item.bookingScheduledAt)}
                 </MvText>
                 <MvText variant="body4" color="secondary">
-                  Local: {item.sessionLocation?.trim() || "Nao informado"}
+                  Local: {item.sessionLocation?.trim() || "Não informado"}
                 </MvText>
                 <MvText variant="body4" color="secondary">
                   Valor: {formatCurrencyBRL(item.priceCents / 100)} {item.currency}
                 </MvText>
                 <MvText variant="body4" color="secondary">
-                  Servico: {item.serviceType}
+                  Serviço: {item.serviceType ?? "Não informado"}
                 </MvText>
                 <MvText variant="caption" color="secondary">
                   Mensagens: {item.messageCount}
