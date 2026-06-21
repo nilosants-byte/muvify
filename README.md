@@ -116,6 +116,10 @@ PostgreSQL, Redis, Docker, JWT e Swagger.
 - `npm run db:restore`: restaura o backup criptografado
 - `npm run db:reset`: backup -> reset -> restore
 - `npm run test`: executa testes com Vitest
+- `npm run release:preflight`: preflight de release (config + conectividade)
+- `npm run release:preflight:strict`: preflight estrito (warnings tambem bloqueiam)
+- `npm run release:gate`: lint + testes + preflight estrito
+- `npm run release:gate:full`: qa:full + preflight estrito
 - `npm run push:test`: envia push de teste para usuarios com device ativo (`PUSH_TEST_USER_IDS` opcional).
 - `npm run docs:openapi`: exporta o contrato OpenAPI em `docs/openapi.json`
 ## Endpoints de push
@@ -234,6 +238,12 @@ docker compose -f docker-compose.prod.yml -f docker-compose.monitoring.yml up -d
 2. Para webhook generico, configure `ALERT_WEBHOOK_URL`.
 3. Para email, configure as variaveis `ALERT_EMAIL_*` e `ALERT_SMTP_*`.
 4. O Alertmanager habilita automaticamente os canais configurados via `.env`.
+## Prontidao de release e incidentes
+1. Checklist de release: `docs/RELEASE-READINESS-CHECKLIST.md`.
+2. Runbook de incidentes: `docs/INCIDENT-RUNBOOK.md`.
+3. Guia operacional: `docs/OPERATIONS.md`.
+4. Em producao, considere a instancia pronta somente quando `/health` retornar `readiness=ready`.
+
 ## Deploy
 1. Configure secrets por ambiente em GitHub Environments: `REGISTRY_USER`, `REGISTRY_PASSWORD` (ou use `GITHUB_TOKEN` para GHCR), `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PATH`.
 2. Atualize o servidor com `docker compose` e `.env` de producao.

@@ -1,4 +1,20 @@
 # Operacoes
+## Playbooks principais
+1. Checklist de release: `docs/RELEASE-READINESS-CHECKLIST.md`.
+2. Runbook de incidentes: `docs/INCIDENT-RUNBOOK.md`.
+3. QA automatizado consolidado: `docs/QA-E2E-CHECKLIST.md`.
+
+## Gate de release
+Comandos oficiais:
+1. `npm run release:gate` (lint + testes + preflight estrito).
+2. `npm run release:gate:full` (qa:full + preflight estrito).
+3. `npm run release:preflight -- --target=production` (checagem de configuracao e conectividade).
+
+Interpretacao de `GET /health`:
+1. `readiness=ready`: instancia apta a receber trafego.
+2. `readiness=not_ready`: remover do balanceador ate normalizar.
+3. `status=degraded` com `readiness=ready`: dependencia opcional degradada (ex.: Redis em modo nao estrito).
+
 ## Backup automatico
 Cenarios recomendados para backup automatico:
 1. Antes de operacoes destrutivas (`db:reset` e `db:restore`).
