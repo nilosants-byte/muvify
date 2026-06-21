@@ -1,5 +1,7 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
-import { Alert, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import * as Haptics from "expo-haptics";
+import { trackEvent } from "../../services/analytics";
+import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,7 +9,10 @@ import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { Availability, availabilityApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvCard, MvInput, MvText, MvToggle } from "../../components/mv";
+import { MvButton, MvCard, MvText, MvToggle, TimeWheelPicker } from "../../components/mv";
+import { MetricPill } from "../../components/professional/UXReformComponents";
+import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
+import { ServiceAreaInlineSection } from "./components/ServiceAreaInlineSection";
 import { handleScreenError } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "AvailabilityManager">;
@@ -23,13 +28,52 @@ const WEEKDAYS = [
 ] as const;
 
 function validateTime(value: string) {
-  return /^\d{1,2}:\d{2}$/.test(value.trim());
+  if (!/^\d{1,2}:\d{2}$/.test(value.trim())) return false;
+  const [h, m] = value.trim().split(":").map(Number);
+  return (h ?? 0) <= 23 && (m ?? 0) <= 59;
 }
 
 function padTime(value: string): string {
   const parts = value.trim().split(":");
   if (parts.length !== 2) return value.trim();
   return `${parts[0].padStart(2, "0")}:${parts[1]}`;
+}
+
+function AddFormSheet({ visible, title, onClose, children }: {
+  visible: boolean; title: string; onClose: () => void; children: React.ReactNode;
+}) {
+  const { theme } = useMvTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <View style={{ flex: 1, justifyContent: "flex-end" }}>
+          <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.40)" }} activeOpacity={1} onPress={onClose} />
+          <View style={{
+            backgroundColor: theme.cardBg,
+            borderTopLeftRadius: 22,
+            borderTopRightRadius: 22,
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            paddingBottom: Math.max(insets.bottom, 20),
+            borderTopWidth: 1,
+            borderColor: theme.border,
+          }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: "center", marginBottom: 14 }} />
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <MvText variant="semi2">{title}</MvText>
+              <TouchableOpacity onPress={onClose} hitSlop={8}>
+                <Ionicons name="close" size={20} color={theme.text3} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {children}
+            </ScrollView>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
 }
 
 export function AvailabilityManagerScreen({ navigation }: Props) {
@@ -92,6 +136,16 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
 
     const allDays = [selectedDay, ...(applyToMoreDays ? Array.from(extraDays) : [])];
 
+    const paddedStart = padTime(startTime);
+    const paddedEnd = padTime(endTime);
+    const duplicateDay = allDays.find((day) =>
+      items.some((i) => i.weekday === day && i.startTime === paddedStart && i.endTime === paddedEnd && i.isActive)
+    );
+    if (duplicateDay !== undefined) {
+      showToast("Já existe um horário idêntico neste dia.", "error");
+      return;
+    }
+
     try {
       setSaving(true);
       await Promise.all(
@@ -107,6 +161,8 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
         )
       );
       const count = allDays.length;
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      trackEvent("availability_slot_added", { days_count: count });
       showToast(count > 1 ? `Horário adicionado em ${count} dias.` : "Horário adicionado.", "success");
       resetAddForm();
       await load();
@@ -153,33 +209,28 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
     slotCountByDay[item.weekday] = (slotCountByDay[item.weekday] ?? 0) + 1;
   });
 
+  const activeDaysCount = new Set(items.map((i) => i.weekday)).size;
   const selectedDayFull = WEEKDAYS.find((d) => d.id === selectedDay)?.full ?? "";
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-        >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
-        </TouchableOpacity>
-        <MvText variant="semi1" style={{ flex: 1 }}>Meus Horários</MvText>
-        {loading ? (
-          <MvText variant="body4" color="secondary">Atualizando...</MvText>
-        ) : null}
-      </View>
+      <ProfessionalScreenHeader title="Horários e Locais" onBack={() => navigation.goBack()} />
 
-      <ScrollView automaticallyAdjustKeyboardInsets={true}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 14 }}
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40, gap: 14 }}
         showsVerticalScrollIndicator={false}
-        pinchGestureEnabled
-        maximumZoomScale={3}
       >
         <MvText variant="body4" color="secondary">
           Selecione um dia para ver e gerenciar os horários disponíveis.
         </MvText>
+
+        {/* Métricas rápidas */}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <MetricPill label="Total de slots" value={items.length} tone={items.length > 0 ? "green" : "sky"} />
+          <MetricPill label="Dias ativos" value={activeDaysCount} tone={activeDaysCount > 0 ? "green" : "sky"} />
+          <MetricPill label={selectedDayFull} value={daySlots.length} tone={daySlots.length > 0 ? "green" : "sky"} />
+        </View>
 
         {/* Barra semanal */}
         <View style={{
@@ -203,10 +254,12 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
                 }}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
+                  paddingVertical: 12,
+                  minHeight: 68,
                   alignItems: "center",
+                  justifyContent: "center",
                   gap: 5,
-                  backgroundColor: isSelected ? "rgba(34,197,94,0.13)" : "transparent",
+                  backgroundColor: isSelected ? "rgba(36,230,109,0.13)" : "transparent",
                   borderRightWidth: index < 6 ? 1 : 0,
                   borderRightColor: theme.border,
                 }}
@@ -236,7 +289,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
                 {hasSlots ? (
                   <MvText
                     variant="body4"
-                    style={{ fontSize: 9, color: isSelected ? theme.textGreen : theme.text3 }}
+                    style={{ fontSize: 11, color: isSelected ? theme.textGreen : theme.text3 }}
                   >
                     {count}
                   </MvText>
@@ -279,7 +332,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
                     width: 8,
                     height: 8,
                     borderRadius: 4,
-                    backgroundColor: "rgba(34,197,94,0.65)",
+                    backgroundColor: theme.textGreen,
                     flexShrink: 0,
                   }} />
                   <MvText variant="semi3" style={{ flex: 1 }}>
@@ -293,8 +346,8 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
                   >
                     <Ionicons
                       name="trash-outline"
-                      size={18}
-                      color={deletingId === item.id ? theme.text3 : "#f44336"}
+                      size={16}
+                      color={deletingId === item.id ? theme.text3 : "rgba(239,68,68,0.60)"}
                     />
                   </TouchableOpacity>
                 </View>
@@ -305,130 +358,141 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
           <View style={{
             borderWidth: 1,
             borderColor: theme.border,
-            borderRadius: 12,
-            padding: 24,
+            borderRadius: 14,
+            padding: 28,
             alignItems: "center",
-            gap: 8,
+            gap: 10,
           }}>
-            <Ionicons name="time-outline" size={30} color={theme.text3} />
+            <Ionicons name="time-outline" size={32} color={theme.text3} />
             <MvText variant="body4" color="secondary">
               Sem horários para {selectedDayFull.toLowerCase()}.
             </MvText>
+            <TouchableOpacity
+              onPress={() => setShowAddForm(true)}
+              style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: "rgba(34,197,94,0.30)", backgroundColor: "rgba(34,197,94,0.08)" }}
+            >
+              <MvText variant="semi3" style={{ color: theme.textGreen, fontSize: 12 }}>+ Adicionar horário</MvText>
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Formulário de adição */}
-        {showAddForm ? (
-          <MvCard>
-            <MvText variant="semi2" style={{ marginBottom: 12 }}>
-              Novo horário — {selectedDayFull}
-            </MvText>
+        <MvButton
+          variant="outline"
+          label={`+ Adicionar horário para ${selectedDayFull.toLowerCase()}`}
+          onPress={() => setShowAddForm(true)}
+        />
 
-            {/* Horários */}
-            <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
-              <View style={{ flex: 1 }}>
-                <MvText variant="body4" color="secondary" style={{ marginBottom: 4 }}>Início</MvText>
-                <MvInput
-                  placeholder="08:00"
-                  value={startTime}
-                  onChangeText={setStartTime}
-                  keyboardType="numbers-and-punctuation"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <MvText variant="body4" color="secondary" style={{ marginBottom: 4 }}>Fim</MvText>
-                <MvInput
-                  placeholder="09:00"
-                  value={endTime}
-                  onChangeText={setEndTime}
-                  keyboardType="numbers-and-punctuation"
-                />
-              </View>
-            </View>
+        {/* Área de atendimento */}
+        <ServiceAreaInlineSection navigation={navigation as any} />
+      </ScrollView>
 
-            {/* Toggle — aplicar em outros dias */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                setApplyToMoreDays((v) => !v);
-                setExtraDays(new Set());
-              }}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                paddingVertical: 10,
-                paddingHorizontal: 12,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: applyToMoreDays ? "rgba(34,197,94,0.45)" : theme.border,
-                backgroundColor: applyToMoreDays ? "rgba(34,197,94,0.07)" : theme.inputBg,
-                marginBottom: applyToMoreDays ? 10 : 16,
-              }}
-            >
-              <MvText variant="body4" style={{ color: theme.text1 }}>
-                Aplicar também em outros dias
-              </MvText>
-              <MvToggle value={applyToMoreDays} onValueChange={(v) => { setApplyToMoreDays(v); setExtraDays(new Set()); }} />
-            </TouchableOpacity>
-
-            {/* Seleção de dias extras */}
-            {applyToMoreDays ? (
-              <View style={{ marginBottom: 16 }}>
-                <MvText variant="body4" color="secondary" style={{ marginBottom: 8 }}>
-                  Selecione os dias adicionais:
-                </MvText>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                  {WEEKDAYS.filter((d) => d.id !== selectedDay).map((day) => {
-                    const selected = extraDays.has(day.id);
-                    return (
-                      <TouchableOpacity
-                        key={day.id}
-                        activeOpacity={0.75}
-                        onPress={() => toggleExtraDay(day.id)}
-                        style={{
-                          paddingHorizontal: 14,
-                          paddingVertical: 7,
-                          borderRadius: 20,
-                          borderWidth: 1,
-                          borderColor: selected ? "#22C55E" : theme.border,
-                          backgroundColor: selected ? "rgba(34,197,94,0.13)" : theme.inputBg,
-                        }}
-                      >
-                        <MvText
-                          variant="body4"
-                          style={{
-                            color: selected ? theme.textGreen : theme.text2,
-                            fontWeight: selected ? "700" : "400",
-                          }}
-                        >
-                          {day.full}
-                        </MvText>
-                      </TouchableOpacity>
-                    );
-                  })}
+      {/* Bottom sheet — novo horário */}
+      <AddFormSheet
+        visible={showAddForm}
+        title={`Novo horário — ${selectedDayFull}`}
+        onClose={resetAddForm}
+      >
+        <View style={{ gap: 14, paddingBottom: 16 }}>
+          {/* Horários */}
+          {(() => {
+            const usedTimes = daySlots.flatMap((s) => [s.startTime, s.endTime]);
+            return (
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <MvText variant="body4" color="secondary" style={{ marginBottom: 8 }}>Início</MvText>
+                  <TimeWheelPicker
+                    value={startTime}
+                    onChange={setStartTime}
+                    unavailableTimes={usedTimes}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <MvText variant="body4" color="secondary" style={{ marginBottom: 8 }}>Fim</MvText>
+                  <TimeWheelPicker
+                    value={endTime}
+                    onChange={setEndTime}
+                    unavailableTimes={usedTimes}
+                  />
                 </View>
               </View>
-            ) : null}
+            );
+          })()}
 
-            {/* Botões */}
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <View style={{ flex: 1 }}>
-                <MvButton variant="outline" label="Cancelar" onPress={resetAddForm} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <MvButton label="Confirmar" loading={saving} onPress={() => void addSlot()} />
+          {/* Toggle — aplicar em outros dias */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              setApplyToMoreDays((v) => !v);
+              setExtraDays(new Set());
+            }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: applyToMoreDays ? "rgba(34,197,94,0.45)" : theme.border,
+              backgroundColor: applyToMoreDays ? "rgba(34,197,94,0.07)" : theme.inputBg,
+            }}
+          >
+            <MvText variant="body4" style={{ color: theme.text1 }}>
+              Aplicar também em outros dias
+            </MvText>
+            <MvToggle value={applyToMoreDays} onValueChange={(v) => { setApplyToMoreDays(v); setExtraDays(new Set()); }} />
+          </TouchableOpacity>
+
+          {/* Seleção de dias extras */}
+          {applyToMoreDays ? (
+            <View>
+              <MvText variant="body4" color="secondary" style={{ marginBottom: 8 }}>
+                Selecione os dias adicionais:
+              </MvText>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {WEEKDAYS.filter((d) => d.id !== selectedDay).map((day) => {
+                  const sel = extraDays.has(day.id);
+                  return (
+                    <TouchableOpacity
+                      key={day.id}
+                      activeOpacity={0.75}
+                      onPress={() => toggleExtraDay(day.id)}
+                      style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 7,
+                        borderRadius: 20,
+                        borderWidth: 1,
+                        borderColor: sel ? theme.primary : theme.border,
+                        backgroundColor: sel ? "rgba(34,197,94,0.13)" : theme.inputBg,
+                      }}
+                    >
+                      <MvText
+                        variant="body4"
+                        style={{
+                          color: sel ? theme.textGreen : theme.text2,
+                          fontWeight: sel ? "700" : "400",
+                        }}
+                      >
+                        {day.full}
+                      </MvText>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
-          </MvCard>
-        ) : (
-          <MvButton
-            variant="outline"
-            label={`+ Adicionar horário para ${selectedDayFull.toLowerCase()}`}
-            onPress={() => setShowAddForm(true)}
-          />
-        )}
-      </ScrollView>
+          ) : null}
+
+          {/* Botões */}
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <MvButton variant="outline" label="Cancelar" onPress={resetAddForm} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <MvButton label="Confirmar" loading={saving} onPress={() => void addSlot()} />
+            </View>
+          </View>
+        </View>
+      </AddFormSheet>
     </View>
   );
 }

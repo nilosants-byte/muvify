@@ -8,6 +8,7 @@ export type AuthStackParamList = {
   ForgotPassword: undefined;
   ResetPassword: { token?: string } | undefined;
   SessionExpired: { reason?: string } | undefined;
+  TwoFactor: { challengeToken: string };
 };
 export type ClientTabParamList = {
   ClientHome: undefined;
@@ -17,6 +18,7 @@ export type ClientTabParamList = {
   ClientBookings: undefined;
   Favorites: undefined;
   ClientProfile: undefined;
+  Community: undefined;
 };
 export type ProfessionalTabParamList = {
   ProfessionalHome: undefined;
@@ -58,7 +60,7 @@ export type ClientStackParamList = {
   };
   BookingPaymentStatus: { bookingId?: string } | undefined;
   ClientBookingDetail: { bookingId: string };
-  ClientConfirmCompletion: { bookingId: string };
+  WorkoutCelebration: { bookingId: string; professionalId: string; skipReview?: boolean };
   ReviewProfessional: { bookingId: string; professionalId: string };
   ClientPaymentMethod: undefined;
   ClientSettings: undefined;
@@ -69,6 +71,7 @@ export type ClientStackParamList = {
   Security: undefined;
   GenericError: { title?: string; message?: string } | undefined;
   Offline: undefined;
+  FriendsList: undefined;
 };
 export type ProfessionalStackParamList = {
   ProfessionalTabs: NavigatorScreenParams<ProfessionalTabParamList>;
@@ -78,7 +81,7 @@ export type ProfessionalStackParamList = {
   ProfessionalCredentials: undefined;
   ProfessionalSettings: undefined;
   AvailabilityManager: undefined;
-  ProfessionalConsultancyCenter: undefined;
+  ProfessionalConsultancyCenter: { openTab?: "offers" } | undefined;
   ProfessionalArchivedRequests: undefined;
   ProfessionalChatList: undefined;
   BookingDetailProfessional: { bookingId: string };
@@ -90,7 +93,6 @@ export type ProfessionalStackParamList = {
   ProfessionalStudentAnamnesis: { clientId: string; clientName: string };
   Notifications: undefined;
   TrainingCreation: { contractId?: string; clientId?: string } | undefined;
-  ServiceArea: undefined;
   Support: undefined;
   Privacy: undefined;
   Security: undefined;
@@ -104,6 +106,9 @@ export type AdminStackParamList = {
   AdminSupport: undefined;
   AdminChatAudit: undefined;
   AdminChatAuditDetail: { bookingId: string };
+  AdminConsultas: undefined;
+  AdminConsultasBookingDetail: { bookingId: string };
+  AdminExercises: undefined;
 };
 
 export type RootStackParamList = {

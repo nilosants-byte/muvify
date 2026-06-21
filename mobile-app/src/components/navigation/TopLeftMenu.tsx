@@ -12,6 +12,7 @@ import { AppText } from "../ui/AppText";
 import { theme } from "../../theme";
 import { useTheme } from "../../theme/useTheme";
 import { useThemedStyles } from "../../theme/useThemedStyles";
+import { captureException } from "../../observability/sentry";
 
 const MIN_TOUCH_SIZE = 44;
 
@@ -221,6 +222,7 @@ export function TopLeftMenu({ items }: TopLeftMenuProps) {
                           err
                         );
                       }
+                      captureException(err, { stage: "top_left_menu", itemKey: item.key });
                     });
                   }}
                 >

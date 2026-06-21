@@ -1,4 +1,6 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as Haptics from "expo-haptics";
+import { trackEvent } from "../../services/analytics";
 import { Alert, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -15,7 +17,12 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvInput, MvProgressBar, MvText } from "../../components/mv";
+import { MvBadge, MvButton, MvCard, MvInput, MvProgressBar, MvRefreshControl, MvText } from "../../components/mv";
+import { StepProgressBar } from "../../components/professional/UXReformComponents";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
+import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { formatBRDate, formatCurrencyBRL, maskDateInputBR, maskPriceInput } from "../../utils/formatters";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { handleScreenError } from "../shared/api-helpers";
@@ -26,7 +33,7 @@ type CenterTab = "dashboard" | "offers" | "requests";
 const centerTabs: Array<{ key: CenterTab; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { key: "dashboard", label: "Painel", icon: "speedometer-outline" },
   { key: "offers", label: "Ofertas", icon: "pricetag-outline" },
-  { key: "requests", label: "Solicitacoes", icon: "chatbubbles-outline" },
+  { key: "requests", label: "Solicitações", icon: "chatbubbles-outline" },
 ];
 
 const offerKindOptions: Array<{ label: string; value: ServiceOfferKind }> = [
@@ -122,7 +129,7 @@ function offerEffectivePriceCents(offer: ProviderServiceOffer) {
   return offer.priceCents;
 }
 
-export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
+export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
@@ -130,6 +137,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
   const iconColor = theme.mode === "dark" ? "#D8E0D8" : "#394239";
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [crefValidated, setCrefValidated] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -137,6 +145,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
   const [deletingOfferId, setDeletingOfferId] = useState<string | null>(null);
   const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
+  const [offerWizardStep, setOfferWizardStep] = useState(0);
   const [selectedTab, setSelectedTab] = useState<CenterTab>("dashboard");
   const [settingsEnabled, setSettingsEnabled] = useState(false);
   const [responseSlaDays, setResponseSlaDays] = useState("7");
@@ -159,6 +168,19 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
   const [promotionEndsAt, setPromotionEndsAt] = useState("");
 
   const [responseTextByRequest, setResponseTextByRequest] = useState<Record<string, string>>({});
+
+  const mainScrollRef = useRef<ScrollView>(null);
+  const tabsSectionYRef = useRef(0);
+
+  useEffect(() => {
+    if (route.params?.openTab === "offers") {
+      setSelectedTab("offers");
+      requestAnimationFrame(() => {
+        mainScrollRef.current?.scrollTo({ y: tabsSectionYRef.current, animated: true });
+      });
+      navigation.setParams({ openTab: undefined });
+    }
+  }, [route.params?.openTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onlineOffers = useMemo(
     () =>
@@ -200,9 +222,9 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
 
   const promotionDateError = useMemo(() => {
     if (!markAsPromotion) return undefined;
-    if (!promotionEndsAt.trim()) return "Informe ate quando a promocao ficara valida.";
+    if (!promotionEndsAt.trim()) return "Informe até quando a promoção ficará válida.";
     if (!parsedPromotionEndsAt) return "Use o formato DD/MM/AAAA.";
-    if (parsedPromotionEndsAt.getTime() <= Date.now()) return "A data final da promocao precisa ser futura.";
+    if (parsedPromotionEndsAt.getTime() <= Date.now()) return "A data final da promoção precisa ser futura.";
     return undefined;
   }, [markAsPromotion, parsedPromotionEndsAt, promotionEndsAt]);
 
@@ -220,6 +242,11 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
     else if (offerTitle === "Combo") setOfferTitle("");
   }, [offerKind, offerTitle]);
 
+  useEffect(() => {
+    if (editingOfferId) return;
+    setOfferCycle(offerKind === "PRESENTIAL" ? "DAILY" : "MONTHLY");
+  }, [offerKind, editingOfferId]);
+
   const readinessChecklist = useMemo(
     () => [
       {
@@ -236,7 +263,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
       },
       {
         key: "plan",
-        title: "Treino pre-pronto cadastrado",
+        title: "Treino pré-pronto cadastrado",
         detail: "Garante entrega rapida da consultoria.",
         done: prebuiltPlanCount > 0,
       },
@@ -337,6 +364,13 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
     void load();
   }, [load]);
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await load();
+    setRefreshing(false);
+  }, [load]);
+
   async function toggleOnlineSetting(enabled: boolean) {
     try {
       setSavingSettings(true);
@@ -366,6 +400,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
     setPromotionPrice("0,00");
     setPromotionEndsAt("");
     setPromotionLabel("");
+    setOfferWizardStep(0);
   }
 
   function startEditOffer(offer: ProviderServiceOffer) {
@@ -376,7 +411,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
     setOfferPrice((offer.priceCents / 100).toFixed(2).replace(".", ","));
     setMarkAsPromotion(offer.isPromotion);
     setPromotionPrice(offer.promotionPriceCents ? (offer.promotionPriceCents / 100).toFixed(2).replace(".", ",") : "0,00");
-    setPromotionEndsAt(offer.promotionEndsAt ? new Date(offer.promotionEndsAt).toLocaleDateString("pt-BR") : "");
+    setPromotionEndsAt(offer.promotionEndsAt ? new Date(offer.promotionEndsAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "");
     setPromotionLabel(offer.promotionLabel ?? "");
     setSelectedTab("offers");
   }
@@ -418,7 +453,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
       return;
     }
     if (markAsPromotion && (promotionValueError || promotionDateError)) {
-      showToast(promotionValueError ?? promotionDateError ?? "Promocao invalida.", "error");
+      showToast(promotionValueError ?? promotionDateError ?? "Promoção inválida.", "error");
       return;
     }
 
@@ -461,6 +496,8 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
             promotionLabel: markAsPromotion ? promotionLabel.trim() || undefined : undefined,
           })
         );
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        trackEvent("offer_created", { kind: offerKind, billing_cycle: offerCycle });
         showToast("Oferta criada com sucesso.", "success");
       }
 
@@ -498,11 +535,12 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
           quotedOfferId: selectedOfferId,
         })
       );
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       showToast("Resposta enviada ao aluno.", "success");
       setResponseTextByRequest((current) => ({ ...current, [requestId]: "" }));
       await load();
     } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao responder solicitacao.", navigation });
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao responder solicitação.", navigation });
     } finally {
       setRespondingRequestId(null);
     }
@@ -510,7 +548,8 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
 
   function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
     return (
-      <TouchableOpacity
+      <PressableScale
+        scale={0.95}
         onPress={onPress}
         style={{
           paddingHorizontal: 12,
@@ -524,7 +563,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
         <MvText variant="body4" style={{ color: selected ? theme.textGreen : theme.text2 }}>
           {label}
         </MvText>
-      </TouchableOpacity>
+      </PressableScale>
     );
   }
 
@@ -533,12 +572,17 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
     value,
     hint,
     icon,
+    numericValue,
+    formatValue,
   }: {
     label: string;
     value: string;
     hint: string;
     icon: keyof typeof Ionicons.glyphMap;
+    numericValue?: number;
+    formatValue?: (n: number) => string;
   }) {
+    const valueStyle = { fontFamily: "PlusJakartaSans_800ExtraBold" as const, fontSize: 22, fontWeight: "800" as const, letterSpacing: -0.2, lineHeight: 28, color: theme.text1 };
     return (
       <View
         style={{
@@ -547,18 +591,21 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
           borderWidth: 1,
           borderColor: theme.border,
           backgroundColor: theme.inputBg,
-          borderRadius: 12,
-          padding: 10,
-          gap: 5,
+          borderRadius: 14,
+          padding: 12,
+          gap: 4,
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <MvText variant="body4" color="secondary">
-            {label}
-          </MvText>
-          <Ionicons name={icon} size={16} color={iconColor} />
+          <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name={icon} size={15} color={theme.textGreen} />
+          </View>
+          <MvText variant="caption" color="secondary">{label}</MvText>
         </View>
-        <MvText variant="h4">{value}</MvText>
+        {numericValue !== undefined
+          ? <AnimatedNumber value={numericValue} format={formatValue} style={valueStyle} />
+          : <MvText style={valueStyle}>{value}</MvText>
+        }
         <MvText variant="caption" color="secondary">
           {hint}
         </MvText>
@@ -571,35 +618,45 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
     title,
     subtitle,
     onPress,
+    urgent,
   }: {
     icon: keyof typeof Ionicons.glyphMap;
     title: string;
     subtitle: string;
     onPress: () => void;
+    urgent?: boolean;
   }) {
     return (
-      <TouchableOpacity
-        activeOpacity={0.85}
+      <PressableScale
+        scale={0.96}
         onPress={onPress}
         style={{
           flexBasis: "48%",
           flexGrow: 1,
           borderWidth: 1,
-          borderColor: theme.border,
-          borderRadius: 12,
-          backgroundColor: theme.mode === "dark" ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.8)",
-          padding: 10,
-          gap: 4,
+          borderColor: urgent ? "rgba(34,197,94,0.28)" : theme.border,
+          borderRadius: 14,
+          backgroundColor: urgent
+            ? (theme.mode === "dark" ? "rgba(34,197,94,0.07)" : "rgba(34,197,94,0.05)")
+            : (theme.mode === "dark" ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.8)"),
+          padding: 12,
+          gap: 6,
         }}
       >
-        <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}>
-          <Ionicons name={icon} size={15} color={iconColor} />
+        <View style={{
+          width: 36, height: 36, borderRadius: 11,
+          backgroundColor: urgent ? theme.primarySubtle : theme.backBtn,
+          borderWidth: urgent ? 1 : 0,
+          borderColor: theme.primarySubtleBorder,
+          alignItems: "center", justifyContent: "center",
+        }}>
+          <Ionicons name={icon} size={18} color={urgent ? theme.textGreen : iconColor} />
         </View>
-        <MvText variant="semi3">{title}</MvText>
+        <MvText variant="semi3" style={{ color: urgent ? theme.textGreen : theme.text1 }}>{title}</MvText>
         <MvText variant="caption" color="secondary">
           {subtitle}
         </MvText>
-      </TouchableOpacity>
+      </PressableScale>
     );
   }
 
@@ -619,19 +676,22 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
           gap: 10,
         }}
       >
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+        <PressableScale
+          scale={0.92}
+          onPress={() => {
+            if (navigation.canGoBack()) navigation.goBack();
+            else navigation.navigate("ProfessionalTabs", { screen: "ProfessionalHome" } as never);
+          }}
+          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="chevron-back" size={18} color={iconColor} />
-        </TouchableOpacity>
+        </PressableScale>
         <View style={{ flex: 1 }}>
-          <MvText variant="semi1">Consultoria</MvText>
-          <MvText variant="caption" color="secondary">
-            Gestão completa das suas ofertas e solicitações.
-          </MvText>
+          <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Consultoria</MvText>
+          <MvText variant="body4" color="secondary" style={{ fontSize: 11, marginTop: 2 }}>ofertas e solicitações de alunos</MvText>
         </View>
-        <TouchableOpacity
+        <PressableScale
+          scale={0.95}
           onPress={() => navigation.navigate("ProfessionalArchivedRequests")}
           style={{
             flexDirection: "row",
@@ -647,31 +707,41 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
         >
           <Ionicons name="archive-outline" size={14} color={iconColor} />
           <MvText variant="body4">Arquivados</MvText>
-        </TouchableOpacity>
+        </PressableScale>
       </View>
 
+      <ScreenEntrance>
       <ScrollView
+        ref={mainScrollRef}
         automaticallyAdjustKeyboardInsets={true}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 12 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <MvRefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />
+        }
       >
         <MvCard style={{ padding: 0, overflow: "hidden" }}>
           <View
             style={{
-              paddingHorizontal: 12,
-              paddingTop: 12,
-              paddingBottom: 10,
+              paddingHorizontal: 14,
+              paddingTop: 14,
+              paddingBottom: 12,
               borderBottomWidth: 1,
               borderBottomColor: theme.border,
-              backgroundColor: theme.mode === "dark" ? "rgba(34,197,94,0.08)" : "rgba(34,197,94,0.09)",
-              gap: 8,
+              backgroundColor: theme.mode === "dark" ? "rgba(34,197,94,0.07)" : "rgba(34,197,94,0.06)",
+              gap: 10,
             }}
           >
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <MvText variant="semi2">Sua central de vendas e atendimento</MvText>
+                <MvText variant="eyebrow" style={{ color: theme.textGreen }}>
+                  Central de Vendas
+                </MvText>
+                <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 20, color: theme.text1, letterSpacing: -0.2, marginTop: 2 }}>
+                  Consultorias e vendas
+                </MvText>
                 <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>
-                  Tudo em um fluxo unico: captar, responder e fechar consultorias.
+                  Capte, responda e feche contratos em um só lugar.
                 </MvText>
               </View>
               <MvBadge label={settingsEnabled ? "Online ativa" : "Online pausada"} variant={settingsEnabled ? "green" : "orange"} />
@@ -683,16 +753,19 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
                   borderWidth: 1,
                   borderColor: theme.mode === "dark" ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)",
                   borderRadius: 10,
-                  paddingHorizontal: 10,
+                  paddingHorizontal: 12,
                   paddingVertical: 8,
                   backgroundColor: theme.mode === "dark" ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.66)",
-                  gap: 2,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
                 }}
               >
-                <MvText variant="caption" color="secondary">
-                  Próximo passo recomendado
-                </MvText>
-                <MvText variant="semi3">{nextGuidedStep.title}</MvText>
+                <Ionicons name="arrow-forward-circle-outline" size={16} color={theme.textGreen} />
+                <View style={{ flex: 1 }}>
+                  <MvText variant="caption" color="secondary">Próximo passo recomendado</MvText>
+                  <MvText variant="semi3">{nextGuidedStep.title}</MvText>
+                </View>
               </View>
             ) : (
               <View
@@ -700,13 +773,17 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
                   borderWidth: 1,
                   borderColor: "rgba(34,197,94,0.30)",
                   borderRadius: 10,
-                  paddingHorizontal: 10,
+                  paddingHorizontal: 12,
                   paddingVertical: 8,
                   backgroundColor: theme.mode === "dark" ? "rgba(34,197,94,0.12)" : "rgba(34,197,94,0.14)",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
                 }}
               >
+                <Ionicons name="checkmark-circle" size={16} color={theme.textGreen} />
                 <MvText variant="semi3" style={{ color: theme.textGreen }}>
-                  Excelente: sua consultoria esta pronta para escalar.
+                  Consultoria pronta para escalar.
                 </MvText>
               </View>
             )}
@@ -714,28 +791,34 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
 
           <View style={{ padding: 12, gap: 8 }}>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              <StatCard label="Abertas" value={String(openRequests.length)} hint="Aguardando sua resposta" icon="mail-unread-outline" />
-              <StatCard label="Em analise" value={String(respondedRequests.length)} hint="Aluno ainda decide" icon="time-outline" />
-              <StatCard label="Aceitas" value={String(acceptedRequests.length)} hint="Contratos ativos" icon="checkmark-done-outline" />
-              <StatCard label="Ticket online" value={averageTicket ? formatCurrencyBRL(averageTicket / 100) : "R$ 0,00"} hint="Media por oferta online" icon="cash-outline" />
+              <StatCard label="Abertas" value={String(openRequests.length)} numericValue={openRequests.length} hint="Aguardando sua resposta" icon="mail-unread-outline" />
+              <StatCard label="Em analise" value={String(respondedRequests.length)} numericValue={respondedRequests.length} hint="Aluno ainda decide" icon="time-outline" />
+              <StatCard label="Aceitas" value={String(acceptedRequests.length)} numericValue={acceptedRequests.length} hint="Contratos ativos" icon="checkmark-done-outline" />
+              <StatCard label="Ticket online" value={averageTicket ? formatCurrencyBRL(averageTicket / 100) : "R$ 0,00"} numericValue={averageTicket ? averageTicket / 100 : 0} formatValue={formatCurrencyBRL} hint="Media por oferta online" icon="cash-outline" />
             </View>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               <QuickAction
                 icon="chatbubble-ellipses-outline"
                 title="Responder agora"
-                subtitle={openRequests.length ? `${openRequests.length} pendente(s)` : "Sem pendências"}
+                subtitle={openRequests.length ? `${openRequests.length} ${openRequests.length === 1 ? "pendente" : "pendentes"}` : "Sem pendências"}
                 onPress={() => setSelectedTab("requests")}
+                urgent={openRequests.length > 0}
               />
               <QuickAction
                 icon="pricetag-outline"
                 title="Nova oferta"
-                subtitle="Cadastrar e publicar servico"
-                onPress={() => setSelectedTab("offers")}
+                subtitle="Cadastrar e publicar serviço"
+                onPress={() => {
+                  setSelectedTab("offers");
+                  requestAnimationFrame(() => {
+                    mainScrollRef.current?.scrollTo({ y: tabsSectionYRef.current, animated: true });
+                  });
+                }}
               />
               <QuickAction
                 icon="barbell-outline"
-                title="Treino pre-pronto"
-                subtitle={prebuiltPlanCount ? `${prebuiltPlanCount} cadastrado(s)` : "Criar primeira base"}
+                title="Treino pré-pronto"
+                subtitle={prebuiltPlanCount ? `${prebuiltPlanCount} ${prebuiltPlanCount === 1 ? "cadastrado" : "cadastrados"}` : "Criar primeira base"}
                 onPress={() => navigation.navigate("TrainingCreation")}
               />
               <QuickAction
@@ -781,29 +864,30 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
           </MvCard>
         ) : null}
 
+        <View onLayout={(e) => { tabsSectionYRef.current = e.nativeEvent.layout.y; }}>
         <MvCard style={{ gap: 10 }}>
-          <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={{ flexDirection: "row", backgroundColor: theme.mode === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)", borderRadius: 14, padding: 3, gap: 3 }}>
             {centerTabs.map((tab) => {
               const selected = selectedTab === tab.key;
               return (
                 <TouchableOpacity
                   key={tab.key}
+                  activeOpacity={0.7}
                   onPress={() => setSelectedTab(tab.key)}
                   style={{
                     flex: 1,
-                    paddingVertical: 9,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: selected ? "rgba(34,197,94,0.35)" : theme.border,
-                    backgroundColor: selected ? "rgba(34,197,94,0.12)" : theme.inputBg,
+                    height: 36,
+                    borderRadius: 11,
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: 6,
+                    backgroundColor: selected ? (theme.mode === "dark" ? "rgba(34,197,94,0.14)" : "rgba(22,163,74,0.10)") : "transparent",
+                    borderWidth: selected ? 1 : 0,
+                    borderColor: theme.mode === "dark" ? "rgba(34,197,94,0.30)" : "rgba(22,163,74,0.25)",
                   }}
                 >
-                  <Ionicons name={tab.icon} size={14} color={selected ? theme.textGreen : iconColor} />
-                  <MvText variant="body4" style={{ color: selected ? theme.textGreen : theme.text2 }}>
+                  <Ionicons name={tab.icon} size={13} color={selected ? theme.textGreen : theme.text3} />
+                  <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: selected ? theme.textGreen : theme.text3, marginLeft: 4 }}>
                     {tab.label}
                   </MvText>
                 </TouchableOpacity>
@@ -946,106 +1030,197 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
                   backgroundColor: theme.inputBg,
                 }}
               >
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <MvText variant="semi2">{editingOfferId ? "Editar oferta" : "Nova oferta de serviço"}</MvText>
-                  {editingOfferId ? (
-                    <TouchableOpacity onPress={resetOfferForm} style={{ padding: 4 }}>
-                      <Ionicons name="close-circle-outline" size={20} color={theme.text3} />
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-                <MvText variant="body4" color="secondary">
-                  {editingOfferId ? "Altere os campos desejados e salve." : "Monte sua oferta com clareza de valor, frequência e promoção opcional."}
-                </MvText>
-
-                <MvInput
-                  editable={offerKind !== "COMBO"}
-                  placeholder={offerKind === "COMBO" ? "Combo (titulo fixo)" : "Titulo da oferta"}
-                  value={offerTitle}
-                  onChangeText={setOfferTitle}
-                />
-
-                {offerKind === "COMBO" ? (
-                  <MvText variant="caption" color="secondary">
-                    No tipo Combo, o titulo oficial sera "Combo".
-                  </MvText>
-                ) : null}
-
-                <View>
-                  <MvText variant="caption" color="secondary" style={{ marginBottom: 6 }}>
-                    Tipo de oferta
-                  </MvText>
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                    {offerKindOptions.map((opt) => (
-                      <Chip key={opt.value} label={opt.label} selected={offerKind === opt.value} onPress={() => setOfferKind(opt.value)} />
-                    ))}
-                  </View>
-                </View>
-
-                <View>
-                  <MvText variant="caption" color="secondary" style={{ marginBottom: 6 }}>
-                    Cobranca
-                  </MvText>
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                    {cycleOptions.map((opt) => (
-                      <Chip key={opt.value} label={opt.label} selected={offerCycle === opt.value} onPress={() => setOfferCycle(opt.value)} />
-                    ))}
-                  </View>
-                </View>
-
-                {offerKind === "PRESENTIAL" ? (
-                  <MvInput keyboardType="numeric" placeholder="Dias por semana (presencial)" value={daysPerWeek} onChangeText={setDaysPerWeek} />
-                ) : null}
-
-                {offerKind === "COMBO" ? (
-                  <>
-                    <MvInput keyboardType="numeric" placeholder="Dias presenciais por semana" value={comboPresentialDaysPerWeek} onChangeText={setComboPresentialDaysPerWeek} />
-                    <MvInput keyboardType="numeric" placeholder="Dias online por semana" value={comboOnlineDaysPerWeek} onChangeText={setComboOnlineDaysPerWeek} />
-                    {comboDaysError ? <MvText variant="body4" color="danger">{comboDaysError}</MvText> : null}
-                  </>
-                ) : null}
-
-                <MvInput keyboardType="numeric" placeholder="Valor base (R$)" value={offerPrice} onChangeText={(value) => setOfferPrice(maskPriceInput(value))} />
-                <MvText variant="caption" color="secondary">
-                  O valor base pode ser alterado apenas 1 vez a cada 30 dias.
-                </MvText>
-
-                <Chip label={markAsPromotion ? "Promocao ativa no cadastro" : "Marcar como promocao"} selected={markAsPromotion} onPress={() => setMarkAsPromotion((current) => !current)} />
-                {markAsPromotion ? (
-                  <>
-                    <MvInput keyboardType="numeric" placeholder="Valor promocional (R$)" value={promotionPrice} onChangeText={(value) => setPromotionPrice(maskPriceInput(value))} />
-                    {promotionValueError ? <MvText variant="body4" color="danger">{promotionValueError}</MvText> : null}
-                    <MvInput
-                      keyboardType="numeric"
-                      placeholder="Validade (DD/MM/AAAA)"
-                      value={promotionEndsAt}
-                      onChangeText={(value) => setPromotionEndsAt(maskDateInputBR(value))}
-                    />
-                    {promotionDateError ? <MvText variant="body4" color="danger">{promotionDateError}</MvText> : null}
-                    <MvInput placeholder="Texto da promocao (opcional)" value={promotionLabel} onChangeText={setPromotionLabel} />
-                  </>
-                ) : null}
-
-                {!crefValidated ? (
-                  <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
-                    Esta funcionalidade ficará disponível quando seu CREF for aprovado.
-                  </MvText>
-                ) : null}
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <View style={{ flex: 1 }}>
-                    <MvButton
-                      label={editingOfferId ? "Salvar alterações" : "Criar oferta"}
-                      loading={creatingOffer}
-                      disabled={!crefValidated || Boolean(promotionValueError || promotionDateError || comboDaysError)}
-                      onPress={() => void handleCreateOffer()}
-                    />
-                  </View>
-                  {editingOfferId ? (
-                    <View style={{ flex: 1 }}>
-                      <MvButton variant="outline" label="Cancelar" onPress={resetOfferForm} />
+                {editingOfferId ? (
+                  // ── Flat edit form ───────────────────────────────────────
+                  <View style={{ gap: 10 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <MvText variant="semi2">Editar oferta</MvText>
+                      <PressableScale scale={0.90} onPress={resetOfferForm} style={{ padding: 4 }}>
+                        <Ionicons name="close-circle-outline" size={20} color={theme.text3} />
+                      </PressableScale>
                     </View>
-                  ) : null}
-                </View>
+                    <MvText variant="body4" color="secondary">Altere os campos desejados e salve.</MvText>
+                    <MvInput
+                      editable={offerKind !== "COMBO"}
+                      placeholder={offerKind === "COMBO" ? "Combo (titulo fixo)" : "Titulo da oferta"}
+                      value={offerTitle}
+                      onChangeText={setOfferTitle}
+                    />
+                    {offerKind === "PRESENTIAL" ? (
+                      <MvInput keyboardType="numeric" placeholder="Dias por semana (presencial)" value={daysPerWeek} onChangeText={setDaysPerWeek} />
+                    ) : null}
+                    {offerKind === "COMBO" ? (
+                      <>
+                        <MvInput keyboardType="numeric" placeholder="Dias presenciais por semana" value={comboPresentialDaysPerWeek} onChangeText={setComboPresentialDaysPerWeek} />
+                        <MvInput keyboardType="numeric" placeholder="Dias online por semana" value={comboOnlineDaysPerWeek} onChangeText={setComboOnlineDaysPerWeek} />
+                        {comboDaysError ? <MvText variant="body4" color="danger">{comboDaysError}</MvText> : null}
+                      </>
+                    ) : null}
+                    <MvInput keyboardType="numeric" placeholder="Valor base (R$)" value={offerPrice} onChangeText={(value) => setOfferPrice(maskPriceInput(value))} />
+                    <MvText variant="caption" color="secondary">O valor base pode ser alterado apenas 1 vez a cada 30 dias.</MvText>
+                    <Chip label={markAsPromotion ? "Promoção ativa no cadastro" : "Marcar como promoção"} selected={markAsPromotion} onPress={() => setMarkAsPromotion((current) => !current)} />
+                    {markAsPromotion ? (
+                      <>
+                        <MvInput keyboardType="numeric" placeholder="Valor promocional (R$)" value={promotionPrice} onChangeText={(value) => setPromotionPrice(maskPriceInput(value))} />
+                        {promotionValueError ? <MvText variant="body4" color="danger">{promotionValueError}</MvText> : null}
+                        <MvInput keyboardType="numeric" placeholder="Validade (DD/MM/AAAA)" value={promotionEndsAt} onChangeText={(value) => setPromotionEndsAt(maskDateInputBR(value))} />
+                        {promotionDateError ? <MvText variant="body4" color="danger">{promotionDateError}</MvText> : null}
+                        <MvInput placeholder="Texto da promoção (opcional)" value={promotionLabel} onChangeText={setPromotionLabel} maxLength={50} />
+                      </>
+                    ) : null}
+                    {!crefValidated ? (
+                      <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Esta funcionalidade ficará disponível quando seu CREF for aprovado.</MvText>
+                    ) : null}
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <MvButton label="Salvar alterações" loading={creatingOffer} disabled={!crefValidated || Boolean(promotionValueError || promotionDateError || comboDaysError)} onPress={() => void handleCreateOffer()} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <MvButton variant="outline" label="Cancelar" onPress={resetOfferForm} />
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  // ── 4-step creation wizard ───────────────────────────────
+                  <View style={{ gap: 10 }}>
+                    <MvText variant="semi2">Nova oferta de serviço</MvText>
+                    <StepProgressBar steps={["Tipo", "Valor", "Detalhes", "Preview"]} currentStep={offerWizardStep + 1} />
+
+                    {/* Step 0 — Tipo */}
+                    {offerWizardStep === 0 ? (
+                      <View style={{ gap: 8 }}>
+                        <MvText variant="body4" color="secondary">Escolha o modelo de atendimento.</MvText>
+                        {([
+                          { value: "PRESENTIAL", label: "Presencial", icon: "body-outline", desc: "Atendimento físico — cobrança diária" },
+                          { value: "ONLINE_CONSULTANCY", label: "Consultoria online", icon: "phone-portrait-outline", desc: "Plano entregue remotamente — cobrança mensal" },
+                          { value: "ONLINE_CONSULTANCY_SPECIALIZED", label: "Especializada", icon: "ribbon-outline", desc: "Abordagem diferenciada — cobrança mensal" },
+                          { value: "COMBO", label: "Combo presencial + online", icon: "shuffle-outline", desc: "Combina sessões e acompanhamento — cobrança mensal" },
+                        ] as { value: ServiceOfferKind; label: string; icon: string; desc: string }[]).map((opt) => {
+                          const sel = offerKind === opt.value;
+                          return (
+                            <PressableScale
+                              key={opt.value}
+                              scale={0.97}
+                              onPress={() => setOfferKind(opt.value)}
+                              style={{ flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 12, borderWidth: 1, borderColor: sel ? "rgba(34,197,94,0.40)" : theme.border, backgroundColor: sel ? "rgba(34,197,94,0.08)" : theme.cardBg, padding: 12 }}
+                            >
+                              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: sel ? "rgba(34,197,94,0.14)" : theme.backBtn, alignItems: "center", justifyContent: "center" }}>
+                                <Ionicons name={opt.icon as any} size={18} color={sel ? theme.textGreen : iconColor} />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <MvText variant="semi3" style={{ color: sel ? theme.textGreen : theme.text1 }}>{opt.label}</MvText>
+                                <MvText variant="caption" color="secondary">{opt.desc}</MvText>
+                              </View>
+                              {sel ? <Ionicons name="checkmark-circle" size={18} color={theme.textGreen} /> : null}
+                            </PressableScale>
+                          );
+                        })}
+                        <MvButton label="Avançar →" onPress={() => setOfferWizardStep(1)} />
+                      </View>
+                    ) : null}
+
+                    {/* Step 1 — Valor */}
+                    {offerWizardStep === 1 ? (
+                      <View style={{ gap: 10 }}>
+                        <MvText variant="body4" color="secondary">Defina o valor da sua oferta.</MvText>
+                        <View style={{ borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "rgba(34,197,94,0.25)", backgroundColor: "rgba(34,197,94,0.06)" }}>
+                          <MvText variant="body4" style={{ color: theme.textGreen }}>
+                            Cobrança: {cycleLabel(offerCycle)} (definida automaticamente pelo tipo)
+                          </MvText>
+                        </View>
+                        <MvInput keyboardType="numeric" placeholder="Valor base (R$)" value={offerPrice} onChangeText={(value) => setOfferPrice(maskPriceInput(value))} />
+                        <MvText variant="caption" color="secondary">O valor base pode ser alterado apenas 1 vez a cada 30 dias.</MvText>
+                        <View style={{ flexDirection: "row", gap: 8 }}>
+                          <View style={{ flex: 1 }}>
+                            <MvButton variant="outline" label="← Voltar" onPress={() => setOfferWizardStep(0)} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <MvButton label="Avançar →" disabled={basePriceCents < 100} onPress={() => setOfferWizardStep(2)} />
+                          </View>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {/* Step 2 — Detalhes */}
+                    {offerWizardStep === 2 ? (
+                      <View style={{ gap: 10 }}>
+                        <MvText variant="body4" color="secondary">Detalhes e configurações opcionais.</MvText>
+                        {offerKind !== "COMBO" ? (
+                          <MvInput placeholder="Título da oferta" value={offerTitle} onChangeText={setOfferTitle} />
+                        ) : null}
+                        {offerKind === "PRESENTIAL" ? (
+                          <MvInput keyboardType="numeric" placeholder="Dias por semana (presencial)" value={daysPerWeek} onChangeText={setDaysPerWeek} />
+                        ) : null}
+                        {offerKind === "COMBO" ? (
+                          <>
+                            <MvInput keyboardType="numeric" placeholder="Dias presenciais por semana" value={comboPresentialDaysPerWeek} onChangeText={setComboPresentialDaysPerWeek} />
+                            <MvInput keyboardType="numeric" placeholder="Dias online por semana" value={comboOnlineDaysPerWeek} onChangeText={setComboOnlineDaysPerWeek} />
+                            {comboDaysError ? <MvText variant="body4" color="danger">{comboDaysError}</MvText> : null}
+                          </>
+                        ) : null}
+                        <Chip label={markAsPromotion ? "Promoção ativa no cadastro" : "Marcar como promoção"} selected={markAsPromotion} onPress={() => setMarkAsPromotion((current) => !current)} />
+                        {markAsPromotion ? (
+                          <>
+                            <MvInput keyboardType="numeric" placeholder="Valor promocional (R$)" value={promotionPrice} onChangeText={(value) => setPromotionPrice(maskPriceInput(value))} />
+                            {promotionValueError ? <MvText variant="body4" color="danger">{promotionValueError}</MvText> : null}
+                            <MvInput keyboardType="numeric" placeholder="Validade (DD/MM/AAAA)" value={promotionEndsAt} onChangeText={(value) => setPromotionEndsAt(maskDateInputBR(value))} />
+                            {promotionDateError ? <MvText variant="body4" color="danger">{promotionDateError}</MvText> : null}
+                            <MvInput placeholder="Texto da promoção (opcional)" value={promotionLabel} onChangeText={setPromotionLabel} maxLength={50} />
+                          </>
+                        ) : null}
+                        <View style={{ flexDirection: "row", gap: 8 }}>
+                          <View style={{ flex: 1 }}>
+                            <MvButton variant="outline" label="← Voltar" onPress={() => setOfferWizardStep(1)} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <MvButton
+                              label="Revisar →"
+                              disabled={offerKind !== "COMBO" && !offerTitle.trim()}
+                              onPress={() => setOfferWizardStep(3)}
+                            />
+                          </View>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {/* Step 3 — Preview */}
+                    {offerWizardStep === 3 ? (
+                      <View style={{ gap: 10 }}>
+                        <MvText variant="body4" color="secondary">Revise sua oferta antes de publicar.</MvText>
+                        <View style={{ borderRadius: 14, borderWidth: 1, borderColor: "rgba(34,197,94,0.28)", backgroundColor: "rgba(34,197,94,0.06)", padding: 14, gap: 6 }}>
+                          <MvText variant="semi2">{offerKind === "COMBO" ? "Combo" : (offerTitle || "Sem título")}</MvText>
+                          <MvText variant="body4" color="secondary">
+                            {offerKindOptions.find((o) => o.value === offerKind)?.label} · {cycleLabel(offerCycle)}
+                          </MvText>
+                          <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 22, letterSpacing: -0.2, color: theme.textGreen }}>
+                            {formatCurrencyBRL(basePriceCents / 100)}
+                          </MvText>
+                          {markAsPromotion && promotionPriceCents > 0 ? (
+                            <MvText variant="caption" style={{ color: theme.textGreen }}>
+                              Promoção: {formatCurrencyBRL(promotionPriceCents / 100)}{promotionEndsAt ? ` até ${promotionEndsAt}` : ""}
+                            </MvText>
+                          ) : null}
+                        </View>
+                        {!crefValidated ? (
+                          <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Esta funcionalidade ficará disponível quando seu CREF for aprovado.</MvText>
+                        ) : null}
+                        <View style={{ flexDirection: "row", gap: 8 }}>
+                          <View style={{ flex: 1 }}>
+                            <MvButton variant="outline" label="← Voltar" onPress={() => setOfferWizardStep(2)} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <MvButton
+                              label="Criar oferta"
+                              loading={creatingOffer}
+                              disabled={!crefValidated || Boolean(promotionValueError || promotionDateError || comboDaysError)}
+                              onPress={() => void handleCreateOffer()}
+                            />
+                          </View>
+                        </View>
+                      </View>
+                    ) : null}
+                  </View>
+                )}
               </View>
 
               <View
@@ -1086,9 +1261,9 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
                           <MvText variant="semi3" numberOfLines={1}>{offer.title}</MvText>
                         </View>
                         <MvBadge label={offer.isActive !== false ? "Ativa" : "Inativa"} variant={offer.isActive !== false ? "green" : "gray"} />
-                        <TouchableOpacity
+                        <PressableScale
                           onPress={() => startEditOffer(offer)}
-                          hitSlop={8}
+                          scale={0.94}
                           style={{
                             width: 28, height: 28, borderRadius: 8,
                             backgroundColor: theme.mode === "dark" ? "rgba(34,197,94,0.12)" : "rgba(21,128,61,0.09)",
@@ -1096,11 +1271,11 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
                           }}
                         >
                           <Ionicons name="create-outline" size={15} color={theme.textGreen} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
+                        </PressableScale>
+                        <PressableScale
                           onPress={() => void handleDeleteOffer(offer.id)}
-                          hitSlop={8}
                           disabled={deletingOfferId === offer.id}
+                          scale={0.94}
                           style={{
                             width: 28, height: 28, borderRadius: 8,
                             backgroundColor: "rgba(239,68,68,0.08)",
@@ -1108,8 +1283,8 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
                             opacity: deletingOfferId === offer.id ? 0.45 : 1,
                           }}
                         >
-                          <Ionicons name="trash-outline" size={15} color="#EF4444" />
-                        </TouchableOpacity>
+                          <Ionicons name="trash-outline" size={15} color={theme.danger} />
+                        </PressableScale>
                       </View>
 
                       {/* Tipo e frequência */}
@@ -1145,26 +1320,32 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
           {selectedTab === "requests" ? (
             <View style={{ gap: 8 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <MvText variant="semi2">Solicitacoes ativas</MvText>
+                <MvText variant="semi2">Solicitações ativas</MvText>
                 <MvBadge label={`${activeRequests.length} em andamento`} variant={activeRequests.length ? "blue" : "gray"} />
               </View>
 
               {activeRequests.length === 0 && !loading ? (
-                <View
-                  style={{
-                    borderWidth: 1,
-                    borderColor: theme.border,
-                    borderRadius: 12,
-                    padding: 12,
-                    backgroundColor: theme.inputBg,
-                    gap: 8,
-                  }}
-                >
-                  <MvText variant="semi3">Sem solicitações ativas no momento</MvText>
-                  <MvText variant="body4" color="secondary">
-                    Assim que um aluno enviar pedido de consultoria, ele aparecerá aqui para você responder.
+                <View style={{
+                  alignItems: "center", padding: 24, gap: 12,
+                  backgroundColor: "rgba(255,255,255,0.02)",
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.07)",
+                }}>
+                  <Ionicons name="chatbubbles-outline" size={36} color="#71717A" />
+                  <MvText variant="h3">Nenhuma solicitação</MvText>
+                  <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
+                    Suas ofertas online precisam estar ativas para receber novos alunos.
                   </MvText>
-                  <MvButton variant="outline" label="Ver ofertas publicadas" onPress={() => setSelectedTab("offers")} />
+                  <PressableScale
+                    scale={0.96}
+                    onPress={() => setSelectedTab("offers")}
+                    style={{ backgroundColor: theme.primarySubtle, borderRadius: 99, paddingHorizontal: 20, paddingVertical: 10, borderWidth: 1, borderColor: theme.primarySubtleBorder }}
+                  >
+                    <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>
+                      Ver minhas ofertas
+                    </MvText>
+                  </PressableScale>
                 </View>
               ) : null}
 
@@ -1209,14 +1390,15 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
                           {onlineOffers.length ? (
                             <View style={{ gap: 6 }}>
                               <MvText variant="caption" color="secondary">
-                                Oferta que sera enviada junto da sua resposta
+                                Oferta que será enviada junto da sua resposta
                               </MvText>
                               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                                 {onlineOffers.map((offer) => {
                                   const selected = selectedOfferId === offer.id;
                                   return (
-                                    <TouchableOpacity
+                                    <PressableScale
                                       key={offer.id}
+                                      scale={0.95}
                                       onPress={() => setSelectedOfferByRequest((current) => ({ ...current, [request.id]: offer.id }))}
                                       style={{
                                         borderWidth: 1,
@@ -1231,19 +1413,19 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
                                       <MvText variant="caption" style={{ color: selected ? theme.textGreen : theme.text2 }}>
                                         {offer.title} - {formatCurrencyBRL(offerEffectivePriceCents(offer) / 100)}
                                       </MvText>
-                                    </TouchableOpacity>
+                                    </PressableScale>
                                   );
                                 })}
                               </View>
                             </View>
                           ) : (
                             <MvText variant="body4" color="warning">
-                              Cadastre uma oferta online para poder responder esta solicitacao.
+                              Cadastre uma oferta online para poder responder esta solicitação.
                             </MvText>
                           )}
 
                           <MvInput
-                            placeholder="Resposta ao aluno: explique como voce pode ajudar e o que sera entregue."
+                            placeholder="Resposta ao aluno: explique como você pode ajudar e o que será entregue."
                             multiline
                             numberOfLines={3}
                             value={responseTextByRequest[request.id] ?? ""}
@@ -1281,6 +1463,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
             </View>
           ) : null}
         </MvCard>
+        </View>
 
         <MvCard>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -1298,33 +1481,22 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
         </MvCard>
 
         {loading ? (
-          <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
-            Atualizando dados......
-          </MvText>
+          <>
+            <SkeletonCard />
+            <SkeletonCard />
+          </>
         ) : null}
       </ScrollView>
+      </ScreenEntrance>
 
       <ProfessionalBottomNav
-        activeKey="financeiro"
+        activeKey="consultoria"
         onPress={(key) => {
-          if (key === "financeiro") return;
-          if (key === "home") {
-            navigation.navigate("ProfessionalTabs" as never);
-            return;
-          }
-          if (key === "agenda") {
-            navigation.navigate("ProfessionalTabs", { screen: "ProfessionalAgenda" } as never);
-            return;
-          }
-          if (key === "alunos") {
-            navigation.navigate("ProfessionalStudents" as never);
-            return;
-          }
-          if (key === "conversas") {
-            navigation.navigate("ProfessionalChatList" as never);
-            return;
-          }
-          // financeiro is handled above
+          if (key === "consultoria") return;
+          if (key === "home") navigation.navigate("ProfessionalTabs", { screen: "ProfessionalHome" } as never);
+          else if (key === "agenda") navigation.navigate("ProfessionalTabs", { screen: "ProfessionalAgenda" } as never);
+          else if (key === "alunos") navigation.navigate("ProfessionalStudents" as never);
+          else if (key === "financeiro") navigation.navigate("ProfessionalTabs", { screen: "PayoutStatus" } as never);
         }}
       />
     </View>

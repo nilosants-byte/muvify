@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -576,7 +576,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
           <Circle
             center={{ latitude, longitude }}
             radius={radiusKm * 1000}
-            strokeColor="#22C55E"
+            strokeColor={theme.primary}
             strokeWidth={1.5}
             fillColor="rgba(34,197,94,0.09)"
           />
@@ -759,9 +759,9 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
             }}
           >
             {saving ? (
-              <ActivityIndicator size="small" color="#22C55E" />
+              <ActivityIndicator size="small" color={theme.primary} />
             ) : (
-              <Ionicons name="checkmark-done-outline" size={14} color="#22C55E" />
+              <Ionicons name="checkmark-done-outline" size={14} color={theme.primary} />
             )}
             <MvText variant="badge" style={{ color: theme.textGreen, fontSize: 11 }}>Salvar</MvText>
           </TouchableOpacity>
@@ -784,7 +784,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
               paddingVertical: 6,
             }}
           >
-            <Ionicons name="locate-outline" size={14} color="#22C55E" />
+            <Ionicons name="locate-outline" size={14} color={theme.primary} />
             <MvText variant="badge" style={{ color: theme.textGreen, fontSize: 11 }}>Base atual</MvText>
           </TouchableOpacity>
 
@@ -812,7 +812,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
               <Ionicons
                 name={backgroundLocationEnabled ? "pause-circle-outline" : "play-circle-outline"}
                 size={14}
-                color={backgroundLocationEnabled ? "#22C55E" : theme.text2}
+                color={backgroundLocationEnabled ? theme.primary : theme.text2}
               />
             )}
             <MvText variant="badge" style={{ color: backgroundLocationEnabled ? theme.textGreen : theme.text2, fontSize: 11 }}>
@@ -836,7 +836,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
               paddingVertical: 7,
             }}
           >
-            <Ionicons name="search-outline" size={14} color={mainAddrLoading ? "#22C55E" : theme.text3} />
+            <Ionicons name="search-outline" size={14} color={mainAddrLoading ? theme.primary : theme.text3} />
             <TextInput
               value={addressQuery}
               onChangeText={setAddressQuery}
@@ -858,7 +858,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
               style={{ flex: 1, padding: 0, color: theme.text2, fontSize: 13 }}
               returnKeyType="search"
             />
-            {mainAddrLoading ? <ActivityIndicator size="small" color="#22C55E" /> : null}
+            {mainAddrLoading ? <ActivityIndicator size="small" color={theme.primary} /> : null}
           </View>
 
           {mainAddrSuggestions.length > 0 && mainSuggestionOpen ? (
@@ -906,7 +906,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
                     backgroundColor: theme.cardBg,
                   }}
                 >
-                  <Ionicons name="location-outline" size={13} color="#22C55E" />
+                  <Ionicons name="location-outline" size={13} color={theme.primary} />
                   <MvText variant="body4" color="secondary" numberOfLines={1} style={{ flex: 1, fontSize: 11 }}>
                     {s.displayName}
                   </MvText>
@@ -1031,7 +1031,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
                   backgroundColor: addingExtra ? "rgba(239,68,68,0.10)" : "rgba(34,197,94,0.10)",
                 }}
               >
-                <Ionicons name={addingExtra ? "close" : "add"} size={13} color={addingExtra ? "#f44336" : "#22C55E"} />
+                <Ionicons name={addingExtra ? "close" : "add"} size={13} color={addingExtra ? "#f44336" : theme.primary} />
               </TouchableOpacity>
             </View>
 
@@ -1090,7 +1090,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
                     }}
                   >
                     {areaLoading || newLocNameLoading ? (
-                      <ActivityIndicator size="small" color="#22C55E" style={{ marginRight: 6 }} />
+                      <ActivityIndicator size="small" color={theme.primary} style={{ marginRight: 6 }} />
                     ) : (
                       <Ionicons name="business-outline" size={12} color={theme.text3} style={{ marginRight: 6 }} />
                     )}
@@ -1163,7 +1163,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
                             backgroundColor: theme.cardBg,
                           }}
                         >
-                          <Ionicons name="pin-outline" size={12} color="#22C55E" style={{ marginTop: 1 }} />
+                          <Ionicons name="pin-outline" size={12} color={theme.primary} style={{ marginTop: 1 }} />
                           <View style={{ flex: 1, gap: 1 }}>
                             <MvText variant="body4" numberOfLines={1} style={{ fontSize: 11 }}>
                               {s.name}
@@ -1192,7 +1192,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
                       paddingVertical: 7,
                     }}>
                       {extraAddrLoading ? (
-                        <ActivityIndicator size="small" color="#22C55E" style={{ marginRight: 6 }} />
+                        <ActivityIndicator size="small" color={theme.primary} style={{ marginRight: 6 }} />
                       ) : (
                         <Ionicons name="location-outline" size={12} color={theme.text3} style={{ marginRight: 6 }} />
                       )}
@@ -1232,7 +1232,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
                         backgroundColor: "rgba(34,197,94,0.12)",
                       }}
                     >
-                      <Ionicons name="checkmark" size={15} color="#22C55E" />
+                      <Ionicons name="checkmark" size={15} color={theme.primary} />
                     </TouchableOpacity>
                   </View>
                   {extraAddrSuggestions.length > 0 && extraAddressSuggestionOpen ? (
@@ -1283,7 +1283,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
                             backgroundColor: theme.cardBg,
                           }}
                         >
-                          <Ionicons name="location-outline" size={12} color="#22C55E" style={{ marginTop: 1 }} />
+                          <Ionicons name="location-outline" size={12} color={theme.primary} style={{ marginTop: 1 }} />
                           <View style={{ flex: 1, gap: 1 }}>
                             {s.venueName ? (
                               <MvText variant="body4" numberOfLines={1} style={{ fontSize: 11 }}>

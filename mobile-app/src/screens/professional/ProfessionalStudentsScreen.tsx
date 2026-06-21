@@ -1,5 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Modal, Pressable, RefreshControl, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import * as Haptics from "expo-haptics";
+import { Modal, Pressable, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,7 +9,11 @@ import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { ApiError, ProviderDashboardStudentsResponse, ProviderStudent, providersApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvAvatar, MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText } from "../../components/mv";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
+import { SkeletonStudentCard } from "../../components/polish/SkeletonCard";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { handleScreenError } from "../shared/api-helpers";
@@ -107,6 +112,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
 
   const [data, setData] = useState<ProviderDashboardStudentsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [activeServiceFilter, setActiveServiceFilter] = useState<ServiceFilter>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
@@ -148,6 +154,13 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
       return undefined;
     }, [load])
   );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   const saveAssessment = useCallback(async () => {
     if (!selectedStudent) return;
@@ -208,6 +221,10 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
   };
 
   const closeModal = () => {
+    if (autoSaving) {
+      showToast("Aguarde o salvamento terminar.", "info");
+      return;
+    }
     setModalVisible(false);
     setSelectedStudent(null);
     setAssessmentForm(emptyAssessment);
@@ -251,11 +268,12 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
   }, [activeServiceFilter, services]);
 
   const filteredRows = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
+    const normalize = (s: string) => s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const query = normalize(searchTerm);
     if (!query) return studentRows;
     return studentRows.filter((row) => {
-      const name = row.student.name.toLowerCase();
-      const email = row.student.email.toLowerCase();
+      const name = normalize(row.student.name ?? "");
+      const email = normalize(row.student.email ?? "");
       return name.includes(query) || email.includes(query);
     });
   }, [searchTerm, studentRows]);
@@ -288,14 +306,15 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
           gap: 10,
         }}
       >
-        <TouchableOpacity
+        <PressableScale
+          scale={0.92}
           onPress={() => navigation.goBack()}
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="chevron-back" size={20} color={theme.text2} />
-        </TouchableOpacity>
+        </PressableScale>
         <View style={{ flex: 1 }}>
-          <MvText variant="semi1">Gestão de Alunos</MvText>
+          <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Gestão de Alunos</MvText>
         </View>
       </View>
 
@@ -308,12 +327,13 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
           <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
             Assim que seu perfil profissional estiver salvo, os dados dos alunos serão exibidos aqui.
           </MvText>
-          <TouchableOpacity
+          <PressableScale
+            scale={0.96}
             onPress={() => navigation.navigate("ProfessionalTabs", { screen: "ProfessionalProfileEditor" })}
-            style={{ marginTop: 4, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14, backgroundColor: theme.textGreen }}
+            style={{ marginTop: 4, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 16, backgroundColor: theme.textGreen }}
           >
             <MvText variant="semi2" style={{ color: "#fff" }}>Ir para meu perfil</MvText>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       </ScrollView>
 
@@ -321,15 +341,15 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
         activeKey="alunos"
         onPress={(key) => {
           if (key === "home") {
-            navigation.navigate("ProfessionalTabs" as never);
+            navigation.navigate("ProfessionalTabs", { screen: "ProfessionalHome" } as never);
             return;
           }
           if (key === "agenda") {
             navigation.navigate("ProfessionalTabs", { screen: "ProfessionalAgenda" } as never);
             return;
           }
-          if (key === "conversas") {
-            navigation.navigate("ProfessionalChatList" as never);
+          if (key === "consultoria") {
+            navigation.navigate("ProfessionalTabs", { screen: "ProfessionalConsultancyCenter" } as never);
             return;
           }
           if (key === "financeiro") {
@@ -360,38 +380,41 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
             gap: 10,
           }}
         >
-          <TouchableOpacity
+          <PressableScale
+            scale={0.92}
             onPress={() => navigation.goBack()}
             style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
           >
             <Ionicons name="chevron-back" size={20} color={theme.text2} />
-          </TouchableOpacity>
+          </PressableScale>
           <View style={{ flex: 1 }}>
-            <MvText variant="semi1">Gestão de Alunos</MvText>
+            <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Gestão de Alunos</MvText>
           </View>
-          <TouchableOpacity
+          <PressableScale
+            scale={0.92}
             onPress={() => navigation.navigate("ProfessionalConsultancyCenter" as never)}
             style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(34,197,94,0.12)", borderWidth: 1, borderColor: "rgba(34,197,94,0.25)", alignItems: "center", justifyContent: "center" }}
           >
             <Ionicons name="person-add-outline" size={18} color={theme.textGreen} />
-          </TouchableOpacity>
+          </PressableScale>
         </View>
 
+        <ScreenEntrance>
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 12 }}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor="#22C55E" colors={["#22C55E"]} />
+            <MvRefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />
           }
         >
           {/* ── Grid de métricas ── */}
           <View style={{ flexDirection: "row", gap: 10 }}>
             <View style={{ flex: 1, borderRadius: 16, padding: 14, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border }}>
-              <MvText variant="h2" style={{ color: theme.textGreen }}>{totalStudents}</MvText>
+              <AnimatedNumber value={totalStudents} style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 22, fontWeight: "800", letterSpacing: -0.2, lineHeight: 28, color: theme.textGreen }} />
               <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>Alunos ativos</MvText>
             </View>
             <View style={{ flex: 1, borderRadius: 16, padding: 14, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border }}>
-              <MvText variant="h2" style={{ color: theme.text1 }}>{activeServicesCount}</MvText>
+              <AnimatedNumber value={activeServicesCount} style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 22, fontWeight: "800", letterSpacing: -0.2, lineHeight: 28, color: theme.text1 }} />
               <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>Serviços ativos</MvText>
             </View>
             <View style={{ flex: 1, borderRadius: 16, padding: 14, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border }}>
@@ -429,8 +452,9 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
               {serviceFilterItems.map((item) => {
                 const selected = item.key === activeServiceFilter;
                 return (
-                  <TouchableOpacity
+                  <PressableScale
                     key={item.key}
+                    scale={0.95}
                     onPress={() => setActiveServiceFilter(item.key)}
                     style={{
                       flexDirection: "row",
@@ -456,7 +480,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
                         {item.count}
                       </MvText>
                     </View>
-                  </TouchableOpacity>
+                  </PressableScale>
                 );
               })}
             </ScrollView>
@@ -468,15 +492,29 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
           </View>
 
           {/* ── Lista de alunos ── */}
-          {filteredRows.map((row) => {
-            const recentMs = Date.now() - new Date(row.student.lastActivityAt).getTime();
+          {loading ? (
+            <>
+              <SkeletonStudentCard />
+              <SkeletonStudentCard />
+              <SkeletonStudentCard />
+            </>
+          ) : filteredRows.map((row) => {
+            const recentMs = row.student.lastActivityAt
+              ? Date.now() - new Date(row.student.lastActivityAt).getTime()
+              : Infinity;
             const isActive = recentMs < 60 * 24 * 60 * 60 * 1000; // ativo se actividade < 60 dias
+            const engagementDot =
+              recentMs < 3 * 24 * 60 * 60 * 1000
+                ? theme.primary
+                : recentMs < 7 * 24 * 60 * 60 * 1000
+                ? "#F5A623"
+                : theme.danger;
             const initials = row.student.name
               .split(/\s+/).slice(0, 2).map((p) => p[0] ?? "").join("").toUpperCase();
             return (
-              <TouchableOpacity
+              <PressableScale
                 key={`${row.serviceKind}-${row.student.clientId}`}
-                activeOpacity={0.85}
+                scale={0.97}
                 onPress={() => navigation.navigate("ProfessionalStudentDetail", { clientId: row.student.clientId })}
               >
                 <View style={{
@@ -490,13 +528,26 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
                   paddingHorizontal: 14,
                   paddingVertical: 13,
                 }}>
-                  <MvAvatar
-                    initials={initials}
-                    photoUri={row.student.profilePhotoUrl}
-                    size={46}
-                    borderRadius={23}
-                    color="green"
-                  />
+                  <View style={{ position: "relative" }}>
+                    <MvAvatar
+                      initials={initials}
+                      photoUri={row.student.profilePhotoUrl}
+                      size={46}
+                      borderRadius={23}
+                      color="green"
+                    />
+                    <View style={{
+                      position: "absolute",
+                      bottom: 1,
+                      right: 1,
+                      width: 11,
+                      height: 11,
+                      borderRadius: 6,
+                      backgroundColor: engagementDot,
+                      borderWidth: 2,
+                      borderColor: theme.cardBg,
+                    }} />
+                  </View>
                   <View style={{ flex: 1, gap: 2 }}>
                     <MvText variant="semi2" numberOfLines={1}>{row.student.name}</MvText>
                     <MvText variant="body4" color="secondary" numberOfLines={1}>{row.student.email}</MvText>
@@ -518,40 +569,65 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
                     <Ionicons name="chevron-forward" size={14} color={theme.text3} />
                   </View>
                 </View>
-              </TouchableOpacity>
+              </PressableScale>
             );
           })}
 
           {!loading && filteredRows.length === 0 ? (
-            <View style={{ paddingVertical: 40, alignItems: "center", gap: 12 }}>
-              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: theme.chipBg, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="people-outline" size={26} color={theme.textGreen} />
+            <View style={{ alignItems: "center", padding: 32, gap: 14 }}>
+              <View style={{
+                width: 72, height: 72, borderRadius: 36,
+                backgroundColor: "rgba(34,197,94,0.10)",
+                alignItems: "center", justifyContent: "center",
+                borderWidth: 1, borderColor: "rgba(34,197,94,0.20)",
+              }}>
+                <Ionicons name="people-outline" size={34} color={theme.textGreen} />
               </View>
-              <MvText variant="semi2" color="secondary">
-                {searchTerm.trim() ? "Nenhum aluno encontrado" : "Nenhum aluno cadastrado"}
-              </MvText>
-              <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
-                {searchTerm.trim()
-                  ? "Tente buscar por um nome ou email diferente."
-                  : "Adicione seu primeiro aluno para começar a organizar sua agenda."}
-              </MvText>
+              <View style={{ alignItems: "center", gap: 6 }}>
+                <MvText variant="h3" style={{ letterSpacing: -1, textAlign: "center" }}>
+                  {searchTerm.trim() ? "Nenhum aluno encontrado" : "Seu primeiro aluno está chegando"}
+                </MvText>
+                <MvText variant="body4" color="secondary" style={{ textAlign: "center", lineHeight: 20 }}>
+                  {searchTerm.trim()
+                    ? "Tente buscar por um nome ou email diferente."
+                    : "Ative suas ofertas, compartilhe seu perfil e comece a transformar vidas."}
+                </MvText>
+              </View>
+              {!searchTerm.trim() ? (
+                <PressableScale
+                  scale={0.96}
+                  onPress={() => navigation.navigate("ProfessionalConsultancyCenter", { openTab: "offers" })}
+                  style={{
+                    flexDirection: "row", alignItems: "center", gap: 6,
+                    paddingHorizontal: 20, paddingVertical: 12,
+                    borderRadius: 99,
+                    backgroundColor: theme.textGreen,
+                  }}
+                >
+                  <Ionicons name="add" size={16} color={theme.textOnPrimary} />
+                  <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>
+                    Configurar ofertas
+                  </MvText>
+                </PressableScale>
+              ) : null}
             </View>
           ) : null}
         </ScrollView>
+        </ScreenEntrance>
 
         <ProfessionalBottomNav
           activeKey="alunos"
           onPress={(key) => {
             if (key === "home") {
-              navigation.navigate("ProfessionalTabs" as never);
+              navigation.navigate("ProfessionalTabs", { screen: "ProfessionalHome" } as never);
               return;
             }
             if (key === "agenda") {
               navigation.navigate("ProfessionalTabs", { screen: "ProfessionalAgenda" } as never);
               return;
             }
-            if (key === "conversas") {
-              navigation.navigate("ProfessionalChatList" as never);
+            if (key === "consultoria") {
+              navigation.navigate("ProfessionalTabs", { screen: "ProfessionalConsultancyCenter" } as never);
               return;
             }
             if (key === "financeiro") {
@@ -634,12 +710,13 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
               <MvText variant="body4" color="secondary">
                 {autoSaving ? "Salvando..." : "Auto-save ativo"}
               </MvText>
-              <TouchableOpacity
+              <PressableScale
+                scale={0.95}
                 onPress={closeModal}
                 style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: theme.backBtn }}
               >
                 <MvText variant="semi3">Fechar</MvText>
-              </TouchableOpacity>
+              </PressableScale>
             </View>
           </View>
         </View>

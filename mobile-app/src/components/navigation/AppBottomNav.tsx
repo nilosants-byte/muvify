@@ -51,6 +51,49 @@ function getConfig(routeName: string) {
   return clientTabs[routeName] ?? professionalTabs[routeName];
 }
 
+type BottomNavItemProps = {
+  config: TabConfig;
+  isFocused: boolean;
+  onPress: () => void;
+  colors: { primary: string; textTertiary: string };
+  itemWrapStyle: object;
+  itemStyle: object;
+  itemActiveStyle: object;
+  labelStyle: object;
+};
+
+function BottomNavItem({
+  config,
+  isFocused,
+  onPress,
+  colors,
+  itemWrapStyle,
+  itemStyle,
+  itemActiveStyle,
+  labelStyle,
+}: BottomNavItemProps) {
+  const { animStyle, onPressIn, onPressOut } = usePressSpring(0.92);
+  const iconColor = isFocused ? colors.primary : colors.textTertiary;
+  return (
+    <Animated.View style={[itemWrapStyle, animStyle]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={config.label}
+        accessibilityState={isFocused ? { selected: true } : undefined}
+        onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        style={[itemStyle, isFocused && itemActiveStyle]}
+      >
+        {config.icon({ color: iconColor, size: 20 })}
+        <AppText style={[labelStyle, { color: iconColor }]} variant="caption">
+          {config.label}
+        </AppText>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 export function AppBottomNav({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { themeMode } = useAppState();
@@ -107,9 +150,7 @@ export function AppBottomNav({ state, descriptors, navigation }: BottomTabBarPro
       {state.routes.map((route, index) => {
         const isFocused = state.index === index;
         const config = getConfig(route.name);
-        if (!config) {
-          return null;
-        }
+        if (!config) return null;
 
         const onPress = () => {
           const event = navigation.emit({
@@ -117,36 +158,23 @@ export function AppBottomNav({ state, descriptors, navigation }: BottomTabBarPro
             target: route.key,
             canPreventDefault: true,
           });
-
           if (!isFocused && !event.defaultPrevented) {
             navigation.navigate(route.name);
           }
         };
 
-        const { animStyle, onPressIn, onPressOut } = usePressSpring(0.92);
-        const iconColor = isFocused ? colors.primary : colors.textTertiary;
-        const labelColor = isFocused ? colors.primary : colors.textTertiary;
-
         return (
-          <Animated.View key={route.key} style={[styles.itemWrap, animStyle]}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={config.label}
-              accessibilityState={isFocused ? { selected: true } : undefined}
-              onPress={onPress}
-              onPressIn={onPressIn}
-              onPressOut={onPressOut}
-              style={[
-                styles.item,
-                isFocused && styles.itemActive,
-              ]}
-            >
-              {config.icon({ color: iconColor, size: 20 })}
-              <AppText style={[styles.label, { color: labelColor }]} variant="caption">
-                {config.label}
-              </AppText>
-            </Pressable>
-          </Animated.View>
+          <BottomNavItem
+            key={route.key}
+            config={config}
+            isFocused={isFocused}
+            onPress={onPress}
+            colors={colors}
+            itemWrapStyle={styles.itemWrap}
+            itemStyle={styles.item}
+            itemActiveStyle={styles.itemActive}
+            labelStyle={styles.label}
+          />
         );
       })}
     </View>

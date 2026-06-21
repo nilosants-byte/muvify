@@ -1,4 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as Haptics from "expo-haptics";
+import { trackEvent } from "../../services/analytics";
 import {
   Alert,
   FlatList,
@@ -15,6 +17,7 @@ import {
   View,
 } from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalTabParamList } from "../../navigation/route-types";
@@ -30,9 +33,13 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText, TimeWheelPicker } from "../../components/mv";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { SkeletonAgendaList } from "../../components/polish/SkeletonCard";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { handleScreenError } from "../shared/api-helpers";
+import { MetricPill } from "../../components/professional/UXReformComponents";
 
 const MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const MONTHS_FULL_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -42,7 +49,7 @@ const WEEKDAY_ABBR_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 
 type Props = BottomTabScreenProps<ProfessionalTabParamList, "ProfessionalAgenda">;
-type AgendaTab = "day" | "week" | "month";
+type AgendaTab = "day" | "month";
 
 type ManualBlock = {
   id: string;
@@ -54,9 +61,8 @@ type ManualBlock = {
 };
 
 const tabs: Array<{ key: AgendaTab; label: string }> = [
-  { key: "day", label: "Dia" },
-  { key: "week", label: "Semana" },
   { key: "month", label: "Mês" },
+  { key: "day", label: "Dia" },
 ];
 
 function bookingBadge(status: Booking["status"]): { label: string; variant: "green" | "orange" | "red" | "gray" } {
@@ -80,18 +86,6 @@ function isSameDay(a: Date, b: Date) {
   );
 }
 
-function startOfWeek(input: Date) {
-  const date = startOfDay(input);
-  date.setDate(date.getDate() - date.getDay());
-  return date;
-}
-
-function endOfWeek(input: Date) {
-  const start = startOfWeek(input);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 7);
-  return end;
-}
 
 function buildMonthGrid(year: number, month: number) {
   const firstDay = new Date(year, month, 1);
@@ -136,7 +130,9 @@ function generateDaySlots(availabilities: Availability[], weekday: number) {
 }
 
 function validateTime(value: string) {
-  return /^\d{1,2}:\d{2}$/.test(value.trim());
+  if (!/^\d{1,2}:\d{2}$/.test(value.trim())) return false;
+  const [h, m] = value.trim().split(":").map(Number);
+  return (h ?? 0) <= 23 && (m ?? 0) <= 59;
 }
 
 function padTime(value: string): string {
@@ -207,9 +203,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     }
   }, [navigation, runWithAuth, showToast, user?.id]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -223,14 +217,6 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
   const visibleBookings = useMemo(() => {
     if (activeTab === "day") {
       return bookings.filter((item) => isSameDay(new Date(item.scheduledAt), selectedDate));
-    }
-    if (activeTab === "week") {
-      const from = startOfWeek(selectedDate);
-      const to = endOfWeek(selectedDate);
-      return bookings.filter((item) => {
-        const d = new Date(item.scheduledAt);
-        return d >= from && d < to;
-      });
     }
     return bookings.filter((item) => {
       const d = new Date(item.scheduledAt);
@@ -350,6 +336,8 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
           location: created.location ?? undefined,
         },
       ]);
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      trackEvent("time_block_added");
       showToast("Horário bloqueado.", "success");
       setBlockModalVisible(false);
       setBlockStart("08:00");
@@ -456,6 +444,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
       setAvailEnd("09:00");
       setAvailExtraDays(new Set());
       const count = allDays.length;
+      trackEvent("availability_slot_added", { days_count: count });
       showToast(count > 1 ? `Horário adicionado em ${count} dias.` : "Horário adicionado.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao adicionar horário.", navigation });
@@ -511,7 +500,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
             <Ionicons name="chevron-back" size={20} color={theme.text2} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <MvText variant="semi1">Minha Agenda</MvText>
+            <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Minha Agenda</MvText>
           </View>
           {loading ? (
             <MvText variant="body4" color="secondary">Atualizando...</MvText>
@@ -530,160 +519,8 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
           )}
         </View>
 
-        {/* Calendário embutido */}
-        <View style={{ paddingHorizontal: 16, marginBottom: 6 }}>
-          <MvCard style={{ padding: 12 }}>
-            {/* Navegação de mês */}
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <TouchableOpacity
-                onPress={() => setCalendarCursor((c) => {
-                  const prev = new Date(c.year, c.month - 1, 1);
-                  return { year: prev.getFullYear(), month: prev.getMonth() };
-                })}
-                hitSlop={8}
-                style={{ padding: 4 }}
-              >
-                <MvText variant="semi2">‹</MvText>
-              </TouchableOpacity>
-              <MvText variant="semi2">
-                {`${MONTHS_FULL_PT[calendarCursor.month]} ${calendarCursor.year}`}
-              </MvText>
-              <TouchableOpacity
-                onPress={() => setCalendarCursor((c) => {
-                  const next = new Date(c.year, c.month + 1, 1);
-                  return { year: next.getFullYear(), month: next.getMonth() };
-                })}
-                hitSlop={8}
-                style={{ padding: 4 }}
-              >
-                <MvText variant="semi2">›</MvText>
-              </TouchableOpacity>
-            </View>
-
-            {/* Cabeçalho dos dias da semana */}
-            <View style={{ flexDirection: "row", marginBottom: 2 }}>
-              {WEEKDAY_SHORT_PT.map((label, index) => (
-                <View key={`wh-${index}`} style={{ width: "14.285%", alignItems: "center", paddingVertical: 2 }}>
-                  <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>{label}</MvText>
-                </View>
-              ))}
-            </View>
-
-            {/* Grid de dias */}
-            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-              {calendarCells.map((dateCell, index) => {
-                if (!dateCell) {
-                  return <View key={`blank-${index}`} style={{ width: "14.285%", paddingVertical: 2 }} />;
-                }
-                const isSelected = isSameDay(dateCell, selectedDate);
-                const isToday = isSameDay(dateCell, new Date());
-                const cellKey = toDateKey(dateCell);
-                const hasBooking = daysWithBookings.has(cellKey);
-                const hasBlock = daysWithBlocks.has(cellKey);
-                const isCurrentMonth = dateCell.getMonth() === calendarCursor.month;
-                return (
-                  <TouchableOpacity
-                    key={`${toDateKey(dateCell)}-${index}`}
-                    onPress={() => {
-                      setSelectedDate(startOfDay(dateCell));
-                      setActiveTab("day");
-                    }}
-                    style={{ width: "14.285%", alignItems: "center", paddingVertical: 2 }}
-                  >
-                    <View style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 12,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: isSelected ? "#22C55E" : "transparent",
-                      borderWidth: isToday && !isSelected ? 1.5 : 0,
-                      borderColor: "#22C55E",
-                    }}>
-                      <MvText
-                        variant="body4"
-                        style={{
-                          fontSize: 11,
-                          fontWeight: isSelected ? "700" : "400",
-                          color: !isCurrentMonth
-                            ? theme.text3
-                            : isSelected
-                            ? "#FFFFFF"
-                            : isToday
-                            ? theme.textGreen
-                            : theme.text1,
-                        }}
-                      >
-                        {dateCell.getDate()}
-                      </MvText>
-                    </View>
-                    {/* Indicadores: verde=agendamento, laranja=bloqueio manual */}
-                    {(hasBooking || hasBlock) ? (
-                      <View style={{ flexDirection: "row", gap: 2, marginTop: 1 }}>
-                        {hasBooking ? (
-                          <View style={{
-                            width: 4, height: 4, borderRadius: 2,
-                            backgroundColor: isSelected ? "#22C55E" : "rgba(34,197,94,0.50)",
-                          }} />
-                        ) : null}
-                        {hasBlock ? (
-                          <View style={{
-                            width: 4, height: 4, borderRadius: 2,
-                            backgroundColor: "#FF9800",
-                          }} />
-                        ) : null}
-                      </View>
-                    ) : <View style={{ height: 5 }} />}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Botão Hoje */}
-            <TouchableOpacity
-              onPress={() => {
-                const today = startOfDay(new Date());
-                setSelectedDate(today);
-                setCalendarCursor({ year: today.getFullYear(), month: today.getMonth() });
-                setActiveTab("day");
-              }}
-              style={{
-                alignSelf: "flex-end",
-                marginTop: 8,
-                paddingHorizontal: 14,
-                paddingVertical: 6,
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: "rgba(34,197,94,0.30)",
-                backgroundColor: "rgba(34,197,94,0.08)",
-              }}
-            >
-              <MvText variant="semi3" style={{ color: theme.textGreen, fontSize: 12 }}>Hoje</MvText>
-            </TouchableOpacity>
-          </MvCard>
-        </View>
-
-        <View style={{ flexDirection: "row", paddingHorizontal: 16, gap: 6, marginBottom: 8 }}>
-          {tabs.map((tab) => (
-            <TouchableOpacity
-              key={tab.key}
-              onPress={() => setActiveTab(tab.key)}
-              style={{
-                paddingHorizontal: 14,
-                paddingVertical: 7,
-                borderRadius: 20,
-                backgroundColor: activeTab === tab.key ? "rgba(34,197,94,0.14)" : theme.chipBg,
-                borderWidth: 1,
-                borderColor: activeTab === tab.key ? "rgba(34,197,94,0.35)" : theme.border,
-              }}
-            >
-              <MvText variant="semi3" style={{ color: activeTab === tab.key ? theme.textGreen : theme.text2 }}>
-                {tab.label}
-              </MvText>
-            </TouchableOpacity>
-          ))}
-        </View>
         {/* Lista de agendamentos */}
+        <ScreenEntrance>
         <FlatList
           contentContainerStyle={{
             paddingHorizontal: 16,
@@ -696,27 +533,173 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
           refreshControl={
-            <RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor="#22C55E" colors={["#22C55E"]} />
+            <MvRefreshControl refreshing={loading} onRefresh={() => void load()} />
           }
           ListHeaderComponent={
-            activeTab === "day" ? (
-              <View style={{ gap: 10, marginBottom: 4 }}>
+            <View>
+              {/* Calendário embutido */}
+              <View style={{ marginBottom: 6 }}>
+                <MvCard style={{ padding: 12 }}>
+                  {/* Navegação de mês */}
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => setCalendarCursor((c) => {
+                        const prev = new Date(c.year, c.month - 1, 1);
+                        return { year: prev.getFullYear(), month: prev.getMonth() };
+                      })}
+                      hitSlop={8}
+                      style={{ padding: 4 }}
+                    >
+                      <MvText variant="semi2">‹</MvText>
+                    </TouchableOpacity>
+                    <MvText variant="semi2">
+                      {`${MONTHS_FULL_PT[calendarCursor.month]} ${calendarCursor.year}`}
+                    </MvText>
+                    <TouchableOpacity
+                      onPress={() => setCalendarCursor((c) => {
+                        const next = new Date(c.year, c.month + 1, 1);
+                        return { year: next.getFullYear(), month: next.getMonth() };
+                      })}
+                      hitSlop={8}
+                      style={{ padding: 4 }}
+                    >
+                      <MvText variant="semi2">›</MvText>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Cabeçalho dos dias da semana */}
+                  <View style={{ flexDirection: "row", marginBottom: 2 }}>
+                    {WEEKDAY_SHORT_PT.map((label, index) => (
+                      <View key={`wh-${index}`} style={{ width: "14.285%", alignItems: "center", paddingVertical: 2 }}>
+                        <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>{label}</MvText>
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* Grid de dias */}
+                  <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                    {calendarCells.map((dateCell, index) => {
+                      if (!dateCell) {
+                        return <View key={`blank-${index}`} style={{ width: "14.285%", paddingVertical: 2 }} />;
+                      }
+                      const isSelected = isSameDay(dateCell, selectedDate);
+                      const isToday = isSameDay(dateCell, new Date());
+                      const cellKey = toDateKey(dateCell);
+                      const hasBooking = daysWithBookings.has(cellKey);
+                      const hasBlock = daysWithBlocks.has(cellKey);
+                      const isCurrentMonth = dateCell.getMonth() === calendarCursor.month;
+                      return (
+                        <TouchableOpacity
+                          key={`${toDateKey(dateCell)}-${index}`}
+                          onPress={() => {
+                            setSelectedDate(startOfDay(dateCell));
+                            setActiveTab("day");
+                          }}
+                          style={{ width: "14.285%", alignItems: "center", paddingVertical: 2 }}
+                        >
+                          <View style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: 12,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: isSelected ? theme.primary : "transparent",
+                            borderWidth: isToday && !isSelected ? 1.5 : 0,
+                            borderColor: theme.primary,
+                          }}>
+                            <MvText
+                              variant="body4"
+                              style={{
+                                fontSize: 11,
+                                fontWeight: isSelected ? "700" : "400",
+                                color: !isCurrentMonth
+                                  ? theme.text3
+                                  : isSelected
+                                  ? theme.textOnPrimary
+                                  : isToday
+                                  ? theme.textGreen
+                                  : theme.text1,
+                              }}
+                            >
+                              {dateCell.getDate()}
+                            </MvText>
+                          </View>
+                          {/* Indicadores: verde=agendamento, laranja=bloqueio manual */}
+                          {(hasBooking || hasBlock) ? (
+                            <View style={{ flexDirection: "row", gap: 2, marginTop: 1 }}>
+                              {hasBooking ? (
+                                <View style={{
+                                  width: 4, height: 4, borderRadius: 2,
+                                  backgroundColor: isSelected ? theme.primary : "rgba(34,197,94,0.50)",
+                                }} />
+                              ) : null}
+                              {hasBlock ? (
+                                <View style={{
+                                  width: 4, height: 4, borderRadius: 2,
+                                  backgroundColor: "#FF9800",
+                                }} />
+                              ) : null}
+                            </View>
+                          ) : <View style={{ height: 5 }} />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Botão Hoje */}
+                  <TouchableOpacity
+                    onPress={() => {
+                      const today = startOfDay(new Date());
+                      setSelectedDate(today);
+                      setCalendarCursor({ year: today.getFullYear(), month: today.getMonth() });
+                      setActiveTab("day");
+                    }}
+                    style={{
+                      alignSelf: "flex-end",
+                      marginTop: 8,
+                      paddingHorizontal: 14,
+                      paddingVertical: 6,
+                      borderRadius: 20,
+                      borderWidth: 1,
+                      borderColor: "rgba(34,197,94,0.30)",
+                      backgroundColor: "rgba(34,197,94,0.08)",
+                    }}
+                  >
+                    <MvText variant="semi3" style={{ color: theme.textGreen, fontSize: 12 }}>Hoje</MvText>
+                  </TouchableOpacity>
+                </MvCard>
+              </View>
+
+              <View style={{ flexDirection: "row", marginBottom: 10, borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, overflow: "hidden" }}>
+                {tabs.map((tab, i) => (
+                  <TouchableOpacity
+                    key={tab.key}
+                    onPress={() => setActiveTab(tab.key)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      alignItems: "center",
+                      backgroundColor: activeTab === tab.key ? "rgba(34,197,94,0.12)" : "transparent",
+                      borderRightWidth: i < tabs.length - 1 ? 1 : 0,
+                      borderRightColor: theme.border,
+                    }}
+                  >
+                    <MvText variant="semi3" style={{ color: activeTab === tab.key ? theme.textGreen : theme.text2 }}>
+                      {tab.label}
+                    </MvText>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {activeTab === "day" ? (
+                <View style={{ gap: 10, marginBottom: 4 }}>
                 {/* ── Resumo do dia: header + métricas ── */}
                 <View>
                   <MvText variant="semi1" style={{ marginBottom: 10 }}>{selectedDayLabel}</MvText>
                   <View style={{ flexDirection: "row", gap: 10, marginBottom: 2 }}>
-                    <View style={{ flex: 1, borderRadius: 14, padding: 12, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border, alignItems: "center" }}>
-                      <MvText variant="h3" style={{ color: theme.text1 }}>{visibleBookings.length}</MvText>
-                      <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>Compromissos</MvText>
-                    </View>
-                    <View style={{ flex: 1, borderRadius: 14, padding: 12, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border, alignItems: "center" }}>
-                      <MvText variant="h3" style={{ color: theme.textGreen }}>{freeSlots.length}</MvText>
-                      <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>Horários livres</MvText>
-                    </View>
-                    <View style={{ flex: 1, borderRadius: 14, padding: 12, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border, alignItems: "center" }}>
-                      <MvText variant="h3" style={{ color: todayManualBlocks.length > 0 ? "#F59E0B" : theme.text3 }}>{todayManualBlocks.length}</MvText>
-                      <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>Bloqueios</MvText>
-                    </View>
+                    <MetricPill label="Compromissos" value={visibleBookings.length} tone={visibleBookings.length > 0 ? "green" : "sky"} />
+                    <MetricPill label="Horários livres" value={freeSlots.length} tone="sky" />
+                    <MetricPill label="Bloqueios" value={todayManualBlocks.length} tone={todayManualBlocks.length > 0 ? "amber" : "green"} />
                   </View>
                 </View>
 
@@ -727,30 +710,61 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                       if (item.kind === "booking") {
                         const badge = bookingBadge(item.booking.status);
                         const isCompleted = item.booking.status === "COMPLETED" || item.booking.status === "CANCELLED";
+                        const isPastConfirmed =
+                          item.booking.status === "CONFIRMED" &&
+                          new Date(item.booking.scheduledAt).getTime() < Date.now();
                         return (
-                          <TouchableOpacity
-                            key={`bk-${item.booking.id}`}
-                            activeOpacity={0.85}
-                            onPress={() => goToStack("BookingDetailProfessional", { bookingId: item.booking.id })}
-                          >
-                            <View style={{
-                              flexDirection: "row", alignItems: "center", gap: 12,
-                              borderRadius: 16, borderWidth: 1, borderColor: theme.border,
-                              backgroundColor: theme.cardBg,
-                              paddingHorizontal: 14, paddingVertical: 13,
-                              opacity: isCompleted ? 0.60 : 1,
-                            }}>
-                              <MvText variant="semi2" style={{ color: theme.textGreen, minWidth: 44, fontSize: 16 }}>{item.time}</MvText>
-                              <View style={{ flex: 1, gap: 2 }}>
-                                <MvText variant="semi2" numberOfLines={1}>{item.booking.client?.name ?? "Cliente"}</MvText>
-                                {item.booking.sessionLocation ? (
-                                  <MvText variant="body4" color="secondary" numberOfLines={1}>{item.booking.sessionLocation}</MvText>
-                                ) : null}
+                          <View key={`bk-${item.booking.id}`} style={{ gap: 6 }}>
+                            <PressableScale
+                              scale={0.97}
+                              onPress={() => goToStack("BookingDetailProfessional", { bookingId: item.booking.id })}
+                            >
+                              <View style={{
+                                flexDirection: "row", alignItems: "center", gap: 12,
+                                borderRadius: 16, borderWidth: 1,
+                                borderColor: isPastConfirmed ? "rgba(36,230,109,0.30)" : theme.border,
+                                backgroundColor: isPastConfirmed ? "rgba(36,230,109,0.06)" : theme.cardBg,
+                                paddingRight: 14, paddingVertical: 13,
+                                opacity: isCompleted ? 0.60 : 1,
+                                overflow: "hidden",
+                              }}>
+                                <View style={{
+                                  width: 4, alignSelf: "stretch", flexShrink: 0,
+                                  backgroundColor: item.booking.status === "CONFIRMED" ? theme.textGreen
+                                    : item.booking.status === "PENDING" ? "#F5A623"
+                                    : theme.border,
+                                }} />
+                                <MvText variant="semi2" style={{ color: theme.textGreen, minWidth: 44, fontSize: 16 }}>{item.time}</MvText>
+                                <View style={{ flex: 1, gap: 2 }}>
+                                  <MvText variant="semi2" numberOfLines={1}>{item.booking.client?.name ?? "Cliente"}</MvText>
+                                  {item.booking.sessionLocation ? (
+                                    <MvText variant="body4" color="secondary" numberOfLines={1}>{item.booking.sessionLocation}</MvText>
+                                  ) : null}
+                                </View>
+                                <MvBadge label={badge.label} variant={badge.variant} />
+                                <Ionicons name="chevron-forward" size={14} color={theme.text3} />
                               </View>
-                              <MvBadge label={badge.label} variant={badge.variant} />
-                              <Ionicons name="chevron-forward" size={14} color={theme.text3} />
-                            </View>
-                          </TouchableOpacity>
+                            </PressableScale>
+                            {isPastConfirmed ? (
+                              <TouchableOpacity
+                                onPress={() => goToStack("ProfessionalConfirmCompletion", { bookingId: item.booking.id })}
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: 6,
+                                  paddingVertical: 10,
+                                  borderRadius: 12,
+                                  backgroundColor: theme.textGreen,
+                                }}
+                              >
+                                <Ionicons name="checkmark-circle-outline" size={16} color={theme.textOnPrimary} />
+                                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>
+                                  Validar presença
+                                </Text>
+                              </TouchableOpacity>
+                            ) : null}
+                          </View>
                         );
                       }
                       if (item.kind === "blocked") {
@@ -776,48 +790,54 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                       return (
                         <View key={`fr-${item.time}`} style={{
                           flexDirection: "row", alignItems: "center", gap: 12,
-                          borderRadius: 16, borderWidth: 1, borderColor: theme.border,
-                          backgroundColor: theme.cardBg,
+                          borderRadius: 16, borderWidth: 1, borderColor: "rgba(34,197,94,0.28)",
+                          backgroundColor: "rgba(34,197,94,0.06)",
                           paddingHorizontal: 14, paddingVertical: 13,
                         }}>
-                          <MvText variant="semi2" style={{ color: theme.text3, minWidth: 44, fontSize: 16 }}>{item.time}</MvText>
-                          <MvText variant="body4" color="secondary" style={{ flex: 1 }}>Horário livre</MvText>
-                          <MvText variant="semi3" style={{ color: theme.textGreen }}>+ Agendar</MvText>
+                          <MvText variant="semi2" style={{ color: theme.textGreen, minWidth: 44, fontSize: 16 }}>{item.time}</MvText>
+                          <View style={{
+                            flexDirection: "row", alignItems: "center", gap: 5,
+                            backgroundColor: "rgba(34,197,94,0.12)",
+                            borderRadius: 99, paddingHorizontal: 10, paddingVertical: 3,
+                          }}>
+                            <MvText variant="body4" style={{ color: theme.textGreen, fontSize: 11 }}>Horário livre</MvText>
+                          </View>
                         </View>
                       );
                     })}
                   </View>
                 ) : allDaySlots.length === 0 ? (
                   <View style={{
-                    borderRadius: 16, borderWidth: 1, borderColor: theme.border,
-                    backgroundColor: theme.cardBg, padding: 16,
+                    alignItems: "center", padding: 24, gap: 12,
+                    backgroundColor: "rgba(36,230,109,0.04)",
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: "rgba(36,230,109,0.12)",
+                    borderStyle: "dashed",
                   }}>
-                    <MvText variant="body4" color="secondary">
-                      Nenhum horário configurado para este dia. Toque em "Adicionar horário" abaixo.
+                    <Ionicons name="calendar-outline" size={36} color={theme.textGreen} />
+                    <MvText variant="h3">Dia livre</MvText>
+                    <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
+                      Nenhum compromisso para este dia. Adicione horários disponíveis para receber agendamentos.
                     </MvText>
+                    <TouchableOpacity
+                      onPress={() => { setAvailModalVisible(true); setAvailStart("08:00"); setAvailEnd("09:00"); setAvailExtraDays(new Set()); }}
+                      style={{ backgroundColor: theme.primary, borderRadius: 99, paddingHorizontal: 20, paddingVertical: 10 }}
+                    >
+                      <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>
+                        + Adicionar horário
+                      </MvText>
+                    </TouchableOpacity>
                   </View>
                 ) : null}
 
                 {/* Gerenciamento de disponibilidade para o dia da semana */}
                 <MvCard>
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: dayAvailabilities.length > 0 ? 10 : 0 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: dayAvailabilities.length > 0 ? 10 : 0 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                       <Ionicons name="time-outline" size={15} color={theme.textGreen} />
                       <MvText variant="semi3">Horários disponíveis — {WEEKDAY_FULL_PT[selectedWeekday]}</MvText>
                     </View>
-                    <TouchableOpacity
-                      onPress={() => { setAvailModalVisible(true); setAvailStart("08:00"); setAvailEnd("09:00"); setAvailExtraDays(new Set()); }}
-                      hitSlop={8}
-                      style={{
-                        width: 28, height: 28, borderRadius: 14,
-                        alignItems: "center", justifyContent: "center",
-                        borderWidth: 1,
-                        borderColor: "rgba(34,197,94,0.30)",
-                        backgroundColor: "rgba(34,197,94,0.10)",
-                      }}
-                    >
-                      <Ionicons name="add" size={15} color="#22C55E" />
-                    </TouchableOpacity>
                   </View>
 
                   {dayAvailabilities.length === 0 ? (
@@ -837,7 +857,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                         backgroundColor: "rgba(34,197,94,0.06)",
                       }}
                     >
-                      <View style={{ width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: "#22C55E", marginRight: 10 }} />
+                      <View style={{ width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: theme.primary, marginRight: 10 }} />
                       <Ionicons name="time-outline" size={14} color={theme.textGreen} />
                       <MvText variant="semi3" style={{ flex: 1, marginLeft: 6 }}>
                         {slot.startTime} – {slot.endTime}
@@ -950,7 +970,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                   onPress={() => setBlockModalVisible(true)}
                   style={{
                     paddingVertical: 13,
-                    borderRadius: 14,
+                    borderRadius: 16,
                     borderWidth: 1,
                     borderColor: theme.border,
                     backgroundColor: "transparent",
@@ -966,7 +986,8 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
 
 {/* bookings já exibidos na timeline acima no modo dia */}
               </View>
-            ) : null
+              ) : null}
+            </View>
           }
           renderItem={({ item }) => {
             const badge = bookingBadge(item.status);
@@ -995,8 +1016,8 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                   alignItems: "center",
                   flexShrink: 0,
                 }}>
-                  <MvText variant="h3" style={{ color: theme.textGreen, fontSize: 17 }}>
-                    {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  <MvText variant="semi2" style={{ color: theme.textGreen, fontSize: 16 }}>
+                    {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}
                   </MvText>
                 </View>
                 <View style={{ flex: 1, gap: 2 }}>
@@ -1015,7 +1036,9 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
             );
           }}
           ListEmptyComponent={
-            !loading ? (
+            loading ? (
+              <SkeletonAgendaList />
+            ) : (
               <View style={{ paddingVertical: 32, alignItems: "center", gap: 10 }}>
                 <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: theme.chipBg, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="calendar-outline" size={26} color={theme.textGreen} />
@@ -1028,33 +1051,16 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                   onPress={() => setAvailModalVisible(true)}
                   style={{ marginTop: 4, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, backgroundColor: theme.textGreen }}
                 >
-                  <MvText variant="semi3" style={{ color: "#fff" }}>+ Adicionar horário</MvText>
+                  <MvText variant="semi3" style={{ color: theme.textOnPrimary }}>+ Adicionar horário</MvText>
                 </TouchableOpacity>
               </View>
-            ) : null
-          }
-          ListFooterComponent={
-            <TouchableOpacity
-              onPress={() => { setAvailModalVisible(true); setAvailStart("08:00"); setAvailEnd("09:00"); setAvailExtraDays(new Set()); }}
-              style={{
-                marginTop: 12,
-                paddingVertical: 15,
-                borderRadius: 14,
-                backgroundColor: theme.textGreen,
-                alignItems: "center",
-                flexDirection: "row",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              <Ionicons name="add" size={18} color="#fff" />
-              <MvText variant="semi2" style={{ color: "#fff" }}>Adicionar horário</MvText>
-            </TouchableOpacity>
+            )
           }
           showsVerticalScrollIndicator={false}
-          pinchGestureEnabled
-          maximumZoomScale={3}
+          
+          
         />
+        </ScreenEntrance>
           {!keyboardVisible ? (
             <ProfessionalBottomNav
               activeKey="agenda"
@@ -1068,8 +1074,8 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                   goToStack("ProfessionalStudents");
                   return;
                 }
-                if (key === "conversas") {
-                  goToStack("ProfessionalChatList");
+                if (key === "consultoria") {
+                  navigation.navigate("ProfessionalConsultancyCenter");
                   return;
                 }
                 if (key === "financeiro") {
@@ -1132,23 +1138,19 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
 
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <MvText variant="body4" color="secondary" style={{ marginBottom: 4 }}>Início</MvText>
-                    <MvInput
-                      placeholder="08:00"
+                    <MvText variant="body4" color="secondary" style={{ marginBottom: 8 }}>Início</MvText>
+                    <TimeWheelPicker
                       value={blockStart}
-                      onChangeText={setBlockStart}
-                      keyboardType="numbers-and-punctuation"
-                      returnKeyType="next"
+                      onChange={setBlockStart}
+                      unavailableTimes={todayManualBlocks.flatMap((b) => [b.startTime, b.endTime])}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <MvText variant="body4" color="secondary" style={{ marginBottom: 4 }}>Fim</MvText>
-                    <MvInput
-                      placeholder="09:00"
+                    <MvText variant="body4" color="secondary" style={{ marginBottom: 8 }}>Fim</MvText>
+                    <TimeWheelPicker
                       value={blockEnd}
-                      onChangeText={setBlockEnd}
-                      keyboardType="numbers-and-punctuation"
-                      returnKeyType="done"
+                      onChange={setBlockEnd}
+                      unavailableTimes={todayManualBlocks.flatMap((b) => [b.startTime, b.endTime])}
                     />
                   </View>
                 </View>
@@ -1221,38 +1223,25 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                 </View>
 
                 {/* Campos de hora */}
-                <View style={{
-                  flexDirection: "row",
-                  gap: 12,
-                  backgroundColor: theme.inputBg,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  padding: 14,
-                }}>
+                <View style={{ flexDirection: "row", gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <MvText variant="body4" color="secondary" style={{ marginBottom: 6, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    <MvText variant="body4" color="secondary" style={{ marginBottom: 8, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
                       Início
                     </MvText>
-                    <MvInput
-                      placeholder="08:00"
+                    <TimeWheelPicker
                       value={availStart}
-                      onChangeText={setAvailStart}
-                      keyboardType="numbers-and-punctuation"
-                      returnKeyType="next"
+                      onChange={setAvailStart}
+                      unavailableTimes={dayAvailabilities.flatMap((a) => [a.startTime, a.endTime])}
                     />
                   </View>
-                  <View style={{ width: 1, backgroundColor: theme.border, marginVertical: 4 }} />
                   <View style={{ flex: 1 }}>
-                    <MvText variant="body4" color="secondary" style={{ marginBottom: 6, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    <MvText variant="body4" color="secondary" style={{ marginBottom: 8, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
                       Fim
                     </MvText>
-                    <MvInput
-                      placeholder="09:00"
+                    <TimeWheelPicker
                       value={availEnd}
-                      onChangeText={setAvailEnd}
-                      keyboardType="numbers-and-punctuation"
-                      returnKeyType="done"
+                      onChange={setAvailEnd}
+                      unavailableTimes={dayAvailabilities.flatMap((a) => [a.startTime, a.endTime])}
                     />
                   </View>
                 </View>
@@ -1315,7 +1304,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                       flex: 2,
                       paddingVertical: 13,
                       borderRadius: 12,
-                      backgroundColor: availAddSaving ? "rgba(34,197,94,0.5)" : "#22C55E",
+                      backgroundColor: availAddSaving ? "rgba(34,197,94,0.5)" : theme.primary,
                       alignItems: "center",
                       justifyContent: "center",
                       flexDirection: "row",

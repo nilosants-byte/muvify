@@ -5,14 +5,20 @@ import {
   createNavigationContainerRef
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import * as Notifications from "expo-notifications";
 import { ToastHost } from "../components/primitives";
 import { AdminCrefValidationScreen } from "../screens/admin/AdminCrefValidationScreen";
 import { AdminChatAuditDetailScreen } from "../screens/admin/AdminChatAuditDetailScreen";
 import { AdminChatAuditScreen } from "../screens/admin/AdminChatAuditScreen";
+import { AdminConsultasBookingDetailScreen } from "../screens/admin/AdminConsultasBookingDetailScreen";
+import { AdminConsultasScreen } from "../screens/admin/AdminConsultasScreen";
+import { AdminExercisesScreen } from "../screens/admin/AdminExercisesScreen";
 import { AdminHomeScreen } from "../screens/admin/AdminHomeScreen";
 import { AdminSupportScreen } from "../screens/admin/AdminSupportScreen";
 import MuvifySplash from "../screens/auth/MuvifySplash";
+import { AuthOnboardingScreen } from "../screens/auth/AuthOnboardingScreen";
 import { AuthLoginScreen } from "../screens/auth/AuthLoginScreen";
+import { AuthTwoFactorScreen } from "../screens/auth/AuthTwoFactorScreen";
 import { AuthProfileSelectionScreen } from "../screens/auth/AuthProfileSelectionScreen";
 import { AuthRegisterScreen } from "../screens/auth/AuthRegisterScreen";
 import { ArchivedRequestsScreen } from "../screens/client/ArchivedRequestsScreen";
@@ -21,7 +27,7 @@ import { ClientAnamnesisScreen } from "../screens/client/ClientAnamnesisScreen";
 import { ClientChatListScreen } from "../screens/client/ClientChatListScreen";
 import { ClientBookingDetailScreen } from "../screens/client/ClientBookingDetailScreen";
 import { ClientBookingsScreen } from "../screens/client/ClientBookingsScreen";
-import { ClientConfirmCompletionScreen } from "../screens/client/ClientConfirmCompletionScreen";
+import { WorkoutCelebrationScreen } from "../screens/client/WorkoutCelebrationScreen";
 import { ClientPaymentMethodScreen } from "../screens/client/ClientPaymentMethodScreen";
 import { ClientSettingsScreen } from "../screens/client/ClientSettingsScreen";
 import { ConsultancyRequestScreen } from "../screens/client/ConsultancyRequestScreen";
@@ -32,6 +38,7 @@ import { ProfessionalsListScreen } from "../screens/client/ProfessionalsListScre
 import { ResetPasswordScreen } from "../screens/client/ResetPasswordScreen";
 import { ReviewProfessionalScreen } from "../screens/client/ReviewProfessionalScreen";
 import { SearchProfessionalsScreen } from "../screens/client/SearchProfessionalsScreen";
+import { FriendsListScreen } from "../screens/client/FriendsListScreen";
 import { AvailabilityManagerScreen } from "../screens/professional/AvailabilityManagerScreen";
 import { BookingDetailProfessionalScreen } from "../screens/professional/BookingDetailProfessionalScreen";
 import { BookingPaymentStatusScreen } from "../screens/professional/BookingPaymentStatusScreen";
@@ -49,8 +56,8 @@ import { ProfessionalStudentDetailScreen } from "../screens/professional/Profess
 import { ProfessionalStudentsScreen } from "../screens/professional/ProfessionalStudentsScreen";
 import { ProfessionalTrainingCreationScreen } from "../screens/professional/ProfessionalTrainingCreationScreen";
 import { ProfessionalChatListScreen } from "../screens/professional/ProfessionalChatListScreen";
-import { ServiceAreaScreen } from "../screens/professional/ServiceAreaScreen";
 import { GenericErrorScreen } from "../screens/shared/GenericErrorScreen";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { NotificationsScreen } from "../screens/shared/NotificationsScreen";
 import { OfflineRequiredScreen } from "../screens/shared/OfflineRequiredScreen";
 import { SessionExpiredScreen } from "../screens/shared/SessionExpiredScreen";
@@ -72,6 +79,61 @@ import type {
 
 const OFFLINE_GRACE_MS = 4000;
 const navigationRef = createNavigationContainerRef();
+
+const BOOKING_TYPES_PRO = new Set([
+  "BOOKING_CREATED", "BOOKING_CONFIRMED", "BOOKING_CANCELLED", "BOOKING_COMPLETED",
+  "BOOKING_EXPIRED", "BOOKING_ATTENDANCE_CODE_AVAILABLE", "BOOKING_ATTENDANCE_CODE_VALIDATED",
+  "BOOKING_CONFIRMATION_PENDING", "CHAT_MESSAGE", "SESSION_REMINDER",
+]);
+const CONSULTANCY_TYPES_PRO = new Set([
+  "CONSULTANCY_REQUEST_CREATED", "CONSULTANCY_PROPOSAL_REFUSED",
+  "CONSULTANCY_CONTRACT_ACCEPTED", "CONSULTANCY_CONTRACT_EXPIRED",
+  "CONSULTANCY_AUTO_REFUND", "CONSULTANCY_EXPIRY_7D", "CONSULTANCY_EXPIRY_1D", "CONSULTANCY_EXPIRED",
+]);
+const PAYMENT_TYPES_PRO = new Set([
+  "PAYMENT_AUTHORIZED", "PAYMENT_REFUNDED", "PAYMENT_AUTH_FAILED", "PAYMENT_CANCELED",
+]);
+const BOOKING_TYPES_CLIENT = new Set([
+  "BOOKING_CONFIRMED", "BOOKING_CANCELLED", "BOOKING_COMPLETED",
+  "BOOKING_EXPIRED", "BOOKING_ATTENDANCE_CODE_AVAILABLE",
+  "CHAT_MESSAGE", "SESSION_REMINDER",
+]);
+
+function routeNotification(
+  data: Record<string, unknown>,
+  role: string | null | undefined
+) {
+  if (!navigationRef.isReady() || !role) return;
+  const type = typeof data.type === "string" ? data.type : "";
+  const rawBookingId = typeof data.bookingId === "string" ? data.bookingId : undefined;
+  const bookingId =
+    rawBookingId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawBookingId)
+      ? rawBookingId
+      : undefined;
+
+  if (role === "PROFESSIONAL") {
+    if (bookingId && BOOKING_TYPES_PRO.has(type)) {
+      (navigationRef as any).navigate("BookingDetailProfessional", { bookingId });
+    } else if (CONSULTANCY_TYPES_PRO.has(type)) {
+      (navigationRef as any).navigate("ProfessionalConsultancyCenter");
+    } else if (PAYMENT_TYPES_PRO.has(type)) {
+      (navigationRef as any).navigate("PayoutStatus");
+    } else {
+      (navigationRef as any).navigate("Notifications");
+    }
+    return;
+  }
+
+  if (role === "CLIENT") {
+    if (bookingId && BOOKING_TYPES_CLIENT.has(type)) {
+      (navigationRef as any).navigate("ClientBookingDetail", { bookingId });
+    } else if (type === "PAYMENT_AUTH_FAILED") {
+      (navigationRef as any).navigate("ClientPaymentMethod");
+    } else {
+      (navigationRef as any).navigate("Notifications");
+    }
+  }
+}
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const ClientStack = createNativeStackNavigator<ClientStackParamList>();
@@ -122,11 +184,16 @@ function buildSharedStackOptions(palette: typeof lightColors | typeof darkColors
       borderBottomColor: palette.border
     },
     headerTintColor: palette.text,
-    headerTitleStyle: { fontWeight: "700", fontSize: 18, fontFamily: "Syne-Bold" },
+    headerTitleStyle: { fontWeight: "700", fontSize: 18, fontFamily: "DMSans_700Bold" },
     headerTitleAlign: "center",
     headerBackTitleVisible: false,
     headerLeft: (props: any) => <HeaderBackButton {...props} />,
-    contentStyle: { backgroundColor: palette.bg }
+    contentStyle: { backgroundColor: palette.bg },
+    // Animação de transição V2 — 220ms, fade from bottom, gesto horizontal
+    animation: "fade_from_bottom" as const,
+    animationDuration: 220,
+    gestureEnabled: true,
+    gestureDirection: "horizontal" as const,
   } as const;
 }
 
@@ -135,6 +202,7 @@ export function RootNavigator() {
     bootstrapping,
     role,
     isAuthenticated,
+    onboardingDone,
     themeMode,
     toast,
     clearToast
@@ -142,7 +210,9 @@ export function RootNavigator() {
   const { online, recheckNow } = useConnectivity(5000, false);
   const [hadOnlineSession, setHadOnlineSession] = useState(false);
   const [offlineGraceExpired, setOfflineGraceExpired] = useState(false);
-  const [showLaunchSplash, setShowLaunchSplash] = useState(true);
+  const [showLaunchSplash, setShowLaunchSplash] = useState(
+    process.env.EXPO_PUBLIC_SKIP_LAUNCH_SPLASH === "true" ? false : true
+  );
 
   const palette = useMemo(
     () => (themeMode === "light" ? lightColors : darkColors),
@@ -172,6 +242,10 @@ export function RootNavigator() {
         component={AuthLoginScreen as React.ComponentType<any>}
       />
       <AuthStack.Screen
+        name="ProfileSelection"
+        component={AuthProfileSelectionScreen as React.ComponentType<any>}
+      />
+      <AuthStack.Screen
         name="Register"
         component={AuthRegisterScreen as React.ComponentType<any>}
       />
@@ -182,6 +256,11 @@ export function RootNavigator() {
       <AuthStack.Screen
         name="ResetPassword"
         component={ResetPasswordScreen as React.ComponentType<any>}
+      />
+      <AuthStack.Screen
+        name="TwoFactor"
+        component={AuthTwoFactorScreen as React.ComponentType<any>}
+        options={{ title: "Verificação em dois fatores" }}
       />
       <AuthStack.Screen
         name="SessionExpired"
@@ -239,14 +318,16 @@ export function RootNavigator() {
       <ClientStack.Screen
         name="BookingPaymentStatus"
         component={BookingPaymentStatusScreen as React.ComponentType<any>}
+        options={{ gestureEnabled: false }}
       />
       <ClientStack.Screen
         name="ClientBookingDetail"
         component={ClientBookingDetailScreen as React.ComponentType<any>}
       />
       <ClientStack.Screen
-        name="ClientConfirmCompletion"
-        component={ClientConfirmCompletionScreen as React.ComponentType<any>}
+        name="WorkoutCelebration"
+        component={WorkoutCelebrationScreen as React.ComponentType<any>}
+        options={{ headerShown: false, animation: "fade" as const, gestureEnabled: false }}
       />
       <ClientStack.Screen
         name="ReviewProfessional"
@@ -289,6 +370,10 @@ export function RootNavigator() {
       <ClientStack.Screen
         name="GenericError"
         component={GenericErrorScreen as React.ComponentType<any>}
+      />
+      <ClientStack.Screen
+        name="FriendsList"
+        component={FriendsListScreen as React.ComponentType<any>}
       />
     </ClientStack.Navigator>
         );
@@ -381,11 +466,6 @@ export function RootNavigator() {
         options={{ headerShown: false }}
       />
       <ProfessionalStack.Screen
-        name="ServiceArea"
-        component={ServiceAreaScreen as React.ComponentType<any>}
-        options={{ headerShown: false }}
-      />
-      <ProfessionalStack.Screen
         name="Notifications"
         component={NotificationsScreen as React.ComponentType<any>}
         options={{ headerShown: false }}
@@ -441,6 +521,21 @@ export function RootNavigator() {
               component={AdminChatAuditDetailScreen as React.ComponentType<any>}
               options={{ headerShown: false }}
             />
+            <AdminStack.Screen
+              name="AdminConsultas"
+              component={AdminConsultasScreen as React.ComponentType<any>}
+              options={{ headerShown: false }}
+            />
+            <AdminStack.Screen
+              name="AdminConsultasBookingDetail"
+              component={AdminConsultasBookingDetailScreen as React.ComponentType<any>}
+              options={{ headerShown: false }}
+            />
+            <AdminStack.Screen
+              name="AdminExercises"
+              component={AdminExercisesScreen as React.ComponentType<any>}
+              options={{ headerShown: false }}
+            />
           </AdminStack.Navigator>
         );
       },
@@ -488,6 +583,36 @@ export function RootNavigator() {
     return () => clearTimeout(timer);
   }, [toast, clearToast]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !role) return;
+
+    // Cold start: app was killed when notification was tapped
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (!response) return;
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      if (navigationRef.isReady()) {
+        routeNotification(data, role);
+        return;
+      }
+      // Poll until navigator is ready (rare edge case on cold start)
+      const id = setInterval(() => {
+        if (navigationRef.isReady()) {
+          clearInterval(id);
+          routeNotification(data, role);
+        }
+      }, 100);
+      setTimeout(() => clearInterval(id), 5000);
+    });
+
+    // Runtime: app in foreground or background when notification is tapped
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      routeNotification(data, role);
+    });
+
+    return () => sub.remove();
+  }, [isAuthenticated, role]);
+
   if (previewParam === "splash") {
     return <MuvifySplash colorScheme={themeMode} />;
   }
@@ -511,20 +636,45 @@ export function RootNavigator() {
     return <OfflineRequiredScreen onRetry={() => void recheckNow()} />;
   }
 
+  const linking = {
+    prefixes: ["muvify://", "https://muvify.app"],
+    config: {
+      screens: {
+        ClientStack: {
+          screens: {
+            ClientBookingDetail: "booking/:bookingId",
+            Notifications: "notifications",
+            WorkoutCelebration: "celebration/:bookingId",
+          },
+        },
+        ProfessionalStack: {
+          screens: {
+            BookingDetailProfessional: "booking/:bookingId",
+            ProfessionalConsultancyCenter: "consultancy",
+            PayoutStatus: "payout",
+            Notifications: "notifications",
+          },
+        },
+      },
+    },
+  };
+
   return (
-    <NavigationContainer ref={navigationRef} theme={appTheme}>
-      {!isAuthenticated ? (
-        <AuthNavigator />
-      ) : role === "ADMIN" ? (
-        <AdminNavigator />
-      ) : !role ? (
-        <AuthProfileSelectionScreen />
-      ) : role === "CLIENT" ? (
-        <ClientNavigator />
-      ) : (
-        <ProfessionalNavigator />
-      )}
-      {toast ? <ToastHost message={toast.message} type={toast.type} /> : null}
-    </NavigationContainer>
+    <ErrorBoundary>
+      <NavigationContainer ref={navigationRef} theme={appTheme} linking={linking}>
+        {!isAuthenticated ? (
+          <AuthNavigator />
+        ) : role === "ADMIN" ? (
+          <AdminNavigator />
+        ) : role === "CLIENT" ? (
+          !onboardingDone ? <AuthOnboardingScreen /> : <ClientNavigator />
+        ) : role === "PROVIDER" ? (
+          <ProfessionalNavigator />
+        ) : (
+          <AuthNavigator />
+        )}
+        {toast ? <ToastHost message={toast.message} type={toast.type} /> : null}
+      </NavigationContainer>
+    </ErrorBoundary>
   );
 }
