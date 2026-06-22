@@ -26,12 +26,7 @@
       "distribution": "store",
       "channel": "production",
       "cache": { "key": "muvify-prod-v1" },
-      "credentialSource": "remote",
-      "ios": {
-        "credentialSource": "remote"
-      },
       "android": {
-        "credentialSource": "remote",
         "buildType": "app-bundle"
       },
       "env": {
@@ -39,24 +34,8 @@
       }
     }
   },
-  "update": {
-    "development": {
-      "channel": "development"
-    },
-    "preview": {
-      "channel": "preview"
-    },
-    "production": {
-      "channel": "production"
-    }
-  },
   "submit": {
     "production": {
-      "ios": {
-        "appleId": "",
-        "ascAppId": "",
-        "appleTeamId": ""
-      },
       "android": {
         "serviceAccountKeyPath": "./google-service-account.json",
         "track": "internal",
