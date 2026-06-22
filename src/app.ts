@@ -3,6 +3,7 @@ import compression from "compression";
 import cors from "cors";
 import { randomUUID } from "crypto";
 import express from "express";
+import fs from "fs";
 import helmet from "helmet";
 import path from "path";
 import pinoHttp from "pino-http";
@@ -173,11 +174,15 @@ app.use("/api", (_request, response) => {
   return response.status(404).json({ message: "Rota nao encontrada." });
 });
 
-// Serve Expo web static build
+// Serve Expo web static build (quando o build web estiver presente)
 const webBuildPath = path.join(__dirname, "..", "public", "app");
+const webIndexPath = path.join(webBuildPath, "index.html");
 app.use(express.static(webBuildPath));
 app.get("*", (_req, res) => {
-  res.sendFile(path.join(webBuildPath, "index.html"));
+  if (!fs.existsSync(webIndexPath)) {
+    return res.status(404).json({ message: "Rota nao encontrada." });
+  }
+  res.sendFile(webIndexPath);
 });
 
 app.use(sentryErrorHandler);
