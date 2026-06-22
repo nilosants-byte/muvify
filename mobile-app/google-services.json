@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "749830908511",
+    "project_id": "muvify-20c91",
+    "storage_bucket": "muvify-20c91.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:749830908511:android:c5014e1ce909d79eda49ea",
+        "android_client_info": {
+          "package_name": "com.muvify.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1IAsFgbrsCqMbjACrQRXh0XK82UIgp4s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -23,6 +23,7 @@
     },
     "android": {
       "package": "com.muvify.app",
+      "googleServicesFile": "./google-services.json",
       "versionCode": 1,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
