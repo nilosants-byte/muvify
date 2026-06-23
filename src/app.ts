@@ -65,6 +65,13 @@ app.use(
   express.json({ limit: env.PROVIDER_PROFILE_JSON_LIMIT }),
   express.urlencoded({ extended: true, limit: env.PROVIDER_PROFILE_JSON_LIMIT })
 );
+// Media upload route receives base64 photos/videos before they are pushed to R2 —
+// same raised limit as provider profile, scoped to this route only.
+app.use(
+  "/api/uploads",
+  express.json({ limit: env.PROVIDER_PROFILE_JSON_LIMIT }),
+  express.urlencoded({ extended: true, limit: env.PROVIDER_PROFILE_JSON_LIMIT })
+);
 app.use("/api/payments/webhook", express.raw({ type: "application/json" }));
 app.use(express.json({ limit: env.API_JSON_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: env.API_JSON_LIMIT }));

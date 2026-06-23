@@ -23,7 +23,7 @@
     "data-retention:apply": "tsx scripts/data-retention-run.ts --apply",
     "db:restore": "tsx scripts/db-restore.ts",
     "db:reset": "tsx scripts/db-reset.ts",
-    "test:prepare": "node -e \"const cp=require('child_process'); require('dotenv').config(); const fallback='postgresql://postgres:postgres@127.0.0.1:5432/personal_app_test'; const raw=process.env.TEST_DATABASE_URL||fallback; const env={...process.env, DATABASE_URL:raw.replace('@localhost:','@127.0.0.1:')}; cp.execSync('npx prisma migrate deploy',{stdio:'inherit',env});\"",
+    "test:prepare": "node -e \"const cp=require('child_process'); require('dotenv').config(); const fallback='postgresql://postgres:postgres@127.0.0.1:5432/personal_app_test'; const raw=process.env.TEST_DATABASE_URL||fallback; const testUrl=raw.replace('@localhost:','@127.0.0.1:'); const env={...process.env, DATABASE_URL:testUrl, DIRECT_URL:testUrl}; cp.execSync('npx prisma migrate deploy',{stdio:'inherit',env});\"",
     "test": "npm run test:prepare && vitest run",
     "test:docker": "tsx scripts/test-docker.ts",
     "smoke:docker": "tsx scripts/smoke-docker.ts",

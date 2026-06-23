@@ -59,6 +59,12 @@ const envSchema = z.object({
   TRUST_PROXY: z.string().default("1"),
   API_JSON_LIMIT: z.string().default("10mb"),
   PROVIDER_PROFILE_JSON_LIMIT: z.string().default("50mb"),
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET_NAME: z.string().optional(),
+  R2_ENDPOINT: z.string().url().optional(),
+  R2_PUBLIC_URL: z.string().url().optional(),
   CORS_ORIGIN: z
     .string()
     .default("http://localhost:8081,http://localhost:3000")
@@ -149,6 +155,18 @@ if (parsed.NODE_ENV === "production") {
 
   if (!parsed.MP_WEBHOOK_SECRET?.trim()) {
     throw new Error("MP_WEBHOOK_SECRET e obrigatoria em producao.");
+  }
+
+  const hasR2Config =
+    Boolean(parsed.R2_ACCESS_KEY_ID?.trim()) &&
+    Boolean(parsed.R2_SECRET_ACCESS_KEY?.trim()) &&
+    Boolean(parsed.R2_BUCKET_NAME?.trim()) &&
+    Boolean(parsed.R2_ENDPOINT?.trim()) &&
+    Boolean(parsed.R2_PUBLIC_URL?.trim());
+  if (!hasR2Config) {
+    throw new Error(
+      "R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME/R2_ENDPOINT/R2_PUBLIC_URL sao obrigatorios em producao."
+    );
   }
 
   if (!parsed.REDIS_URL.startsWith("rediss://")) {

@@ -9,27 +9,9 @@ const fixedLocationSchema = z.object({
   radiusKm: z.number().int().min(1).max(200).optional()
 });
 
-const profilePhotoSchema = z
-  .union([
-    z.string().trim().url(),
-    z
-      .string()
-      .trim()
-      .max(8_000_000)
-      .regex(
-        /^data:image\/(jpeg|jpg|png|webp);base64,[a-zA-Z0-9+/=]+$/,
-        "Formato de foto invalido."
-      )
-  ]);
+const profilePhotoSchema = z.string().trim().url();
 
-const presentationVideoSchema = z
-  .string()
-  .trim()
-  .max(40_000_000)
-  .regex(
-    /^data:video\/(mp4|quicktime|webm|3gpp);base64,[a-zA-Z0-9+/=]+$/,
-    "Formato de vídeo inválido. Use MP4, MOV ou WebM."
-  );
+const presentationVideoSchema = z.string().trim().url();
 
 export const createProviderProfileSchema = z.object({
   body: z.object({
@@ -150,7 +132,7 @@ export const providerStudentDetailSchema = z.object({
 const credentialDocumentSchema = z.object({
   id: z.string().trim().min(1).max(120).optional(),
   name: z.string().trim().min(1).max(180),
-  uri: z.string().trim().min(1).max(8_000_000), // permite data URI base64
+  uri: z.string().trim().url(),
   mimeType: z.string().trim().max(120).optional(),
   createdAt: z.string().datetime({ offset: true }).optional()
 });

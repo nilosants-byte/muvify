@@ -30,14 +30,7 @@ export const searchUsersSchema = z.object({
 
 export const createPhotoPostSchema = z.object({
   body: z.object({
-    imageUrl: z
-      .string()
-      .max(5_000_000)
-      .refine(
-        (v) => v.startsWith("data:image/") || v.startsWith("http://") || v.startsWith("https://"),
-        { message: "imageUrl deve ser uma URL http(s) ou data URI de imagem" }
-      )
-      .optional(),
+    imageUrl: z.string().trim().url().optional(),
     caption: z.string().trim().min(1).max(300).optional(),
   }).refine((b) => b.imageUrl || b.caption, {
     message: "Informe uma imagem ou uma legenda",

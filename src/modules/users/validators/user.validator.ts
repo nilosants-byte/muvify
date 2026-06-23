@@ -13,14 +13,6 @@ const photoUrlSchema = z
   .union([
     z.literal(""), // empty string = remove photo
     z.string().trim().url(),
-    z
-      .string()
-      .trim()
-      .max(8_000_000)
-      .regex(
-        /^data:image\/(jpeg|jpg|png|webp);base64,[a-zA-Z0-9+/=]+$/,
-        "Formato de foto inválido."
-      ),
   ])
   .optional();
 

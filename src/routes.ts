@@ -16,6 +16,7 @@ import { notificationRoutes } from "./modules/notifications/routes/notification.
 import { paymentRoutes } from "./modules/payments/routes/payment.routes";
 import { providerRoutes } from "./modules/providers/routes/provider.routes";
 import { reviewRoutes } from "./modules/reviews/routes/review.routes";
+import { uploadRoutes } from "./modules/uploads/routes/upload.routes";
 import { userRoutes } from "./modules/users/routes/user.routes";
 
 export const router = Router();
@@ -37,3 +38,4 @@ router.use("/favorites", favoriteRoutes);
 router.use("/notifications", notificationRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/financial", financialRoutes);
+router.use("/uploads", uploadRoutes);
