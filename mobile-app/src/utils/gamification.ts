@@ -162,6 +162,71 @@ export function computeAchievements(progress: UserProgress): Achievement[] {
   ];
 }
 
+// ── Conquistas do backend (Fase 2 — catálogo real, com categorias/medalhas) ───
+export type BackendAchievement = {
+  id: string;
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  medalType: string;
+  xpReward: number;
+  conditionType: string;
+  conditionValue: number;
+  unlockedAt?: string | null;
+};
+
+export const ACHIEVEMENT_CONDITION_ICON: Record<string, string> = {
+  STREAK_SESSIONS:               "flame",
+  TOTAL_WORKOUTS:                "barbell",
+  TOTAL_FOLLOWING:               "person-add",
+  TOTAL_FOLLOWERS:               "people",
+  TOTAL_REVIEWS_SUBMITTED:       "star",
+  TOTAL_PHOTO_POSTS:             "camera",
+  DISTINCT_PROVIDERS_TRAINED:    "fitness",
+  WEEKLY_TOP3_REACHED:           "trophy",
+  WEEKLY_1ST_REACHED:            "medal",
+  WEEKLY_TOP3_CONSECUTIVE_WEEKS: "infinite",
+  LEVEL_REACHED:                 "flash",
+};
+
+export const ACHIEVEMENT_MEDAL_TIER: Record<string, Achievement["tier"]> = {
+  BRONZE:  "bronze",
+  SILVER:  "silver",
+  GOLD:    "gold",
+  DIAMOND: "diamond",
+  SPECIAL: "special",
+};
+
+export function mapBackendAchievement(
+  ach: BackendAchievement,
+  ctx: { totalWorkouts: number; currentStreak: number; currentLevel: number; followingCount: number }
+): Achievement {
+  const progressCurrents: Partial<Record<string, number>> = {
+    STREAK_SESSIONS: ctx.currentStreak,
+    TOTAL_WORKOUTS:  ctx.totalWorkouts,
+    TOTAL_FOLLOWING: ctx.followingCount,
+    LEVEL_REACHED:   ctx.currentLevel,
+  };
+  const unlocked = ach.unlockedAt != null;
+  const currentVal = progressCurrents[ach.conditionType];
+  return {
+    id: ach.id,
+    icon: ACHIEVEMENT_CONDITION_ICON[ach.conditionType] ?? "ribbon",
+    label: ach.name,
+    description: ach.description,
+    requirement: ach.description,
+    unlocked,
+    unlockedAt: ach.unlockedAt ? new Date(ach.unlockedAt) : undefined,
+    points: ach.xpReward,
+    tier: ACHIEVEMENT_MEDAL_TIER[ach.medalType] ?? "bronze",
+    category: ach.category,
+    progress: currentVal !== undefined && !unlocked
+      ? { current: Math.min(currentVal, ach.conditionValue), target: ach.conditionValue }
+      : undefined,
+  };
+}
+
 // ── Scope switch helper ───────────────────────────────────────────────────────
 export type ProgressScope = "Semana" | "Mês" | "Geral";
 

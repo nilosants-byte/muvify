@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ClientTabParamList } from "../../navigation/route-types";
 import { useAppState } from "../../state/AppState";
-import { bookingsApi, consultancyApi, uploadsApi, userApi } from "../../services/api/client";
+import { bookingsApi, communityApi, consultancyApi, gamificationApi, uploadsApi, userApi } from "../../services/api/client";
 import { resolveMediaUrl } from "../../utils/media";
 import { MvAvatar, MvProgressBar, MvRefreshControl } from "../../components/mv";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -17,7 +17,7 @@ import { ClientBottomNavV2 } from "../../components/navigation/ClientBottomNavV2
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
-import { computeUserProgress, computeAchievements } from "../../utils/gamification";
+import { computeUserProgress, computeAchievements, mapBackendAchievement, type BackendAchievement } from "../../utils/gamification";
 import { hapticAchievement } from "../../utils/haptics";
 import type { Achievement, UserProgress } from "../../types/gamification";
 
@@ -115,10 +115,13 @@ export function ClientProfileScreen({ navigation }: Props) {
   const loadStats = useCallback(async () => {
     setStatsLoading(true);
     try {
-      const [bookingData, trainingData, anamnesisData] = await Promise.all([
+      const [bookingData, trainingData, anamnesisData, gamProfile, backendAchievements, followingRes] = await Promise.all([
         runWithAuth((token) => bookingsApi.me(token)).catch(() => []),
         runWithAuth((token) => consultancyApi.myTraining(token)).catch(() => null),
         runWithAuth((token) => userApi.myAnamnesis(token)).catch(() => null),
+        runWithAuth((token) => gamificationApi.getMyProfile(token)).catch(() => null),
+        runWithAuth((token) => gamificationApi.getAchievements(token)).catch(() => [] as BackendAchievement[]),
+        runWithAuth((token) => communityApi.getFollowing(token, 1, 50)).catch(() => ({ items: [], total: 0 })),
       ]);
       if (anamnesisData) {
         const incomplete = anamnesisData.status !== "COMPLETED";
@@ -136,7 +139,14 @@ export function ClientProfileScreen({ navigation }: Props) {
         deliveredContracts: contracts.filter((c: any) => c.status === "DELIVERED").length,
       });
       const prog = computeUserProgress(allBookings as any);
-      const achievs = computeAchievements(prog);
+      const achievs = backendAchievements.length > 0
+        ? backendAchievements.map((ach) => mapBackendAchievement(ach, {
+            totalWorkouts: prog.totalWorkouts,
+            currentStreak: gamProfile?.currentStreak ?? prog.streak,
+            currentLevel: gamProfile?.currentLevel ?? prog.level,
+            followingCount: followingRes.total ?? followingRes.items.length,
+          }))
+        : computeAchievements(prog);
       setProgress(prog);
       setAchievements(achievs);
       try {

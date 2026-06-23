@@ -18,6 +18,7 @@ import { MvButton } from "../../components/mv/MvButton";
 import { MvInput } from "../../components/mv/MvInput";
 import { MvText } from "../../components/mv/MvText";
 import { PressableScale } from "../../components/polish/PressableScale";
+import { AppLogoText } from "../../components/ui/AppLogoText";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { useMvTheme } from "../../theme/MvThemeContext";
 
@@ -177,10 +178,7 @@ export function AuthRegisterScreen({ navigation }: Props) {
       >
         {/* Logo da marca */}
         <View style={{ marginBottom: 28 }}>
-          <Text style={{ fontFamily: DISPLAY, fontSize: 28, letterSpacing: -0.03 * 28 }}>
-            <Text style={{ color: theme.text1 }}>muvi</Text>
-            <Text style={{ color: theme.primary }}>fy</Text>
-          </Text>
+          <AppLogoText size={28} />
         </View>
 
         <MvText variant="display" style={{ marginBottom: 6 }}>Criar conta</MvText>
