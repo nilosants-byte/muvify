@@ -6,6 +6,7 @@
     "start": "expo start",
     "start:tunnel": "expo start --tunnel -c",
     "start:ngrok": "node scripts/start-ngrok.mjs",
+    "start:share": "node scripts/start-share.mjs",
     "start:lan": "node scripts/start-lan.mjs",
     "start:lan:detached": "node scripts/start-lan-detached.mjs",
     "start:dev-client": "expo start --dev-client --host lan",
