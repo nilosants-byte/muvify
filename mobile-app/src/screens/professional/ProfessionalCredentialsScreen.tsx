@@ -7,7 +7,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
-import { providersApi, ProviderCredentials, ProviderCredentialsDocument } from "../../services/api/client";
+import { providersApi, uploadsApi, ProviderCredentials, ProviderCredentialsDocument } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
@@ -16,6 +16,7 @@ import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatBRDate } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { fileUriToDataUri } from "../../utils/media";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalCredentials">;
 type AttachedDoc = { name: string; uri: string; mimeType: string };
@@ -235,18 +236,25 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
 
     try {
       setSaving(true);
-      const frontEntry: ProviderCredentialsDocument = frontDoc
-        ? { name: frontDoc.name, uri: frontDoc.uri, mimeType: frontDoc.mimeType }
-        : { name: existingDocs[0].name, uri: existingDocs[0].uri, mimeType: existingDocs[0].mimeType };
-      const backEntry: ProviderCredentialsDocument = backDoc
-        ? { name: backDoc.name, uri: backDoc.uri, mimeType: backDoc.mimeType }
-        : { name: existingDocs[1].name, uri: existingDocs[1].uri, mimeType: existingDocs[1].mimeType };
-      const updated = await runWithAuth((token) =>
-        providersApi.upsertMyCredentials(token, {
+      const updated = await runWithAuth(async (token) => {
+        async function resolveEntry(
+          doc: AttachedDoc | null,
+          existing: ProviderCredentialsDocument | undefined
+        ): Promise<ProviderCredentialsDocument> {
+          if (!doc) return { name: existing!.name, uri: existing!.uri, mimeType: existing!.mimeType };
+          const dataUri = await fileUriToDataUri(doc.uri, doc.mimeType);
+          const { url } = await uploadsApi.uploadMedia(token, dataUri, "cref-documents");
+          return { name: doc.name, uri: url, mimeType: doc.mimeType };
+        }
+
+        const frontEntry = await resolveEntry(frontDoc, existingDocs[0]);
+        const backEntry = await resolveEntry(backDoc, existingDocs[1]);
+
+        return providersApi.upsertMyCredentials(token, {
           crefNumber: crefNumber.trim(),
           credentials: [frontEntry, backEntry],
-        })
-      ) as ProviderCredentials;
+        });
+      }) as ProviderCredentials;
       setCredentials(updated);
       showToast("Credenciais salvas com sucesso.", "success");
     } catch (error) {

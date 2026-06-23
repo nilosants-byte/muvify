@@ -10,6 +10,7 @@ import {
   PROFESSIONAL_SPECIALTIES,
   ProviderFixedLocation,
   providersApi,
+  uploadsApi,
   userApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
@@ -19,7 +20,7 @@ import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
-import { resolveMediaUrl } from "../../utils/media";
+import { fileUriToDataUri, resolveMediaUrl } from "../../utils/media";
 
 type Props = BottomTabScreenProps<ProfessionalTabParamList, "ProfessionalProfileEditor">;
 
@@ -142,10 +143,14 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
       const mimeType = asset.mimeType ?? "image/jpeg";
       if (!allowedTypes.includes(mimeType)) { showToast("Use JPEG, PNG ou WebP.", "error"); return; }
-      const dataUri = asset.base64 ? `data:${mimeType};base64,${asset.base64}` : asset.uri;
-      setPhotoUrl(dataUri);
-      setPhotoPreviewUri(asset.uri ?? dataUri);
-      showToast("Foto selecionada. Salve o perfil para concluir.", "success");
+      const dataUri = asset.base64
+        ? `data:${mimeType};base64,${asset.base64}`
+        : await fileUriToDataUri(asset.uri, mimeType);
+      setPhotoPreviewUri(asset.uri);
+      showToast("Enviando foto...", "info");
+      const { url } = await runWithAuth((token) => uploadsApi.uploadMedia(token, dataUri, "profile-photos"));
+      setPhotoUrl(url);
+      showToast("Foto enviada. Salve o perfil para concluir.", "success");
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Falha ao selecionar a foto.", "error");
     }

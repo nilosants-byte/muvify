@@ -1218,6 +1218,23 @@ export const authApi = {
   }
 };
 
+export type UploadFolder =
+  | "profile-photos"
+  | "presentation-videos"
+  | "feed-photos"
+  | "cref-documents"
+  | "exercise-media";
+
+export const uploadsApi = {
+  uploadMedia(token: string, dataUri: string, folder: UploadFolder) {
+    return apiRequest<{ url: string; mimeType: string; sizeBytes: number }>("/uploads/media", {
+      method: "POST",
+      token,
+      body: { dataUri, folder }
+    });
+  }
+};
+
 export const userApi = {
   me(token: string) {
     return apiRequest<AuthUser>("/users/me", { token });

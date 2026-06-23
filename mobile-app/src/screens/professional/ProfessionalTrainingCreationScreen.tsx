@@ -25,12 +25,14 @@ import {
   exerciseApi,
   providersApi,
   TrainingPlan,
+  uploadsApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvCard, MvInput, MvMediaViewer, MvText } from "../../components/mv";
 import { handleScreenError } from "../shared/api-helpers";
 import { StepProgressBar } from "../../components/professional/UXReformComponents";
+import { fileUriToDataUri } from "../../utils/media";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "TrainingCreation">;
 type ActiveTab = "mine" | "prebuilt";
@@ -210,24 +212,6 @@ function removeDraftExercise(
   uid: string
 ) {
   setter((current) => current.filter((exercise) => exercise.uid !== uid));
-}
-
-async function fileUriToDataUri(uri: string, mimeType: string): Promise<string> {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Falha ao processar arquivo local."));
-    reader.onloadend = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result.startsWith("data:") ? reader.result : `data:${mimeType};base64,${reader.result}`);
-        return;
-      }
-      reject(new Error("Falha ao converter arquivo em base64."));
-    };
-    reader.readAsDataURL(blob);
-  });
 }
 
 function ExerciseThumb({
@@ -551,26 +535,21 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
           ? "image/gif"
           : "image/jpeg");
 
-      let resolvedUrl = "";
+      let dataUri = "";
 
       if (kind === "image" && asset.base64) {
-        resolvedUrl = `data:${mimeType};base64,${asset.base64}`;
+        dataUri = `data:${mimeType};base64,${asset.base64}`;
       } else {
-        try {
-          resolvedUrl = await fileUriToDataUri(asset.uri, mimeType);
-        } catch {
-          if (kind === "video") {
-            resolvedUrl = asset.uri;
-          } else {
-            throw new Error("Não foi possivel processar esta midia.");
-          }
-        }
+        dataUri = await fileUriToDataUri(asset.uri, mimeType);
       }
 
-      if (resolvedUrl.length > MAX_MEDIA_PAYLOAD_CHARS) {
+      if (dataUri.length > MAX_MEDIA_PAYLOAD_CHARS) {
         showToast("Midia muito grande para salvar. Use arquivo menor.", "error");
         return;
       }
+
+      showToast("Enviando midia...", "info");
+      const { url } = await runWithAuth((token) => uploadsApi.uploadMedia(token, dataUri, "exercise-media"));
 
       const resolvedType: ExerciseMediaType =
         kind === "video"
@@ -581,7 +560,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
 
       setExerciseForm((current) => ({
         ...current,
-        mediaUrl: resolvedUrl,
+        mediaUrl: url,
         mediaType: resolvedType,
       }));
       setMediaUrlInput("");

@@ -75,17 +75,6 @@ jest.mock("@sentry/react-native", () => ({
   wrap: jest.fn((component: unknown) => component)
 }));
 
-jest.mock("@stripe/stripe-react-native", () => {
-  const React = require("react");
-  return {
-    StripeProvider: ({ children }: { children: React.ReactNode }) => children,
-    useStripe: () => ({
-      initPaymentSheet: jest.fn().mockResolvedValue({}),
-      presentPaymentSheet: jest.fn().mockResolvedValue({})
-    })
-  };
-});
-
 jest.mock("expo-image-picker", () => ({
   requestCameraPermissionsAsync: jest.fn().mockResolvedValue({ status: "granted" }),
   launchCameraAsync: jest.fn().mockResolvedValue({

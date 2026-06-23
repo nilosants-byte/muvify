@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ClientTabParamList } from "../../navigation/route-types";
 import { useAppState } from "../../state/AppState";
-import { bookingsApi, consultancyApi, userApi } from "../../services/api/client";
+import { bookingsApi, consultancyApi, uploadsApi, userApi } from "../../services/api/client";
 import { resolveMediaUrl } from "../../utils/media";
 import { MvAvatar, MvProgressBar, MvRefreshControl } from "../../components/mv";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -203,7 +203,10 @@ export function ClientProfileScreen({ navigation }: Props) {
       }
       const dataUri = `data:${asset.mimeType ?? "image/jpeg"};base64,${asset.base64}`;
       setPhotoUri(asset.uri);
-      const updated = await runWithAuth((token) => userApi.updateMe(token, { photoUrl: dataUri }));
+      const updated = await runWithAuth(async (token) => {
+        const { url } = await uploadsApi.uploadMedia(token, dataUri, "profile-photos");
+        return userApi.updateMe(token, { photoUrl: url });
+      });
       setCurrentUser(updated);
       showToast("Foto atualizada.", "success");
     } catch { showToast("Falha ao selecionar foto.", "error"); }

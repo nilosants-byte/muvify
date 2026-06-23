@@ -27,7 +27,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientTabParamList } from "../../navigation/route-types";
 import { useAppState } from "../../state/AppState";
-import { bookingsApi, Booking, communityApi, CommunityUser, UserPublicProfile, gamificationApi, GamificationProfile, RankingEntry, FeedPost, FeedPostMetadata, FeedComment } from "../../services/api/client";
+import { bookingsApi, Booking, communityApi, CommunityUser, UserPublicProfile, gamificationApi, GamificationProfile, RankingEntry, FeedPost, FeedPostMetadata, FeedComment, uploadsApi } from "../../services/api/client";
 import { MvAvatar } from "../../components/mv";
 import { computeAchievements, progressForScope, type ProgressScope as GamificationScope } from "../../utils/gamification";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -1278,10 +1278,17 @@ export function CommunityScreen({ navigation }: Props) {
     if (!caption || createSubmitting) return;
     setCreateSubmitting(true);
     try {
-      await runWithAuth((token) => communityApi.createPost(token, {
-        caption,
-        ...(createPhotoData ? { imageUrl: createPhotoData } : {}),
-      }));
+      await runWithAuth(async (token) => {
+        let imageUrl: string | undefined;
+        if (createPhotoData) {
+          const uploaded = await uploadsApi.uploadMedia(token, createPhotoData, "feed-photos");
+          imageUrl = uploaded.url;
+        }
+        return communityApi.createPost(token, {
+          caption,
+          ...(imageUrl ? { imageUrl } : {}),
+        });
+      });
       setCreateCaption("");
       setCreatePhotoUri(null);
       setCreatePhotoData(null);
