@@ -382,6 +382,7 @@ export class AuthService {
       user: {
         id: user.id,
         name: user.name,
+        apelido: user.apelido,
         email: user.email,
         role: effectiveRole,
         phone: user.phone,
@@ -407,6 +408,7 @@ export class AuthService {
       select: {
         id: true,
         name: true,
+        apelido: true,
         email: true,
         role: true,
         phone: true,
@@ -423,6 +425,7 @@ export class AuthService {
       user: {
         id: user.id,
         name: user.name,
+        apelido: user.apelido,
         email: user.email,
         role: effectiveRole,
         phone: user.phone,
@@ -470,6 +473,7 @@ export class AuthService {
         user: {
           id: session.user.id,
           name: session.user.name,
+          apelido: session.user.apelido,
           email: session.user.email,
           role: effectiveRole,
           phone: session.user.phone,
