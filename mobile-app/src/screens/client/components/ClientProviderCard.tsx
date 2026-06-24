@@ -132,6 +132,15 @@ export const ClientProviderCard = React.memo(function ClientProviderCard({
                 </TouchableOpacity>
               </View>
 
+              {/* Vídeo de apresentação */}
+              {provider.presentationVideoUrl && (
+                <MvVideoPlayer
+                  url={resolveMediaUrl(provider.presentationVideoUrl) ?? provider.presentationVideoUrl}
+                  height={140}
+                  borderRadius={12}
+                />
+              )}
+
               {/* Especialidades — chips horizontais */}
               {specialties.length > 0 && (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
