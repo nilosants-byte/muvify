@@ -11,7 +11,8 @@ const fixedLocationSchema = z.object({
 
 const profilePhotoSchema = z.string().trim().url();
 
-const presentationVideoSchema = z.string().trim().url();
+// Aceita uma URL válida ou string vazia (sinaliza remoção do vídeo no update)
+const presentationVideoSchema = z.union([z.string().trim().url(), z.literal("")]);
 
 export const createProviderProfileSchema = z.object({
   body: z.object({

@@ -692,7 +692,7 @@ export class ProviderService {
           experienceYears: input.experienceYears,
           priceCents: input.priceCents,
           photoUrl: input.photoUrl,
-          presentationVideoUrl: ENABLE_VIDEO_UPLOAD ? input.presentationVideoUrl : undefined,
+          presentationVideoUrl: ENABLE_VIDEO_UPLOAD && input.presentationVideoUrl ? input.presentationVideoUrl : undefined,
           serviceRadiusKm: input.serviceRadiusKm,
           latitude: input.latitude,
           longitude: input.longitude,
@@ -792,7 +792,9 @@ export class ProviderService {
         ...(input.experienceYears !== undefined && { experienceYears: input.experienceYears }),
         ...(input.priceCents !== undefined && { priceCents: input.priceCents }),
         ...(input.photoUrl !== undefined && { photoUrl: input.photoUrl }),
-        ...(ENABLE_VIDEO_UPLOAD && input.presentationVideoUrl !== undefined ? { presentationVideoUrl: input.presentationVideoUrl } : {}),
+        ...(ENABLE_VIDEO_UPLOAD && input.presentationVideoUrl !== undefined
+          ? { presentationVideoUrl: input.presentationVideoUrl === "" ? null : input.presentationVideoUrl }
+          : {}),
         ...(input.serviceRadiusKm !== undefined && { serviceRadiusKm: input.serviceRadiusKm }),
         ...(input.latitude !== undefined && { latitude: input.latitude }),
         ...(input.longitude !== undefined && { longitude: input.longitude }),
