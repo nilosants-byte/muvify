@@ -99,7 +99,7 @@ export default function MuvifySplash({ colorScheme = "dark", onFinish }: Props) 
 
 const styles = StyleSheet.create({
   container:   { flex: 1, alignItems: "center", justifyContent: "center" },
-  logoGroup:   { alignItems: "center", gap: 6 },
+  logoGroup:   { alignItems: "center", gap: 2 },
   wordmark:    { flexDirection: "row", alignItems: "baseline" },
   muvi: {
     fontFamily: "Nunito_800ExtraBold",
@@ -117,5 +117,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 0.6,
   },
-  ecgWrap: { marginTop: 32, alignItems: "center" },
+  ecgWrap: { marginTop: 16, alignItems: "center" },
 });

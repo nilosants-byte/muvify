@@ -227,6 +227,27 @@ export function mapBackendAchievement(
   };
 }
 
+// ── Snapshot de conquistas (telas que mostram um resumo, não a lista completa) ──
+export function selectAchievementSnapshot(
+  achievements: Achievement[],
+  maxUnlocked: number,
+  maxLocked: number
+): Achievement[] {
+  const unlocked = achievements
+    .filter((a) => a.unlocked)
+    .sort((a, b) => (b.unlockedAt?.getTime() ?? 0) - (a.unlockedAt?.getTime() ?? 0))
+    .slice(0, maxUnlocked);
+  const locked = achievements
+    .filter((a) => !a.unlocked)
+    .sort((a, b) => {
+      const aPct = a.progress ? a.progress.current / a.progress.target : 0;
+      const bPct = b.progress ? b.progress.current / b.progress.target : 0;
+      return bPct - aPct;
+    })
+    .slice(0, maxLocked);
+  return [...unlocked, ...locked];
+}
+
 // ── Scope switch helper ───────────────────────────────────────────────────────
 export type ProgressScope = "Semana" | "Mês" | "Geral";
 

@@ -17,9 +17,11 @@ import { ClientBottomNavV2 } from "../../components/navigation/ClientBottomNavV2
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
-import { computeUserProgress, computeAchievements, mapBackendAchievement, type BackendAchievement } from "../../utils/gamification";
+import { computeUserProgress, computeAchievements, mapBackendAchievement, selectAchievementSnapshot, type BackendAchievement } from "../../utils/gamification";
 import { hapticAchievement } from "../../utils/haptics";
 import type { Achievement, UserProgress } from "../../types/gamification";
+import { AchievementBadgeSvg } from "../../components/community/AchievementBadgeSvg";
+import { AchievementsModal } from "../../components/community/AchievementsModal";
 
 const SEEN_ACHIEVEMENTS_KEY = "@muvify/seenAchievements";
 const PTS_PER_LEVEL = 500;
@@ -98,7 +100,13 @@ export function ClientProfileScreen({ navigation }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [progress, setProgress] = useState<UserProgress>({ level: 1, points: 0, streak: 0, weeklyGoal: { current: 0, target: 4 }, monthlyGoal: { current: 0, target: 18 }, totalWorkouts: 0 });
   const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [showAllAchievements, setShowAllAchievements] = useState(false);
   const [anamnesisNeedsAttention, setAnamnesisNeedsAttention] = useState(false);
+
+  const achievementSnapshot = useMemo(
+    () => selectAchievementSnapshot(achievements, 5, 5),
+    [achievements]
+  );
 
   useEffect(() => { setPhotoUri(resolveMediaUrl(user?.photoUrl) ?? null); }, [user?.photoUrl]);
   useEffect(() => { if (!editingName) setDisplayName(user?.name ?? "Aluno"); }, [editingName, user?.name]);
@@ -403,44 +411,47 @@ export function ClientProfileScreen({ navigation }: Props) {
 
         {/* Minhas conquistas */}
         <View style={{ paddingHorizontal: S.px, marginTop: S.gap }}>
-          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 18, color: theme.text1, letterSpacing: -0.03 * 18, marginBottom: 12 }}>Minhas conquistas</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 18, color: theme.text1, letterSpacing: -0.03 * 18 }}>Minhas conquistas</Text>
+            <TouchableOpacity onPress={() => setShowAllAchievements(true)} hitSlop={8}>
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>Ver todas ›</Text>
+            </TouchableOpacity>
+          </View>
           {statsLoading ? (
-            <View style={{ gap: 10 }}>
-              {[1, 2].map((i) => (
-                <View key={i} style={{ height: 68, backgroundColor: theme.cardBg, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border }} />
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              {[1, 2, 3].map((i) => (
+                <View key={i} style={{ width: 84, height: 96, backgroundColor: theme.cardBg, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border }} />
               ))}
             </View>
+          ) : achievementSnapshot.length === 0 ? (
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>Nenhuma conquista disponível ainda.</Text>
           ) : (
-            <View style={{ gap: 10 }}>
-              {achievements.map((a) => {
-                const u = a.unlocked;
-                const bg = u ? (a.tier === "bronze" ? C.amberDim : a.tier === "silver" ? C.skyDim : theme.primarySubtle) : theme.cardBg;
-                const bd = u ? (a.tier === "bronze" ? C.amberBorder : a.tier === "silver" ? C.skyBorder : theme.primarySubtleBorder) : theme.border;
-                const col = u ? (a.tier === "bronze" ? C.amber : a.tier === "silver" ? C.sky : theme.primary) : theme.text3;
-                return (
-                  <View key={a.id} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: bg, borderWidth: 1, borderColor: bd, borderRadius: S.cardR, padding: 14 }}>
-                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: u ? bg : "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: bd, alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name={a.icon as any} size={18} color={col} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: u ? col : theme.text2 }}>{a.label}</Text>
-                      <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, marginTop: 2 }}>
-                        {u ? a.description : a.requirement}
-                      </Text>
-                    </View>
-                    {u ? (
-                      <View style={{ backgroundColor: bg, borderWidth: 1, borderColor: bd, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 3 }}>
-                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: col }}>+{a.points} pts</Text>
-                      </View>
-                    ) : (
-                      <Ionicons name="lock-closed-outline" size={14} color={theme.text3} />
-                    )}
-                  </View>
-                );
-              })}
-            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+              {achievementSnapshot.map((a) => (
+                <TouchableOpacity
+                  key={a.id}
+                  onPress={() => setShowAllAchievements(true)}
+                  activeOpacity={0.85}
+                  style={{ width: 84, alignItems: "center", gap: 6, padding: 10, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg }}
+                >
+                  <AchievementBadgeSvg tier={a.tier} icon={a.icon} category={a.category} size={48} unlocked={a.unlocked} />
+                  <Text
+                    numberOfLines={2}
+                    style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: a.unlocked ? theme.text1 : theme.text3, textAlign: "center" }}
+                  >
+                    {a.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           )}
         </View>
+
+        <AchievementsModal
+          visible={showAllAchievements}
+          onClose={() => setShowAllAchievements(false)}
+          achievements={achievements}
+        />
 
         {/* Conta e preferências — menu V2 */}
         <View style={{ paddingHorizontal: S.px, marginTop: S.gap }}>
