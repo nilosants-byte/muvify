@@ -51,9 +51,11 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
     resolveMediaUrl(cachedProfile?.photoUrl)
   );
   const [presentationVideoUrl, setPresentationVideoUrl] = useState<string | null>(null);
-  // Local file:// URI for crash-free preview; base64 data URI only lives in presentationVideoUrl for submission
+  // Local file:// URI for crash-free preview; URL real do R2 vive em presentationVideoUrl para submissão
   const [videoLocalUri, setVideoLocalUri] = useState<string | null>(null);
   const [videoProcessing, setVideoProcessing] = useState(false);
+  // Sinaliza que o usuário removeu um vídeo já salvo — precisa virar "" no payload para o backend apagar
+  const [videoRemoved, setVideoRemoved] = useState(false);
   const [experienceYears, setExperienceYears] = useState(
     String(cachedProfile?.experienceYears ?? 1)
   );
@@ -90,6 +92,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
         setPresentationVideoUrl((profile as any).presentationVideoUrl ?? null);
         setVideoLocalUri(null);
         setVideoProcessing(false);
+        setVideoRemoved(false);
         setExperienceYears(String(profile.experienceYears || 1));
         setPriceInput(maskPriceInput(String(profile.priceCents || 0)) || "0,00");
         const specialties = Array.isArray(profile.specialties) ? (profile.specialties as string[]) : [];
@@ -187,18 +190,34 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
         return;
       }
 
-      // Step 1: store the local file:// URI immediately for crash-free preview.
-      // Never pass data:video/ base64 to WebView — 30-40MB URI exhausts mobile memory.
-      setVideoLocalUri(asset.uri);
-      setPresentationVideoUrl(null); // clear previous data URI until new one is ready
-      setVideoProcessing(true);
-      showToast("Vídeo selecionado. Processando...", "success");
+      const allowedTypes = ["video/mp4", "video/quicktime", "video/webm", "video/3gpp"];
+      const mimeType = asset.mimeType ?? "video/mp4";
+      if (!allowedTypes.includes(mimeType)) { showToast("Use MP4, MOV, WebM ou 3GP.", "error"); return; }
 
-      // Vídeo local selecionado — mantém URI para preview mas não converte para base64.
-      // Para publicar o vídeo de apresentação, use o campo de URL do YouTube abaixo.
+      // Mostra a prévia local (file://) imediatamente — nunca passar data:video/ pro WebView,
+      // pois a string base64 de 30-40MB esgota a memória do app.
+      setVideoLocalUri(asset.uri);
+      setPresentationVideoUrl(null); // limpa a URL anterior até o novo upload terminar
+      setVideoRemoved(false);
+      setVideoProcessing(true);
+      showToast("Enviando vídeo...", "info");
+
+      const dataUri = await fileUriToDataUri(asset.uri, mimeType);
+      const base64Part = dataUri.slice(dataUri.indexOf(",") + 1);
+      const estimatedBytes = Math.ceil((base64Part.length * 3) / 4);
+      if (estimatedBytes > 40 * 1024 * 1024) {
+        showToast("O vídeo deve ter no máximo 40MB. Use a ferramenta de corte para reduzir.", "error");
+        setVideoLocalUri(null);
+        setVideoProcessing(false);
+        return;
+      }
+
+      const { url } = await runWithAuth((token) => uploadsApi.uploadMedia(token, dataUri, "presentation-videos"));
+      setPresentationVideoUrl(url);
       setVideoProcessing(false);
-      showToast("Prévia do vídeo carregada. Para publicar no perfil, cole o link do YouTube no campo abaixo.", "info");
+      showToast("Vídeo enviado. Salve o perfil para concluir.", "success");
     } catch (error) {
+      setVideoProcessing(false);
       showToast(error instanceof Error ? error.message : "Falha ao selecionar o vídeo.", "error");
     }
   }
@@ -222,7 +241,9 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       displayName: displayName.trim(),
       bio: bio.trim(),
       photoUrl: isUploadableUrl(photoUrl.trim()) ? photoUrl.trim() : undefined,
-      presentationVideoUrl: isUploadableUrl(presentationVideoUrl) ? presentationVideoUrl! : undefined,
+      presentationVideoUrl: videoRemoved
+        ? ""
+        : isUploadableUrl(presentationVideoUrl) ? presentationVideoUrl! : undefined,
       experienceYears: parsedExperience,
       priceCents: parsedPriceCents,
       specialties: selectedSpecialties,
@@ -339,7 +360,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                   onPress={() => {
                     Alert.alert("Remover vídeo", "Deseja remover o vídeo de apresentação?", [
                       { text: "Cancelar", style: "cancel" },
-                      { text: "Remover", style: "destructive", onPress: () => { setVideoLocalUri(null); setPresentationVideoUrl(null); setVideoProcessing(false); } },
+                      { text: "Remover", style: "destructive", onPress: () => { setVideoLocalUri(null); setPresentationVideoUrl(null); setVideoProcessing(false); setVideoRemoved(true); } },
                     ]);
                   }}
                   style={{
@@ -354,19 +375,9 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
               </View>
             </View>
           ) : presentationVideoUrl ? (
-            // Loaded from backend (data:video/ URI) — show saved indicator, can't play in WebView
+            // Carregado do backend — já é uma URL real do R2, pode reproduzir normalmente
             <View style={{ gap: 10 }}>
-              <View style={{
-                height: 90, borderRadius: 10,
-                backgroundColor: theme.chipBg,
-                borderWidth: 1, borderColor: theme.border,
-                alignItems: "center", justifyContent: "center",
-                gap: 6,
-              }}>
-                <Ionicons name="videocam" size={28} color={theme.textGreen} />
-                <MvText variant="semi3" style={{ color: theme.textGreen }}>Vídeo de apresentação salvo</MvText>
-                <MvText variant="body4" color="secondary">Selecione um novo vídeo para substituir.</MvText>
-              </View>
+              <MvVideoPlayer url={resolveMediaUrl(presentationVideoUrl) ?? presentationVideoUrl} height={180} borderRadius={10} />
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <View style={{ flex: 1 }}>
                   <MvButton variant="outline" label="Trocar vídeo" onPress={() => void doPickPresentationVideo()} />
@@ -376,7 +387,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                   onPress={() => {
                     Alert.alert("Remover vídeo", "Deseja remover o vídeo de apresentação?", [
                       { text: "Cancelar", style: "cancel" },
-                      { text: "Remover", style: "destructive", onPress: () => { setVideoLocalUri(null); setPresentationVideoUrl(null); setVideoProcessing(false); } },
+                      { text: "Remover", style: "destructive", onPress: () => { setVideoLocalUri(null); setPresentationVideoUrl(null); setVideoProcessing(false); setVideoRemoved(true); } },
                     ]);
                   }}
                   style={{

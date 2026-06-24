@@ -15,8 +15,10 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { MvAvatar } from "../../components/mv";
+import { MvVideoPlayer } from "../../components/mv/MvVideoPlayer";
 import { averageToFive, formatPriceFromCents, handleScreenError } from "../shared/api-helpers";
 import { formatCurrencyBRL } from "../../utils/formatters";
+import { resolveMediaUrl } from "../../utils/media";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { hapticCta } from "../../utils/haptics";
@@ -28,6 +30,7 @@ type ProviderDetail = ProviderSummary & {
   categoryLinks?: Array<{ category?: { name: string } }>;
   reviews?: Array<{ id: string; rating: number; comment?: string | null; user?: { name?: string } }>;
   fixedLocations?: Array<{ id: string; name: string; latitude?: number | null; longitude?: number | null }>;
+  presentationVideoUrl?: string | null;
 };
 
 function getInitials(name: string) {
@@ -292,6 +295,14 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
             ))}
           </View>
         </View>
+
+        {/* Vídeo de apresentação */}
+        {provider.presentationVideoUrl ? (
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, marginBottom: 10 }}>Vídeo de apresentação</Text>
+            <MvVideoPlayer url={resolveMediaUrl(provider.presentationVideoUrl) ?? provider.presentationVideoUrl} height={200} borderRadius={10} />
+          </View>
+        ) : null}
 
         {/* Por que contratar (bio) */}
         {provider.bio ? (
