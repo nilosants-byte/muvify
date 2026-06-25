@@ -8,8 +8,10 @@ on:
 
 jobs:
   smoke:
-    if: ${{ (github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch') && secrets.SMOKE_BASE_URL != '' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
+    env:
+      SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,6 +20,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Run smoke flow script
+        if: ${{ env.SMOKE_BASE_URL != '' }}
         env:
           BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
           METRICS_TOKEN: ${{ secrets.METRICS_TOKEN }}
