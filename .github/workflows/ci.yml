@@ -41,15 +41,18 @@ jobs:
       - run: npm run prisma:deploy
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/marketplace_test?schema=public
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/marketplace_test?schema=public
       - run: npm run lint
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/marketplace_test?schema=public
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/marketplace_test?schema=public
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: ci-secret-key
           NODE_ENV: test
       - run: npm run test
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/marketplace_test?schema=public
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/marketplace_test?schema=public
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: ci-secret-key
           NODE_ENV: test
