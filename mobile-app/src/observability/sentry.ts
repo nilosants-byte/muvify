@@ -1,5 +1,16 @@
 import * as Sentry from "@sentry/react-native";
-import type { AuthUser } from "../services/api/client";
+import { ApiError, type AuthUser } from "../services/api/client";
+
+// Status HTTP que representam comportamento esperado da aplicação (timeout/falha
+// de rede, validação, sessão expirada/inválida, recurso não encontrado, conflito,
+// rate limit) — não são bugs. Reportá-los como exceção só gera ruído e dispara
+// alertas falsos (ex.: cold start do Render após deploy expira o timeout do
+// cliente e isso chega no Sentry como se fosse um erro real).
+const EXPECTED_API_STATUSES = new Set([0, 400, 401, 403, 404, 409, 429]);
+
+function isExpectedApiError(error: unknown): boolean {
+  return error instanceof ApiError && EXPECTED_API_STATUSES.has(error.status);
+}
 
 let initialized = false;
 
@@ -38,6 +49,7 @@ export function initSentry() {
 
 export function captureException(error: unknown, context?: Record<string, unknown>) {
   if (!initialized) return;
+  if (isExpectedApiError(error)) return;
   const err = error instanceof Error ? error : new Error(String(error));
   if (context) {
     Sentry.withScope((scope) => {
