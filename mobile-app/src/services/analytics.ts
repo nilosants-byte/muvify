@@ -5,29 +5,33 @@ const POSTHOG_KEY = process.env.EXPO_PUBLIC_POSTHOG_KEY ?? "";
 // Disabled when: no key configured, running in development, or running tests.
 const disabled = !POSTHOG_KEY || __DEV__ || process.env.NODE_ENV === "test";
 
-export const posthog = new PostHog(POSTHOG_KEY || "placeholder", {
-  host: "https://eu.posthog.com",
-  disabled,
-  flushAt: 20,
-  flushInterval: 30_000,
-  captureAppLifecycleEvents: true,
-});
+// Não instancia o SDK quando desabilitado: o construtor do PostHog tenta
+// inicializar storage (AsyncStorage/expo-file-system) de forma síncrona e
+// quebra em ambientes sem esses módulos disponíveis (ex.: Jest).
+export const posthog: PostHog | undefined = disabled
+  ? undefined
+  : new PostHog(POSTHOG_KEY, {
+      host: "https://eu.posthog.com",
+      flushAt: 20,
+      flushInterval: 30_000,
+      captureAppLifecycleEvents: true,
+    });
 
 // ── Event helpers ─────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function trackEvent(event: AnalyticsEvent, props?: Record<string, any>) {
-  if (disabled) return;
+  if (!posthog) return;
   posthog.capture(event, props);
 }
 
 export function identifyUser(id: string, traits?: { name?: string; email?: string; role?: string }) {
-  if (disabled) return;
+  if (!posthog) return;
   posthog.identify(id, traits);
 }
 
 export function resetAnalyticsUser() {
-  if (disabled) return;
+  if (!posthog) return;
   posthog.reset();
 }
 
