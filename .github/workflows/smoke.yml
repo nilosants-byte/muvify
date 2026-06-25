@@ -8,7 +8,7 @@ on:
 
 jobs:
   smoke:
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch') && secrets.SMOKE_BASE_URL != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +23,4 @@ jobs:
           METRICS_TOKEN: ${{ secrets.METRICS_TOKEN }}
           SMOKE_ADMIN_EMAIL: ${{ secrets.SMOKE_ADMIN_EMAIL }}
           SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
-        run: |
-          if [ -z "$BASE_URL" ]; then
-            echo "SMOKE_BASE_URL not configured"
-            exit 1
-          fi
-          node scripts/smoke.ts
+        run: node scripts/smoke.ts

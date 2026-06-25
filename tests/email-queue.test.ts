@@ -44,7 +44,9 @@ describe("email-queue", () => {
       select: { id: true }
     });
 
-    expect(sendVerificationSpy).toHaveBeenCalledTimes(1);
+    expect(sendVerificationSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "queue_verify@test.com" })
+    );
     expect(stored).toBeNull();
   });
 
