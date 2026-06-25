@@ -54,7 +54,10 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/marketplace_test?schema=public
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/marketplace_test?schema=public
           REDIS_URL: redis://localhost:6379
-          JWT_SECRET: ci-secret-key
+          JWT_SECRET: ci-test-secret-key-with-at-least-32-characters
+          CORS_ORIGIN: http://localhost:8081,http://localhost:3000
+          MP_ACCESS_TOKEN: TEST-ci-placeholder-access-token
+          MP_PUBLIC_KEY: TEST-ci-placeholder-public-key
           NODE_ENV: test
 
   mobile-quality:
