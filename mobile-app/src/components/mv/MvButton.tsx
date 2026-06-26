@@ -1,5 +1,5 @@
 import React from "react";
-import { ActivityIndicator, StyleProp, ViewStyle } from "react-native";
+import { ActivityIndicator, Keyboard, StyleProp, ViewStyle } from "react-native";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { shadows } from "../../theme/tokens";
 import { radius } from "../../theme/MvTypography";
@@ -71,10 +71,15 @@ export function MvButton({
     }
   })();
 
+  const handlePress = () => {
+    Keyboard.dismiss();
+    onPress?.();
+  };
+
   return (
     <PressableScale
       disabled={disabled || loading}
-      onPress={onPress}
+      onPress={handlePress}
       scale={0.97}
       style={[containerStyle, style as ViewStyle]}
       testID={testID}

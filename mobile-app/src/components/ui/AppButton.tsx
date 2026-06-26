@@ -1,6 +1,7 @@
 ﻿import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   PressableStateCallbackType,
   StyleProp,
@@ -137,6 +138,10 @@ export function AppButton({
   ];
   const textColor = getTextColor(variant, isDisabled, colors);
   const iconColor = textColor;
+  const handlePress = () => {
+    Keyboard.dismiss();
+    onPress?.();
+  };
   return (
     <Animated.View style={animStyle}>
       <Pressable
@@ -146,7 +151,7 @@ export function AppButton({
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       accessibilityLiveRegion={loading ? 'polite' : 'none'}
       disabled={isDisabled}
-      onPress={onPress}
+      onPress={handlePress}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
       style={getContainerStyle}
