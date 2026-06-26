@@ -68,19 +68,27 @@ export default function App() {
     return null;
   }
 
+  const content = (
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <MvThemeProvider>
+          <AppStateProvider>
+            <AppContent />
+          </AppStateProvider>
+        </MvThemeProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
+  );
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <PostHogProvider client={posthog} autocapture={{ captureScreens: false }}>
-        <ErrorBoundary>
-          <SafeAreaProvider>
-            <MvThemeProvider>
-              <AppStateProvider>
-                <AppContent />
-              </AppStateProvider>
-            </MvThemeProvider>
-          </SafeAreaProvider>
-        </ErrorBoundary>
-      </PostHogProvider>
+      {posthog ? (
+        <PostHogProvider client={posthog} autocapture={{ captureScreens: false }}>
+          {content}
+        </PostHogProvider>
+      ) : (
+        content
+      )}
     </GestureHandlerRootView>
   );
 }
