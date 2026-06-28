@@ -1108,7 +1108,9 @@ export async function apiRequest<T = unknown>(
       headers: {
         ...(body ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        "ngrok-skip-browser-warning": "true"
+        // Header de tunelamento do ngrok — só faz sentido em dev local (npm run start:ngrok).
+        // Nunca deve ir para builds de produção.
+        ...(__DEV__ ? { "ngrok-skip-browser-warning": "true" } : {})
       },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal

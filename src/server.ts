@@ -9,6 +9,7 @@ import { startNotificationRetryJob, stopNotificationRetryJob } from "./modules/n
 import { startDataRetentionJob, stopDataRetentionJob } from "./modules/privacy/jobs/data-retention.job";
 import { startCommunityJobs, stopCommunityJobs } from "./modules/community/jobs/community.jobs";
 import { startReminderJob, stopReminderJob } from "./modules/notifications/jobs/reminder.job";
+import { initSocketServer, stopSocketServer } from "./realtime/socket";
 import { initSentry } from "./config/sentry";
 import { EmailService } from "./shared/services/email.service";
 
@@ -53,6 +54,7 @@ async function shutdown(reason: string, error?: unknown) {
     stopDataRetentionJob();
     stopCommunityJobs();
     stopReminderJob();
+    await stopSocketServer();
     await prisma.$disconnect();
   } catch (disconnectError) {
     console.error("Failed to disconnect Prisma:", disconnectError);
@@ -126,6 +128,7 @@ async function bootstrap() {
   server = app.listen(env.PORT, () => {
     console.log(`HTTP server running on port ${env.PORT}`);
   });
+  await initSocketServer(server);
   startNotificationRetryJob();
   startCommunityJobs();
   startReminderJob();

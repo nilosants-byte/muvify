@@ -35,6 +35,18 @@ export function resetAnalyticsUser() {
   posthog.reset();
 }
 
+// Aplica a preferência de rastreamento do usuário (configurações > privacidade).
+// O PostHog persiste esse estado internamente, mas mantemos a fonte da verdade
+// no AppState para poder exibir o estado do toggle sem depender de API interna do SDK.
+export function applyAnalyticsPreference(enabled: boolean) {
+  if (!posthog) return;
+  if (enabled) {
+    void posthog.optIn();
+  } else {
+    void posthog.optOut();
+  }
+}
+
 // ── Event name catalogue ──────────────────────────────────────────────────────
 // Centralizing names prevents typos across the codebase.
 

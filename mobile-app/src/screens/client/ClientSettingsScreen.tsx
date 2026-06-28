@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 import { Alert, Modal, Pressable, ScrollView, Share, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -76,12 +77,16 @@ function ConfigGroup({ title, children }: { title: string; children: React.React
 }
 
 export function ClientSettingsScreen({ navigation }: Props) {
-  const { signOut, runWithAuth } = useAppState();
+  const { signOut, runWithAuth, analyticsEnabled, setAnalyticsPreference } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const [pushEnabled, setPushEnabled] = useState(true);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const lightModeEnabled = !isDark;
+
+  function handleToggleAnalytics(enabled: boolean) {
+    void setAnalyticsPreference(enabled);
+  }
 
   function handleDeleteAccount() {
     Alert.alert(
@@ -262,7 +267,14 @@ export function ClientSettingsScreen({ navigation }: Props) {
           <ConfigRow
             icon="information-circle-outline"
             title="Sobre o app"
-            subtitle="Versão 2.0.0"
+            subtitle={`Versão ${Constants.expoConfig?.version ?? "-"}`}
+          />
+          <ConfigRow
+            icon="analytics-outline"
+            title="Compartilhar dados de uso"
+            subtitle={analyticsEnabled ? "Ativado" : "Desativado"}
+            toggle={analyticsEnabled}
+            onToggle={handleToggleAnalytics}
           />
         </ConfigGroup>
 

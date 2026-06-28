@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
+import { emitNewBookingMessage } from "../../../realtime/socket";
 import { AppError } from "../../../shared/errors/app-error";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
 import { NotificationService } from "../../notifications/services/notification.service";
@@ -316,6 +317,9 @@ export class ChatController {
       data: { bookingId, senderId: userId, content: content.trim() },
       select: MESSAGE_SELECT,
     });
+
+    // Avisa em tempo real quem estiver com a conversa aberta (best-effort, nunca bloqueia a resposta)
+    emitNewBookingMessage(bookingId, message);
 
     // Notify the other participant
     const recipientId = isClient ? booking.provider.userId : booking.client.id;

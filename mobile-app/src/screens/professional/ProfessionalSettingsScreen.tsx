@@ -30,11 +30,15 @@ function rateApp() {
 }
 
 export function ProfessionalSettingsScreen({ navigation }: Props) {
-  const { signOut, user, runWithAuth } = useAppState();
+  const { signOut, user, runWithAuth, analyticsEnabled, setAnalyticsPreference } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
   const [pushEnabled, setPushEnabled] = useState(true);
   const lightModeEnabled = !isDark;
   const isLight = theme.mode === "light";
+
+  function handleAnalyticsToggle(enabled: boolean) {
+    void setAnalyticsPreference(enabled);
+  }
 
   const fullName = useMemo(() => {
     return user?.providerProfile?.displayName?.trim() || user?.name?.trim() || "Profissional";
@@ -240,6 +244,12 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
             label="Aparência"
             sub={lightModeEnabled ? "Modo claro ativo" : "Modo escuro ativo"}
             right={<MvToggle value={lightModeEnabled} onValueChange={handleLightModeToggle} />}
+          />
+          <MenuItem
+            icon="analytics-outline"
+            label="Compartilhar dados de uso"
+            sub={analyticsEnabled ? "Ativado" : "Desativado"}
+            right={<MvToggle value={analyticsEnabled} onValueChange={handleAnalyticsToggle} />}
           />
         </View>
 

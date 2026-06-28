@@ -1,9 +1,10 @@
 ﻿import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { AppState as RNAppState, Platform } from "react-native";
+import { connectSocket, disconnectSocket } from "../services/realtime/socket";
 import { captureException, setSentryUser } from "../observability/sentry";
-import { identifyUser, resetAnalyticsUser, trackEvent } from "../services/analytics";
+import { applyAnalyticsPreference, identifyUser, resetAnalyticsUser, trackEvent } from "../services/analytics";
 import {
   ApiError,
   authApi,
@@ -31,12 +32,14 @@ type AppStateContextValue = {
   onboardingDone: boolean;
   isAuthenticated: boolean;
   themeMode: ThemeMode;
+  analyticsEnabled: boolean;
   role: UserRole | null;
   user: AuthUser | null;
   toast: ToastPayload | null;
   completeOnboarding: () => Promise<void>;
   chooseRole: (role: UserRole) => Promise<void>;
   setThemePreference: (mode: ThemeMode) => Promise<void>;
+  setAnalyticsPreference: (enabled: boolean) => Promise<void>;
   login: (input: { email: string; password: string }) => Promise<{ requiresTwoFactor: true; challengeToken: string } | void>;
   completeTwoFactorLogin: (challengeToken: string, code: string) => Promise<void>;
   register: (input: {
@@ -60,6 +63,7 @@ type AppStateContextValue = {
 const STORAGE_KEYS = {
   onboardingDone: "@personalapp/onboardingDone",
   themeMode: "@personalapp/themeMode",
+  analyticsEnabled: "@personalapp/analyticsEnabled",
   role: "@personalapp/role",
   roleUserId: "@personalapp/roleUserId",
   pushToken: "@personalapp/pushToken",
@@ -191,6 +195,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [onboardingDone, setOnboardingDone] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [themeMode, setThemeModeState] = useState<ThemeMode>("dark");
+  const [analyticsEnabled, setAnalyticsEnabledState] = useState(true);
   const [role, setRole] = useState<UserRole | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -255,6 +260,30 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, [accessToken, isAuthenticated, user?.id]);
+
+  // Conecta o socket de tempo real (chat) enquanto autenticado. Desconecta quando o
+  // app vai para segundo plano (economiza bateria) e reconecta ao voltar ao primeiro plano.
+  useEffect(() => {
+    if (!isAuthenticated || !accessToken) {
+      return;
+    }
+
+    const currentAccessToken = accessToken;
+    connectSocket(currentAccessToken);
+
+    const subscription = RNAppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        connectSocket(currentAccessToken);
+      } else {
+        disconnectSocket();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+      disconnectSocket();
+    };
+  }, [accessToken, isAuthenticated]);
 
   const loadPreferredRoleForUser = useCallback(async (userId: string) => {
     const [storedRole, storedRoleUserId] = await Promise.all([
@@ -333,14 +362,20 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     const bootstrapTimeout = setTimeout(() => setBootstrapping(false), 10_000);
     async function hydrate() {
       try {
-        const [storedOnboarding, storedAccessToken, storedRefreshToken, storedThemeMode, cachedUser] =
+        const [storedOnboarding, storedAccessToken, storedRefreshToken, storedThemeMode, storedAnalyticsEnabled, cachedUser] =
           await Promise.all([
             AsyncStorage.getItem(STORAGE_KEYS.onboardingDone),
             secureGet(SECURE_KEYS.accessToken, WEB_SECURE_FALLBACK_KEYS.accessToken),
             secureGet(SECURE_KEYS.refreshToken, WEB_SECURE_FALLBACK_KEYS.refreshToken),
             AsyncStorage.getItem(STORAGE_KEYS.themeMode),
+            AsyncStorage.getItem(STORAGE_KEYS.analyticsEnabled),
             loadUserCache()
           ]);
+
+        // Padrão: ativado. Só desativa se o usuário explicitamente desligou antes.
+        const resolvedAnalyticsEnabled = storedAnalyticsEnabled !== "0";
+        setAnalyticsEnabledState(resolvedAnalyticsEnabled);
+        applyAnalyticsPreference(resolvedAnalyticsEnabled);
 
         // Usuário com sessão existente mas sem onboarding marcado = usuário antigo.
         // Auto-completa silenciosamente para não forçar onboarding em quem já usa o app.
@@ -413,6 +448,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setThemeModeState(nextMode);
     setThemeMode(nextMode);
     await AsyncStorage.setItem(STORAGE_KEYS.themeMode, nextMode);
+  }
+
+  async function setAnalyticsPreference(enabled: boolean) {
+    setAnalyticsEnabledState(enabled);
+    applyAnalyticsPreference(enabled);
+    await AsyncStorage.setItem(STORAGE_KEYS.analyticsEnabled, enabled ? "1" : "0");
   }
 
   async function chooseRole(nextRole: UserRole) {
@@ -604,12 +645,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       onboardingDone,
       isAuthenticated,
       themeMode,
+      analyticsEnabled,
       role,
       user,
       toast,
       completeOnboarding,
       chooseRole,
       setThemePreference,
+      setAnalyticsPreference,
       login: login as AppStateContextValue["login"],
       completeTwoFactorLogin,
       register,
@@ -626,6 +669,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       onboardingDone,
       isAuthenticated,
       themeMode,
+      analyticsEnabled,
       role,
       user,
       toast,

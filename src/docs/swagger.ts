@@ -1,11 +1,12 @@
 import swaggerJsdoc from "swagger-jsdoc";
 import { env } from "../config/env";
+import packageJson from "../../package.json";
 export const swaggerSpec = swaggerJsdoc({
   definition: {
     openapi: "3.0.0",
     info: {
       title: "Personal Services Marketplace API",
-      version: "1.0.0",
+      version: packageJson.version,
       description: "API para marketplace de servicos pessoais."
     },
     servers: [

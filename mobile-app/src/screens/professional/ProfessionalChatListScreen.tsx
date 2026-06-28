@@ -14,6 +14,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { chatApi, ChatMessage, ChatSummary } from "../../services/api/client";
+import {
+  isSocketConnected,
+  joinBookingRoom,
+  leaveBookingRoom,
+  onNewBookingMessage,
+} from "../../services/realtime/socket";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar, MvText } from "../../components/mv";
@@ -26,7 +32,11 @@ import { formatBRTime } from "../../utils/formatters";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalChatList">;
 type Tab = "active" | "inactive";
-const POLL_MS = 4000;
+// Rede de segurança: enquanto o socket de tempo real estiver conectado, a mensagem chega
+// na hora pelo evento — esse intervalo só serve para reconciliar caso algo se perca.
+// Se o socket cair, volta a perguntar com mais frequência até reconectar.
+const POLL_MS_SOCKET_CONNECTED = 20000;
+const POLL_MS_SOCKET_DISCONNECTED = 4000;
 
 function initials(name: string) {
   return name.trim().split(/\s+/).filter(Boolean).slice(0, 2)
@@ -175,14 +185,49 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
     if (pollRef.current) clearTimeout(pollRef.current);
     if (!selectedId) return;
     const schedule = () => {
+      const delay = isSocketConnected() ? POLL_MS_SOCKET_CONNECTED : POLL_MS_SOCKET_DISCONNECTED;
       pollRef.current = setTimeout(async () => {
         await fetchMessages(selectedId, false);
         if (isMountedRef.current) schedule();
-      }, POLL_MS);
+      }, delay);
     };
     schedule();
     return () => { if (pollRef.current) clearTimeout(pollRef.current); };
   }, [selectedId, fetchMessages]);
+
+  // Tempo real: entra na sala do agendamento selecionado e recebe mensagens novas na hora.
+  useEffect(() => {
+    if (!selectedId) return;
+    joinBookingRoom(selectedId);
+    const unsubscribe = onNewBookingMessage((incoming) => {
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === incoming.id)) return prev;
+        return [...prev, incoming];
+      });
+      setPanelError(false);
+      setChats((prev) =>
+        prev.map((c) =>
+          c.bookingId === selectedId
+            ? {
+                ...c,
+                unreadCount: 0,
+                lastMessage: {
+                  content: incoming.content,
+                  createdAt: incoming.createdAt,
+                  isMine: incoming.senderId === myUserId,
+                  isSystem: incoming.isSystem,
+                },
+              }
+            : c
+        )
+      );
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
+    });
+    return () => {
+      unsubscribe?.();
+      leaveBookingRoom(selectedId);
+    };
+  }, [selectedId, myUserId]);
 
   const openChat = useCallback((bookingId: string) => {
     setSelectedId(bookingId);
