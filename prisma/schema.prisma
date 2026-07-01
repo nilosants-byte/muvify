@@ -295,6 +295,9 @@ model ProviderProfile {
   photoUrl         String?
   presentationVideoUrl String?
   mpAccountId      String?
+  mpAccessToken    String?
+  mpRefreshToken   String?
+  mpTokenExpiresAt DateTime?
   crefNumber       String?
   crefDocumentUrl  String?
   credentialDocuments Json?
@@ -494,6 +497,8 @@ model Payment {
   mpPaymentId           String?       @unique
   mpCardToken           String?
   mpChargeId            String?
+  providerAmountCents   Int?
+  platformFeeCents      Int?
   authorizedAt          DateTime?
   capturedAt            DateTime?
   canceledAt            DateTime?

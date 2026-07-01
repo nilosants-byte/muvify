@@ -65,6 +65,16 @@ export const incomeIdSchema = z.object({
   params: z.object({ id: z.string().uuid() })
 });
 
+export const updateIncomeSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    description: z.string().trim().min(2).max(200).optional(),
+    amountCents: z.number().int().min(1).max(2_000_000_000).optional(),
+    studentId: z.string().uuid().nullable().optional(),
+    paidAt: z.string().datetime({ offset: true }).optional(),
+  }).refine(b => Object.keys(b).length > 0, { message: "Informe ao menos um campo.", path: ["description"] })
+});
+
 export const createExpenseSchema = z.object({
   body: z.object({
     description: z.string().trim().min(2).max(200),
@@ -76,6 +86,16 @@ export const createExpenseSchema = z.object({
 
 export const expenseIdSchema = z.object({
   params: z.object({ id: z.string().uuid() })
+});
+
+export const updateExpenseSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    description: z.string().trim().min(2).max(200).optional(),
+    amountCents: z.number().int().min(1).max(2_000_000_000).optional(),
+    category: z.enum(["GYM", "TRANSPORT", "EQUIPMENT", "MARKETING", "OTHER"]).optional(),
+    paidAt: z.string().datetime({ offset: true }).optional(),
+  }).refine(b => Object.keys(b).length > 0, { message: "Informe ao menos um campo.", path: ["description"] })
 });
 
 export const upsertGoalSchema = z.object({

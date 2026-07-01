@@ -2074,6 +2074,23 @@ export type FinancialAppClient = {
   latestAt: string;
 };
 
+export type FinancialPayoutItem = {
+  bookingId: string;
+  amountCents: number;
+  providerAmountCents: number;
+  platformFeeCents: number;
+  method: string;
+  status: string;
+  capturedAt: string | null;
+  scheduledAt: string;
+};
+
+export type FinancialPayouts = {
+  pendingCents: number;
+  availableCents: number;
+  payments: FinancialPayoutItem[];
+};
+
 export const financialApi = {
   dashboard(token: string, month?: string) {
     const q = month ? `?month=${month}` : "";
@@ -2081,6 +2098,9 @@ export const financialApi = {
   },
   report(token: string, months = 6) {
     return apiRequest<FinancialReport>(`/financial/report?months=${months}`, { token });
+  },
+  payouts(token: string) {
+    return apiRequest<FinancialPayouts>("/financial/payouts", { token });
   },
   listAppClients(token: string, month?: string) {
     const q = month ? `?month=${month}` : "";
@@ -2105,6 +2125,9 @@ export const financialApi = {
   createIncome(token: string, body: { description: string; amountCents: number; studentId?: string; paidAt: string }) {
     return apiRequest<FinancialIncome>("/financial/incomes", { method: "POST", token, body });
   },
+  updateIncome(token: string, id: string, body: { description?: string; amountCents?: number; studentId?: string | null; paidAt?: string }) {
+    return apiRequest<FinancialIncome>(`/financial/incomes/${id}`, { method: "PATCH", token, body });
+  },
   deleteIncome(token: string, id: string) {
     return apiRequest<void>(`/financial/incomes/${id}`, { method: "DELETE", token });
   },
@@ -2114,6 +2137,9 @@ export const financialApi = {
   },
   createExpense(token: string, body: { description: string; amountCents: number; category?: FinancialExpenseCategory; paidAt: string }) {
     return apiRequest<FinancialExpense>("/financial/expenses", { method: "POST", token, body });
+  },
+  updateExpense(token: string, id: string, body: { description?: string; amountCents?: number; category?: FinancialExpenseCategory; paidAt?: string }) {
+    return apiRequest<FinancialExpense>(`/financial/expenses/${id}`, { method: "PATCH", token, body });
   },
   deleteExpense(token: string, id: string) {
     return apiRequest<void>(`/financial/expenses/${id}`, { method: "DELETE", token });

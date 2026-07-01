@@ -1,4 +1,5 @@
-import { BookingStatus, FinancialExpenseCategory, FinancialStudentType, Prisma } from "@prisma/client";
+import { BookingStatus, FinancialExpenseCategory, FinancialStudentType, PaymentStatus, Prisma } from "@prisma/client";
+import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
@@ -49,11 +50,25 @@ type CreateIncomeInput = {
   paidAt: string;
 };
 
+type UpdateIncomeInput = {
+  description?: string;
+  amountCents?: number;
+  studentId?: string | null;
+  paidAt?: string;
+};
+
 type CreateExpenseInput = {
   description: string;
   amountCents: number;
   category?: FinancialExpenseCategory;
   paidAt: string;
+};
+
+type UpdateExpenseInput = {
+  description?: string;
+  amountCents?: number;
+  category?: FinancialExpenseCategory;
+  paidAt?: string;
 };
 
 type UpsertGoalInput = {
@@ -76,6 +91,9 @@ export class FinancialService {
     const m = month ?? currentMonth();
     const { from, to } = monthBounds(m);
 
+    const lastMonthFrom = (() => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 2, 1); })();
+    const lastMonthTo   = (() => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 1, 0, 23, 59, 59); })();
+
     const [
       incomes,
       expenses,
@@ -84,7 +102,8 @@ export class FinancialService {
       goal,
       lastMonthIncomes,
       completedBookings,
-      confirmedBookingsAgg
+      confirmedBookingsAgg,
+      lastMonthCompletedBookingsAgg
     ] = await Promise.all([
       prisma.financialIncome.findMany({
         where: { providerId: provider.id, paidAt: { gte: from, lte: to } },
@@ -105,15 +124,9 @@ export class FinancialService {
       prisma.financialGoal.findUnique({
         where: { providerId_month: { providerId: provider.id, month: m } }
       }),
-      // last month for growth calc
+      // mês anterior: receitas manuais
       prisma.financialIncome.findMany({
-        where: {
-          providerId: provider.id,
-          paidAt: {
-            gte: (() => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 2, 1); })(),
-            lte: (() => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 1, 0, 23, 59, 59); })()
-          }
-        },
+        where: { providerId: provider.id, paidAt: { gte: lastMonthFrom, lte: lastMonthTo } },
         take: 2000,
       }),
       // agendamentos COMPLETADOS: receita realizada pelo app (com datas para breakdown diário)
@@ -126,20 +139,28 @@ export class FinancialService {
       prisma.booking.aggregate({
         where: { providerId: provider.id, status: BookingStatus.CONFIRMED, scheduledAt: { gte: from, lte: to } },
         _sum: { priceCents: true }
+      }),
+      // mês anterior: agendamentos completados pelo app
+      prisma.booking.aggregate({
+        where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: lastMonthFrom, lte: lastMonthTo } },
+        _sum: { priceCents: true }
       })
     ]);
 
-    const appRevenueCents       = completedBookings.reduce((s, b) => s + b.priceCents, 0);
-    const confirmedRevenueCents = confirmedBookingsAgg._sum.priceCents ?? 0;
-    const totalRevenueCents     = incomes.reduce((s, i) => s + i.amountCents, 0);
-    const totalExpensesCents    = expenses.reduce((s, e) => s + e.amountCents, 0);
-    const netProfitCents        = totalRevenueCents + appRevenueCents - totalExpensesCents;
+    const appRevenueCents            = completedBookings.reduce((s, b) => s + b.priceCents, 0);
+    const confirmedRevenueCents      = confirmedBookingsAgg._sum.priceCents ?? 0;
+    const manualRevenueCents         = incomes.reduce((s, i) => s + i.amountCents, 0);
+    const totalRevenueCents          = manualRevenueCents + appRevenueCents;
+    const totalExpensesCents         = expenses.reduce((s, e) => s + e.amountCents, 0);
+    const netProfitCents             = totalRevenueCents - totalExpensesCents;
 
-    const lastMonthRevenueCents = lastMonthIncomes.reduce((s, i) => s + i.amountCents, 0);
+    const lastMonthManualRevenue     = lastMonthIncomes.reduce((s, i) => s + i.amountCents, 0);
+    const lastMonthAppRevenue        = lastMonthCompletedBookingsAgg._sum.priceCents ?? 0;
+    const lastMonthTotalRevenueCents = lastMonthManualRevenue + lastMonthAppRevenue;
     const growthPct =
-      lastMonthRevenueCents === 0
+      lastMonthTotalRevenueCents === 0
         ? null
-        : Math.round(((totalRevenueCents - lastMonthRevenueCents) / lastMonthRevenueCents) * 100);
+        : Math.round(((totalRevenueCents - lastMonthTotalRevenueCents) / lastMonthTotalRevenueCents) * 100);
 
     const daysInMonth = to.getDate();
     const avgClassesPerDay = classSessions.length / daysInMonth;
@@ -284,6 +305,26 @@ export class FinancialService {
     });
   }
 
+  async updateIncome(userId: string, incomeId: string, input: UpdateIncomeInput) {
+    const provider = await getProviderByUserId(userId);
+    const income = await prisma.financialIncome.findUnique({ where: { id: incomeId } });
+    if (!income || income.providerId !== provider.id) throw new AppError("Receita não encontrada.", StatusCodes.NOT_FOUND);
+    if (input.studentId) {
+      const s = await prisma.financialStudent.findUnique({ where: { id: input.studentId } });
+      if (!s || s.providerId !== provider.id) throw new AppError("Aluno não encontrado.", StatusCodes.BAD_REQUEST);
+    }
+    return prisma.financialIncome.update({
+      where: { id: incomeId },
+      data: {
+        ...(input.description !== undefined ? { description: input.description.trim() } : {}),
+        ...(input.amountCents !== undefined ? { amountCents: input.amountCents } : {}),
+        ...(input.studentId !== undefined ? { studentId: input.studentId } : {}),
+        ...(input.paidAt !== undefined ? { paidAt: new Date(input.paidAt) } : {}),
+      },
+      include: { student: { select: { id: true, name: true } } }
+    });
+  }
+
   async deleteIncome(userId: string, incomeId: string) {
     const provider = await getProviderByUserId(userId);
     const income = await prisma.financialIncome.findUnique({ where: { id: incomeId } });
@@ -311,6 +352,21 @@ export class FinancialService {
         amountCents: input.amountCents,
         category: input.category ?? FinancialExpenseCategory.OTHER,
         paidAt: new Date(input.paidAt)
+      }
+    });
+  }
+
+  async updateExpense(userId: string, expenseId: string, input: UpdateExpenseInput) {
+    const provider = await getProviderByUserId(userId);
+    const expense = await prisma.financialExpense.findUnique({ where: { id: expenseId } });
+    if (!expense || expense.providerId !== provider.id) throw new AppError("Despesa não encontrada.", StatusCodes.NOT_FOUND);
+    return prisma.financialExpense.update({
+      where: { id: expenseId },
+      data: {
+        ...(input.description !== undefined ? { description: input.description.trim() } : {}),
+        ...(input.amountCents !== undefined ? { amountCents: input.amountCents } : {}),
+        ...(input.category !== undefined ? { category: input.category } : {}),
+        ...(input.paidAt !== undefined ? { paidAt: new Date(input.paidAt) } : {}),
       }
     });
   }
@@ -503,5 +559,52 @@ export class FinancialService {
         : 0;
 
     return { months: result, bestMonth, avgRevenueCents: avgRevenue };
+  }
+
+  async getPayouts(userId: string) {
+    const provider = await getProviderByUserId(userId);
+
+    const payments = await prisma.payment.findMany({
+      where: {
+        booking: { providerId: provider.id },
+        status: { in: [PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED] }
+      },
+      select: {
+        id: true,
+        bookingId: true,
+        amountCents: true,
+        providerAmountCents: true,
+        platformFeeCents: true,
+        method: true,
+        status: true,
+        capturedAt: true,
+        booking: { select: { scheduledAt: true } }
+      },
+      orderBy: { capturedAt: "desc" },
+      take: 50
+    });
+
+    const netFor = (p: typeof payments[number]) =>
+      p.providerAmountCents ?? providerSplitAmount(p.amountCents);
+    const feeFor = (p: typeof payments[number]) =>
+      p.platformFeeCents ?? platformFeeAmount(p.amountCents);
+
+    const pending  = payments.filter(p => p.status === PaymentStatus.AUTHORIZED);
+    const captured = payments.filter(p => p.status === PaymentStatus.CAPTURED);
+
+    return {
+      pendingCents:   pending.reduce((s, p)  => s + netFor(p), 0),
+      availableCents: captured.reduce((s, p) => s + netFor(p), 0),
+      payments: payments.map(p => ({
+        bookingId:           p.bookingId,
+        amountCents:         p.amountCents,
+        providerAmountCents: netFor(p),
+        platformFeeCents:    feeFor(p),
+        method:              p.method,
+        status:              p.status,
+        capturedAt:          p.capturedAt?.toISOString() ?? null,
+        scheduledAt:         p.booking.scheduledAt.toISOString()
+      }))
+    };
   }
 }

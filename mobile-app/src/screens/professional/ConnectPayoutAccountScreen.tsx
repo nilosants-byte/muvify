@@ -1,14 +1,14 @@
 ﻿import React, { useCallback, useEffect, useState } from "react";
-import { ScrollView, StatusBar, View } from "react-native";
+import { Linking, ScrollView, StatusBar, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
-import { ProviderBankAccount, userApi } from "../../services/api/client";
+import { ProviderAccountStatus, ProviderBankAccount, paymentsApi, userApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
@@ -16,7 +16,7 @@ import { handleScreenError } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ConnectPayoutAccount">;
 type AccountType = "CHECKING" | "SAVINGS";
-type Tab = "bank" | "pix";
+type Tab = "bank" | "pix" | "mp";
 
 function initialBankForm(input?: ProviderBankAccount | null) {
   return {
@@ -42,13 +42,19 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [savingBank, setSavingBank] = useState(false);
   const [savingPix, setSavingPix] = useState(false);
+  const [mpStatus, setMpStatus] = useState<ProviderAccountStatus | null>(null);
+  const [connectingMp, setConnectingMp] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const account = await runWithAuth((token) => userApi.providerBankAccount(token));
+      const [account, mpAccountStatus] = await Promise.all([
+        runWithAuth((token) => userApi.providerBankAccount(token)),
+        runWithAuth((token) => paymentsApi.providerStatus(token)).catch(() => null),
+      ]);
       setBankForm(initialBankForm(account));
       setPixKey(account?.pixKey ?? "");
+      setMpStatus(mpAccountStatus);
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar dados bancários.", navigation });
     } finally {
@@ -57,6 +63,18 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
   }, [navigation, runWithAuth, showToast]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  async function connectMpAccount() {
+    try {
+      setConnectingMp(true);
+      const { onboardingUrl } = await runWithAuth((token) => paymentsApi.createOnboardingLink(token));
+      await Linking.openURL(onboardingUrl);
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao iniciar conexão com Mercado Pago." });
+    } finally {
+      setConnectingMp(false);
+    }
+  }
 
   async function saveBank() {
     if (!bankForm.bankName.trim() || !bankForm.agency.trim() || !bankForm.accountNumber.trim() || !bankForm.accountDigit.trim() || !bankForm.holderName.trim() || !bankForm.holderDocument.trim()) {
@@ -160,10 +178,10 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <Ionicons name="card-outline" size={16} color={activeTab === "bank" ? theme.primary : theme.text3} />
             <MvText variant="semi3" style={{ color: activeTab === "bank" ? theme.primary : theme.text3 }}>
-              Transferência Bancária
+              Banco
             </MvText>
           </View>
-          <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>para pagamentos no cartão</MvText>
+          <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>cartão de crédito</MvText>
         </PressableScale>
 
         <View style={{ width: 1, backgroundColor: theme.border }} />
@@ -172,10 +190,27 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <Ionicons name="flash-outline" size={16} color={activeTab === "pix" ? theme.primary : theme.text3} />
             <MvText variant="semi3" style={{ color: activeTab === "pix" ? theme.primary : theme.text3 }}>
-              Chave PIX
+              PIX
             </MvText>
           </View>
-          <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>para pagamentos em PIX</MvText>
+          <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>pagamento em PIX</MvText>
+        </PressableScale>
+
+        <View style={{ width: 1, backgroundColor: theme.border }} />
+
+        <PressableScale scale={0.97} style={tabStyle("mp")} onPress={() => setActiveTab("mp")}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <Ionicons name="shield-checkmark-outline" size={16} color={activeTab === "mp" ? theme.primary : theme.text3} />
+            <MvText variant="semi3" style={{ color: activeTab === "mp" ? theme.primary : theme.text3 }}>
+              MP
+            </MvText>
+            {mpStatus?.hasAccount ? (
+              <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: theme.primary }} />
+            ) : (
+              <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#F59E0B" }} />
+            )}
+          </View>
+          <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>split automático</MvText>
         </PressableScale>
       </View>
 
@@ -249,7 +284,7 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
 
             <MvButton label="Salvar dados bancários" loading={savingBank} disabled={loading} onPress={() => void saveBank()} />
           </>
-        ) : (
+        ) : activeTab === "pix" ? (
           <>
             <MvCard>
               <MvText variant="body4" color="secondary">
@@ -279,7 +314,77 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
 
             <MvButton label="Salvar chave PIX" loading={savingPix} disabled={loading} onPress={() => void savePix()} />
           </>
-        )}
+        ) : activeTab === "mp" ? (
+          <>
+            {/* Status da conta MP */}
+            {mpStatus?.hasAccount ? (
+              <MvCard>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="shield-checkmark" size={20} color={theme.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <MvText variant="semi2">Conta Mercado Pago vinculada</MvText>
+                    <MvText variant="body4" color="secondary">ID: {mpStatus.accountId}</MvText>
+                  </View>
+                  <MvBadge label="Ativo" variant="green" />
+                </View>
+                <MvText variant="body4" color="secondary">
+                  O split automático está configurado. Quando um aluno pagar, 90% do valor será transferido diretamente para sua conta Mercado Pago pelo próprio MP.
+                </MvText>
+              </MvCard>
+            ) : (
+              <MvCard>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(245,158,11,0.12)", alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="alert-circle-outline" size={20} color="#F59E0B" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <MvText variant="semi2">Conta não vinculada</MvText>
+                    <MvBadge label="Pendente" variant="orange" />
+                  </View>
+                </View>
+                <MvText variant="body4" color="secondary">
+                  Conecte sua conta Mercado Pago para ativar o repasse automático. Quando um aluno pagar, o Mercado Pago divide automaticamente: 90% vai direto para você, 10% fica com a plataforma. Nenhuma ação manual necessária.
+                </MvText>
+              </MvCard>
+            )}
+
+            {/* Como funciona */}
+            <MvCard>
+              <MvText variant="semi3" style={{ marginBottom: 8 }}>Como funciona o repasse</MvText>
+              {[
+                { icon: "flash-outline" as const,          label: "PIX",           desc: "Disponível no mesmo dia (D+0)" },
+                { icon: "card-outline" as const,           label: "Cartão",        desc: "Disponível em até 14 dias (D+14)" },
+                { icon: "shield-checkmark-outline" as const, label: "Segurança",   desc: "100% processado pelo Mercado Pago" },
+                { icon: "pie-chart-outline" as const,      label: "Divisão",       desc: "90% para você · 10% para a Muvify" },
+              ].map((item) => (
+                <View key={item.label} style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 7, borderTopWidth: 1, borderTopColor: theme.borderSub }}>
+                  <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.10)", alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name={item.icon} size={14} color={theme.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <MvText variant="semi3" style={{ fontSize: 12 }}>{item.label}</MvText>
+                    <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>{item.desc}</MvText>
+                  </View>
+                </View>
+              ))}
+            </MvCard>
+
+            <MvButton
+              label={mpStatus?.hasAccount ? "Reconectar conta Mercado Pago" : "Conectar conta Mercado Pago"}
+              loading={connectingMp}
+              onPress={() => void connectMpAccount()}
+            />
+            {mpStatus?.hasAccount ? (
+              <MvButton
+                variant="ghost"
+                label="Atualizar status"
+                onPress={() => void load()}
+              />
+            ) : null}
+          </>
+        ) : null}
 
         <MvButton variant="ghost" label="Voltar ao financeiro" onPress={() => navigation.replace("PayoutStatus")} />
       </ScrollView>

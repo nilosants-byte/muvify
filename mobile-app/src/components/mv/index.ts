@@ -15,3 +15,4 @@ export { MvRefreshControl } from "./MvRefreshControl";
 export { WheelPickerColumn } from "./WheelPickerColumn";
 export type { WheelItem } from "./WheelPickerColumn";
 export { TimeWheelPicker } from "./TimeWheelPicker";
+export { MvDatePicker } from "./MvDatePicker";

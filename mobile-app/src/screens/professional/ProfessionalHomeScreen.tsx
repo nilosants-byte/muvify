@@ -1331,6 +1331,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                 {([
                   { icon: "person-outline" as const, label: "Meu perfil", onPress: () => { closeDrawer(); (navigation as any).navigate("ProfessionalTabs", { screen: "ProfessionalProfileEditor" }); } },
                   { icon: "lock-closed-outline" as const, label: "Segurança", onPress: () => { closeDrawer(); goToStack("Security"); } },
+                  { icon: "card-outline" as const, label: "Conta de recebimento", onPress: () => { closeDrawer(); goToStack("ConnectPayoutAccount"); } },
                 ] as const).map((item) => (
                   <TouchableOpacity
                     key={item.label}

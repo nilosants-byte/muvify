@@ -31,10 +31,11 @@ import {
   FinancialStudentType,
   WeeklyScheduleSlot,
   financialApi,
+  paymentsApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvAvatar, MvButton, MvCard, MvDatePicker, MvInput, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
@@ -101,26 +102,67 @@ const FILTER_OPTS: { key: ChartFilter; label: string }[] = [
   { key: "despesas", label: "Despesas" },
 ];
 
-function StatCard({ label, value, icon, color, delta, theme, isDark }: {
+function StatCard({ label, value, icon, color, delta, theme, isDark, infoText }: {
   label: string; value: string; icon: string; color: string;
-  delta?: number | null; theme: MvThemeValue; isDark: boolean;
+  delta?: number | null; theme: MvThemeValue; isDark: boolean; infoText?: string;
 }) {
-  const bgAlpha = isDark ? "26" : "18";
+  const bgAlpha = isDark ? "22" : "15";
+  const deltaPositive = delta != null && delta >= 0;
+  const deltaColor = delta != null
+    ? (deltaPositive ? (isDark ? theme.primary : "#16A34A") : (isDark ? "#F87171" : "#E53935"))
+    : undefined;
+
   return (
-    <View style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)", backgroundColor: theme.bgSurface, padding: 8, gap: 4 }}>
-      <View style={{ width: 24, height: 24, borderRadius: 7, backgroundColor: `${color}${bgAlpha}`, alignItems: "center", justifyContent: "center" }}>
-        <Ionicons name={icon as any} size={12} color={color} />
-      </View>
-      <MvText variant="semi2" style={{ color, fontSize: 13, letterSpacing: -0.4 }} numberOfLines={1} adjustsFontSizeToFit>{value}</MvText>
-      <MvText variant="body4" color="secondary" style={{ fontSize: 9 }} numberOfLines={1}>{label}</MvText>
-      {delta != null ? (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-          <Ionicons name={delta >= 0 ? "trending-up" : "trending-down"} size={9} color={delta >= 0 ? color : "#e57373"} />
-          <MvText variant="badge" style={{ fontSize: 8, color: delta >= 0 ? color : "#e57373" }}>
-            {delta >= 0 ? "+" : ""}{delta.toFixed(1)}%
-          </MvText>
+    <View style={{
+      flex: 1,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)",
+      backgroundColor: theme.bgSurface,
+      overflow: "hidden",
+    }}>
+      {/* Borda colorida identificadora no topo */}
+      <View style={{ height: 3, backgroundColor: color }} />
+
+      <View style={{ padding: 12, gap: 10 }}>
+        {/* Cabeçalho: ícone + label + ⓘ */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: `${color}${bgAlpha}`, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name={icon as any} size={16} color={color} />
+          </View>
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <MvText variant="semi3" style={{ color: theme.text2, fontSize: 11 }} numberOfLines={1}>{label}</MvText>
+            {infoText ? (
+              <TouchableOpacity onPress={() => Alert.alert(label, infoText)} hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}>
+                <Ionicons name="information-circle-outline" size={11} color={theme.text3} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
-      ) : null}
+
+        {/* Valor monetário */}
+        <MvText
+          variant="semi2"
+          style={{ color, fontSize: 20, letterSpacing: -0.8, lineHeight: 24 }}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {value}
+        </MvText>
+
+        {/* Delta (Faturamento) ou espaçador para alinhar altura */}
+        {delta != null ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Ionicons name={deltaPositive ? "trending-up" : "trending-down"} size={11} color={deltaColor} />
+            <MvText variant="badge" style={{ fontSize: 10, color: deltaColor }}>
+              {deltaPositive ? "+" : ""}{delta.toFixed(1)}%
+            </MvText>
+            <MvText variant="body4" style={{ fontSize: 9, color: theme.text3 }}>vs mês ant.</MvText>
+          </View>
+        ) : (
+          <View style={{ height: 16 }} />
+        )}
+      </View>
     </View>
   );
 }
@@ -869,6 +911,8 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   const [report,     setReport]     = useState<FinancialReport | null>(null);
   const [appClients, setAppClients] = useState<FinancialAppClient[]>([]);
 
+  const [providerHasMp, setProviderHasMp] = useState<boolean | null>(null);
+
   const [addStudentModal, setAddStudentModal] = useState(false);
   const [addIncomeModal,  setAddIncomeModal]  = useState(false);
   const [addExpenseModal, setAddExpenseModal] = useState(false);
@@ -886,17 +930,23 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
 
   const [iDesc, setIDesc] = useState("");
   const [iValue, setIValue] = useState("100,00");
-  const [iDate, setIDate] = useState(new Date().toISOString().slice(0, 10));
+  const [iDate, setIDate] = useState<Date>(new Date());
+  const [editingIncome, setEditingIncome] = useState<FinancialIncome | null>(null);
 
   const [eDesc, setEDesc] = useState("");
   const [eValue, setEValue] = useState("50,00");
   const [eCat, setECat] = useState<FinancialExpenseCategory>("OTHER");
-  const [eDate, setEDate] = useState(new Date().toISOString().slice(0, 10));
+  const [eDate, setEDate] = useState<Date>(new Date());
+  const [editingExpense, setEditingExpense] = useState<FinancialExpense | null>(null);
 
   const [gRevenue, setGRevenue] = useState("");
   const [gStudents, setGStudents] = useState("");
   const [gClasses, setGClasses] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [incomeSearch, setIncomeSearch] = useState("");
+  const [expenseSearch, setExpenseSearch] = useState("");
+  const [expenseCatFilter, setExpenseCatFilter] = useState<FinancialExpenseCategory | null>(null);
 
   useEffect(() => {
     if (sSchedule.length > 0) setSFreq(String(sSchedule.length));
@@ -924,6 +974,22 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   );
   // Verde = ganhos pelo app: agendamentos completados no app (bookings)
   // Azul  = ganhos fora do app: alunos manuais (mensalidades) + receitas manuais (aba Receitas)
+  const filteredIncomes = useMemo(() => {
+    const q = incomeSearch.trim().toLowerCase();
+    if (!q) return incomes;
+    return incomes.filter(i =>
+      i.description.toLowerCase().includes(q) ||
+      (i.student?.name?.toLowerCase().includes(q) ?? false)
+    );
+  }, [incomes, incomeSearch]);
+
+  const filteredExpenses = useMemo(() => {
+    let list = expenseCatFilter ? expenses.filter(e => e.category === expenseCatFilter) : expenses;
+    const q = expenseSearch.trim().toLowerCase();
+    if (q) list = list.filter(e => e.description.toLowerCase().includes(q));
+    return list;
+  }, [expenses, expenseCatFilter, expenseSearch]);
+
   const appRevenueCents = appClients.length > 0
     ? appCompletedRevenueCents
     : (dashboard?.appRevenueCents ?? 0);
@@ -935,7 +1001,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const [dash, studs, incs, exps, gl, rep, appCl] = await Promise.all([
+      const [dash, studs, incs, exps, gl, rep, appCl, mpStatus] = await Promise.all([
         runWithAuth(t => financialApi.dashboard(t, month)),
         runWithAuth(t => financialApi.listStudents(t)),
         runWithAuth(t => financialApi.listIncomes(t, month)),
@@ -943,6 +1009,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
         runWithAuth(t => financialApi.getGoal(t, month)),
         runWithAuth(t => financialApi.report(t, 12)),
         runWithAuth(t => financialApi.listAppClients(t, month)),
+        runWithAuth(t => paymentsApi.providerStatus(t)).catch(() => null),
       ]);
       setDashboard(dash);
       setStudents(studs);
@@ -951,6 +1018,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
       setGoal(gl);
       setReport(rep);
       setAppClients(appCl);
+      setProviderHasMp(mpStatus?.hasAccount ?? null);
       if (gl) {
         setGRevenue(gl.targetRevenueCents ? maskPriceInput(String(gl.targetRevenueCents)) : "");
         setGStudents(gl.targetStudents ? String(gl.targetStudents) : "");
@@ -1021,14 +1089,40 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
       await runWithAuth(t => financialApi.createIncome(t, {
         description: iDesc.trim(),
         amountCents: parseCentsFromInput(iValue),
-        paidAt: new Date(`${iDate}T12:00:00.000Z`).toISOString(),
+        paidAt: new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
       }));
       setAddIncomeModal(false);
-      setIDesc(""); setIValue("100,00"); setIDate(new Date().toISOString().slice(0, 10));
+      setIDesc(""); setIValue("100,00"); setIDate(new Date());
       await load();
       showToast("Receita registrada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar receita." });
+    } finally { setSaving(false); }
+  }
+
+  function openEditIncome(inc: FinancialIncome) {
+    setIDesc(inc.description);
+    setIValue(maskPriceInput(String(inc.amountCents)));
+    setIDate(new Date(inc.paidAt));
+    setEditingIncome(inc);
+  }
+
+  async function handleEditIncome() {
+    if (!editingIncome) return;
+    if (!iDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
+    try {
+      setSaving(true);
+      await runWithAuth(t => financialApi.updateIncome(t, editingIncome.id, {
+        description: iDesc.trim(),
+        amountCents: parseCentsFromInput(iValue),
+        paidAt: new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
+      }));
+      setEditingIncome(null);
+      setIDesc(""); setIValue("100,00"); setIDate(new Date());
+      await load();
+      showToast("Receita atualizada.", "success");
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao atualizar receita." });
     } finally { setSaving(false); }
   }
 
@@ -1045,14 +1139,42 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
         description: eDesc.trim(),
         amountCents: parseCentsFromInput(eValue),
         category: eCat,
-        paidAt: new Date(`${eDate}T12:00:00.000Z`).toISOString(),
+        paidAt: new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
       }));
       setAddExpenseModal(false);
-      setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date().toISOString().slice(0, 10));
+      setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date());
       await load();
       showToast("Despesa registrada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar despesa." });
+    } finally { setSaving(false); }
+  }
+
+  function openEditExpense(exp: FinancialExpense) {
+    setEDesc(exp.description);
+    setEValue(maskPriceInput(String(exp.amountCents)));
+    setECat(exp.category);
+    setEDate(new Date(exp.paidAt));
+    setEditingExpense(exp);
+  }
+
+  async function handleEditExpense() {
+    if (!editingExpense) return;
+    if (!eDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
+    try {
+      setSaving(true);
+      await runWithAuth(t => financialApi.updateExpense(t, editingExpense.id, {
+        description: eDesc.trim(),
+        amountCents: parseCentsFromInput(eValue),
+        category: eCat,
+        paidAt: new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
+      }));
+      setEditingExpense(null);
+      setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date());
+      await load();
+      showToast("Despesa atualizada.", "success");
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao atualizar despesa." });
     } finally { setSaving(false); }
   }
 
@@ -1235,10 +1357,30 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
           <MvText variant="h3" style={{ color: theme.primary }}>{fmtCents(total)}</MvText>
         </View>
         <MvButton label="+ Registrar receita" onPress={() => setAddIncomeModal(true)} />
+        {/* Busca */}
+        {incomes.length > 0 ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderColor: theme.border, borderRadius: 10, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 8 }}>
+            <Ionicons name="search-outline" size={14} color={theme.text3} />
+            <TextInput
+              value={incomeSearch}
+              onChangeText={setIncomeSearch}
+              placeholder="Buscar receita..."
+              placeholderTextColor={theme.text3}
+              style={{ flex: 1, color: theme.text2, fontSize: 13, padding: 0 }}
+            />
+            {incomeSearch ? (
+              <PressableScale scale={0.9} onPress={() => setIncomeSearch("")}>
+                <Ionicons name="close-circle" size={15} color={theme.text3} />
+              </PressableScale>
+            ) : null}
+          </View>
+        ) : null}
         {incomes.length === 0 ? (
           <MvText variant="body4" color="secondary" style={{ textAlign: "center", marginTop: 24 }}>Nenhuma receita registrada.</MvText>
+        ) : filteredIncomes.length === 0 ? (
+          <MvText variant="body4" color="secondary" style={{ textAlign: "center", marginTop: 16 }}>Nenhum resultado para "{incomeSearch}".</MvText>
         ) : null}
-        {incomes.map(inc => (
+        {filteredIncomes.map(inc => (
           <MvCard key={inc.id}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Ionicons name="arrow-up-circle-outline" size={20} color={theme.primary} />
@@ -1248,8 +1390,11 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
                 <MvText variant="body4" color="secondary">{new Date(inc.paidAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</MvText>
               </View>
               <MvText variant="semi2" style={{ color: theme.primary }}>{fmtCents(inc.amountCents)}</MvText>
+              <PressableScale scale={0.88} onPress={() => openEditIncome(inc)}>
+                <Ionicons name="pencil-outline" size={16} color={theme.text3} />
+              </PressableScale>
               <PressableScale scale={0.88} onPress={() => void handleDeleteIncome(inc.id)}>
-                <Ionicons name="trash-outline" size={16} color={theme.text3} />
+                <Ionicons name="trash-outline" size={16} color={RED} />
               </PressableScale>
             </View>
           </MvCard>
@@ -1263,6 +1408,14 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     const catLabel: Record<FinancialExpenseCategory, string> = {
       GYM: "Academia", TRANSPORT: "Transporte", EQUIPMENT: "Equipamento", MARKETING: "Marketing", OTHER: "Outros",
     };
+    const CAT_OPTS: Array<{ key: FinancialExpenseCategory | null; label: string }> = [
+      { key: null, label: "Todas" },
+      { key: "GYM", label: "Academia" },
+      { key: "TRANSPORT", label: "Transporte" },
+      { key: "EQUIPMENT", label: "Equipamento" },
+      { key: "MARKETING", label: "Marketing" },
+      { key: "OTHER", label: "Outros" },
+    ];
     return (
       <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 40, gap: 8 }} showsVerticalScrollIndicator={false}>
         <View style={{ padding: 12, borderRadius: 12, backgroundColor: "rgba(229,115,115,0.10)", borderWidth: 1, borderColor: "rgba(229,115,115,0.20)" }}>
@@ -1270,10 +1423,44 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
           <MvText variant="h3" style={{ color: RED }}>{fmtCents(total)}</MvText>
         </View>
         <MvButton label="+ Registrar despesa" onPress={() => setAddExpenseModal(true)} />
+        {/* Busca + filtro de categoria */}
+        {expenses.length > 0 ? (
+          <>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderColor: theme.border, borderRadius: 10, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 8 }}>
+              <Ionicons name="search-outline" size={14} color={theme.text3} />
+              <TextInput
+                value={expenseSearch}
+                onChangeText={setExpenseSearch}
+                placeholder="Buscar despesa..."
+                placeholderTextColor={theme.text3}
+                style={{ flex: 1, color: theme.text2, fontSize: 13, padding: 0 }}
+              />
+              {expenseSearch ? (
+                <PressableScale scale={0.9} onPress={() => setExpenseSearch("")}>
+                  <Ionicons name="close-circle" size={15} color={theme.text3} />
+                </PressableScale>
+              ) : null}
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: "row", gap: 6, paddingRight: 4 }}>
+                {CAT_OPTS.map(opt => {
+                  const sel = expenseCatFilter === opt.key;
+                  return (
+                    <PressableScale key={opt.key ?? "all"} scale={0.93} onPress={() => setExpenseCatFilter(opt.key)} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16, borderWidth: 1, borderColor: sel ? "rgba(229,115,115,0.45)" : theme.border, backgroundColor: sel ? "rgba(229,115,115,0.12)" : theme.chipBg }}>
+                      <MvText variant="badge" style={{ fontSize: 11, color: sel ? RED : theme.text2 }}>{opt.label}</MvText>
+                    </PressableScale>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </>
+        ) : null}
         {expenses.length === 0 ? (
           <MvText variant="body4" color="secondary" style={{ textAlign: "center", marginTop: 24 }}>Nenhuma despesa registrada.</MvText>
+        ) : filteredExpenses.length === 0 ? (
+          <MvText variant="body4" color="secondary" style={{ textAlign: "center", marginTop: 16 }}>Nenhum resultado encontrado.</MvText>
         ) : null}
-        {expenses.map(exp => (
+        {filteredExpenses.map(exp => (
           <MvCard key={exp.id}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Ionicons name="arrow-down-circle-outline" size={20} color={RED} />
@@ -1282,8 +1469,11 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
                 <MvText variant="body4" color="secondary">{catLabel[exp.category]} · {new Date(exp.paidAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</MvText>
               </View>
               <MvText variant="semi2" style={{ color: RED }}>{fmtCents(exp.amountCents)}</MvText>
+              <PressableScale scale={0.88} onPress={() => openEditExpense(exp)}>
+                <Ionicons name="pencil-outline" size={16} color={theme.text3} />
+              </PressableScale>
               <PressableScale scale={0.88} onPress={() => void handleDeleteExpense(exp.id)}>
-                <Ionicons name="trash-outline" size={16} color={theme.text3} />
+                <Ionicons name="trash-outline" size={16} color={RED} />
               </PressableScale>
             </View>
           </MvCard>
@@ -1296,7 +1486,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     const d = dashboard;
     return (
       <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false}>
-        <MvButton label="Definir metas" onPress={() => setEditGoalModal(true)} />
+        <MvButton label={goal ? "Editar metas" : "Definir metas"} onPress={() => setEditGoalModal(true)} />
         {!goal ? (
           <MvText variant="body4" color="secondary" style={{ textAlign: "center", marginTop: 24 }}>
             Nenhuma meta definida para {monthLabel(month)}.
@@ -1339,129 +1529,6 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     );
   }
 
-  function renderVida() {
-    const totalIncome  = incomes.reduce((s, i) => s + i.amountCents, 0);
-    const totalExpense = expenses.reduce((s, e) => s + e.amountCents, 0);
-    const d = dashboard;
-    const catLabel: Record<FinancialExpenseCategory, string> = {
-      GYM: "Academia", TRANSPORT: "Transporte", EQUIPMENT: "Equipamento", MARKETING: "Marketing", OTHER: "Outros",
-    };
-
-    return (
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false}>
-        {/* Atalhos de registro */}
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <PressableScale
-            scale={0.97}
-            onPress={() => setAddIncomeModal(true)}
-            style={{ flex: 1, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "rgba(34,197,94,0.28)", backgroundColor: "rgba(34,197,94,0.08)", alignItems: "center", gap: 6 }}
-          >
-            <Ionicons name="arrow-up-circle-outline" size={22} color={theme.primary} />
-            <MvText variant="semi3" style={{ color: theme.primary, fontSize: 12 }}>+ Receita</MvText>
-          </PressableScale>
-          <PressableScale
-            scale={0.97}
-            onPress={() => setAddExpenseModal(true)}
-            style={{ flex: 1, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "rgba(239,68,68,0.25)", backgroundColor: "rgba(239,68,68,0.08)", alignItems: "center", gap: 6 }}
-          >
-            <Ionicons name="arrow-down-circle-outline" size={22} color={RED} />
-            <MvText variant="semi3" style={{ color: RED, fontSize: 12 }}>+ Despesa</MvText>
-          </PressableScale>
-        </View>
-
-        {/* Metas */}
-        <MvButton label="Definir metas" onPress={() => setEditGoalModal(true)} />
-        {!goal ? (
-          <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
-            Nenhuma meta definida para {monthLabel(month)}.
-          </MvText>
-        ) : (
-          <MvCard>
-            <MvText variant="semi2" style={{ marginBottom: 10 }}>Metas — {monthLabel(month)}</MvText>
-            {goal.targetRevenueCents && d ? (
-              <GoalProgress label="Faturamento" current={effectiveRevenueCents} target={goal.targetRevenueCents} formatFn={fmtCents} color={theme.primary} />
-            ) : null}
-            {goal.targetStudents && d ? (
-              <GoalProgress label="Alunos ativos" current={d.activeStudents} target={goal.targetStudents} formatFn={v => `${v} alunos`} color="#42A5F5" />
-            ) : null}
-            {goal.targetWeeklyClasses && d ? (
-              <GoalProgress label="Aulas por semana" current={d.weeklyClasses} target={goal.targetWeeklyClasses} formatFn={v => `${v} aulas`} color="#FF9800" />
-            ) : null}
-            <View style={{ marginTop: 12, gap: 4, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 10 }}>
-              {goal.targetRevenueCents ? (
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <MvText variant="body4" color="secondary">Meta de faturamento</MvText>
-                  <MvText variant="body4">{fmtCents(goal.targetRevenueCents)}</MvText>
-                </View>
-              ) : null}
-              {goal.targetStudents ? (
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <MvText variant="body4" color="secondary">Meta de alunos</MvText>
-                  <MvText variant="body4">{goal.targetStudents} alunos</MvText>
-                </View>
-              ) : null}
-              {goal.targetWeeklyClasses ? (
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <MvText variant="body4" color="secondary">Meta de aulas/semana</MvText>
-                  <MvText variant="body4">{goal.targetWeeklyClasses} aulas</MvText>
-                </View>
-              ) : null}
-            </View>
-          </MvCard>
-        )}
-
-        {/* Receitas */}
-        <View style={{ padding: 12, borderRadius: 12, backgroundColor: "rgba(34,197,94,0.10)", borderWidth: 1, borderColor: "rgba(34,197,94,0.20)" }}>
-          <MvText variant="body4" color="secondary">Receitas — {monthLabel(month)}</MvText>
-          <MvText variant="h3" style={{ color: theme.primary }}>{fmtCents(totalIncome)}</MvText>
-        </View>
-        {incomes.length === 0 ? (
-          <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Nenhuma receita registrada.</MvText>
-        ) : null}
-        {incomes.map(inc => (
-          <MvCard key={inc.id}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Ionicons name="arrow-up-circle-outline" size={20} color={theme.primary} />
-              <View style={{ flex: 1 }}>
-                <MvText variant="semi2">{inc.description}</MvText>
-                {inc.student ? <MvText variant="body4" color="secondary">{inc.student.name}</MvText> : null}
-                <MvText variant="body4" color="secondary">{new Date(inc.paidAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</MvText>
-              </View>
-              <MvText variant="semi2" style={{ color: theme.primary }}>{fmtCents(inc.amountCents)}</MvText>
-              <PressableScale scale={0.88} onPress={() => void handleDeleteIncome(inc.id)}>
-                <Ionicons name="trash-outline" size={16} color={theme.text3} />
-              </PressableScale>
-            </View>
-          </MvCard>
-        ))}
-
-        {/* Despesas */}
-        <View style={{ padding: 12, borderRadius: 12, backgroundColor: "rgba(239,68,68,0.08)", borderWidth: 1, borderColor: "rgba(239,68,68,0.20)" }}>
-          <MvText variant="body4" color="secondary">Despesas — {monthLabel(month)}</MvText>
-          <MvText variant="h3" style={{ color: RED }}>{fmtCents(totalExpense)}</MvText>
-        </View>
-        {expenses.length === 0 ? (
-          <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Nenhuma despesa registrada.</MvText>
-        ) : null}
-        {expenses.map(exp => (
-          <MvCard key={exp.id}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Ionicons name="arrow-down-circle-outline" size={20} color={RED} />
-              <View style={{ flex: 1 }}>
-                <MvText variant="semi2">{exp.description}</MvText>
-                <MvText variant="body4" color="secondary">{catLabel[exp.category]} · {new Date(exp.paidAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</MvText>
-              </View>
-              <MvText variant="semi2" style={{ color: RED }}>{fmtCents(exp.amountCents)}</MvText>
-              <PressableScale scale={0.88} onPress={() => void handleDeleteExpense(exp.id)}>
-                <Ionicons name="trash-outline" size={16} color={theme.text3} />
-              </PressableScale>
-            </View>
-          </MvCard>
-        ))}
-      </ScrollView>
-    );
-  }
-
   const TypeChip = ({ selected, label, onPress }: { selected: boolean; label: string; onPress: () => void }) => (
     <PressableScale scale={0.95} onPress={onPress} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: selected ? "rgba(34,197,94,0.12)" : theme.chipBg, borderWidth: 1, borderColor: selected ? "rgba(34,197,94,0.30)" : theme.border }}>
       <MvText variant="body4" style={{ color: selected ? theme.primary : theme.text2 }}>{label}</MvText>
@@ -1484,29 +1551,34 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
         {/* Stats strip + analysis toggle */}
         {dashboard ? (
           <View style={{ paddingHorizontal: 14, marginBottom: 4 }}>
-            {/* 4 cards em uma linha */}
-            <View style={{ flexDirection: "row", gap: 5, marginBottom: 8 }}>
-              <StatCard
-                label="Faturamento" value={fmtCents(effectiveRevenueCents)}
-                icon="cash-outline" color={isDark ? theme.primary : "#16A34A"}
-                delta={dashboard.growthPct} theme={theme} isDark={isDark}
-              />
-              <StatCard
-                label="Despesas" value={fmtCents(totalExpensesCents)}
-                icon="arrow-down-circle-outline" color={isDark ? "#F87171" : "#E53935"}
-                theme={theme} isDark={isDark}
-              />
-              <StatCard
-                label="Lucro" value={fmtCents(effectiveProfitCents)}
-                icon="trending-up-outline"
-                color={effectiveProfitCents >= 0 ? (isDark ? theme.primary : "#16A34A") : (isDark ? "#F87171" : "#E53935")}
-                theme={theme} isDark={isDark}
-              />
-              <StatCard
-                label="A receber" value={fmtCents(dashboard.confirmedRevenueCents)}
-                icon="time-outline" color={isDark ? "#FACC15" : "#CA8A04"}
-                theme={theme} isDark={isDark}
-              />
+            {/* Grade 2×2 de StatCards */}
+            <View style={{ gap: 8, marginBottom: 8 }}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <StatCard
+                  label="Faturamento" value={fmtCents(effectiveRevenueCents)}
+                  icon="wallet-outline" color={isDark ? theme.primary : "#16A34A"}
+                  delta={dashboard.growthPct} theme={theme} isDark={isDark}
+                />
+                <StatCard
+                  label="Despesas" value={fmtCents(totalExpensesCents)}
+                  icon="receipt-outline" color={isDark ? "#F87171" : "#E53935"}
+                  theme={theme} isDark={isDark}
+                />
+              </View>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <StatCard
+                  label="Lucro" value={fmtCents(effectiveProfitCents)}
+                  icon="stats-chart-outline"
+                  color={effectiveProfitCents >= 0 ? (isDark ? theme.primary : "#16A34A") : (isDark ? "#F87171" : "#E53935")}
+                  theme={theme} isDark={isDark}
+                />
+                <StatCard
+                  label="Sessões futuras" value={fmtCents(dashboard.confirmedRevenueCents)}
+                  icon="calendar-outline" color={isDark ? "#FACC15" : "#CA8A04"}
+                  infoText="Valor total dos agendamentos confirmados que ainda não aconteceram."
+                  theme={theme} isDark={isDark}
+                />
+              </View>
             </View>
             {/* Secondary metrics: ticket médio + sessões */}
             {(dashboard.ticketMedioCents > 0 || dashboard.weeklyClasses > 0) ? (
@@ -1514,7 +1586,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
                 {dashboard.ticketMedioCents > 0 ? (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
                     <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: isDark ? "rgba(0,200,83,0.15)" : "rgba(22,163,74,0.12)", alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name="stats-chart-outline" size={10} color={isDark ? theme.primary : "#16A34A"} />
+                      <Ionicons name="analytics-outline" size={10} color={isDark ? theme.primary : "#16A34A"} />
                     </View>
                     <MvText variant="body4" style={{ fontSize: 11, color: theme.text2 }}>
                       Ticket médio{" "}
@@ -1562,6 +1634,21 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
             onPrevMonth={prevMonth}
             onNextMonth={nextMonth}
           />
+        ) : null}
+
+        {/* Banner: conta MP não configurada */}
+        {providerHasMp === false ? (
+          <TouchableOpacity
+            onPress={() => navigation.navigate("ConnectPayoutAccount")}
+            activeOpacity={0.8}
+            style={{ marginHorizontal: 14, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 10, borderWidth: 1, borderColor: "rgba(250,204,21,0.35)", backgroundColor: isDark ? "rgba(250,204,21,0.10)" : "rgba(250,204,21,0.12)", paddingHorizontal: 12, paddingVertical: 9 }}
+          >
+            <Ionicons name="warning-outline" size={15} color={isDark ? "#FACC15" : "#B45309"} />
+            <MvText variant="body4" style={{ flex: 1, color: isDark ? "#FACC15" : "#B45309", fontSize: 11 }}>
+              Configure sua conta de recebimento para ativar o repasse automático via Mercado Pago.
+            </MvText>
+            <Ionicons name="chevron-forward" size={13} color={isDark ? "#FACC15" : "#B45309"} />
+          </TouchableOpacity>
         ) : null}
 
         {/* Tab bar de navegação */}
@@ -1650,19 +1737,35 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
         </View>
       </ModalSheet>
 
-      {/* Add Income Modal */}
-      <ModalSheet visible={addIncomeModal} title="Registrar receita" onClose={() => setAddIncomeModal(false)} theme={theme} topInset={insets.top}>
+      {/* Add / Edit Income Modal */}
+      <ModalSheet
+        visible={addIncomeModal || editingIncome !== null}
+        title={editingIncome ? "Editar receita" : "Registrar receita"}
+        onClose={() => { setAddIncomeModal(false); setEditingIncome(null); setIDesc(""); setIValue("100,00"); setIDate(new Date()); }}
+        theme={theme}
+        topInset={insets.top}
+      >
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvInput placeholder="Descrição (Ex: João — mensalidade)" value={iDesc} onChangeText={setIDesc} />
           <MvInput keyboardType="numeric" placeholder="Valor (R$)" value={iValue} onChangeText={v => setIValue(maskPriceInput(v))} />
-          <MvText variant="body4" color="secondary">Data de recebimento (AAAA-MM-DD)</MvText>
-          <MvInput placeholder="Ex: 2026-04-05" value={iDate} onChangeText={setIDate} />
-          <MvButton label="Salvar receita" loading={saving} onPress={() => void handleAddIncome()} />
+          <MvText variant="body4" color="secondary">Data de recebimento</MvText>
+          <MvDatePicker value={iDate} onChange={setIDate} />
+          <MvButton
+            label={editingIncome ? "Salvar alterações" : "Salvar receita"}
+            loading={saving}
+            onPress={() => editingIncome ? void handleEditIncome() : void handleAddIncome()}
+          />
         </View>
       </ModalSheet>
 
-      {/* Add Expense Modal */}
-      <ModalSheet visible={addExpenseModal} title="Registrar despesa" onClose={() => setAddExpenseModal(false)} theme={theme} topInset={insets.top}>
+      {/* Add / Edit Expense Modal */}
+      <ModalSheet
+        visible={addExpenseModal || editingExpense !== null}
+        title={editingExpense ? "Editar despesa" : "Registrar despesa"}
+        onClose={() => { setAddExpenseModal(false); setEditingExpense(null); setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); }}
+        theme={theme}
+        topInset={insets.top}
+      >
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvInput placeholder="Descrição (Ex: Mensalidade academia)" value={eDesc} onChangeText={setEDesc} />
           <MvInput keyboardType="numeric" placeholder="Valor (R$)" value={eValue} onChangeText={v => setEValue(maskPriceInput(v))} />
@@ -1672,9 +1775,13 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
               <TypeChip key={c.key} selected={eCat === c.key} label={c.label} onPress={() => setECat(c.key)} />
             ))}
           </View>
-          <MvText variant="body4" color="secondary">Data do pagamento (AAAA-MM-DD)</MvText>
-          <MvInput placeholder="Ex: 2026-04-01" value={eDate} onChangeText={setEDate} />
-          <MvButton label="Salvar despesa" loading={saving} onPress={() => void handleAddExpense()} />
+          <MvText variant="body4" color="secondary">Data do pagamento</MvText>
+          <MvDatePicker value={eDate} onChange={setEDate} />
+          <MvButton
+            label={editingExpense ? "Salvar alterações" : "Salvar despesa"}
+            loading={saving}
+            onPress={() => editingExpense ? void handleEditExpense() : void handleAddExpense()}
+          />
         </View>
       </ModalSheet>
 

@@ -10,6 +10,11 @@ export class FinancialController {
     return res.json(data);
   }
 
+  async payouts(req: Request, res: Response) {
+    const data = await service.getPayouts(req.user!.id);
+    return res.json(data);
+  }
+
   // Students
   async listStudents(req: Request, res: Response) {
     const data = await service.listStudents(req.user!.id);
@@ -37,6 +42,11 @@ export class FinancialController {
     const data = await service.createIncome(req.user!.id, req.body);
     return res.status(StatusCodes.CREATED).json(data);
   }
+  async updateIncome(req: Request, res: Response) {
+    const data = await service.updateIncome(req.user!.id, req.params.id, req.body);
+    return res.json(data);
+  }
+
   async deleteIncome(req: Request, res: Response) {
     await service.deleteIncome(req.user!.id, req.params.id);
     return res.status(StatusCodes.NO_CONTENT).send();
@@ -51,6 +61,11 @@ export class FinancialController {
     const data = await service.createExpense(req.user!.id, req.body);
     return res.status(StatusCodes.CREATED).json(data);
   }
+  async updateExpense(req: Request, res: Response) {
+    const data = await service.updateExpense(req.user!.id, req.params.id, req.body);
+    return res.json(data);
+  }
+
   async deleteExpense(req: Request, res: Response) {
     await service.deleteExpense(req.user!.id, req.params.id);
     return res.status(StatusCodes.NO_CONTENT).send();

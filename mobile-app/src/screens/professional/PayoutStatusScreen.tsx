@@ -12,7 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Booking, ProviderBankAccount, bookingsApi, userApi } from "../../services/api/client";
+import { Booking, FinancialPayouts, ProviderBankAccount, bookingsApi, financialApi, userApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -189,6 +189,7 @@ export function PayoutStatusScreen({ navigation }: Props) {
 
   const [account, setAccount] = useState<ProviderBankAccount | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [payouts, setPayouts] = useState<FinancialPayouts | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [firstPaymentBannerVisible, setFirstPaymentBannerVisible] = useState(false);
@@ -214,12 +215,14 @@ export function PayoutStatusScreen({ navigation }: Props) {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const [accountResponse, bookingsResponse] = await Promise.all([
+      const [accountResponse, bookingsResponse, payoutsResponse] = await Promise.all([
         runWithAuth((token) => userApi.providerBankAccount(token)).catch(() => null),
         runWithAuth((token) => bookingsApi.me(token)),
+        runWithAuth((token) => financialApi.payouts(token)).catch(() => null),
       ]);
       setAccount(accountResponse);
       setBookings(bookingsResponse);
+      setPayouts(payoutsResponse);
     } catch (error) {
       handleScreenError({
         error,
@@ -255,8 +258,10 @@ export function PayoutStatusScreen({ navigation }: Props) {
     () => completedBookings.reduce((s, b) => s + Number(b.priceCents ?? 0) / 100, 0),
     [completedBookings]
   );
-  const estimatedNet = estimatedGross * 0.9;
-  const commission = estimatedGross * 0.1;
+  // Usa dados reais da API quando disponíveis; fallback para cálculo client-side
+  const estimatedNet  = payouts?.availableCents != null ? payouts.availableCents / 100 : estimatedGross * 0.9;
+  const pendingNet    = payouts?.pendingCents != null ? payouts.pendingCents / 100 : 0;
+  const commission    = estimatedGross - estimatedNet;
 
   const uniqueStudents = useMemo(() => {
     const ids = new Set(
@@ -441,6 +446,71 @@ export function PayoutStatusScreen({ navigation }: Props) {
             <MvBadge label="Últimos 6 meses" variant="gray" />
           </View>
         </View>
+
+        {/* ── SALDO E REPASSES ── */}
+        {payouts != null ? (
+          <View style={{ borderRadius: 16, borderWidth: 1, backgroundColor: cardBg, borderColor: border, overflow: "hidden" }}>
+            <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <MvText variant="semi2">Saldo e repasses</MvText>
+              <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>via Mercado Pago</MvText>
+            </View>
+
+            {/* Resumo: disponível + a caminho */}
+            <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingBottom: 14, gap: 8 }}>
+              <View style={{ flex: 1, borderRadius: 12, padding: 12, backgroundColor: "rgba(34,197,94,0.08)", borderWidth: 1, borderColor: "rgba(34,197,94,0.18)" }}>
+                <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginBottom: 2 }}>DISPONÍVEL</MvText>
+                <MvText variant="semi1" style={{ color: green, fontSize: 15 }}>{formatCurrencyBRL(estimatedNet)}</MvText>
+                <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>sessões concluídas</MvText>
+              </View>
+              <View style={{ flex: 1, borderRadius: 12, padding: 12, backgroundColor: "rgba(245,158,11,0.07)", borderWidth: 1, borderColor: "rgba(245,158,11,0.20)" }}>
+                <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginBottom: 2 }}>A CAMINHO</MvText>
+                <MvText variant="semi1" style={{ color: "#F59E0B", fontSize: 15 }}>{formatCurrencyBRL(pendingNet)}</MvText>
+                <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>sessões autorizadas</MvText>
+              </View>
+            </View>
+
+            {/* Últimos repasses */}
+            {payouts.payments.length > 0 ? (
+              <>
+                <View style={{ height: 1, backgroundColor: border }} />
+                <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 }}>
+                  <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Últimas transações</MvText>
+                </View>
+                {payouts.payments.slice(0, 5).map((p) => {
+                  const isCaptured = p.status === "CAPTURED";
+                  const date = new Date(p.capturedAt ?? p.scheduledAt);
+                  const dateStr = date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" });
+                  const methodLabel = p.method === "PIX" ? "PIX" : p.method.includes("CREDIT") ? "Cartão crédito" : p.method.includes("DEBIT") ? "Cartão débito" : "Cartão";
+                  return (
+                    <View key={p.bookingId} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: border }}>
+                      <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isCaptured ? "rgba(34,197,94,0.10)" : "rgba(245,158,11,0.10)", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+                        <Ionicons name={isCaptured ? "checkmark-circle-outline" : "time-outline"} size={16} color={isCaptured ? green : "#F59E0B"} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <MvText variant="semi3" style={{ fontSize: 12 }}>{methodLabel}</MvText>
+                        <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>{dateStr} · {isCaptured ? "Concluído" : "Aguardando captura"}</MvText>
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <MvText variant="semi3" style={{ fontSize: 13, color: isCaptured ? green : "#F59E0B" }}>
+                          {formatCurrencyBRL(p.providerAmountCents / 100)}
+                        </MvText>
+                        <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>
+                          de {formatCurrencyBRL(p.amountCents / 100)}
+                        </MvText>
+                      </View>
+                    </View>
+                  );
+                })}
+              </>
+            ) : (
+              <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+                <MvText variant="body4" color="secondary" style={{ fontSize: 12 }}>
+                  Nenhuma transação registrada ainda. As sessões confirmadas e concluídas aparecerão aqui.
+                </MvText>
+              </View>
+            )}
+          </View>
+        ) : null}
 
         {/* ── CONTROLE FINANCEIRO PESSOAL ── */}
         <PressableScale

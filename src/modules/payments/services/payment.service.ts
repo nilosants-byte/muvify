@@ -16,6 +16,7 @@ import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
+import { encryptSensitiveText, decryptSensitiveText } from "../../../shared/utils/encryption";
 import { NotificationService } from "../../notifications/services/notification.service";
 
 type Tx = Prisma.TransactionClient | typeof prisma;
@@ -598,6 +599,15 @@ export class PaymentService {
     return this.toPublicBookingPayment(updated);
   }
 
+  private async resolveProviderAccessToken(providerId: string): Promise<string | null> {
+    const provider = await prisma.providerProfile.findUnique({
+      where: { id: providerId },
+      select: { mpAccessToken: true, mpAccountId: true }
+    });
+    if (!provider?.mpAccessToken || !provider.mpAccountId) return null;
+    return decryptSensitiveText(provider.mpAccessToken);
+  }
+
   async createProviderConnectAccount(userId: string, returnUrl?: string, refreshUrl?: string) {
     const connectUrls = this.resolveConnectUrls(returnUrl, refreshUrl);
     const provider = await prisma.providerProfile.findFirst({ where: { userId } });
@@ -698,6 +708,8 @@ export class PaymentService {
 
     const tokenData = (await tokenResponse.json()) as {
       access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
       user_id?: number | string;
     };
 
@@ -728,9 +740,18 @@ export class PaymentService {
       throw new AppError("Profissional nao encontrado para concluir onboarding.", StatusCodes.NOT_FOUND);
     }
 
+    const mpTokenExpiresAt = tokenData.expires_in
+      ? new Date(Date.now() + tokenData.expires_in * 1000)
+      : null;
+
     await prisma.providerProfile.update({
       where: { id: provider.id },
-      data: { mpAccountId }
+      data: {
+        mpAccountId,
+        mpAccessToken:    tokenData.access_token  ? encryptSensitiveText(tokenData.access_token)  : undefined,
+        mpRefreshToken:   tokenData.refresh_token ? encryptSensitiveText(tokenData.refresh_token) : undefined,
+        mpTokenExpiresAt: mpTokenExpiresAt ?? undefined,
+      }
     });
 
     return { providerId: provider.id, mpAccountId };
@@ -775,6 +796,10 @@ export class PaymentService {
       });
 
       const pixExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const providerAccessToken = await this.resolveProviderAccessToken(payment.booking.provider.id);
+      const providerNetCents  = providerSplitAmount(payment.amountCents);
+      const platformFeeCents  = platformFeeAmount(payment.amountCents);
+
       mpPay = await mpPayment.create({
         body: {
           transaction_amount: payment.amountCents / 100,
@@ -790,16 +815,28 @@ export class PaymentService {
             bookingId: payment.bookingId,
             paymentId: payment.id,
             paymentMethod: PaymentMethod.PIX
-          }
+          },
+          ...(providerAccessToken && payment.booking.provider.mpAccountId
+            ? {
+                collector: { id: Number(payment.booking.provider.mpAccountId) },
+                marketplace_fee: platformFeeCents / 100,
+              }
+            : {})
         },
         requestOptions: {
-          idempotencyKey: `booking:${payment.bookingId}:pix:${payment.attempts + 1}`
+          idempotencyKey: `booking:${payment.bookingId}:pix:${payment.attempts + 1}`,
+          ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
         }
       });
 
       await prisma.payment.update({
         where: { id: payment.id },
-        data: { mpPaymentId: String(mpPay.id), failureReason: null }
+        data: {
+          mpPaymentId: String(mpPay.id),
+          providerAmountCents: providerNetCents,
+          platformFeeCents,
+          failureReason: null
+        }
       });
     }
 
@@ -924,6 +961,10 @@ export class PaymentService {
       });
       const cardToken = String(tokenResult.id);
 
+      const providerAccessToken = await this.resolveProviderAccessToken(payment.booking.provider.id);
+      const providerNetCents    = providerSplitAmount(payment.amountCents);
+      const platformFeeCents    = platformFeeAmount(payment.amountCents);
+
       const mpPay = await mpPayment.create({
         body: {
           transaction_amount: payment.amountCents / 100,
@@ -939,10 +980,17 @@ export class PaymentService {
           metadata: {
             bookingId: payment.bookingId,
             paymentId: payment.id
-          }
+          },
+          ...(providerAccessToken && payment.booking.provider.mpAccountId
+            ? {
+                collector: { id: Number(payment.booking.provider.mpAccountId) },
+                marketplace_fee: platformFeeCents / 100,
+              }
+            : {})
         },
         requestOptions: {
-          idempotencyKey: `booking:${payment.bookingId}:auth:${payment.attempts + 1}`
+          idempotencyKey: `booking:${payment.bookingId}:auth:${payment.attempts + 1}`,
+          ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
         }
       });
 
@@ -969,6 +1017,8 @@ export class PaymentService {
           status: PaymentStatus.AUTHORIZED,
           mpPaymentId: String(mpPay.id),
           authorizedAt: new Date(),
+          providerAmountCents: providerNetCents,
+          platformFeeCents,
           failureReason: null
         }
       });
