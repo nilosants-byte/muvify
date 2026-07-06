@@ -1014,8 +1014,8 @@ export function ClientHomeScreen({ navigation }: Props) {
         flexDirection: "row",
         alignItems: "center",
       }}>
-        {/* Esquerda: foto de perfil (abre menu lateral) */}
-        <TouchableOpacity onPress={() => setMenuOpen((open) => !open)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Abrir menu" style={{ width: 44 }}>
+        {/* Esquerda: avatar + logo (abre menu lateral) */}
+        <TouchableOpacity onPress={() => setMenuOpen((open) => !open)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Abrir menu" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <MvAvatar
             initials={clientInitials}
             size={34}
@@ -1023,19 +1023,18 @@ export function ClientHomeScreen({ navigation }: Props) {
             color="green"
             photoUri={profilePhotoUri}
           />
-        </TouchableOpacity>
-
-        {/* Centro: logo muvify */}
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }} pointerEvents="none">
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={{ fontFamily: "Nunito_800ExtraBold", fontWeight: "800", fontSize: 26, color: theme.text1, letterSpacing: -0.03 * 26 }}>
+            <Text style={{ fontFamily: "Nunito_800ExtraBold", fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.03 * 22 }}>
               muvi
             </Text>
-            <Text style={{ fontFamily: "Nunito_800ExtraBold", fontWeight: "800", fontSize: 26, color: theme.primary, letterSpacing: -0.03 * 26 }}>
+            <Text style={{ fontFamily: "Nunito_800ExtraBold", fontWeight: "800", fontSize: 22, color: theme.primary, letterSpacing: -0.03 * 22 }}>
               fy
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
+
+        {/* Spacer */}
+        <View style={{ flex: 1 }} />
 
         {/* Direita: botões de chat e notificações */}
         <View style={{ flexDirection: "row", gap: 6, width: 80, justifyContent: "flex-end" }}>

@@ -587,7 +587,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 10 }}>
         {/* Row 1: Avatar | Logo centralizada | Bell */}
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <PressableScale onPress={openDrawer} scale={0.92} accessibilityLabel="Abrir menu">
+          <PressableScale onPress={openDrawer} scale={0.92} accessibilityLabel="Abrir menu" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <MvAvatar
               initials={initials}
               size={40}
@@ -595,11 +595,10 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
               color="green"
               photoUri={providerPhotoUrl}
             />
+            <AppLogoText size={22} />
           </PressableScale>
 
-          <View style={{ flex: 1, alignItems: "center" }} pointerEvents="none">
-            <AppLogoText size={22} />
-          </View>
+          <View style={{ flex: 1 }} />
 
           <View style={{ flexDirection: "row", gap: 8 }}>
             <PressableScale

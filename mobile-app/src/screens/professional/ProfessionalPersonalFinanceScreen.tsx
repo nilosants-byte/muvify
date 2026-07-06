@@ -69,13 +69,13 @@ function SectionHeader({ title, badge, onAction, actionLabel = "Ver →", theme,
     <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, marginTop: 20, marginBottom: 8 }}>
       <MvText variant="semi2" style={{ flex: 1, fontSize: 15, letterSpacing: -0.4 }}>{title}</MvText>
       {badge !== undefined ? (
-        <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)", marginRight: 6 }}>
-          <MvText variant="badge" style={{ fontSize: 10, color: theme.text3 }}>{badge}</MvText>
+        <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.09)", marginRight: 6 }}>
+          <MvText variant="badge" style={{ fontSize: 10, color: isDark ? theme.text3 : "#6B7280" }}>{badge}</MvText>
         </View>
       ) : null}
       {onAction ? (
         <TouchableOpacity onPress={onAction} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <MvText variant="body4" style={{ fontSize: 12, color: theme.text3 }}>{actionLabel}</MvText>
+          <MvText variant="body4" style={{ fontSize: 12, color: isDark ? theme.text3 : "#6B7280" }}>{actionLabel}</MvText>
         </TouchableOpacity>
       ) : null}
     </View>
@@ -336,8 +336,8 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
         {loading ? (
           <SkeletonBlock height={120} />
         ) : (
-          <View style={{ marginHorizontal: 16, borderRadius: 20, padding: 20, backgroundColor: isDark ? "rgba(0,200,83,0.08)" : "rgba(22,163,74,0.06)", borderWidth: 1, borderColor: isDark ? "rgba(0,200,83,0.18)" : "rgba(22,163,74,0.15)" }}>
-            <MvText variant="body4" style={{ fontSize: 12, color: isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.38)", marginBottom: 2 }}>
+          <View style={{ marginHorizontal: 16, borderRadius: 20, padding: 20, backgroundColor: isDark ? "rgba(0,200,83,0.08)" : "rgba(22,163,74,0.10)", borderWidth: 1, borderColor: isDark ? "rgba(0,200,83,0.18)" : "rgba(22,163,74,0.25)" }}>
+            <MvText variant="body4" style={{ fontSize: 12, color: isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.55)", marginBottom: 2 }}>
               {month === currentMonthStr() ? "Faturamento este mês" : `Faturamento em ${monthLabel(month)}`}
             </MvText>
             <MvText variant="semi2" style={{ fontSize: 38, letterSpacing: -1.8, color: green, lineHeight: 44 }}>
@@ -351,15 +351,15 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
                 </MvText>
               </View>
             ) : <View style={{ height: 10 }} />}
-            <View style={{ height: 1, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)", marginBottom: 12 }} />
+            <View style={{ height: 1, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.12)", marginBottom: 12 }} />
             <View style={{ flexDirection: "row" }}>
               <View style={{ flex: 1 }}>
-                <MvText variant="body4" style={{ fontSize: 10, color: isDark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.35)", marginBottom: 2 }}>Despesas</MvText>
+                <MvText variant="body4" style={{ fontSize: 10, color: isDark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.55)", marginBottom: 2 }}>Despesas</MvText>
                 <MvText variant="semi2" style={{ color: RED, fontSize: 18, letterSpacing: -0.5 }}>{fmtCents(manualExpensesCents)}</MvText>
               </View>
-              <View style={{ width: 1, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)", marginHorizontal: 16 }} />
+              <View style={{ width: 1, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.12)", marginHorizontal: 16 }} />
               <View style={{ flex: 1 }}>
-                <MvText variant="body4" style={{ fontSize: 10, color: isDark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.35)", marginBottom: 2 }}>Lucro líquido</MvText>
+                <MvText variant="body4" style={{ fontSize: 10, color: isDark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.55)", marginBottom: 2 }}>Lucro líquido</MvText>
                 <MvText variant="semi2" style={{ color: effectiveProfitCents >= 0 ? green : RED, fontSize: 18, letterSpacing: -0.5 }}>{fmtCents(effectiveProfitCents)}</MvText>
               </View>
             </View>
@@ -370,14 +370,14 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
         <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: 16, marginTop: 12 }}>
           <TouchableOpacity
             onPress={() => setAddIncomeModal(true)}
-            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 11, borderRadius: 12, backgroundColor: isDark ? "rgba(0,200,83,0.10)" : "rgba(22,163,74,0.08)", borderWidth: 1, borderColor: isDark ? "rgba(0,200,83,0.22)" : "rgba(22,163,74,0.18)" }}
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 11, borderRadius: 12, backgroundColor: isDark ? "rgba(0,200,83,0.10)" : "rgba(22,163,74,0.12)", borderWidth: 1, borderColor: isDark ? "rgba(0,200,83,0.22)" : "rgba(22,163,74,0.28)" }}
           >
             <Ionicons name="arrow-up-outline" size={15} color={green} />
             <MvText variant="semi3" style={{ color: green, fontSize: 13 }}>+ Receita</MvText>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setAddExpenseModal(true)}
-            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 11, borderRadius: 12, backgroundColor: isDark ? "rgba(248,113,113,0.08)" : "rgba(229,57,53,0.06)", borderWidth: 1, borderColor: isDark ? "rgba(248,113,113,0.18)" : "rgba(229,57,53,0.14)" }}
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 11, borderRadius: 12, backgroundColor: isDark ? "rgba(248,113,113,0.08)" : "rgba(229,57,53,0.10)", borderWidth: 1, borderColor: isDark ? "rgba(248,113,113,0.18)" : "rgba(229,57,53,0.25)" }}
           >
             <Ionicons name="arrow-down-outline" size={15} color={RED} />
             <MvText variant="semi3" style={{ color: RED, fontSize: 13 }}>+ Despesa</MvText>

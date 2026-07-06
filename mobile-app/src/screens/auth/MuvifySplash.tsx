@@ -51,7 +51,7 @@ export default function MuvifySplash({ colorScheme = "dark", onFinish }: Props) 
   const bg          = isDark ? "#030806" : "#FAFFFE";
   const muvi        = isDark ? "#FFFFFF" : "#0A0F0A";   // "muvi": branco/preto
   const green       = isDark ? "#24E66D" : "#16A34A";   // "fy" + "conecte.": verde
-  const tagRest     = isDark ? "rgba(255,255,255,0.45)" : "rgba(10,15,10,0.45)"; // "evolua.": suave
+  const tagRest     = isDark ? "#FFFFFF" : "#0A0F0A";
 
   const strokeDashoffset = ecgAnim.interpolate({
     inputRange:  [0, 1],
