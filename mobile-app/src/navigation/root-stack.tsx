@@ -51,6 +51,9 @@ import { ProfessionalCredentialsScreen } from "../screens/professional/Professio
 import { ProfessionalFinancialDetailsScreen } from "../screens/professional/ProfessionalFinancialDetailsScreen";
 import { ProfessionalPersonalFinanceScreen } from "../screens/professional/ProfessionalPersonalFinanceScreen";
 import { ProfessionalAnnualReportScreen } from "../screens/professional/ProfessionalAnnualReportScreen";
+import { FinancialStudentsScreen } from "../screens/professional/FinancialStudentsScreen";
+import { FinancialHistoryScreen } from "../screens/professional/FinancialHistoryScreen";
+import { FinancialGoalsScreen } from "../screens/professional/FinancialGoalsScreen";
 import { ProfessionalSettingsScreen } from "../screens/professional/ProfessionalSettingsScreen";
 import { ProfessionalStudentAnamnesisScreen } from "../screens/professional/ProfessionalStudentAnamnesisScreen";
 import { ProfessionalStudentDetailScreen } from "../screens/professional/ProfessionalStudentDetailScreen";
@@ -409,6 +412,21 @@ export function RootNavigator() {
       <ProfessionalStack.Screen
         name="AnnualReport"
         component={ProfessionalAnnualReportScreen as React.ComponentType<any>}
+        options={{ headerShown: false }}
+      />
+      <ProfessionalStack.Screen
+        name="FinancialStudents"
+        component={FinancialStudentsScreen as React.ComponentType<any>}
+        options={{ headerShown: false }}
+      />
+      <ProfessionalStack.Screen
+        name="FinancialHistory"
+        component={FinancialHistoryScreen as React.ComponentType<any>}
+        options={{ headerShown: false }}
+      />
+      <ProfessionalStack.Screen
+        name="FinancialGoals"
+        component={FinancialGoalsScreen as React.ComponentType<any>}
         options={{ headerShown: false }}
       />
       <ProfessionalStack.Screen

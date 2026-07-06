@@ -1,0 +1,213 @@
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator, KeyboardAvoidingView, Modal, Platform,
+  ScrollView, StatusBar, View,
+} from "react-native";
+import { PressableScale } from "../../components/polish/PressableScale";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ProfessionalStackParamList } from "../../navigation/route-types";
+import { FinancialDashboard, FinancialGoal, financialApi } from "../../services/api/client";
+import { useAppState } from "../../state/AppState";
+import { useMvTheme } from "../../theme/MvThemeContext";
+import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
+import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
+import { handleScreenError } from "../shared/api-helpers";
+
+type Props = NativeStackScreenProps<ProfessionalStackParamList, "FinancialGoals">;
+type MvThemeValue = ReturnType<typeof import("../../theme/MvThemeContext").useMvTheme>["theme"];
+
+function parseCents(v: string) { return Number(v.replace(/\D/g, "")); }
+function fmtCents(cents: number) { return formatCurrencyBRL(cents / 100); }
+function currentMonthStr() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+function monthLabel(m: string) {
+  const [y, mo] = m.split("-");
+  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+}
+
+function GoalBar({
+  label, current, target, formatFn, color, isDark,
+}: {
+  label: string; current: number; target: number;
+  formatFn: (v: number) => string; color: string; isDark: boolean;
+}) {
+  const pct = Math.min(1, target > 0 ? current / target : 0);
+  const pctInt = Math.round(pct * 100);
+  return (
+    <View style={{ marginBottom: 20 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <MvText variant="semi3" style={{ fontSize: 14 }}>{label}</MvText>
+        <MvText variant="body4" style={{ fontSize: 12, color: pctInt >= 100 ? color : undefined }}>
+          {pctInt}%
+        </MvText>
+      </View>
+      <View style={{ height: 10, borderRadius: 5, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)", overflow: "hidden" }}>
+        <View style={{ height: 10, borderRadius: 5, width: `${pctInt}%`, backgroundColor: color }} />
+      </View>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}>
+        <MvText variant="body4" style={{ fontSize: 11, color: isDark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.35)" }}>
+          {formatFn(current)}
+        </MvText>
+        <MvText variant="body4" style={{ fontSize: 11, color: isDark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.35)" }}>
+          meta: {formatFn(target)}
+        </MvText>
+      </View>
+    </View>
+  );
+}
+
+function ModalSheet({ visible, title, onClose, children, theme, topInset }: {
+  visible: boolean; title: string; onClose: () => void;
+  children: React.ReactNode; theme: MvThemeValue; topInset: number;
+}) {
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: topInset + 16, paddingHorizontal: 16 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 10 }}>
+            <PressableScale scale={0.92} onPress={onClose} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="close" size={18} color={theme.text1} />
+            </PressableScale>
+            <MvText variant="semi2">{title}</MvText>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {children}
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+export function FinancialGoalsScreen({ navigation }: Props) {
+  const { runWithAuth, showToast } = useAppState();
+  const { theme } = useMvTheme();
+  const insets = useSafeAreaInsets();
+  const isDark = theme.mode === "dark";
+  const green = isDark ? theme.primary : "#16A34A";
+
+  const month = currentMonthStr();
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editModal, setEditModal] = useState(false);
+
+  const [goal, setGoal] = useState<FinancialGoal | null>(null);
+  const [dashboard, setDashboard] = useState<FinancialDashboard | null>(null);
+  const [effectiveRevenue, setEffectiveRevenue] = useState(0);
+
+  const [gRevenue, setGRevenue] = useState("");
+  const [gStudents, setGStudents] = useState("");
+  const [gClasses, setGClasses] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [gl, dash, studs, incs, appCl] = await Promise.all([
+        runWithAuth(t => financialApi.getGoal(t, month)),
+        runWithAuth(t => financialApi.dashboard(t, month)),
+        runWithAuth(t => financialApi.listStudents(t)),
+        runWithAuth(t => financialApi.listIncomes(t, month)),
+        runWithAuth(t => financialApi.listAppClients(t, month)),
+      ]);
+      setGoal(gl);
+      setDashboard(dash);
+      if (gl) {
+        setGRevenue(gl.targetRevenueCents ? maskPriceInput(String(gl.targetRevenueCents)) : "");
+        setGStudents(gl.targetStudents ? String(gl.targetStudents) : "");
+        setGClasses(gl.targetWeeklyClasses ? String(gl.targetWeeklyClasses) : "");
+      }
+      const stuRev = studs.filter(s => s.isActive).reduce((s, st) => s + st.monthlyValueCents, 0);
+      const manRev = incs.reduce((s, i) => s + i.amountCents, 0);
+      const appRev = appCl.length > 0
+        ? appCl.reduce((s, c) => s + c.completedCents, 0)
+        : (dash?.appRevenueCents ?? 0);
+      setEffectiveRevenue(appRev + stuRev + manRev);
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar metas.", navigation });
+    } finally {
+      setLoading(false);
+    }
+  }, [month, navigation, runWithAuth, showToast]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function handleSave() {
+    try {
+      setSaving(true);
+      const savedGoal = await runWithAuth(t => financialApi.upsertGoal(t, {
+        month,
+        targetRevenueCents: gRevenue ? parseCents(gRevenue) : undefined,
+        targetStudents: gStudents ? Number(gStudents) : undefined,
+        targetWeeklyClasses: gClasses ? Number(gClasses) : undefined,
+      }));
+      setGoal(savedGoal);
+      setEditModal(false);
+      showToast("Meta salva.", "success");
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar meta." });
+    } finally { setSaving(false); }
+  }
+
+  const hasGoal = Boolean(goal && (goal.targetRevenueCents || goal.targetStudents || goal.targetWeeklyClasses));
+  const d = dashboard;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <ProfessionalScreenHeader
+        title="Metas"
+        subtitle={monthLabel(month)}
+        onBack={() => navigation.goBack()}
+        action={{ icon: "pencil-outline", label: "Editar", onPress: () => setEditModal(true) }}
+      />
+
+      {loading ? (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator color={theme.primary} />
+        </View>
+      ) : !hasGoal ? (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 12 }}>
+          <Ionicons name="flag-outline" size={44} color={theme.text3} />
+          <MvText variant="semi2" style={{ textAlign: "center" }}>Nenhuma meta definida</MvText>
+          <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
+            Defina metas mensais para acompanhar seu progresso.
+          </MvText>
+          <MvButton label="Definir metas" onPress={() => setEditModal(true)} />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+          <MvCard>
+            {goal?.targetRevenueCents && d ? (
+              <GoalBar label="Faturamento" current={effectiveRevenue} target={goal.targetRevenueCents} formatFn={fmtCents} color={green} isDark={isDark} />
+            ) : null}
+            {goal?.targetStudents && d ? (
+              <GoalBar label="Alunos ativos" current={d.activeStudents} target={goal.targetStudents} formatFn={v => `${v} aluno${v !== 1 ? "s" : ""}`} color="#42A5F5" isDark={isDark} />
+            ) : null}
+            {goal?.targetWeeklyClasses && d ? (
+              <GoalBar label="Aulas por semana" current={d.weeklyClasses} target={goal.targetWeeklyClasses} formatFn={v => `${v} aula${v !== 1 ? "s" : ""}`} color="#FF9800" isDark={isDark} />
+            ) : null}
+          </MvCard>
+        </ScrollView>
+      )}
+
+      <ModalSheet visible={editModal} title={hasGoal ? "Editar metas" : "Definir metas"} onClose={() => setEditModal(false)} theme={theme} topInset={insets.top}>
+        <View style={{ gap: 10, paddingBottom: 40 }}>
+          <MvText variant="body4" color="secondary">
+            Configure as metas para {monthLabel(month)}. Deixe em branco para não monitorar.
+          </MvText>
+          <MvInput placeholder="Meta de faturamento (R$)" keyboardType="numeric" value={gRevenue} onChangeText={v => setGRevenue(maskPriceInput(v))} />
+          <MvInput placeholder="Meta de alunos ativos (ex: 15)" keyboardType="number-pad" value={gStudents} onChangeText={v => setGStudents(v.replace(/\D/g, ""))} />
+          <MvInput placeholder="Meta de aulas por semana (ex: 12)" keyboardType="number-pad" value={gClasses} onChangeText={v => setGClasses(v.replace(/\D/g, ""))} />
+          <MvButton label="Salvar metas" loading={saving} onPress={() => void handleSave()} />
+          <MvButton variant="ghost" label="Cancelar" onPress={() => setEditModal(false)} />
+        </View>
+      </ModalSheet>
+    </View>
+  );
+}

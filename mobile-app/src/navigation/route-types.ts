@@ -90,6 +90,9 @@ export type ProfessionalStackParamList = {
   ConnectPayoutAccount: undefined;
   BookingPaymentStatus: { bookingId: string };
   ProfessionalStudents: undefined;
+  FinancialStudents: undefined;
+  FinancialHistory: undefined;
+  FinancialGoals: undefined;
   ProfessionalStudentDetail: { clientId: string };
   ProfessionalStudentAnamnesis: { clientId: string; clientName: string };
   Notifications: undefined;
