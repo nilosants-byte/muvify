@@ -1178,7 +1178,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     try {
       setSaving(true);
       const parsedDueDay = Number(sPaymentDueDay);
-      await runWithAuth(t => financialApi.createStudent(t, {
+      const newStudent = await runWithAuth(t => financialApi.createStudent(t, {
         name: sName.trim(),
         monthlyValueCents: parseCentsFromInput(sValue),
         type: sType,
@@ -1187,9 +1187,9 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
         location: hasPresential && sLocation.trim() ? sLocation.trim() : undefined,
         weeklySchedule: hasPresential && sSchedule.length > 0 ? sSchedule : undefined,
       }));
+      setStudents(prev => [...prev, newStudent]);
       setAddStudentModal(false);
       resetStudentForm();
-      await load();
       showToast("Aluno adicionado.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar aluno." });
@@ -1200,7 +1200,10 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     Alert.alert("Remover aluno", `Remover "${name}"?`, [
       { text: "Cancelar", style: "cancel" },
       { text: "Remover", style: "destructive", onPress: async () => {
-        try { await runWithAuth(t => financialApi.deleteStudent(t, id)); await load(); }
+        try {
+          await runWithAuth(t => financialApi.deleteStudent(t, id));
+          setStudents(prev => prev.filter(s => s.id !== id));
+        }
         catch { showToast("Falha ao remover.", "error"); }
       }},
     ]);
@@ -1210,14 +1213,14 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     if (!iDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
     try {
       setSaving(true);
-      await runWithAuth(t => financialApi.createIncome(t, {
+      const newIncome = await runWithAuth(t => financialApi.createIncome(t, {
         description: iDesc.trim(),
         amountCents: parseCentsFromInput(iValue),
         paidAt: new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
       }));
+      setIncomes(prev => [...prev, newIncome]);
       setAddIncomeModal(false);
       setIDesc(""); setIValue("100,00"); setIDate(new Date());
-      await load();
       showToast("Receita registrada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar receita." });
@@ -1236,14 +1239,14 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     if (!iDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
     try {
       setSaving(true);
-      await runWithAuth(t => financialApi.updateIncome(t, editingIncome.id, {
+      const updated = await runWithAuth(t => financialApi.updateIncome(t, editingIncome.id, {
         description: iDesc.trim(),
         amountCents: parseCentsFromInput(iValue),
         paidAt: new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
       }));
+      setIncomes(prev => prev.map(i => i.id === updated.id ? updated : i));
       setEditingIncome(null);
       setIDesc(""); setIValue("100,00"); setIDate(new Date());
-      await load();
       showToast("Receita atualizada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao atualizar receita." });
@@ -1251,7 +1254,10 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   }
 
   async function handleDeleteIncome(id: string) {
-    try { await runWithAuth(t => financialApi.deleteIncome(t, id)); await load(); }
+    try {
+      await runWithAuth(t => financialApi.deleteIncome(t, id));
+      setIncomes(prev => prev.filter(i => i.id !== id));
+    }
     catch { showToast("Falha ao remover.", "error"); }
   }
 
@@ -1259,14 +1265,14 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     if (!payStudentModal) return;
     try {
       setSaving(true);
-      await runWithAuth(t => financialApi.createIncome(t, {
+      const newIncome = await runWithAuth(t => financialApi.createIncome(t, {
         description: `Mensalidade — ${payStudentModal.name}`,
         amountCents: parseCentsFromInput(payStudentValue),
         studentId: payStudentModal.id,
         paidAt: new Date(payStudentDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
       }));
+      setIncomes(prev => [...prev, newIncome]);
       setPayStudentModal(null);
-      await load();
       showToast("Mensalidade registrada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao registrar pagamento." });
@@ -1277,15 +1283,15 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     if (!eDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
     try {
       setSaving(true);
-      await runWithAuth(t => financialApi.createExpense(t, {
+      const newExpense = await runWithAuth(t => financialApi.createExpense(t, {
         description: eDesc.trim(),
         amountCents: parseCentsFromInput(eValue),
         category: eCat,
         paidAt: new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
       }));
+      setExpenses(prev => [...prev, newExpense]);
       setAddExpenseModal(false);
       setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date());
-      await load();
       showToast("Despesa registrada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar despesa." });
@@ -1305,15 +1311,15 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     if (!eDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
     try {
       setSaving(true);
-      await runWithAuth(t => financialApi.updateExpense(t, editingExpense.id, {
+      const updated = await runWithAuth(t => financialApi.updateExpense(t, editingExpense.id, {
         description: eDesc.trim(),
         amountCents: parseCentsFromInput(eValue),
         category: eCat,
         paidAt: new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
       }));
+      setExpenses(prev => prev.map(e => e.id === updated.id ? updated : e));
       setEditingExpense(null);
       setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date());
-      await load();
       showToast("Despesa atualizada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao atualizar despesa." });
@@ -1321,21 +1327,24 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   }
 
   async function handleDeleteExpense(id: string) {
-    try { await runWithAuth(t => financialApi.deleteExpense(t, id)); await load(); }
+    try {
+      await runWithAuth(t => financialApi.deleteExpense(t, id));
+      setExpenses(prev => prev.filter(e => e.id !== id));
+    }
     catch { showToast("Falha ao remover.", "error"); }
   }
 
   async function handleSaveGoal() {
     try {
       setSaving(true);
-      await runWithAuth(t => financialApi.upsertGoal(t, {
+      const savedGoal = await runWithAuth(t => financialApi.upsertGoal(t, {
         month,
         targetRevenueCents: gRevenue ? parseCentsFromInput(gRevenue) : undefined,
         targetStudents: gStudents ? Number(gStudents) : undefined,
         targetWeeklyClasses: gClasses ? Number(gClasses) : undefined,
       }));
+      setGoal(savedGoal);
       setEditGoalModal(false);
-      await load();
       showToast("Meta salva.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar meta." });
