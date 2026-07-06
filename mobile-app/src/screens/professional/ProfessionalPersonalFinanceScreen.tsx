@@ -315,7 +315,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
       <ProfessionalScreenHeader
-        title="Financeiro"
+        title="Controle Financeiro"
         onBack={() => navigation.goBack()}
         action={{ icon: "document-text-outline", label: "Relatório", onPress: () => navigation.navigate("AnnualReport") }}
       />
