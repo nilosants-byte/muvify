@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useState } from "react";
-import { Linking, ScrollView, StatusBar, View } from "react-native";
+import { Linking, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -174,7 +174,7 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
         overflow: "hidden",
         backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)",
       }}>
-        <PressableScale scale={0.97} style={tabStyle("bank")} onPress={() => setActiveTab("bank")}>
+        <TouchableOpacity activeOpacity={0.7} style={tabStyle("bank")} onPress={() => setActiveTab("bank")}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <Ionicons name="card-outline" size={16} color={activeTab === "bank" ? theme.primary : theme.text3} />
             <MvText variant="semi3" style={{ color: activeTab === "bank" ? theme.primary : theme.text3 }}>
@@ -182,11 +182,11 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
             </MvText>
           </View>
           <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>cartão de crédito</MvText>
-        </PressableScale>
+        </TouchableOpacity>
 
         <View style={{ width: 1, backgroundColor: theme.border }} />
 
-        <PressableScale scale={0.97} style={tabStyle("pix")} onPress={() => setActiveTab("pix")}>
+        <TouchableOpacity activeOpacity={0.7} style={tabStyle("pix")} onPress={() => setActiveTab("pix")}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <Ionicons name="flash-outline" size={16} color={activeTab === "pix" ? theme.primary : theme.text3} />
             <MvText variant="semi3" style={{ color: activeTab === "pix" ? theme.primary : theme.text3 }}>
@@ -194,11 +194,11 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
             </MvText>
           </View>
           <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>pagamento em PIX</MvText>
-        </PressableScale>
+        </TouchableOpacity>
 
         <View style={{ width: 1, backgroundColor: theme.border }} />
 
-        <PressableScale scale={0.97} style={tabStyle("mp")} onPress={() => setActiveTab("mp")}>
+        <TouchableOpacity activeOpacity={0.7} style={tabStyle("mp")} onPress={() => setActiveTab("mp")}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
             <Ionicons name="shield-checkmark-outline" size={16} color={activeTab === "mp" ? theme.primary : theme.text3} />
             <MvText variant="semi3" style={{ color: activeTab === "mp" ? theme.primary : theme.text3 }}>
@@ -211,7 +211,7 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
             )}
           </View>
           <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>split automático</MvText>
-        </PressableScale>
+        </TouchableOpacity>
       </View>
 
       {loading ? (

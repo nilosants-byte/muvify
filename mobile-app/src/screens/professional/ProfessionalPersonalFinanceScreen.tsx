@@ -1012,6 +1012,8 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   const [addIncomeModal,  setAddIncomeModal]  = useState(false);
   const [addExpenseModal, setAddExpenseModal] = useState(false);
   const [editGoalModal,   setEditGoalModal]   = useState(false);
+  const [showAnalysis,  setShowAnalysis]  = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
 
   const [sName, setSName] = useState("");
   const [sValue, setSValue] = useState("100,00");
@@ -1105,15 +1107,16 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   const effectiveProfitCents  = effectiveRevenueCents - totalExpensesCents;
 
   const load = useCallback(async () => {
+    setReport(null);
+    setShowAnalysis(false);
     try {
       setLoading(true);
-      const [dash, studs, incs, exps, gl, rep, appCl, mpStatus] = await Promise.all([
+      const [dash, studs, incs, exps, gl, appCl, mpStatus] = await Promise.all([
         runWithAuth(t => financialApi.dashboard(t, month)),
         runWithAuth(t => financialApi.listStudents(t)),
         runWithAuth(t => financialApi.listIncomes(t, month)),
         runWithAuth(t => financialApi.listExpenses(t, month)),
         runWithAuth(t => financialApi.getGoal(t, month)),
-        runWithAuth(t => financialApi.report(t, 12)),
         runWithAuth(t => financialApi.listAppClients(t, month)),
         runWithAuth(t => paymentsApi.providerStatus(t)).catch(() => null),
       ]);
@@ -1122,7 +1125,6 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
       setIncomes(incs);
       setExpenses(exps);
       setGoal(gl);
-      setReport(rep);
       setAppClients(appCl);
       setProviderHasMp(mpStatus?.hasAccount ?? null);
       if (gl) {
@@ -1138,6 +1140,19 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   }, [month, navigation, runWithAuth, showToast]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const loadReport = useCallback(async () => {
+    if (report !== null) return;
+    try {
+      setReportLoading(true);
+      const rep = await runWithAuth(t => financialApi.report(t, 12));
+      setReport(rep);
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar análise.", navigation });
+    } finally {
+      setReportLoading(false);
+    }
+  }, [navigation, report, runWithAuth, showToast]);
 
   function prevMonth() {
     const [y, m] = month.split("-").map(Number);
@@ -1329,7 +1344,6 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
 
   const RED = "#e57373";
   const isDark = theme.mode === "dark";
-  const [showAnalysis, setShowAnalysis] = useState(false);
 
   // Tab renders
   function renderStudents() {
@@ -1739,128 +1753,139 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
       <View>
         <ProfessionalScreenHeader
           title="Controle Financeiro"
-          subtitle="Gestão completa da sua carreira"
           onBack={() => navigation.goBack()}
         />
 
-        {/* Stats strip + analysis toggle */}
-        {dashboard ? (
-          <View style={{ paddingHorizontal: 14, marginBottom: 4 }}>
-            {/* Grade 2×2 de StatCards */}
-            <View style={{ gap: 8, marginBottom: 8 }}>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <StatCard
-                  label="Faturamento" value={fmtCents(effectiveRevenueCents)}
-                  icon="wallet-outline" color={isDark ? theme.primary : "#16A34A"}
-                  delta={dashboard.growthPct} theme={theme} isDark={isDark}
-                />
-                <StatCard
-                  label="Despesas" value={fmtCents(totalExpensesCents)}
-                  icon="receipt-outline" color={isDark ? "#F87171" : "#E53935"}
-                  theme={theme} isDark={isDark}
-                />
+        {/* Month selector */}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingVertical: 6 }}>
+          <TouchableOpacity onPress={prevMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="chevron-back" size={20} color={theme.text3} />
+          </TouchableOpacity>
+          <MvText variant="semi2" style={{ fontSize: 15, letterSpacing: -0.3 }}>{monthLabel(month)}</MvText>
+          <TouchableOpacity
+            onPress={nextMonth}
+            disabled={month >= currentMonthStr()}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={{ opacity: month >= currentMonthStr() ? 0.3 : 1 }}
+          >
+            <Ionicons name="chevron-forward" size={20} color={theme.text3} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Summary: faturamento + despesas/lucro + saúde */}
+        {loading ? (
+          <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
+            <View style={{ height: 44, width: "52%", borderRadius: 10, backgroundColor: theme.chipBg, marginBottom: 6 }} />
+            <View style={{ height: 14, width: "65%", borderRadius: 8, backgroundColor: theme.chipBg, marginBottom: 16 }} />
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <View style={{ height: 34, flex: 1, borderRadius: 8, backgroundColor: theme.chipBg }} />
+              <View style={{ height: 34, flex: 1, borderRadius: 8, backgroundColor: theme.chipBg }} />
+            </View>
+          </View>
+        ) : dashboard ? (
+          <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}>
+            {/* Big faturamento number */}
+            <MvText variant="semi2" style={{ fontSize: 38, letterSpacing: -1.5, color: isDark ? theme.primary : "#16A34A" }}>
+              {fmtCents(effectiveRevenueCents)}
+            </MvText>
+            <MvText variant="body4" color="secondary" style={{ fontSize: 12, marginBottom: 12 }}>
+              faturado {month === currentMonthStr() ? "neste mês" : `em ${monthLabel(month)}`}
+            </MvText>
+
+            {/* Despesas + Lucro */}
+            <View style={{ flexDirection: "row", marginBottom: 10 }}>
+              <View style={{ flex: 1 }}>
+                <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Despesas</MvText>
+                <MvText variant="semi2" style={{ color: isDark ? "#F87171" : "#E53935", fontSize: 16, letterSpacing: -0.4 }}>
+                  {fmtCents(totalExpensesCents)}
+                </MvText>
               </View>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <StatCard
-                  label="Lucro" value={fmtCents(effectiveProfitCents)}
-                  icon="stats-chart-outline"
-                  color={effectiveProfitCents >= 0 ? (isDark ? theme.primary : "#16A34A") : (isDark ? "#F87171" : "#E53935")}
-                  theme={theme} isDark={isDark}
-                />
-                <StatCard
-                  label="Sessões futuras" value={fmtCents(dashboard.confirmedRevenueCents)}
-                  icon="calendar-outline" color={isDark ? "#FACC15" : "#CA8A04"}
-                  infoText="Valor total dos agendamentos confirmados que ainda não aconteceram."
-                  theme={theme} isDark={isDark}
-                />
+              <View style={{ width: 1, backgroundColor: theme.border, marginVertical: 4 }} />
+              <View style={{ flex: 1, paddingLeft: 16 }}>
+                <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Lucro líquido</MvText>
+                <MvText variant="semi2" style={{ color: effectiveProfitCents >= 0 ? (isDark ? theme.primary : "#16A34A") : (isDark ? "#F87171" : "#E53935"), fontSize: 16, letterSpacing: -0.4 }}>
+                  {fmtCents(effectiveProfitCents)}
+                </MvText>
               </View>
             </View>
-            {/* Secondary metrics: ticket médio + sessões */}
-            {(dashboard.ticketMedioCents > 0 || dashboard.weeklyClasses > 0) ? (
-              <View style={{ flexDirection: "row", gap: 12, paddingHorizontal: 2, marginBottom: 6 }}>
-                {dashboard.ticketMedioCents > 0 ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                    <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: isDark ? "rgba(0,200,83,0.15)" : "rgba(22,163,74,0.12)", alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name="analytics-outline" size={10} color={isDark ? theme.primary : "#16A34A"} />
-                    </View>
-                    <MvText variant="body4" style={{ fontSize: 11, color: theme.text2 }}>
-                      Ticket médio{" "}
-                      <MvText variant="semi3" style={{ fontSize: 11, color: isDark ? theme.primary : "#16A34A" }}>
-                        {fmtCents(dashboard.ticketMedioCents)}
-                      </MvText>
-                    </MvText>
-                  </View>
-                ) : null}
-                {dashboard.weeklyClasses > 0 ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                    <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: isDark ? "rgba(0,200,83,0.15)" : "rgba(22,163,74,0.12)", alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name="calendar-outline" size={10} color={isDark ? theme.primary : "#16A34A"} />
-                    </View>
-                    <MvText variant="body4" style={{ fontSize: 11, color: theme.text2 }}>
-                      Aulas/semana{" "}
-                      <MvText variant="semi3" style={{ fontSize: 11, color: isDark ? theme.primary : "#16A34A" }}>
-                        {dashboard.weeklyClasses}
-                      </MvText>
-                    </MvText>
-                  </View>
-                ) : null}
-              </View>
+
+            {/* Compact health badge — one line, only when there are active students */}
+            {students.some(s => s.isActive) ? (() => {
+              const active = students.filter(s => s.isActive);
+              const todayDay = new Date().getDate();
+              const paidCnt = active.filter(s => paidStudentIds.has(s.id)).length;
+              const pendCnt = active.length - paidCnt;
+              const overdueCnt = active.filter(s => !paidStudentIds.has(s.id) && s.paymentDueDay != null && s.paymentDueDay < todayDay).length;
+              const emoji = overdueCnt > 0 ? "🔴" : pendCnt > 0 ? "🟡" : "🟢";
+              const badgeColor = overdueCnt > 0 ? (isDark ? "#F87171" : "#E53935") : pendCnt > 0 ? (isDark ? "#FCD34D" : "#B45309") : (isDark ? theme.primary : "#16A34A");
+              const badgeText = paidCnt === active.length
+                ? `${paidCnt} aluno${paidCnt !== 1 ? "s" : ""} em dia`
+                : `${paidCnt} em dia · ${pendCnt} pendente${pendCnt !== 1 ? "s" : ""}${overdueCnt > 0 ? ` · ${overdueCnt} atrasado${overdueCnt !== 1 ? "s" : ""}` : ""}`;
+              return (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                  <MvText style={{ fontSize: 11 }}>{emoji}</MvText>
+                  <MvText variant="body4" style={{ fontSize: 11, color: badgeColor }}>{badgeText}</MvText>
+                </View>
+              );
+            })() : null}
+
+            {/* MP banner */}
+            {providerHasMp === false ? (
+              <TouchableOpacity
+                onPress={() => navigation.navigate("ConnectPayoutAccount")}
+                activeOpacity={0.8}
+                style={{ marginTop: 8, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 10, borderWidth: 1, borderColor: "rgba(250,204,21,0.35)", backgroundColor: isDark ? "rgba(250,204,21,0.10)" : "rgba(250,204,21,0.12)", paddingHorizontal: 12, paddingVertical: 9 }}
+              >
+                <Ionicons name="warning-outline" size={15} color={isDark ? "#FACC15" : "#B45309"} />
+                <MvText variant="body4" style={{ flex: 1, color: isDark ? "#FACC15" : "#B45309", fontSize: 11 }}>
+                  Configure sua conta de recebimento para ativar o repasse automático via Mercado Pago.
+                </MvText>
+                <Ionicons name="chevron-forward" size={13} color={isDark ? "#FACC15" : "#B45309"} />
+              </TouchableOpacity>
             ) : null}
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <PressableScale scale={0.97} onPress={() => setShowAnalysis(v => !v)} style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 5 }}>
+
+            {/* Action links */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+              <TouchableOpacity
+                onPress={() => { if (!showAnalysis && report === null) void loadReport(); setShowAnalysis(v => !v); }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 4 }}
+              >
                 <Ionicons name={showAnalysis ? "chevron-up-outline" : "bar-chart-outline"} size={13} color={theme.text3} />
                 <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>
-                  {showAnalysis ? "Ocultar análise" : "Ver análise detalhada"}
+                  {showAnalysis ? "Ocultar análise" : `Ver análise${reportLoading ? " …" : ""}`}
                 </MvText>
-              </PressableScale>
-              <PressableScale scale={0.97} onPress={() => navigation.navigate("AnnualReport")} style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 5 }}>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigation.navigate("AnnualReport")}
+                style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 4 }}
+              >
                 <Ionicons name="document-text-outline" size={13} color={theme.text3} />
                 <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Relatório anual</MvText>
-              </PressableScale>
+              </TouchableOpacity>
             </View>
           </View>
         ) : null}
 
-        {/* Radar chart: collapsible */}
-        {dashboard && showAnalysis ? (
-          <RadarChartSection
-            app={appRevenueCents}
-            offApp={offAppRevenueCents}
-            expenses={totalExpensesCents}
-            report={report}
-            dashboard={dashboard}
-            isDark={isDark}
-            theme={theme}
-            month={month}
-            onPrevMonth={prevMonth}
-            onNextMonth={nextMonth}
-          />
-        ) : null}
-
-        {/* Banner: conta MP não configurada */}
-        {providerHasMp === false ? (
-          <TouchableOpacity
-            onPress={() => navigation.navigate("ConnectPayoutAccount")}
-            activeOpacity={0.8}
-            style={{ marginHorizontal: 14, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 10, borderWidth: 1, borderColor: "rgba(250,204,21,0.35)", backgroundColor: isDark ? "rgba(250,204,21,0.10)" : "rgba(250,204,21,0.12)", paddingHorizontal: 12, paddingVertical: 9 }}
-          >
-            <Ionicons name="warning-outline" size={15} color={isDark ? "#FACC15" : "#B45309"} />
-            <MvText variant="body4" style={{ flex: 1, color: isDark ? "#FACC15" : "#B45309", fontSize: 11 }}>
-              Configure sua conta de recebimento para ativar o repasse automático via Mercado Pago.
-            </MvText>
-            <Ionicons name="chevron-forward" size={13} color={isDark ? "#FACC15" : "#B45309"} />
-          </TouchableOpacity>
-        ) : null}
-
-        {/* Radar de saúde financeira */}
-        {dashboard && !loading ? (
-          <HealthRadar
-            students={students}
-            paidStudentIds={paidStudentIds}
-            report={report}
-            isDark={isDark}
-            theme={theme}
-          />
+        {/* Analysis chart: lazy-loaded, opens on demand */}
+        {showAnalysis ? (
+          reportLoading ? (
+            <View style={{ paddingVertical: 16, alignItems: "center" }}>
+              <ActivityIndicator color={theme.primary} />
+            </View>
+          ) : report ? (
+            <RadarChartSection
+              app={appRevenueCents}
+              offApp={offAppRevenueCents}
+              expenses={totalExpensesCents}
+              report={report}
+              dashboard={dashboard}
+              isDark={isDark}
+              theme={theme}
+              month={month}
+              onPrevMonth={prevMonth}
+              onNextMonth={nextMonth}
+            />
+          ) : null
         ) : null}
 
         {/* Tab bar de navegação */}
