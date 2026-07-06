@@ -618,6 +618,101 @@ function RadarChartSection({ app, offApp, expenses, report, dashboard, isDark, t
   );
 }
 
+type LivroCaixaLevel = "yes" | "no" | "neutral";
+
+const LIVRO_CAIXA: Record<FinancialExpenseCategory, { level: LivroCaixaLevel; text: string }> = {
+  GYM:                  { level: "yes",     text: "Costuma ser considerada despesa profissional. Confirme com seu contador." },
+  EQUIPMENT:            { level: "yes",     text: "Costuma ser considerada despesa profissional. Confirme com seu contador." },
+  FORMATION:            { level: "yes",     text: "Costuma ser considerada despesa profissional. Confirme com seu contador." },
+  SOFTWARE:             { level: "yes",     text: "Costuma ser considerada despesa profissional. Confirme com seu contador." },
+  PROFESSIONAL_SERVICES:{ level: "yes",     text: "Costuma ser considerada despesa profissional. Confirme com seu contador." },
+  RENT:                 { level: "yes",     text: "Costuma ser considerada despesa profissional. Confirme com seu contador." },
+  UNIFORM:              { level: "yes",     text: "Costuma ser considerada despesa profissional. Confirme com seu contador." },
+  NUTRITION:            { level: "yes",     text: "Quando relacionada ao trabalho, costuma ser considerada despesa profissional. Confirme com seu contador." },
+  MARKETING:            { level: "yes",     text: "Costuma ser considerada despesa profissional. Confirme com seu contador." },
+  TRANSPORT:            { level: "no",      text: "Transporte costuma ter restrições para autônomos e geralmente não é dedutível. Consulte seu contador." },
+  OTHER:                { level: "neutral", text: "" },
+};
+
+function HealthRadar({ students, paidStudentIds, report, isDark, theme }: {
+  students: FinancialStudent[];
+  paidStudentIds: Set<string>;
+  report: FinancialReport | null;
+  isDark: boolean;
+  theme: MvThemeValue;
+}) {
+  const active = students.filter(s => s.isActive);
+  const paid   = active.filter(s => paidStudentIds.has(s.id)).length;
+  const pending = active.length - paid;
+  const pendingAmount = active.filter(s => !paidStudentIds.has(s.id)).reduce((sum, s) => sum + s.monthlyValueCents, 0);
+  const paymentRate = active.length > 0 ? paid / active.length : 1;
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const monthsElapsed = now.getMonth() + 1;
+  const monthsWithData = (report?.months ?? []).filter(m => {
+    const [y] = m.month.split("-").map(Number);
+    return y === currentYear && (m.revenueCents > 0 || m.appRevenueCents > 0 || m.expensesCents > 0);
+  }).length;
+  const dataRate = monthsElapsed > 0 ? monthsWithData / monthsElapsed : 1;
+
+  if (active.length === 0 && monthsWithData === 0) return null;
+
+  const level: "green" | "yellow" | "red" =
+    paymentRate >= 0.8 && dataRate >= 0.8 ? "green"
+    : paymentRate < 0.5 || dataRate < 0.5  ? "red"
+    : "yellow";
+
+  const color  = level === "green" ? (isDark ? "#4ADE80" : "#16A34A") : level === "red" ? (isDark ? "#F87171" : "#E53935") : (isDark ? "#FCD34D" : "#B45309");
+  const bg     = level === "green" ? (isDark ? "rgba(74,222,128,0.07)"  : "rgba(22,163,74,0.06)")  : level === "red" ? (isDark ? "rgba(248,113,113,0.08)" : "rgba(229,57,53,0.07)")  : (isDark ? "rgba(252,211,77,0.08)"  : "rgba(180,83,9,0.07)");
+  const border = level === "green" ? (isDark ? "rgba(74,222,128,0.18)"  : "rgba(22,163,74,0.15)")  : level === "red" ? (isDark ? "rgba(248,113,113,0.20)" : "rgba(229,57,53,0.18)")  : (isDark ? "rgba(252,211,77,0.18)"  : "rgba(180,83,9,0.15)");
+  const icon   = level === "green" ? "checkmark-circle-outline" : level === "red" ? "alert-circle-outline" : "warning-outline";
+
+  const mainText = active.length === 0
+    ? `${monthsWithData} de ${monthsElapsed} mês${monthsElapsed !== 1 ? "es" : ""} com registros em ${currentYear}`
+    : paid === active.length
+    ? `Todos os ${active.length} alunos pagaram este mês`
+    : `${paid} de ${active.length} aluno${active.length !== 1 ? "s" : ""} pago${paid !== 1 ? "s" : ""} este mês`;
+
+  const subText = pending > 0
+    ? `${fmtCents(pendingAmount)} ainda não entraram`
+    : monthsWithData < monthsElapsed
+    ? `${monthsElapsed - monthsWithData} mês${(monthsElapsed - monthsWithData) !== 1 ? "es" : ""} sem registros em ${currentYear}`
+    : null;
+
+  return (
+    <View style={{ marginHorizontal: 14, marginBottom: 6, flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 10, backgroundColor: bg, borderWidth: 1, borderColor: border }}>
+      <Ionicons name={icon as any} size={16} color={color} />
+      <View style={{ flex: 1 }}>
+        <MvText variant="semi3" style={{ fontSize: 12, color }}>{mainText}</MvText>
+        {subText ? <MvText variant="body4" style={{ fontSize: 10, color, opacity: 0.75, marginTop: 1 }}>{subText}</MvText> : null}
+      </View>
+    </View>
+  );
+}
+
+function LivroCaixaHint({ category, isDark, theme }: {
+  category: FinancialExpenseCategory; isDark: boolean; theme: MvThemeValue;
+}) {
+  const info = LIVRO_CAIXA[category];
+  if (info.level === "neutral") return null;
+
+  const isYes = info.level === "yes";
+  const color  = isYes ? (isDark ? "#4ADE80" : "#16A34A") : (isDark ? "#FCD34D" : "#B45309");
+  const bg     = isYes ? (isDark ? "rgba(74,222,128,0.08)" : "rgba(22,163,74,0.07)") : (isDark ? "rgba(252,211,77,0.08)" : "rgba(180,83,9,0.07)");
+  const border = isYes ? (isDark ? "rgba(74,222,128,0.20)" : "rgba(22,163,74,0.18)") : (isDark ? "rgba(252,211,77,0.20)" : "rgba(180,83,9,0.18)");
+  const icon   = isYes ? "checkmark-circle-outline" : "warning-outline";
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 7, padding: 10, borderRadius: 10, backgroundColor: bg, borderWidth: 1, borderColor: border }}>
+      <Ionicons name={icon as any} size={13} color={color} style={{ marginTop: 1 }} />
+      <MvText variant="body4" style={{ flex: 1, fontSize: 11, color, lineHeight: 16 }}>
+        {info.text}
+      </MvText>
+    </View>
+  );
+}
+
 function GoalProgress({ label, current, target, formatFn, color }: {
   label: string; current: number; target: number; formatFn: (v: number) => string; color: string;
 }) {
@@ -948,6 +1043,11 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   const [expenseSearch, setExpenseSearch] = useState("");
   const [expenseCatFilter, setExpenseCatFilter] = useState<FinancialExpenseCategory | null>(null);
 
+  const [sPaymentDueDay, setSPaymentDueDay] = useState("");
+  const [payStudentModal, setPayStudentModal] = useState<FinancialStudent | null>(null);
+  const [payStudentValue, setPayStudentValue] = useState("");
+  const [payStudentDate, setPayStudentDate] = useState<Date>(new Date());
+
   useEffect(() => {
     if (sSchedule.length > 0) setSFreq(String(sSchedule.length));
   }, [sSchedule.length]);
@@ -989,6 +1089,12 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     if (q) list = list.filter(e => e.description.toLowerCase().includes(q));
     return list;
   }, [expenses, expenseCatFilter, expenseSearch]);
+
+  const paidStudentIds = useMemo(() => {
+    const set = new Set<string>();
+    incomes.forEach(inc => { if (inc.studentId) set.add(inc.studentId); });
+    return set;
+  }, [incomes]);
 
   const appRevenueCents = appClients.length > 0
     ? appCompletedRevenueCents
@@ -1049,17 +1155,20 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   function resetStudentForm() {
     setSName(""); setSValue("100,00"); setSType("PRESENTIAL"); setSFreq("3");
     setSSchedule([]); setSLocation(""); setSLocationQuery(""); setSLocSuggOpen(false);
+    setSPaymentDueDay("");
   }
 
   async function handleAddStudent() {
     if (!sName.trim()) { showToast("Informe o nome.", "error"); return; }
     try {
       setSaving(true);
+      const parsedDueDay = Number(sPaymentDueDay);
       await runWithAuth(t => financialApi.createStudent(t, {
         name: sName.trim(),
         monthlyValueCents: parseCentsFromInput(sValue),
         type: sType,
         weeklyFrequency: sSchedule.length > 0 ? sSchedule.length : (Number(sFreq) || 3),
+        paymentDueDay: parsedDueDay >= 1 && parsedDueDay <= 31 ? parsedDueDay : undefined,
         location: hasPresential && sLocation.trim() ? sLocation.trim() : undefined,
         weeklySchedule: hasPresential && sSchedule.length > 0 ? sSchedule : undefined,
       }));
@@ -1129,6 +1238,24 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   async function handleDeleteIncome(id: string) {
     try { await runWithAuth(t => financialApi.deleteIncome(t, id)); await load(); }
     catch { showToast("Falha ao remover.", "error"); }
+  }
+
+  async function handleMarkStudentPaid() {
+    if (!payStudentModal) return;
+    try {
+      setSaving(true);
+      await runWithAuth(t => financialApi.createIncome(t, {
+        description: `Mensalidade — ${payStudentModal.name}`,
+        amountCents: parseCentsFromInput(payStudentValue),
+        studentId: payStudentModal.id,
+        paidAt: new Date(payStudentDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
+      }));
+      setPayStudentModal(null);
+      await load();
+      showToast("Mensalidade registrada.", "success");
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao registrar pagamento." });
+    } finally { setSaving(false); }
   }
 
   async function handleAddExpense() {
@@ -1210,19 +1337,25 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     const inactive = students.filter(s => !s.isActive);
     const appGreen = isDark ? theme.primary : "#16A34A";
     const offBlue  = isDark ? "#38BDF8" : "#0284C7";
+    const warnColor = isDark ? "#FCD34D" : "#B45309";
+    const warnBg    = isDark ? "rgba(252,211,77,0.08)" : "rgba(180,83,9,0.07)";
+    const warnBorder = isDark ? "rgba(252,211,77,0.18)" : "rgba(180,83,9,0.15)";
+
+    const todayDay = new Date().getDate();
 
     function StudentRow({ s, dim }: { s: FinancialStudent; dim?: boolean }) {
       const slots = (s.weeklySchedule ?? []) as WeeklyScheduleSlot[];
       const dayLabels = sortSchedule(slots).map((sl) => DAY_LABELS[sl.dayOfWeek]).join(" · ");
       const timeStr = slots.length > 0 ? `${slots[0].startTime}–${slots[0].endTime}` : null;
       const serviceTypeLabel =
-        s.type === "BOTH"
-          ? "Consultoria e presencial"
-          : s.type === "ONLINE"
-            ? "Consultoria"
-            : s.type === "PRESENTIAL"
-              ? "Presencial"
-              : "Pelo app";
+        s.type === "BOTH" ? "Consultoria e presencial"
+          : s.type === "ONLINE" ? "Consultoria"
+          : s.type === "PRESENTIAL" ? "Presencial"
+          : "Pelo app";
+
+      const isPaid = paidStudentIds.has(s.id);
+      const daysOverdue = s.paymentDueDay && !isPaid ? Math.max(0, todayDay - s.paymentDueDay) : 0;
+
       return (
         <MvCard style={{ opacity: dim ? 0.5 : 1 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -1249,6 +1382,41 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
               <Ionicons name="trash-outline" size={16} color={RED} />
             </PressableScale>
           </View>
+          {/* Linha de status de pagamento */}
+          {s.isActive && !dim ? (
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: theme.border }}>
+              {isPaid ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Ionicons name="checkmark-circle" size={13} color={appGreen} />
+                  <MvText variant="badge" style={{ color: appGreen, fontSize: 10 }}>Pago este mês</MvText>
+                </View>
+              ) : daysOverdue > 0 ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Ionicons name="alert-circle" size={13} color={RED} />
+                  <MvText variant="badge" style={{ color: RED, fontSize: 10 }}>
+                    Atrasado {daysOverdue} dia{daysOverdue !== 1 ? "s" : ""}
+                  </MvText>
+                </View>
+              ) : s.paymentDueDay ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Ionicons name="time-outline" size={13} color={warnColor} />
+                  <MvText variant="badge" style={{ color: warnColor, fontSize: 10 }}>Vence dia {s.paymentDueDay}</MvText>
+                </View>
+              ) : (
+                <MvText variant="badge" style={{ color: theme.text3, fontSize: 10 }}>Pendente</MvText>
+              )}
+              {!isPaid ? (
+                <PressableScale
+                  scale={0.92}
+                  onPress={() => { setPayStudentModal(s); setPayStudentValue(maskPriceInput(String(s.monthlyValueCents))); setPayStudentDate(new Date()); }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? "rgba(0,200,83,0.10)" : "rgba(22,163,74,0.08)", borderWidth: 1, borderColor: isDark ? "rgba(0,200,83,0.22)" : "rgba(22,163,74,0.18)" }}
+                >
+                  <Ionicons name="checkmark-outline" size={11} color={appGreen} />
+                  <MvText variant="badge" style={{ color: appGreen, fontSize: 10 }}>Marcar como pago</MvText>
+                </PressableScale>
+              ) : null}
+            </View>
+          ) : null}
         </MvCard>
       );
     }
@@ -1307,8 +1475,27 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
       );
     }
 
+    const pendingStudents = active.filter(s => !paidStudentIds.has(s.id));
+    const pendingAmount   = pendingStudents.reduce((sum, s) => sum + s.monthlyValueCents, 0);
+
     return (
       <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 40, gap: 6 }} showsVerticalScrollIndicator={false}>
+        {/* Resumo de pendências do mês */}
+        {active.length > 0 ? (
+          pendingStudents.length === 0 ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, padding: 10, borderRadius: 10, backgroundColor: isDark ? "rgba(0,200,83,0.08)" : "rgba(22,163,74,0.07)", borderWidth: 1, borderColor: isDark ? "rgba(0,200,83,0.18)" : "rgba(22,163,74,0.15)" }}>
+              <Ionicons name="checkmark-circle" size={13} color={appGreen} />
+              <MvText variant="body4" style={{ color: appGreen, fontSize: 11 }}>Todos os alunos pagaram este mês</MvText>
+            </View>
+          ) : (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, padding: 10, borderRadius: 10, backgroundColor: warnBg, borderWidth: 1, borderColor: warnBorder }}>
+              <Ionicons name="time-outline" size={13} color={warnColor} />
+              <MvText variant="body4" style={{ flex: 1, color: warnColor, fontSize: 11 }}>
+                {pendingStudents.length} aluno{pendingStudents.length !== 1 ? "s" : ""} pendente{pendingStudents.length !== 1 ? "s" : ""} · {fmtCents(pendingAmount)} a receber
+              </MvText>
+            </View>
+          )
+        ) : null}
         {/* Clientes que compraram pelo app (gerado automaticamente) */}
         {appClients.length > 0 ? (
           <>
@@ -1406,7 +1593,9 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   function renderExpenses() {
     const total = expenses.reduce((s, e) => s + e.amountCents, 0);
     const catLabel: Record<FinancialExpenseCategory, string> = {
-      GYM: "Academia", TRANSPORT: "Transporte", EQUIPMENT: "Equipamento", MARKETING: "Marketing", OTHER: "Outros",
+      GYM: "Academia", TRANSPORT: "Transporte", EQUIPMENT: "Equipamento", MARKETING: "Marketing",
+      FORMATION: "Cursos e Formação", SOFTWARE: "Softwares", PROFESSIONAL_SERVICES: "Serviços Profissionais",
+      RENT: "Aluguel de Espaço", UNIFORM: "Uniforme", NUTRITION: "Nutrição Profissional", OTHER: "Outros",
     };
     const CAT_OPTS: Array<{ key: FinancialExpenseCategory | null; label: string }> = [
       { key: null, label: "Todas" },
@@ -1414,6 +1603,12 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
       { key: "TRANSPORT", label: "Transporte" },
       { key: "EQUIPMENT", label: "Equipamento" },
       { key: "MARKETING", label: "Marketing" },
+      { key: "FORMATION", label: "Cursos e Formação" },
+      { key: "SOFTWARE", label: "Softwares" },
+      { key: "PROFESSIONAL_SERVICES", label: "Serv. Profissionais" },
+      { key: "RENT", label: "Aluguel" },
+      { key: "UNIFORM", label: "Uniforme" },
+      { key: "NUTRITION", label: "Nutrição" },
       { key: "OTHER", label: "Outros" },
     ];
     return (
@@ -1611,12 +1806,18 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
                 ) : null}
               </View>
             ) : null}
-            <PressableScale scale={0.97} onPress={() => setShowAnalysis(v => !v)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 5 }}>
-              <Ionicons name={showAnalysis ? "chevron-up-outline" : "bar-chart-outline"} size={13} color={theme.text3} />
-              <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>
-                {showAnalysis ? "Ocultar análise" : "Ver análise detalhada"}
-              </MvText>
-            </PressableScale>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <PressableScale scale={0.97} onPress={() => setShowAnalysis(v => !v)} style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 5 }}>
+                <Ionicons name={showAnalysis ? "chevron-up-outline" : "bar-chart-outline"} size={13} color={theme.text3} />
+                <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>
+                  {showAnalysis ? "Ocultar análise" : "Ver análise detalhada"}
+                </MvText>
+              </PressableScale>
+              <PressableScale scale={0.97} onPress={() => navigation.navigate("AnnualReport")} style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 5 }}>
+                <Ionicons name="document-text-outline" size={13} color={theme.text3} />
+                <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Relatório anual</MvText>
+              </PressableScale>
+            </View>
           </View>
         ) : null}
 
@@ -1649,6 +1850,17 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
             </MvText>
             <Ionicons name="chevron-forward" size={13} color={isDark ? "#FACC15" : "#B45309"} />
           </TouchableOpacity>
+        ) : null}
+
+        {/* Radar de saúde financeira */}
+        {dashboard && !loading ? (
+          <HealthRadar
+            students={students}
+            paidStudentIds={paidStudentIds}
+            report={report}
+            isDark={isDark}
+            theme={theme}
+          />
         ) : null}
 
         {/* Tab bar de navegação */}
@@ -1732,6 +1944,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
             </View>
           ) : null}
           <MvInput keyboardType="numeric" placeholder="Valor mensal (R$)" value={sValue} onChangeText={v => setSValue(maskPriceInput(v))} />
+          <MvInput keyboardType="numeric" placeholder="Dia de vencimento (ex: 5 para todo dia 5)" value={sPaymentDueDay} onChangeText={v => setSPaymentDueDay(v.replace(/\D/g, "").slice(0, 2))} />
           {hasPresential ? <CompactSchedulePicker schedule={sSchedule} onChange={setSSchedule} theme={theme} /> : null}
           <MvButton label="Salvar aluno" loading={saving} onPress={() => void handleAddStudent()} />
         </View>
@@ -1771,10 +1984,23 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
           <MvInput keyboardType="numeric" placeholder="Valor (R$)" value={eValue} onChangeText={v => setEValue(maskPriceInput(v))} />
           <MvText variant="semi3">Categoria</MvText>
           <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-            {([{ key: "GYM", label: "Academia" }, { key: "TRANSPORT", label: "Transporte" }, { key: "EQUIPMENT", label: "Equipamento" }, { key: "MARKETING", label: "Marketing" }, { key: "OTHER", label: "Outros" }] as { key: FinancialExpenseCategory; label: string }[]).map(c => (
+            {(([
+              { key: "GYM",                  label: "Academia"             },
+              { key: "EQUIPMENT",            label: "Equipamento"          },
+              { key: "FORMATION",            label: "Cursos e Formação"    },
+              { key: "SOFTWARE",             label: "Softwares"            },
+              { key: "PROFESSIONAL_SERVICES",label: "Serv. Profissionais"  },
+              { key: "RENT",                 label: "Aluguel de Espaço"    },
+              { key: "UNIFORM",              label: "Uniforme"             },
+              { key: "NUTRITION",            label: "Nutrição Profissional"},
+              { key: "MARKETING",            label: "Marketing"            },
+              { key: "TRANSPORT",            label: "Transporte"           },
+              { key: "OTHER",                label: "Outros"               },
+            ]) as { key: FinancialExpenseCategory; label: string }[]).map(c => (
               <TypeChip key={c.key} selected={eCat === c.key} label={c.label} onPress={() => setECat(c.key)} />
             ))}
           </View>
+          <LivroCaixaHint category={eCat} isDark={isDark} theme={theme} />
           <MvText variant="body4" color="secondary">Data do pagamento</MvText>
           <MvDatePicker value={eDate} onChange={setEDate} />
           <MvButton
@@ -1782,6 +2008,23 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
             loading={saving}
             onPress={() => editingExpense ? void handleEditExpense() : void handleAddExpense()}
           />
+        </View>
+      </ModalSheet>
+
+      {/* Confirmar pagamento de aluno */}
+      <ModalSheet
+        visible={payStudentModal !== null}
+        title={payStudentModal ? `Pago — ${payStudentModal.name}` : ""}
+        onClose={() => setPayStudentModal(null)}
+        theme={theme}
+        topInset={insets.top}
+      >
+        <View style={{ gap: 10, paddingBottom: 40 }}>
+          <MvText variant="body4" color="secondary">Confirme o valor recebido e a data do pagamento.</MvText>
+          <MvInput keyboardType="numeric" placeholder="Valor recebido (R$)" value={payStudentValue} onChangeText={v => setPayStudentValue(maskPriceInput(v))} />
+          <MvText variant="body4" color="secondary">Data do pagamento</MvText>
+          <MvDatePicker value={payStudentDate} onChange={setPayStudentDate} />
+          <MvButton label="Confirmar pagamento" loading={saving} onPress={() => void handleMarkStudentPaid()} />
         </View>
       </ModalSheet>
 

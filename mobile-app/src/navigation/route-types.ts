@@ -78,6 +78,7 @@ export type ProfessionalStackParamList = {
   PayoutStatus: undefined;
   ProfessionalFinancialDetails: undefined;
   PersonalFinance: undefined;
+  AnnualReport: undefined;
   ProfessionalCredentials: undefined;
   ProfessionalSettings: undefined;
   AvailabilityManager: undefined;

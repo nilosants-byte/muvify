@@ -36,12 +36,13 @@ type CreateStudentInput = {
   monthlyValueCents: number;
   type: FinancialStudentType;
   weeklyFrequency?: number;
+  paymentDueDay?: number;
   notes?: string;
   location?: string;
   weeklySchedule?: WeeklyScheduleSlot[];
 };
 
-type UpdateStudentInput = Partial<CreateStudentInput & { isActive: boolean }>;
+type UpdateStudentInput = Partial<CreateStudentInput & { isActive: boolean; paymentDueDay: number | null }>;
 
 type CreateIncomeInput = {
   description: string;
@@ -231,6 +232,7 @@ export class FinancialService {
           monthlyValueCents: input.monthlyValueCents,
           type: input.type as any,
           weeklyFrequency: input.weeklyFrequency ?? 3,
+          paymentDueDay: input.paymentDueDay ?? null,
           notes: input.notes?.trim() ?? null,
           ...(input.location !== undefined ? { location: input.location?.trim() || null } : {}),
           ...(input.weeklySchedule !== undefined ? { weeklySchedule: input.weeklySchedule as any } : {})
@@ -258,6 +260,7 @@ export class FinancialService {
         type: input.type as any,
         weeklyFrequency: input.weeklyFrequency,
         isActive: input.isActive,
+        ...(input.paymentDueDay !== undefined ? { paymentDueDay: input.paymentDueDay } : {}),
         notes: input.notes?.trim() ?? undefined,
         ...(input.location !== undefined ? { location: input.location?.trim() || null } : {}),
         ...(input.weeklySchedule !== undefined ? { weeklySchedule: input.weeklySchedule } : {})

@@ -127,6 +127,12 @@ enum FinancialExpenseCategory {
   TRANSPORT
   EQUIPMENT
   MARKETING
+  FORMATION
+  SOFTWARE
+  PROFESSIONAL_SERVICES
+  RENT
+  UNIFORM
+  NUTRITION
   OTHER
 }
 
@@ -875,6 +881,7 @@ model FinancialStudent {
   type              FinancialStudentType
   weeklyFrequency   Int                  @default(3)
   isActive          Boolean              @default(true)
+  paymentDueDay     Int?
   notes             String?
   location          String?
   weeklySchedule    Json?

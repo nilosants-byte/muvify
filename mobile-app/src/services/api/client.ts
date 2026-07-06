@@ -1963,7 +1963,10 @@ export const paymentsApi = {
 // ─── Financial Management ─────────────────────────────────────────────────
 
 export type FinancialStudentType = "PRESENTIAL" | "ONLINE" | "APP" | "BOTH";
-export type FinancialExpenseCategory = "GYM" | "TRANSPORT" | "EQUIPMENT" | "MARKETING" | "OTHER";
+export type FinancialExpenseCategory =
+  | "GYM" | "TRANSPORT" | "EQUIPMENT" | "MARKETING"
+  | "FORMATION" | "SOFTWARE" | "PROFESSIONAL_SERVICES" | "RENT" | "UNIFORM" | "NUTRITION"
+  | "OTHER";
 
 export type WeeklyScheduleSlot = {
   dayOfWeek: number; // 0=domingo, 1=segunda, ..., 6=sábado
@@ -1979,6 +1982,7 @@ export type FinancialStudent = {
   type: FinancialStudentType;
   weeklyFrequency: number;
   isActive: boolean;
+  paymentDueDay?: number | null;
   notes?: string | null;
   location?: string | null;
   weeklySchedule?: WeeklyScheduleSlot[] | null;
@@ -2109,10 +2113,10 @@ export const financialApi = {
   listStudents(token: string) {
     return apiRequest<FinancialStudent[]>("/financial/students", { token });
   },
-  createStudent(token: string, body: { name: string; monthlyValueCents: number; type: FinancialStudentType; weeklyFrequency?: number; notes?: string; location?: string; weeklySchedule?: WeeklyScheduleSlot[] }) {
+  createStudent(token: string, body: { name: string; monthlyValueCents: number; type: FinancialStudentType; weeklyFrequency?: number; paymentDueDay?: number; notes?: string; location?: string; weeklySchedule?: WeeklyScheduleSlot[] }) {
     return apiRequest<FinancialStudent>("/financial/students", { method: "POST", token, body });
   },
-  updateStudent(token: string, id: string, body: Partial<{ name: string; monthlyValueCents: number; type: FinancialStudentType; weeklyFrequency: number; isActive: boolean; notes: string; location: string; weeklySchedule: WeeklyScheduleSlot[] }>) {
+  updateStudent(token: string, id: string, body: Partial<{ name: string; monthlyValueCents: number; type: FinancialStudentType; weeklyFrequency: number; isActive: boolean; paymentDueDay: number | null; notes: string; location: string; weeklySchedule: WeeklyScheduleSlot[] }>) {
     return apiRequest<FinancialStudent>(`/financial/students/${id}`, { method: "PATCH", token, body });
   },
   deleteStudent(token: string, id: string) {

@@ -28,6 +28,7 @@ export const createStudentSchema = z.object({
     monthlyValueCents: z.number().int().min(100).max(2_000_000_000), // Int32 safe
     type: studentTypeEnum,
     weeklyFrequency: z.number().int().min(1).max(7).optional(),
+    paymentDueDay: z.number().int().min(1).max(31).optional(),
     notes: z.string().trim().max(500).optional(),
     location: z.string().trim().max(300).optional(),
     weeklySchedule: z.array(weeklyScheduleSlotSchema).optional()
@@ -42,6 +43,7 @@ export const updateStudentSchema = z.object({
     type: studentTypeEnum.optional(),
     weeklyFrequency: z.number().int().min(1).max(7).optional(),
     isActive: z.boolean().optional(),
+    paymentDueDay: z.number().int().min(1).max(31).nullable().optional(),
     notes: z.string().trim().max(500).optional(),
     location: z.string().trim().max(300).optional(),
     weeklySchedule: z.array(weeklyScheduleSlotSchema).optional()
@@ -79,7 +81,7 @@ export const createExpenseSchema = z.object({
   body: z.object({
     description: z.string().trim().min(2).max(200),
     amountCents: z.number().int().min(1).max(2_000_000_000), // max ~R$20M (Int32 safe)
-    category: z.enum(["GYM", "TRANSPORT", "EQUIPMENT", "MARKETING", "OTHER"]).optional(),
+    category: z.enum(["GYM", "TRANSPORT", "EQUIPMENT", "MARKETING", "FORMATION", "SOFTWARE", "PROFESSIONAL_SERVICES", "RENT", "UNIFORM", "NUTRITION", "OTHER"]).optional(),
     paidAt: z.string().datetime({ offset: true })
   })
 });
@@ -93,7 +95,7 @@ export const updateExpenseSchema = z.object({
   body: z.object({
     description: z.string().trim().min(2).max(200).optional(),
     amountCents: z.number().int().min(1).max(2_000_000_000).optional(),
-    category: z.enum(["GYM", "TRANSPORT", "EQUIPMENT", "MARKETING", "OTHER"]).optional(),
+    category: z.enum(["GYM", "TRANSPORT", "EQUIPMENT", "MARKETING", "FORMATION", "SOFTWARE", "PROFESSIONAL_SERVICES", "RENT", "UNIFORM", "NUTRITION", "OTHER"]).optional(),
     paidAt: z.string().datetime({ offset: true }).optional(),
   }).refine(b => Object.keys(b).length > 0, { message: "Informe ao menos um campo.", path: ["description"] })
 });

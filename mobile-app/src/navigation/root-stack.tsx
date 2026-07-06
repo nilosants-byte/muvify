@@ -50,6 +50,7 @@ import { ProfessionalConsultancyCenterScreen } from "../screens/professional/Pro
 import { ProfessionalCredentialsScreen } from "../screens/professional/ProfessionalCredentialsScreen";
 import { ProfessionalFinancialDetailsScreen } from "../screens/professional/ProfessionalFinancialDetailsScreen";
 import { ProfessionalPersonalFinanceScreen } from "../screens/professional/ProfessionalPersonalFinanceScreen";
+import { ProfessionalAnnualReportScreen } from "../screens/professional/ProfessionalAnnualReportScreen";
 import { ProfessionalSettingsScreen } from "../screens/professional/ProfessionalSettingsScreen";
 import { ProfessionalStudentAnamnesisScreen } from "../screens/professional/ProfessionalStudentAnamnesisScreen";
 import { ProfessionalStudentDetailScreen } from "../screens/professional/ProfessionalStudentDetailScreen";
@@ -403,6 +404,11 @@ export function RootNavigator() {
       <ProfessionalStack.Screen
         name="PersonalFinance"
         component={ProfessionalPersonalFinanceScreen as React.ComponentType<any>}
+        options={{ headerShown: false }}
+      />
+      <ProfessionalStack.Screen
+        name="AnnualReport"
+        component={ProfessionalAnnualReportScreen as React.ComponentType<any>}
         options={{ headerShown: false }}
       />
       <ProfessionalStack.Screen
