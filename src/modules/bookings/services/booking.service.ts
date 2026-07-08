@@ -166,6 +166,20 @@ export class BookingService {
         );
       }
 
+      if (!provider.mpAccountId) {
+        throw new AppError(
+          "Este profissional ainda não configurou o recebimento de pagamentos.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+
+      if (provider.userId === clientId) {
+        throw new AppError(
+          "Voce nao pode agendar um atendimento consigo mesmo.",
+          StatusCodes.UNPROCESSABLE_ENTITY
+        );
+      }
+
       const hasLinkedCategory = provider.categoryLinks.some((item) => item.categoryId === categoryId);
       if (!hasLinkedCategory) {
         if (provider.categoryLinks.length > 0) {

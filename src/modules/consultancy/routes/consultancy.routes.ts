@@ -44,9 +44,10 @@ consultancyRoutes.post(
   validate(completeTrainingPlanSchema),
   consultancyController.completeTrainingPlan
 );
-consultancyRoutes.get("/my/requests", consultancyController.listMyRequests);
+consultancyRoutes.get("/my/requests", ensureRole(UserRole.CLIENT), consultancyController.listMyRequests);
 consultancyRoutes.get(
   "/my/requests/archived",
+  ensureRole(UserRole.CLIENT),
   validate(archivedConsultancyQuerySchema),
   consultancyController.listMyArchivedRequests
 );

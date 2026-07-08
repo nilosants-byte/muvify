@@ -55,6 +55,59 @@ const EXTENSION_BY_MIME: Record<string, string> = {
 };
 
 export class InvalidDataUriError extends Error {}
+export class InvalidFileContentError extends Error {}
+
+function validateMagicBytes(buffer: Buffer, mimeType: string): void {
+  if (buffer.length < 4) {
+    throw new InvalidFileContentError("Arquivo vazio ou corrompido.");
+  }
+  switch (mimeType) {
+    case "image/jpeg":
+    case "image/jpg":
+      if (!(buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff)) {
+        throw new InvalidFileContentError("Conteúdo não é uma imagem JPEG válida.");
+      }
+      break;
+    case "image/png":
+      if (!(buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47)) {
+        throw new InvalidFileContentError("Conteúdo não é uma imagem PNG válida.");
+      }
+      break;
+    case "image/webp":
+      if (!(buffer.length >= 12 &&
+        buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+        buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50)) {
+        throw new InvalidFileContentError("Conteúdo não é uma imagem WebP válida.");
+      }
+      break;
+    case "image/gif":
+      if (!(buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46)) {
+        throw new InvalidFileContentError("Conteúdo não é uma imagem GIF válida.");
+      }
+      break;
+    case "video/mp4":
+    case "video/quicktime":
+    case "video/3gpp":
+      // ISO Base Media: "ftyp" box at bytes 4–7
+      if (!(buffer.length >= 8 &&
+        buffer[4] === 0x66 && buffer[5] === 0x74 && buffer[6] === 0x79 && buffer[7] === 0x70)) {
+        throw new InvalidFileContentError("Conteúdo não é um vídeo MP4/MOV válido.");
+      }
+      break;
+    case "video/webm":
+      // EBML header
+      if (!(buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3)) {
+        throw new InvalidFileContentError("Conteúdo não é um vídeo WebM válido.");
+      }
+      break;
+    case "application/pdf":
+      if (!(buffer.length >= 5 &&
+        buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46 && buffer[4] === 0x2d)) {
+        throw new InvalidFileContentError("Conteúdo não é um PDF válido.");
+      }
+      break;
+  }
+}
 
 function parseDataUri(dataUri: string): { mimeType: string; buffer: Buffer } {
   const match = DATA_URI_REGEX.exec(dataUri);
@@ -71,6 +124,7 @@ export async function uploadMediaFromDataUri(
 ): Promise<{ url: string; mimeType: string; sizeBytes: number }> {
   const config = getR2Config();
   const { mimeType, buffer } = parseDataUri(dataUri);
+  validateMagicBytes(buffer, mimeType);
   const extension = EXTENSION_BY_MIME[mimeType] ?? "bin";
   const key = `${folder}/${randomUUID()}.${extension}`;
 

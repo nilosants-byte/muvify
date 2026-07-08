@@ -1,5 +1,7 @@
+import { UserRole } from "@prisma/client";
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
+import { ensureRole } from "../../../middlewares/role.middleware";
 import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { PaymentController } from "../controllers/payment.controller";
@@ -12,7 +14,7 @@ import {
   createProviderAccountSchema,
   selectBookingPaymentMethodSchema,
   setupCustomerPaymentSchema,
-  updateCustomerCardSchema
+  updateCustomerCardSchema,
 } from "../validators/payment.validator";
 
 const paymentController = new PaymentController();
@@ -22,50 +24,53 @@ export const paymentRoutes = Router();
 paymentRoutes.post("/webhook", paymentController.webhook);
 
 paymentRoutes.use(ensureAuthenticated);
-paymentRoutes.get("/customer", paymentController.customerStatus);
+
+paymentRoutes.get("/customer", ensureRole(UserRole.CLIENT), paymentController.customerStatus);
 paymentRoutes.post(
   "/customer/setup-intent",
+  ensureRole(UserRole.CLIENT),
   validate(createCustomerSetupIntentSchema),
   paymentController.createCustomerSetupIntent
 );
 paymentRoutes.post(
   "/customer/setup-intent/confirm",
+  ensureRole(UserRole.CLIENT),
   uploadRateLimiter,
   validate(confirmCustomerSetupIntentSchema),
   paymentController.confirmCustomerSetupIntent
 );
 paymentRoutes.post(
   "/customer/setup",
+  ensureRole(UserRole.CLIENT),
   validate(setupCustomerPaymentSchema),
   paymentController.setupCustomer
 );
-paymentRoutes.get("/customer/cards", paymentController.listCustomerCards);
+paymentRoutes.get("/customer/cards", ensureRole(UserRole.CLIENT), paymentController.listCustomerCards);
 paymentRoutes.patch(
   "/customer/cards/:cardId",
+  ensureRole(UserRole.CLIENT),
   validate(updateCustomerCardSchema),
   paymentController.updateCustomerCardNickname
 );
 paymentRoutes.patch(
   "/customer/cards/:cardId/default",
+  ensureRole(UserRole.CLIENT),
   validate(customerCardIdParamSchema),
   paymentController.setCustomerCardDefault
 );
 paymentRoutes.delete(
   "/customer/cards/:cardId",
+  ensureRole(UserRole.CLIENT),
   validate(customerCardIdParamSchema),
   paymentController.removeCustomerCard
 );
 paymentRoutes.post(
-  "/provider/account",
-  validate(createProviderAccountSchema),
-  paymentController.createProviderAccount
-);
-paymentRoutes.post(
   "/provider/account/onboarding-link",
+  ensureRole(UserRole.PROVIDER),
   validate(createProviderAccountSchema),
   paymentController.createProviderOnboardingLink
 );
-paymentRoutes.get("/provider/account", paymentController.providerStatus);
+paymentRoutes.get("/provider/account", ensureRole(UserRole.PROVIDER), paymentController.providerStatus);
 paymentRoutes.get(
   "/booking/:bookingId",
   validate(bookingPaymentSchema),

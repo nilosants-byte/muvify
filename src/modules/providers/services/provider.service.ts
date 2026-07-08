@@ -15,6 +15,7 @@ import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
 import { isAdminEmail } from "../../../shared/utils/admin-access";
+import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { deleteByPattern, getCache, setCache } from "../../../shared/utils/cache";
 import {
   toProviderPhotoUrl,
@@ -609,6 +610,18 @@ export class ProviderService {
         });
     }
 
+    void writeAdminAuditLog({
+      adminId: adminUserId,
+      action: approved ? "CREF_APPROVED" : "CREF_REJECTED",
+      targetType: "PROVIDER",
+      targetId: provider.id,
+      metadata: {
+        providerUserId: provider.userId,
+        crefNumber: provider.crefNumber,
+        justification: approved ? null : justification,
+      },
+    });
+
     await deleteByPattern("providers:*");
     return this.mapCredentialsPayload(updated);
   }
@@ -872,6 +885,7 @@ export class ProviderService {
 
     const where: Prisma.ProviderProfileWhereInput = {
       crefValidationStatus: CrefValidationStatus.APPROVED,
+      mpAccountId: { not: null },
       averageRating: filters.minRating ? { gte: filters.minRating } : undefined,
       ...(filters.q ? {
         OR: [

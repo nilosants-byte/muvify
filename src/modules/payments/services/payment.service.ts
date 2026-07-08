@@ -155,12 +155,6 @@ export class PaymentService {
   private parseMpOauthState(state: string) {
     const trimmed = state.trim();
 
-    // Backward compatibility with previous plain format: provider:<providerId>
-    if (trimmed.startsWith("provider:")) {
-      const providerId = trimmed.slice("provider:".length).trim();
-      return providerId || null;
-    }
-
     const [version, payload, signature] = trimmed.split(".");
     if (version !== "v1" || !payload || !signature) {
       return null;
@@ -608,35 +602,6 @@ export class PaymentService {
     return decryptSensitiveText(provider.mpAccessToken);
   }
 
-  async createProviderConnectAccount(userId: string, returnUrl?: string, refreshUrl?: string) {
-    const connectUrls = this.resolveConnectUrls(returnUrl, refreshUrl);
-    const provider = await prisma.providerProfile.findFirst({ where: { userId } });
-    if (!provider) throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
-
-    if (provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
-      throw new AppError(
-        "Seu CREF ainda não foi aprovado. Esta funcionalidade ficará disponível quando seu CREF for aprovado.",
-        StatusCodes.BAD_REQUEST
-      );
-    }
-
-    // Generate MP OAuth authorization URL for provider to connect their account
-    const appId = env.MP_APP_ID?.trim();
-    if (!appId) {
-      throw new AppError(
-        "Integracao Mercado Pago incompleta. Configure MP_APP_ID para onboarding.",
-        StatusCodes.INTERNAL_SERVER_ERROR
-      );
-    }
-    const state = this.createMpOauthState(provider.id);
-    const oauthUrl = `https://auth.mercadopago.com.br/authorization?client_id=${appId}&response_type=code&platform_id=mp&state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(connectUrls.returnUrl)}`;
-
-    return {
-      accountId: provider.mpAccountId ?? null,
-      onboardingUrl: oauthUrl
-    };
-  }
-
   async createProviderOnboardingLink(userId: string, returnUrl?: string, refreshUrl?: string) {
     const connectUrls = this.resolveConnectUrls(returnUrl, refreshUrl);
     const provider = await prisma.providerProfile.findFirst({ where: { userId } });
@@ -755,6 +720,64 @@ export class PaymentService {
     });
 
     return { providerId: provider.id, mpAccountId };
+  }
+
+  async refreshProviderMpTokens() {
+    const appId = env.MP_APP_ID?.trim();
+    const clientSecret = env.MP_CLIENT_SECRET?.trim();
+    if (!appId || !clientSecret) return;
+
+    const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const providers = await prisma.providerProfile.findMany({
+      where: {
+        mpRefreshToken: { not: null },
+        mpTokenExpiresAt: { lt: thirtyDaysFromNow },
+      },
+      select: { id: true, mpRefreshToken: true },
+    });
+
+    for (const provider of providers) {
+      if (!provider.mpRefreshToken) continue;
+      try {
+        const refreshToken = decryptSensitiveText(provider.mpRefreshToken);
+        if (!refreshToken) continue;
+        const response = await fetchWithTimeout("https://api.mercadopago.com/oauth/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: "refresh_token",
+            client_id: appId,
+            client_secret: clientSecret,
+            refresh_token: refreshToken,
+          }),
+        });
+        if (!response.ok) {
+          console.error(`[mp-token-refresh] provider ${provider.id}: HTTP ${response.status}`);
+          continue;
+        }
+        const tokenData = (await response.json()) as {
+          access_token?: string;
+          refresh_token?: string;
+          expires_in?: number;
+        };
+        if (!tokenData.access_token) continue;
+        const mpTokenExpiresAt = tokenData.expires_in
+          ? new Date(Date.now() + tokenData.expires_in * 1000)
+          : null;
+        await prisma.providerProfile.update({
+          where: { id: provider.id },
+          data: {
+            mpAccessToken: encryptSensitiveText(tokenData.access_token),
+            mpRefreshToken: tokenData.refresh_token
+              ? encryptSensitiveText(tokenData.refresh_token)
+              : undefined,
+            mpTokenExpiresAt: mpTokenExpiresAt ?? undefined,
+          },
+        });
+      } catch (err) {
+        console.error(`[mp-token-refresh] provider ${provider.id}:`, err);
+      }
+    }
   }
 
   async createPixChargeForBooking(bookingId: string, userId: string) {
@@ -1230,7 +1253,11 @@ export class PaymentService {
     const queryDataId = Array.isArray(queryDataIdRaw) ? queryDataIdRaw[0] : queryDataIdRaw;
     const dataId = queryDataId ?? bodyDataId;
 
-    if (env.MP_WEBHOOK_SECRET) {
+    if (!env.MP_WEBHOOK_SECRET) {
+      throw new AppError("Webhook secret nao configurado.", StatusCodes.INTERNAL_SERVER_ERROR);
+    }
+
+    {
       if (!signature || Array.isArray(signature)) {
         throw new AppError("Assinatura de webhook invalida.", StatusCodes.BAD_REQUEST);
       }

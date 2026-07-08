@@ -1,4 +1,5 @@
 ﻿import { Prisma, SupportTicketStatus, UserRole } from "@prisma/client";
+import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { env } from "../../../config/env";
@@ -516,6 +517,17 @@ export class AdminService {
       legalHoldUserIds,
     });
 
+    void writeAdminAuditLog({
+      adminId: admin.id,
+      action: "DATA_RETENTION_RUN",
+      metadata: {
+        dryRun,
+        triggeredBy,
+        legalHoldUserIds: legalHoldUserIds ?? [],
+        affectedCount: result.totals.affectedCount,
+      },
+    });
+
     return result;
   }
 
@@ -908,6 +920,14 @@ export class AdminService {
     console.info(
       `[SUPPORT_AUDIT] ticketResponded ticketId=${ticket.id} adminId=${admin.id} at=${respondedAt.toISOString()}`
     );
+
+    void writeAdminAuditLog({
+      adminId: admin.id,
+      action: "SUPPORT_TICKET_REPLIED",
+      targetType: "TICKET",
+      targetId: ticket.id,
+      metadata: { ticketSubject: ticket.subject, userId: ticket.userId },
+    });
 
     return updated;
   }

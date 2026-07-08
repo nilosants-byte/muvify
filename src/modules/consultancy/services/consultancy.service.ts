@@ -736,6 +736,13 @@ export class ConsultancyService {
         `Seu CREF ainda não foi aprovado. ${CREF_APPROVAL_REQUIRED_MESSAGE}`
       );
 
+      if (!provider.mpAccountId) {
+        throw new AppError(
+          "Conecte sua conta Mercado Pago antes de habilitar a consultoria on-line.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+
       const [hasOnlineOffer, hasPrebuiltPlanWithExercise] = await Promise.all([
         prisma.providerServiceOffer.count({
           where: {
@@ -1591,6 +1598,13 @@ export class ConsultancyService {
           StatusCodes.BAD_REQUEST
         );
       }
+    }
+
+    if (!request.provider.mpAccountId) {
+      throw new AppError(
+        "Este profissional ainda não configurou o recebimento de pagamentos.",
+        StatusCodes.BAD_REQUEST
+      );
     }
 
     if (!request.quotedOffer) {

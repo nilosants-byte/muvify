@@ -367,8 +367,10 @@ export function AppNavigator() {
         <AuthNavigator />
       ) : role === "CLIENT" ? (
         <CustomerNavigator />
-      ) : (
+      ) : role === "PROVIDER" ? (
         <ProviderNavigator />
+      ) : (
+        <AuthNavigator />
       )}
       {shouldShowOfflineBanner ? (
         <OfflineDropBanner message="Conexão instável. Reconectando..." />

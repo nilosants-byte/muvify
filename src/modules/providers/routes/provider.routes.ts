@@ -134,6 +134,7 @@ providerRoutes.get(
 providerRoutes.post(
   "/profile",
   ensureAuthenticated,
+  ensureRole(UserRole.PROVIDER),
   uploadRateLimiter,
   validate(createProviderProfileSchema),
   providerController.createProfile

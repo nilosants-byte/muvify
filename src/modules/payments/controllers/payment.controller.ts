@@ -66,15 +66,6 @@ export class PaymentController {
     return response.status(StatusCodes.NO_CONTENT).send();
   }
 
-  async createProviderAccount(request: Request, response: Response) {
-    const result = await paymentService.createProviderConnectAccount(
-      request.user!.id,
-      request.body.returnUrl,
-      request.body.refreshUrl
-    );
-    return response.status(StatusCodes.CREATED).json(result);
-  }
-
   async createProviderOnboardingLink(request: Request, response: Response) {
     const result = await paymentService.createProviderOnboardingLink(
       request.user!.id,

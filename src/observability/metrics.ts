@@ -33,13 +33,15 @@ export function metricsMiddleware(request: Request, response: Response, next: Ne
 }
 
 export async function metricsHandler(request: Request, response: Response) {
-  if (env.METRICS_TOKEN) {
-    const authHeader = request.headers.authorization || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-    if (token !== env.METRICS_TOKEN) {
-      response.status(401).json({ message: "Unauthorized" });
-      return;
-    }
+  if (!env.METRICS_TOKEN) {
+    response.status(503).json({ message: "Metrics not available." });
+    return;
+  }
+  const authHeader = request.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (token !== env.METRICS_TOKEN) {
+    response.status(401).json({ message: "Unauthorized" });
+    return;
   }
   response.setHeader("Content-Type", register.contentType);
   response.end(await register.metrics());

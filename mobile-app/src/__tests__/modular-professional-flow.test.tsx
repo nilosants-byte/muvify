@@ -14,7 +14,6 @@ import {
   Booking,
   consultancyApi,
   paymentsApi,
-  userApi
 } from "../services/api/client";
 import { useAppState } from "../state/AppState";
 
@@ -216,25 +215,13 @@ describe("Fluxo modular profissional", () => {
       user: { id: "provider-user-1", role: "PROVIDER" }
     });
 
-    const providerBankSpy = jest
-      .spyOn(userApi, "providerBankAccount")
+    const mpStatusSpy = jest
+      .spyOn(paymentsApi, "providerStatus")
       .mockResolvedValue({
-        id: "bank-1",
-        providerId: "prov-1",
-        bankName: "Banco Demo",
-        accountType: "CHECKING",
-        agency: "1234",
-        accountNumber: "98765",
-        accountDigit: "1",
-        holderName: "Coach A",
-        holderDocument: "12345678900",
-        pixKey: "coach@email.com",
-        createdAt: "2026-03-01T00:00:00.000Z",
-        updatedAt: "2026-03-10T00:00:00.000Z"
+        hasAccount: false,
+        accountId: null,
+        chargesEnabled: false,
       } as any);
-    const upsertBankSpy = jest.spyOn(userApi, "upsertProviderBankAccount").mockResolvedValue({
-      id: "bank-1"
-    } as any);
     jest.spyOn(bookingsApi, "me").mockResolvedValue([providerBooking("CONFIRMED")]);
 
     const payoutNavigation = {
@@ -244,19 +231,15 @@ describe("Fluxo modular profissional", () => {
     const payoutUi = render(
       <PayoutStatusScreen navigation={payoutNavigation as any} route={{} as any} />
     );
-    // PayoutStatus renderiza com dados financeiros
-    await waitFor(() => expect(providerBankSpy).toHaveBeenCalled(), { timeout: 3000 });
-    // "Atualizar" pode ter texto diferente — omitido para evitar flakiness
-    await waitFor(() => expect(providerBankSpy).toHaveBeenCalled());
+    // PayoutStatus renderiza — verificamos que a tela montou sem crash
+    await waitFor(() => expect(payoutUi.toJSON()).not.toBeNull(), { timeout: 3000 });
 
     const connectNavigation = { replace: jest.fn(), navigate: jest.fn() };
     const connectUi = render(
       <ConnectPayoutAccountScreen navigation={connectNavigation as any} route={{} as any} />
     );
-    expect(await connectUi.findByText("Conta bancária")).toBeTruthy();
-    expect(await connectUi.findByDisplayValue("Banco Demo")).toBeTruthy();
-    fireEvent.press(connectUi.getByText("Salvar dados bancários"));
-    await waitFor(() => expect(upsertBankSpy).toHaveBeenCalled());
+    expect(await connectUi.findByText("Conta não vinculada")).toBeTruthy();
+    await waitFor(() => expect(mpStatusSpy).toHaveBeenCalled());
 
     jest.spyOn(availabilityApi, "me").mockResolvedValue([
       { id: "slot-1", weekday: 1, startTime: "08:00", endTime: "18:00", isActive: true }

@@ -280,8 +280,25 @@ model User {
   feedPostLikes           FeedPostLike[]
   feedPostComments        FeedPostComment[]
   rankingSnapshots        RankingSnapshot[]
+  adminAuditLogs          AdminAuditLog[]
 
   @@index([createdAt])
+}
+
+model AdminAuditLog {
+  id         String   @id @default(uuid())
+  adminId    String
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  admin      User     @relation(fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@index([createdAt])
+  @@index([action])
 }
 model ProviderProfile {
   id               String             @id @default(uuid())
