@@ -210,19 +210,46 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   }
 
   // Handlers
+  function openEditIncome(inc: FinancialIncome) {
+    setEditingIncome(inc);
+    setIDesc(inc.description);
+    setIValue(maskPriceInput(String(inc.amountCents)));
+    setIDate(new Date(inc.paidAt));
+  }
+
+  function openEditExpense(exp: FinancialExpense) {
+    setEditingExpense(exp);
+    setEDesc(exp.description);
+    setEValue(maskPriceInput(String(exp.amountCents)));
+    setECat(exp.category);
+    setEDate(new Date(exp.paidAt));
+  }
+
   async function handleAddIncome() {
     if (!iDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
     try {
       setSaving(true);
-      const newIncome = await runWithAuth(t => financialApi.createIncome(t, {
-        description: iDesc.trim(),
-        amountCents: parseCents(iValue),
-        paidAt: new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
-      }));
-      setIncomes(prev => [...prev, newIncome]);
-      setAddIncomeModal(false);
+      const paidAtStr = new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString();
+      if (editingIncome) {
+        const updated = await runWithAuth(t => financialApi.updateIncome(t, editingIncome.id, {
+          description: iDesc.trim(),
+          amountCents: parseCents(iValue),
+          paidAt: paidAtStr,
+        }));
+        setIncomes(prev => prev.map(i => i.id === updated.id ? updated : i));
+        setEditingIncome(null);
+        showToast("Receita atualizada.", "success");
+      } else {
+        const newIncome = await runWithAuth(t => financialApi.createIncome(t, {
+          description: iDesc.trim(),
+          amountCents: parseCents(iValue),
+          paidAt: paidAtStr,
+        }));
+        setIncomes(prev => [...prev, newIncome]);
+        setAddIncomeModal(false);
+        showToast("Receita registrada.", "success");
+      }
       setIDesc(""); setIValue("100,00"); setIDate(new Date());
-      showToast("Receita registrada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar receita." });
     } finally { setSaving(false); }
@@ -250,16 +277,29 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     if (!eDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
     try {
       setSaving(true);
-      const newExpense = await runWithAuth(t => financialApi.createExpense(t, {
-        description: eDesc.trim(),
-        amountCents: parseCents(eValue),
-        category: eCat,
-        paidAt: new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
-      }));
-      setExpenses(prev => [...prev, newExpense]);
-      setAddExpenseModal(false);
+      const paidAtStr = new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString();
+      if (editingExpense) {
+        const updated = await runWithAuth(t => financialApi.updateExpense(t, editingExpense.id, {
+          description: eDesc.trim(),
+          amountCents: parseCents(eValue),
+          category: eCat,
+          paidAt: paidAtStr,
+        }));
+        setExpenses(prev => prev.map(e => e.id === updated.id ? updated : e));
+        setEditingExpense(null);
+        showToast("Despesa atualizada.", "success");
+      } else {
+        const newExpense = await runWithAuth(t => financialApi.createExpense(t, {
+          description: eDesc.trim(),
+          amountCents: parseCents(eValue),
+          category: eCat,
+          paidAt: paidAtStr,
+        }));
+        setExpenses(prev => [...prev, newExpense]);
+        setAddExpenseModal(false);
+        showToast("Despesa registrada.", "success");
+      }
       setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date());
-      showToast("Despesa registrada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar despesa." });
     } finally { setSaving(false); }
@@ -344,10 +384,18 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
               {fmtCents(effectiveRevenueCents)}
             </MvText>
             {dashboard?.growthPct != null ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2, marginBottom: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
                 <Ionicons name={dashboard.growthPct >= 0 ? "trending-up" : "trending-down"} size={12} color={dashboard.growthPct >= 0 ? green : RED} />
                 <MvText variant="body4" style={{ fontSize: 11, color: dashboard.growthPct >= 0 ? green : RED }}>
                   {dashboard.growthPct >= 0 ? "+" : ""}{dashboard.growthPct.toFixed(0)}% vs mês anterior
+                </MvText>
+              </View>
+            ) : null}
+            {(dashboard?.confirmedRevenueCents ?? 0) > 0 ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4, marginBottom: 6 }}>
+                <Ionicons name="time-outline" size={11} color={isDark ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.45)"} />
+                <MvText variant="body4" style={{ fontSize: 10, color: isDark ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.50)" }}>
+                  +{fmtCents(dashboard!.confirmedRevenueCents)} previsto de sessões confirmadas
                 </MvText>
               </View>
             ) : <View style={{ height: 10 }} />}
@@ -465,7 +513,10 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
                   <MvText variant="body4" style={{ fontSize: 11, color: isInc ? green : RED, marginRight: 6 }}>
                     {isInc ? "+" : "-"}{fmtCents(amount)}
                   </MvText>
-                  <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>{dateStr}</MvText>
+                  <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginRight: 8 }}>{dateStr}</MvText>
+                  <PressableScale scale={0.88} onPress={() => isInc ? openEditIncome(tx.item as FinancialIncome) : openEditExpense(tx.item as FinancialExpense)}>
+                    <Ionicons name="pencil-outline" size={13} color={theme.text3} />
+                  </PressableScale>
                 </View>
               );
             })}

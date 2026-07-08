@@ -143,9 +143,10 @@ export function FinancialStudentsScreen({ navigation }: Props) {
   const [payStudentValue, setPayStudentValue] = useState("");
   const [payStudentDate, setPayStudentDate] = useState<Date>(new Date());
 
-  const [students,   setStudents]   = useState<FinancialStudent[]>([]);
-  const [incomes,    setIncomes]    = useState<FinancialIncome[]>([]);
-  const [appClients, setAppClients] = useState<FinancialAppClient[]>([]);
+  const [students,       setStudents]       = useState<FinancialStudent[]>([]);
+  const [incomes,        setIncomes]        = useState<FinancialIncome[]>([]);
+  const [appClients,     setAppClients]     = useState<FinancialAppClient[]>([]);
+  const [editingStudent, setEditingStudent] = useState<FinancialStudent | null>(null);
 
   const [sName, setSName] = useState("");
   const [sValue, setSValue] = useState("100,00");
@@ -201,6 +202,19 @@ export function FinancialStudentsScreen({ navigation }: Props) {
   function resetStudentForm() {
     setSName(""); setSValue("100,00"); setSType("PRESENTIAL"); setSSchedule([]);
     setSLocation(""); setSLocationQuery(""); setSLocSuggOpen(false); setSPaymentDueDay("");
+    setEditingStudent(null);
+  }
+
+  function openEditStudent(s: FinancialStudent) {
+    setEditingStudent(s);
+    setSName(s.name);
+    setSValue(maskPriceInput(String(s.monthlyValueCents)));
+    setSType(s.type);
+    setSSchedule((s.weeklySchedule ?? []) as WeeklyScheduleSlot[]);
+    setSLocation(s.location ?? "");
+    setSLocationQuery(s.location ?? "");
+    setSPaymentDueDay(s.paymentDueDay ? String(s.paymentDueDay) : "");
+    setAddStudentModal(true);
   }
 
   async function handleAddStudent() {
@@ -209,7 +223,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
       setSaving(true);
       const parsedDueDay = Number(sPaymentDueDay);
       const hasPresential = sType === "PRESENTIAL" || sType === "BOTH";
-      const newStudent = await runWithAuth(t => financialApi.createStudent(t, {
+      const payload = {
         name: sName.trim(),
         monthlyValueCents: parseCents(sValue),
         type: sType,
@@ -217,11 +231,18 @@ export function FinancialStudentsScreen({ navigation }: Props) {
         paymentDueDay: parsedDueDay >= 1 && parsedDueDay <= 31 ? parsedDueDay : undefined,
         location: hasPresential && sLocation.trim() ? sLocation.trim() : undefined,
         weeklySchedule: hasPresential && sSchedule.length > 0 ? sSchedule : undefined,
-      }));
-      setStudents(prev => [...prev, newStudent]);
+      };
+      if (editingStudent) {
+        const updated = await runWithAuth(t => financialApi.updateStudent(t, editingStudent.id, payload));
+        setStudents(prev => prev.map(s => s.id === updated.id ? updated : s));
+        showToast("Aluno atualizado.", "success");
+      } else {
+        const newStudent = await runWithAuth(t => financialApi.createStudent(t, payload));
+        setStudents(prev => [...prev, newStudent]);
+        showToast("Aluno adicionado.", "success");
+      }
       setAddStudentModal(false);
       resetStudentForm();
-      showToast("Aluno adicionado.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar aluno." });
     } finally { setSaving(false); }
@@ -290,6 +311,9 @@ export function FinancialStudentsScreen({ navigation }: Props) {
               </MvText>
             ) : null}
           </View>
+          <PressableScale scale={0.88} onPress={() => openEditStudent(s)} style={{ marginRight: 6 }}>
+            <Ionicons name="pencil-outline" size={15} color={theme.text3} />
+          </PressableScale>
           <PressableScale scale={0.88} onPress={() => void handleDeleteStudent(s.id, s.name)}>
             <Ionicons name="trash-outline" size={16} color={RED} />
           </PressableScale>
@@ -434,8 +458,8 @@ export function FinancialStudentsScreen({ navigation }: Props) {
         </ScrollView>
       )}
 
-      {/* Add Student Modal */}
-      <ModalSheet visible={addStudentModal} title="Novo aluno" onClose={() => { setAddStudentModal(false); resetStudentForm(); }} theme={theme} topInset={insets.top}>
+      {/* Add / Edit Student Modal */}
+      <ModalSheet visible={addStudentModal} title={editingStudent ? "Editar aluno" : "Novo aluno"} onClose={() => { setAddStudentModal(false); resetStudentForm(); }} theme={theme} topInset={insets.top}>
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvInput placeholder="Nome do aluno" value={sName} onChangeText={setSName} />
           <View style={{ flexDirection: "row", gap: 6 }}>
@@ -485,7 +509,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
           <MvInput keyboardType="numeric" placeholder="Valor mensal (R$)" value={sValue} onChangeText={v => setSValue(maskPriceInput(v))} />
           <MvInput keyboardType="numeric" placeholder="Dia de vencimento (ex: 5)" value={sPaymentDueDay} onChangeText={v => setSPaymentDueDay(v.replace(/\D/g, "").slice(0, 2))} />
           {hasPresential ? <CompactSchedulePicker schedule={sSchedule} onChange={setSSchedule} theme={theme} /> : null}
-          <MvButton label="Salvar aluno" loading={saving} onPress={() => void handleAddStudent()} />
+          <MvButton label={editingStudent ? "Salvar alterações" : "Salvar aluno"} loading={saving} onPress={() => void handleAddStudent()} />
         </View>
       </ModalSheet>
 
