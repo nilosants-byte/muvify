@@ -134,10 +134,6 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   const [payStudentDate,  setPayStudentDate]  = useState<Date>(new Date());
 
   // Computed values
-  const studentRevenueCents = useMemo(
-    () => students.filter(s => s.isActive).reduce((sum, s) => sum + s.monthlyValueCents, 0),
-    [students]
-  );
   const manualIncomeCents = useMemo(
     () => incomes.reduce((sum, i) => sum + i.amountCents, 0),
     [incomes]
@@ -152,14 +148,21 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
       : (dashboard?.appRevenueCents ?? 0),
     [appClients, dashboard]
   );
-  const effectiveRevenueCents = appRevenueCents + studentRevenueCents + manualIncomeCents;
-  const effectiveProfitCents  = effectiveRevenueCents - manualExpensesCents;
+  // receivedCents: dinheiro efetivamente recebido (sem dupla contagem de alunos pagos)
+  const receivedCents = appRevenueCents + manualIncomeCents;
+  const effectiveProfitCents = receivedCents - manualExpensesCents;
 
   const paidStudentIds = useMemo(() => {
     const set = new Set<string>();
     incomes.forEach(inc => { if (inc.studentId) set.add(inc.studentId); });
     return set;
   }, [incomes]);
+  // previstoTotalCents: mensalidades não pagas + sessões confirmadas não concluídas
+  const unpaidStudentRevenueCents = useMemo(
+    () => students.filter(s => s.isActive && !paidStudentIds.has(s.id)).reduce((sum, s) => sum + s.monthlyValueCents, 0),
+    [students, paidStudentIds]
+  );
+  const previstoTotalCents = unpaidStudentRevenueCents + (dashboard?.confirmedRevenueCents ?? 0);
 
   // Load all data
   const load = useCallback(async () => {
@@ -378,10 +381,10 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
         ) : (
           <View style={{ marginHorizontal: 16, borderRadius: 20, padding: 20, backgroundColor: isDark ? "rgba(0,200,83,0.08)" : "rgba(22,163,74,0.10)", borderWidth: 1, borderColor: isDark ? "rgba(0,200,83,0.18)" : "rgba(22,163,74,0.25)" }}>
             <MvText variant="body4" style={{ fontSize: 12, color: isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.55)", marginBottom: 2 }}>
-              {month === currentMonthStr() ? "Faturamento este mês" : `Faturamento em ${monthLabel(month)}`}
+              {month === currentMonthStr() ? "Recebido este mês" : `Recebido em ${monthLabel(month)}`}
             </MvText>
             <MvText variant="semi2" style={{ fontSize: 38, letterSpacing: -1.8, color: green, lineHeight: 44 }}>
-              {fmtCents(effectiveRevenueCents)}
+              {fmtCents(receivedCents)}
             </MvText>
             {dashboard?.growthPct != null ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
@@ -391,11 +394,11 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
                 </MvText>
               </View>
             ) : null}
-            {(dashboard?.confirmedRevenueCents ?? 0) > 0 ? (
+            {previstoTotalCents > 0 ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4, marginBottom: 6 }}>
                 <Ionicons name="time-outline" size={11} color={isDark ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.45)"} />
                 <MvText variant="body4" style={{ fontSize: 10, color: isDark ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.50)" }}>
-                  +{fmtCents(dashboard!.confirmedRevenueCents)} previsto de sessões confirmadas
+                  +{fmtCents(previstoTotalCents)} previsto (alunos + sessões confirmadas)
                 </MvText>
               </View>
             ) : <View style={{ height: 10 }} />}
@@ -541,7 +544,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
         ) : (
           <View style={{ marginHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, overflow: "hidden", backgroundColor: theme.bgSurface, paddingHorizontal: 16, paddingVertical: 14, gap: 10 }}>
             {goal.targetRevenueCents ? (() => {
-              const pct = Math.min(100, Math.round((effectiveRevenueCents / goal.targetRevenueCents) * 100));
+              const pct = Math.min(100, Math.round((receivedCents / goal.targetRevenueCents) * 100));
               return (
                 <View>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 5 }}>

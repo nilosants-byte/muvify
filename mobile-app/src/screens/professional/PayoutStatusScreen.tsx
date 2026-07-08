@@ -391,86 +391,60 @@ export function PayoutStatusScreen({ navigation }: Props) {
           </TouchableOpacity>
         ) : null}
 
-        {/* ── CARD PRINCIPAL — ESTIMATIVA LÍQUIDA ── */}
-        <View style={{ borderRadius: 16, padding: 20, borderWidth: 1, backgroundColor: heroBg, borderColor: heroBorder }}>
-          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <MvText variant="caption" color="secondary">ESTIMATIVA LÍQUIDA</MvText>
-                <View style={{
-                  paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
-                  backgroundColor: "rgba(161,161,170,0.12)",
-                }}>
-                  <MvText style={{ fontSize: 9, color: text3, fontFamily: "DMSans_500Medium" }}>
-                    sessões concluídas
-                  </MvText>
+        {/* ── CARD PRINCIPAL UNIFICADO ── */}
+        <View style={{ borderRadius: 16, borderWidth: 1, backgroundColor: heroBg, borderColor: heroBorder, overflow: "hidden" }}>
+          <View style={{ padding: 20 }}>
+            <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <MvText variant="caption" color="secondary">RECEITA DO APP</MvText>
+                  <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: "rgba(161,161,170,0.12)" }}>
+                    <MvText style={{ fontSize: 9, color: text3, fontFamily: "DMSans_500Medium" }}>sessões concluídas</MvText>
+                  </View>
+                </View>
+                <AnimatedNumber
+                  value={estimatedNet}
+                  format={formatCurrencyBRL}
+                  style={{
+                    fontFamily: "PlusJakartaSans_800ExtraBold",
+                    fontSize: 38,
+                    letterSpacing: -0.6,
+                    color: theme.primary,
+                    marginTop: 4,
+                    lineHeight: 46,
+                  }}
+                />
+                <View style={{ marginTop: 8, gap: 3 }}>
+                  <MvText variant="body4" color="secondary">Bruto: {formatCurrencyBRL(estimatedGross)}</MvText>
+                  <MvText variant="body4" color="secondary">Comissão app (10%): -{formatCurrencyBRL(commission)}</MvText>
                 </View>
               </View>
-              <AnimatedNumber
-                value={estimatedNet}
-                format={formatCurrencyBRL}
-                style={{
-                  fontFamily: "PlusJakartaSans_800ExtraBold",
-                  fontSize: 38,
-                  letterSpacing: -0.6,
-                  color: theme.primary,
-                  marginTop: 4,
-                  lineHeight: 46,
-                }}
-              />
-              <View style={{ marginTop: 8, gap: 3 }}>
-                <MvText variant="body4" color="secondary">
-                  Bruto: {formatCurrencyBRL(estimatedGross)}
-                </MvText>
-                <MvText variant="body4" color="secondary">
-                  Comissão app (10%): -{formatCurrencyBRL(commission)}
-                </MvText>
+              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(34,197,94,0.12)", borderWidth: 1, borderColor: "rgba(34,197,94,0.22)", alignItems: "center", justifyContent: "center", marginTop: 4 }}>
+                <Ionicons name="wallet-outline" size={20} color={green} />
               </View>
             </View>
-            <View style={{
-              width: 44, height: 44, borderRadius: 22,
-              backgroundColor: "rgba(34,197,94,0.12)",
-              borderWidth: 1, borderColor: "rgba(34,197,94,0.22)",
-              alignItems: "center", justifyContent: "center",
-              marginTop: 4,
-            }}>
-              <Ionicons name="wallet-outline" size={20} color={green} />
-            </View>
-          </View>
 
-          <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
-            <MvBadge
-              label={account ? "Conta ativa" : "Conta pendente"}
-              variant={account ? "green" : "orange"}
-            />
-            <MvBadge label="Últimos 6 meses" variant="gray" />
-          </View>
-        </View>
-
-        {/* ── SALDO E REPASSES ── */}
-        {payouts != null ? (
-          <View style={{ borderRadius: 16, borderWidth: 1, backgroundColor: cardBg, borderColor: border, overflow: "hidden" }}>
-            <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <MvText variant="semi2">Saldo e repasses</MvText>
-              <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>via Mercado Pago</MvText>
-            </View>
-
-            {/* Resumo: disponível + a caminho */}
-            <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingBottom: 14, gap: 8 }}>
+            <View style={{ flexDirection: "row", marginTop: 16, gap: 8 }}>
               <View style={{ flex: 1, borderRadius: 12, padding: 12, backgroundColor: "rgba(34,197,94,0.08)", borderWidth: 1, borderColor: "rgba(34,197,94,0.18)" }}>
                 <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginBottom: 2 }}>DISPONÍVEL</MvText>
                 <MvText variant="semi1" style={{ color: green, fontSize: 15 }}>{formatCurrencyBRL(estimatedNet)}</MvText>
-                <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>sessões concluídas</MvText>
+                <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>{payouts != null ? "saldo liberado" : "estimativa"}</MvText>
               </View>
               <View style={{ flex: 1, borderRadius: 12, padding: 12, backgroundColor: "rgba(245,158,11,0.07)", borderWidth: 1, borderColor: "rgba(245,158,11,0.20)" }}>
                 <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginBottom: 2 }}>A CAMINHO</MvText>
                 <MvText variant="semi1" style={{ color: "#F59E0B", fontSize: 15 }}>{formatCurrencyBRL(pendingNet)}</MvText>
-                <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>sessões autorizadas</MvText>
+                <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>{payouts != null ? "sessões autorizadas" : "sem dados MP"}</MvText>
               </View>
             </View>
 
-            {/* Últimos repasses */}
-            {payouts.payments.length > 0 ? (
+            <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
+              <MvBadge label={account ? "Conta ativa" : "Conta pendente"} variant={account ? "green" : "orange"} />
+              <MvBadge label="Últimos 6 meses" variant="gray" />
+            </View>
+          </View>
+
+          {payouts != null ? (
+            payouts.payments.length > 0 ? (
               <>
                 <View style={{ height: 1, backgroundColor: border }} />
                 <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 }}>
@@ -508,9 +482,9 @@ export function PayoutStatusScreen({ navigation }: Props) {
                   Nenhuma transação registrada ainda. As sessões confirmadas e concluídas aparecerão aqui.
                 </MvText>
               </View>
-            )}
-          </View>
-        ) : null}
+            )
+          ) : null}
+        </View>
 
         {/* ── CONTROLE FINANCEIRO PESSOAL ── */}
         <PressableScale
