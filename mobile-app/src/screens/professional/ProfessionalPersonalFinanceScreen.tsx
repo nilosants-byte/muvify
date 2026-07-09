@@ -230,6 +230,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
 
   async function handleAddIncome() {
     if (!iDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
+    if (parseCents(iValue) === 0) { showToast("Informe o valor da receita.", "error"); return; }
     try {
       setSaving(true);
       const paidAtStr = new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString();
@@ -260,6 +261,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
 
   async function handleMarkStudentPaid() {
     if (!payStudentModal) return;
+    if (parseCents(payStudentValue) === 0) { showToast("Informe o valor recebido.", "error"); return; }
     try {
       setSaving(true);
       const newIncome = await runWithAuth(t => financialApi.createIncome(t, {
@@ -278,6 +280,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
 
   async function handleAddExpense() {
     if (!eDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
+    if (parseCents(eValue) === 0) { showToast("Informe o valor da despesa.", "error"); return; }
     try {
       setSaving(true);
       const paidAtStr = new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString();
