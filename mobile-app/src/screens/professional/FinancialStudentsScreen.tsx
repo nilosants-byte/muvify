@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform,
-  ScrollView, StatusBar, Switch, TextInput, TouchableOpacity, View,
+  ScrollView, StatusBar, TextInput, TouchableOpacity, View,
 } from "react-native";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -14,7 +14,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvAvatar, MvButton, MvCard, MvInput, MvText, MvToggle } from "../../components/mv";
 import { MvDatePicker } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
@@ -91,9 +91,9 @@ function CompactSchedulePicker({ schedule, onChange, theme }: {
       </View>
       {selectedDays.length > 0 ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <TextInput value={startTime} onChangeText={onChangeStart} placeholder="07:00" placeholderTextColor={theme.text3} keyboardType="numbers-and-punctuation" maxLength={5} style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 8, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 7, color: theme.text2, fontSize: 13, textAlign: "center" }} />
+          <TextInput value={startTime} onChangeText={onChangeStart} placeholder="07:00" placeholderTextColor={theme.text3} keyboardType="numbers-and-punctuation" maxLength={5} style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 8, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 7, color: theme.text2, fontSize: 13, textAlign: "center", fontFamily: "DMSans_400Regular" }} />
           <MvText variant="body4" color="secondary">às</MvText>
-          <TextInput value={endTime} onChangeText={onChangeEnd} placeholder="08:00" placeholderTextColor={theme.text3} keyboardType="numbers-and-punctuation" maxLength={5} style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 8, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 7, color: theme.text2, fontSize: 13, textAlign: "center" }} />
+          <TextInput value={endTime} onChangeText={onChangeEnd} placeholder="08:00" placeholderTextColor={theme.text3} keyboardType="numbers-and-punctuation" maxLength={5} style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 8, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 7, color: theme.text2, fontSize: 13, textAlign: "center", fontFamily: "DMSans_400Regular" }} />
         </View>
       ) : null}
     </View>
@@ -328,24 +328,19 @@ export function FinancialStudentsScreen({ navigation }: Props) {
         </View>
         {s.isActive && !dim ? (
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: theme.border }}>
-            <MvText variant="badge" style={{ fontSize: 10, color: isPaid ? green : daysOverdue > 0 ? RED : daysOverdue === 0 && s.paymentDueDay ? warnColor : theme.text3 }}>
-              {isPaid ? "Pago" : daysOverdue > 0 ? `Atrasado ${daysOverdue}d` : s.paymentDueDay ? `Vence dia ${s.paymentDueDay}` : "Pendente"}
-            </MvText>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-              <MvText variant="badge" style={{ fontSize: 10, color: theme.text3 }}>
-                {isPaid ? "pago" : "pendente"}
+            {!isPaid && (daysOverdue > 0 || s.paymentDueDay) ? (
+              <MvText variant="badge" style={{ fontSize: 10, color: daysOverdue > 0 ? RED : warnColor }}>
+                {daysOverdue > 0 ? `Atrasado ${daysOverdue}d` : `Vence dia ${s.paymentDueDay}`}
               </MvText>
-              <Switch
+            ) : <View />}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <MvText variant="badge" style={{ fontSize: 10, color: isPaid ? green : theme.text3 }}>
+                {isPaid ? "Pago" : "Pendente"}
+              </MvText>
+              <MvToggle
                 value={isPaid}
                 onValueChange={() => void toggleStudentPaid(s)}
                 disabled={togglingStudentId !== null}
-                trackColor={{
-                  false: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
-                  true: "rgba(34,197,94,0.30)",
-                }}
-                thumbColor={isPaid ? green : (isDark ? "#6B7280" : "#C4C4C4")}
-                ios_backgroundColor={isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"}
-                style={{ transform: [{ scaleX: 0.78 }, { scaleY: 0.78 }] }}
               />
             </View>
           </View>
@@ -480,7 +475,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
                   onBlur={() => { locBlurRef.current = setTimeout(() => setSLocSuggOpen(false), 400); }}
                   placeholder="Local de atendimento (opcional)"
                   placeholderTextColor={theme.text3}
-                  style={{ flex: 1, padding: 0, color: theme.text2, fontSize: 13 }}
+                  style={{ flex: 1, padding: 0, color: theme.text2, fontSize: 13, fontFamily: "DMSans_400Regular" }}
                 />
                 {locationSuggsLoading ? <ActivityIndicator size="small" color={theme.primary} /> : null}
               </View>
