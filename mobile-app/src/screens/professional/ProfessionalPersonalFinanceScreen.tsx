@@ -278,6 +278,31 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     } finally { setSaving(false); }
   }
 
+  function handleUnmarkStudentPaid(s: FinancialStudent) {
+    const income = incomes.find(i => i.studentId === s.id);
+    if (!income) return;
+    Alert.alert(
+      "Desmarcar pagamento?",
+      `A mensalidade de ${s.name} (${fmtCents(income.amountCents)}) será removida e o aluno voltará para pendente.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Desmarcar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await runWithAuth(t => financialApi.deleteIncome(t, income.id));
+              setIncomes(prev => prev.filter(i => i.id !== income.id));
+              showToast("Pagamento desmarcado.", "success");
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Falha ao desmarcar pagamento." });
+            }
+          },
+        },
+      ]
+    );
+  }
+
   async function handleAddExpense() {
     if (!eDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
     if (parseCents(eValue) === 0) { showToast("Informe o valor da despesa.", "error"); return; }
@@ -322,14 +347,22 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
 
     return (
       <TouchableOpacity
-        onPress={() => !isPaid ? (setPayStudentModal(s), setPayStudentValue(maskPriceInput(String(s.monthlyValueCents))), setPayStudentDate(new Date())) : undefined}
-        activeOpacity={isPaid ? 1 : 0.7}
+        onPress={() => {
+          if (isPaid) {
+            handleUnmarkStudentPaid(s);
+          } else {
+            setPayStudentModal(s);
+            setPayStudentValue(maskPriceInput(String(s.monthlyValueCents)));
+            setPayStudentDate(new Date());
+          }
+        }}
+        activeOpacity={0.7}
         style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: theme.border }}
       >
         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusColor, marginRight: 10 }} />
         <MvText variant="semi3" style={{ flex: 1, fontSize: 13 }} numberOfLines={1}>{s.name}</MvText>
         <MvText variant="body4" style={{ fontSize: 11, color: statusColor, marginRight: 4 }}>{statusText}</MvText>
-        {!isPaid ? <Ionicons name="chevron-forward" size={13} color={theme.text3} /> : null}
+        <Ionicons name="chevron-forward" size={13} color={theme.text3} />
       </TouchableOpacity>
     );
   }
