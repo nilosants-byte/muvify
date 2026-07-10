@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform,
-  ScrollView, StatusBar, TextInput, TouchableOpacity, View,
+  ScrollView, StatusBar, Switch, TextInput, TouchableOpacity, View,
 } from "react-native";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -139,9 +139,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [addStudentModal, setAddStudentModal] = useState(false);
-  const [payStudentModal, setPayStudentModal] = useState<FinancialStudent | null>(null);
-  const [payStudentValue, setPayStudentValue] = useState("");
-  const [payStudentDate, setPayStudentDate] = useState<Date>(new Date());
+  const [togglingStudentId, setTogglingStudentId] = useState<string | null>(null);
 
   const [students,       setStudents]       = useState<FinancialStudent[]>([]);
   const [incomes,        setIncomes]        = useState<FinancialIncome[]>([]);
@@ -261,22 +259,32 @@ export function FinancialStudentsScreen({ navigation }: Props) {
     ]);
   }
 
-  async function handleMarkStudentPaid() {
-    if (!payStudentModal) return;
+  async function toggleStudentPaid(s: FinancialStudent) {
+    if (togglingStudentId) return;
+    setTogglingStudentId(s.id);
     try {
-      setSaving(true);
-      const newIncome = await runWithAuth(t => financialApi.createIncome(t, {
-        description: `Mensalidade — ${payStudentModal.name}`,
-        amountCents: parseCents(payStudentValue),
-        studentId: payStudentModal.id,
-        paidAt: new Date(payStudentDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
-      }));
-      setIncomes(prev => [...prev, newIncome]);
-      setPayStudentModal(null);
-      showToast("Mensalidade registrada.", "success");
+      if (paidStudentIds.has(s.id)) {
+        const income = incomes.find(i => i.studentId === s.id);
+        if (!income) return;
+        await runWithAuth(t => financialApi.deleteIncome(t, income.id));
+        setIncomes(prev => prev.filter(i => i.id !== income.id));
+        showToast("Mensalidade desmarcada.", "success");
+      } else {
+        if (s.monthlyValueCents === 0) { showToast("Configure o valor mensal do aluno.", "error"); return; }
+        const newIncome = await runWithAuth(t => financialApi.createIncome(t, {
+          description: `Mensalidade — ${s.name}`,
+          amountCents: s.monthlyValueCents,
+          studentId: s.id,
+          paidAt: `${new Date().toISOString().slice(0, 10)}T12:00:00.000Z`,
+        }));
+        setIncomes(prev => [...prev, newIncome]);
+        showToast("Mensalidade registrada.", "success");
+      }
     } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao registrar pagamento." });
-    } finally { setSaving(false); }
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao atualizar pagamento." });
+    } finally {
+      setTogglingStudentId(null);
+    }
   }
 
   const hasPresential = sType === "PRESENTIAL" || sType === "BOTH";
@@ -320,34 +328,26 @@ export function FinancialStudentsScreen({ navigation }: Props) {
         </View>
         {s.isActive && !dim ? (
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: theme.border }}>
-            {isPaid ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                <Ionicons name="checkmark-circle" size={13} color={green} />
-                <MvText variant="badge" style={{ color: green, fontSize: 10 }}>Pago</MvText>
-              </View>
-            ) : daysOverdue > 0 ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                <Ionicons name="alert-circle" size={13} color={RED} />
-                <MvText variant="badge" style={{ color: RED, fontSize: 10 }}>Atrasado {daysOverdue}d</MvText>
-              </View>
-            ) : s.paymentDueDay ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                <Ionicons name="time-outline" size={13} color={warnColor} />
-                <MvText variant="badge" style={{ color: warnColor, fontSize: 10 }}>Vence dia {s.paymentDueDay}</MvText>
-              </View>
-            ) : (
-              <MvText variant="badge" style={{ color: theme.text3, fontSize: 10 }}>Pendente</MvText>
-            )}
-            {!isPaid ? (
-              <PressableScale
-                scale={0.92}
-                onPress={() => { setPayStudentModal(s); setPayStudentValue(maskPriceInput(String(s.monthlyValueCents))); setPayStudentDate(new Date()); }}
-                style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? "rgba(0,200,83,0.10)" : "rgba(22,163,74,0.08)", borderWidth: 1, borderColor: isDark ? "rgba(0,200,83,0.22)" : "rgba(22,163,74,0.18)" }}
-              >
-                <Ionicons name="checkmark-outline" size={11} color={green} />
-                <MvText variant="badge" style={{ color: green, fontSize: 10 }}>Marcar como pago</MvText>
-              </PressableScale>
-            ) : null}
+            <MvText variant="badge" style={{ fontSize: 10, color: isPaid ? green : daysOverdue > 0 ? RED : daysOverdue === 0 && s.paymentDueDay ? warnColor : theme.text3 }}>
+              {isPaid ? "Pago" : daysOverdue > 0 ? `Atrasado ${daysOverdue}d` : s.paymentDueDay ? `Vence dia ${s.paymentDueDay}` : "Pendente"}
+            </MvText>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+              <MvText variant="badge" style={{ fontSize: 10, color: theme.text3 }}>
+                {isPaid ? "pago" : "pendente"}
+              </MvText>
+              <Switch
+                value={isPaid}
+                onValueChange={() => void toggleStudentPaid(s)}
+                disabled={togglingStudentId !== null}
+                trackColor={{
+                  false: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
+                  true: "rgba(34,197,94,0.30)",
+                }}
+                thumbColor={isPaid ? green : (isDark ? "#6B7280" : "#C4C4C4")}
+                ios_backgroundColor={isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"}
+                style={{ transform: [{ scaleX: 0.78 }, { scaleY: 0.78 }] }}
+              />
+            </View>
           </View>
         ) : null}
       </MvCard>
@@ -513,22 +513,6 @@ export function FinancialStudentsScreen({ navigation }: Props) {
         </View>
       </ModalSheet>
 
-      {/* Mark as paid modal */}
-      <ModalSheet
-        visible={payStudentModal !== null}
-        title={payStudentModal ? `Pago — ${payStudentModal.name}` : ""}
-        onClose={() => setPayStudentModal(null)}
-        theme={theme}
-        topInset={insets.top}
-      >
-        <View style={{ gap: 10, paddingBottom: 40 }}>
-          <MvText variant="body4" color="secondary">Confirme o valor e a data do pagamento.</MvText>
-          <MvInput keyboardType="numeric" placeholder="Valor recebido (R$)" value={payStudentValue} onChangeText={v => setPayStudentValue(maskPriceInput(v))} />
-          <MvText variant="body4" color="secondary">Data do pagamento</MvText>
-          <MvDatePicker value={payStudentDate} onChange={setPayStudentDate} />
-          <MvButton label="Confirmar pagamento" loading={saving} onPress={() => void handleMarkStudentPaid()} />
-        </View>
-      </ModalSheet>
     </View>
   );
 }

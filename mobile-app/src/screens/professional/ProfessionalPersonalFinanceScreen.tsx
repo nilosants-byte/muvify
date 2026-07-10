@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform,
-  ScrollView, StatusBar, Switch, TextInput, TouchableOpacity, View,
+  ScrollView, StatusBar, TextInput, TouchableOpacity, View,
 } from "react-native";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -127,8 +127,6 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   const [eValue, setEValue] = useState("50,00");
   const [eCat,   setECat]   = useState<FinancialExpenseCategory>("OTHER");
   const [eDate,  setEDate]  = useState<Date>(new Date());
-
-  const [togglingStudentId, setTogglingStudentId] = useState<string | null>(null);
 
   // Computed values
   const manualIncomeCents = useMemo(
@@ -256,34 +254,6 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     } finally { setSaving(false); }
   }
 
-  async function toggleStudentPaid(s: FinancialStudent) {
-    if (togglingStudentId) return;
-    setTogglingStudentId(s.id);
-    try {
-      if (paidStudentIds.has(s.id)) {
-        const income = incomes.find(i => i.studentId === s.id);
-        if (!income) return;
-        await runWithAuth(t => financialApi.deleteIncome(t, income.id));
-        setIncomes(prev => prev.filter(i => i.id !== income.id));
-        showToast("Mensalidade desmarcada.", "success");
-      } else {
-        if (s.monthlyValueCents === 0) { showToast("Configure o valor mensal do aluno.", "error"); return; }
-        const newIncome = await runWithAuth(t => financialApi.createIncome(t, {
-          description: `Mensalidade — ${s.name}`,
-          amountCents: s.monthlyValueCents,
-          studentId: s.id,
-          paidAt: `${new Date().toISOString().slice(0, 10)}T12:00:00.000Z`,
-        }));
-        setIncomes(prev => [...prev, newIncome]);
-        showToast("Mensalidade registrada.", "success");
-      }
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao atualizar pagamento." });
-    } finally {
-      setTogglingStudentId(null);
-    }
-  }
-
   async function handleAddExpense() {
     if (!eDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
     if (parseCents(eValue) === 0) { showToast("Informe o valor da despesa.", "error"); return; }
@@ -321,7 +291,6 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
 
   function CompactStudentItem({ s }: { s: FinancialStudent }) {
     const isPaid = paidStudentIds.has(s.id);
-    const isToggling = togglingStudentId === s.id;
     const todayDay = new Date().getDate();
     const daysOverdue = s.paymentDueDay && !isPaid ? Math.max(0, todayDay - s.paymentDueDay) : 0;
     const statusColor = isPaid ? green : daysOverdue > 0 ? RED : (isDark ? "#FCD34D" : "#B45309");
@@ -330,24 +299,8 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
     return (
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: theme.border }}>
         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusColor, marginRight: 10 }} />
-        <View style={{ flex: 1 }}>
-          <MvText variant="semi3" style={{ fontSize: 13 }} numberOfLines={1}>{s.name}</MvText>
-          <MvText variant="body4" style={{ fontSize: 10, color: statusColor, marginTop: 1 }}>
-            {statusText} · {fmtCents(s.monthlyValueCents)}
-          </MvText>
-        </View>
-        <Switch
-          value={isPaid}
-          onValueChange={() => void toggleStudentPaid(s)}
-          disabled={isToggling || togglingStudentId !== null}
-          trackColor={{
-            false: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)",
-            true: `${green}80`,
-          }}
-          thumbColor={isPaid ? green : (isDark ? "#6B7280" : "#D1D5DB")}
-          ios_backgroundColor={isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)"}
-          style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
-        />
+        <MvText variant="semi3" style={{ flex: 1, fontSize: 13 }} numberOfLines={1}>{s.name}</MvText>
+        <MvText variant="body4" style={{ fontSize: 11, color: statusColor }}>{statusText}</MvText>
       </View>
     );
   }
