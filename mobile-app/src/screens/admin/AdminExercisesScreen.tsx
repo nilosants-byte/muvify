@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -23,6 +23,8 @@ import { useAppState } from "../../state/AppState";
 import { AdminScaffold } from "./AdminScaffold";
 import { handleScreenError } from "../shared/api-helpers";
 import { useMvTheme } from "../../theme/MvThemeContext";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = { navigation: any };
 
@@ -92,8 +94,6 @@ export function AdminExercisesScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -102,37 +102,23 @@ export function AdminExercisesScreen({ navigation }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
 
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const load = useCallback(
-    async (isRefresh = false) => {
-      try {
-        if (isRefresh) setRefreshing(true);
-        else setLoading(true);
-        const data = await runWithAuth((token) =>
-          adminExerciseApi.list(token, {
-            category: selectedCategory ?? undefined,
-            q: searchQuery || undefined,
-          })
-        );
-        setExercises(data);
-      } catch (error) {
-        handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar exercícios.", navigation });
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [navigation, runWithAuth, selectedCategory, searchQuery, showToast]
+  const exercisesQuery = useAuthQuery(
+    queryKeys.exercises.adminList({ category: selectedCategory ?? undefined, q: searchQuery || undefined }),
+    (token) => adminExerciseApi.list(token, { category: selectedCategory ?? undefined, q: searchQuery || undefined })
   );
 
+  const loading = exercisesQuery.isLoading;
+
+  // Sync list from server; CRUD mutations update exercises locally
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (exercisesQuery.data) setExercises(exercisesQuery.data);
+  }, [exercisesQuery.data]);
 
   useEffect(() => {
-    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
-  }, []);
+    if (exercisesQuery.error) {
+      handleScreenError({ error: exercisesQuery.error, showToast, fallbackMessage: "Falha ao carregar exercícios.", navigation });
+    }
+  }, [exercisesQuery.error, showToast, navigation]);
 
   useEffect(() => {
     if (!modalVisible) {
@@ -143,8 +129,6 @@ export function AdminExercisesScreen({ navigation }: Props) {
 
   function handleSearchChange(text: string) {
     setSearchQuery(text);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => void load(), 400);
   }
 
   function openCreate() {
@@ -245,7 +229,7 @@ export function AdminExercisesScreen({ navigation }: Props) {
           <SearchBar
             value={searchQuery}
             onChangeText={handleSearchChange}
-            onClear={() => { setSearchQuery(""); void load(); }}
+            onClear={() => setSearchQuery("")}
           />
         </View>
 
@@ -289,8 +273,8 @@ export function AdminExercisesScreen({ navigation }: Props) {
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ padding: 16, gap: 10 }}
           showsVerticalScrollIndicator={false}
-          refreshing={refreshing}
-          onRefresh={() => void load(true)}
+          refreshing={exercisesQuery.isRefetching}
+          onRefresh={() => void exercisesQuery.refetch()}
           ListEmptyComponent={
             <View style={{ alignItems: "center", paddingTop: 60 }}>
               <Ionicons name="barbell-outline" size={48} color={theme.text3} />

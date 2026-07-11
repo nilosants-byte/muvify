@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import {
   Image,
   Linking,
@@ -244,37 +246,30 @@ function DocButtons({ item }: { item: AdminCrefQueueItem }) {
 export function AdminCrefValidationScreen({ navigation }: Props) {
   const { theme } = useMvTheme();
   const { runWithAuth, showToast } = useAppState();
-  const [loading, setLoading] = useState(false);
-  const [items, setItems] = useState<AdminCrefQueueItem[]>([]);
   const [status, setStatus] = useState<QueueStatus>("IN_REVIEW");
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [justification, setJustification] = useState("");
   const [submittingId, setSubmittingId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const payload = await runWithAuth((token) =>
-        adminApi.listCrefRequests(token, { status, take: 100 })
-      );
-      setItems(payload);
-    } catch (error) {
-      handleScreenError({
-        error,
-        showToast,
-        fallbackMessage: "Falha ao carregar fila de CREF.",
-        navigation
-      });
-    } finally {
-      setLoading(false);
+  const crefQuery = useAuthQuery(
+    queryKeys.admin.crefRequests({ status, take: 100 }),
+    (token) => adminApi.listCrefRequests(token, { status, take: 100 })
+  );
+
+  const loading = crefQuery.isLoading;
+  const items = crefQuery.data ?? [];
+
+  useEffect(() => {
+    if (crefQuery.error) {
+      handleScreenError({ error: crefQuery.error, showToast, fallbackMessage: "Falha ao carregar fila de CREF.", navigation });
     }
-  }, [navigation, runWithAuth, showToast, status]);
+  }, [crefQuery.error, showToast, navigation]);
 
   useFocusEffect(useCallback(() => {
     setRejectingId(null);
     setJustification("");
-    void load();
-  }, [load]));
+    void crefQuery.refetch();
+  }, [crefQuery.refetch]));
 
   async function approve(providerId: string) {
     try {
@@ -285,7 +280,7 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
       showToast("CREF aprovado com sucesso.", "success");
       setRejectingId(null);
       setJustification("");
-      await load();
+      await crefQuery.refetch();
     } catch (error) {
       handleScreenError({
         error,
@@ -317,7 +312,7 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
       showToast("CREF reprovado e devolutiva enviada.", "success");
       setRejectingId(null);
       setJustification("");
-      await load();
+      await crefQuery.refetch();
     } catch (error) {
       handleScreenError({
         error,
@@ -340,8 +335,8 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
-            refreshing={loading}
-            onRefresh={() => void load()}
+            refreshing={crefQuery.isRefetching}
+            onRefresh={() => void crefQuery.refetch()}
             tintColor={theme.primary}
             colors={[theme.primary]}
           />
