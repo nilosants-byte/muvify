@@ -48,6 +48,8 @@ import { AchievementBadgeSvg } from "../../components/community/AchievementBadge
 import { AchievementsModal } from "../../components/community/AchievementsModal";
 import { FeedPostArtSvg } from "../../components/community/FeedPostArtSvg";
 import { PhotoLightbox } from "../../components/community/PhotoLightbox";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = BottomTabScreenProps<ClientTabParamList, "Community">;
 type ProgressScope = GamificationScope;
@@ -912,8 +914,6 @@ export function CommunityScreen({ navigation }: Props) {
     setMonthlyGoalTarget((v) => Math.min(v, maxM));
     setAnnualGoalTarget((v) => Math.min(v, maxY));
   }, [showGoalModal]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [gamificationData, setGamificationData] = useState<GamificationProfile | null>(null);
   const feedScrollRef = useRef<ScrollView>(null);
   const feedContainerYRef = useRef(0);
   const postYOffsetsRef = useRef<Record<string, number>>({});
@@ -966,14 +966,6 @@ export function CommunityScreen({ navigation }: Props) {
   const [profileData, setProfileData] = useState<UserPublicProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
 
-  // Carrega IDs que já seguimos ao abrir
-  useEffect(() => {
-    runWithAuth((token) => communityApi.getFollowing(token, 1, 200))
-      .then((res) => {
-        setFollowingIds(new Set(res.items.map((u) => u.id)));
-      })
-      .catch(() => {});
-  }, [runWithAuth]);
 
   // Busca debounced
   useEffect(() => {
@@ -1035,8 +1027,6 @@ export function CommunityScreen({ navigation }: Props) {
   type RankingPeriod = "WEEKLY" | "MONTHLY" | "ALLTIME";
   const [rankingPeriod, setRankingPeriod] = useState<RankingPeriod>("WEEKLY");
   const [rankingItems, setRankingItems] = useState<RankingEntry[]>([]);
-  const [rankingLoading, setRankingLoading] = useState(true);
-  const [rankingTransitioning, setRankingTransitioning] = useState(false);
   const [viewerPosition, setViewerPosition] = useState<number | null>(null);
   const [viewerXp, setViewerXp] = useState(0);
   const prevViewerPositionRef = useRef<number | null>(null);
@@ -1061,64 +1051,93 @@ export function CommunityScreen({ navigation }: Props) {
     finally { setFeedLoadingMore(false); }
   }, [feedHasMore, feedLoadingMore, feedPage, runWithAuth]);
 
-  // ── Sugestões de quem seguir ──────────────────────────────────────────────────
-  const [suggestions, setSuggestions] = useState<CommunityUser[]>([]);
-
-  // ── Conquistas do backend ─────────────────────────────────────────────────────
-  const [backendAchievements, setBackendAchievements] = useState<BackendAchievement[]>([]);
-
-  // Carrega bookings + gamificação + feed + sugestões + conquistas em paralelo
-  const loadData = useCallback(async () => {
-    try {
-      const [bks, gam, feedRes, suggestionsRes, achRes, followingRes] = await Promise.all([
-        runWithAuth((token) => bookingsApi.me(token)),
-        runWithAuth((token) => gamificationApi.getMyProfile(token)),
-        runWithAuth((token) => communityApi.getFeed(token, 1, 20)).catch(() => ({ items: [] as FeedPost[], total: 0 })),
-        runWithAuth((token) => communityApi.getSuggestions(token, 10)).catch(() => [] as CommunityUser[]),
-        runWithAuth((token) => gamificationApi.getAchievements(token)).catch(() => [] as BackendAchievement[]),
-        runWithAuth((token) => communityApi.getFollowing(token, 1, 50)).catch(() => ({ items: [] as CommunityUser[], total: 0 })),
+  // ── Dados principais: bookings + gamificação + sugestões + conquistas + seguindo
+  const communityQuery = useAuthQuery(
+    queryKeys.community.all,
+    async (token) => {
+      const [bks, gam, suggestionsRes, achRes, followingRes] = await Promise.all([
+        bookingsApi.me(token),
+        gamificationApi.getMyProfile(token),
+        communityApi.getSuggestions(token, 10).catch(() => [] as CommunityUser[]),
+        gamificationApi.getAchievements(token).catch(() => [] as BackendAchievement[]),
+        communityApi.getFollowing(token, 1, 200).catch(() => ({ items: [] as CommunityUser[], total: 0 })),
       ]);
-      setBookings(bks);
-      setGamificationData(gam);
+      return { bookings: bks, gamification: gam, suggestions: suggestionsRes, achievements: achRes, followingItems: followingRes.items };
+    },
+    { staleTime: 5 * 60 * 1000 }
+  );
+
+  const bookings: Booking[] = communityQuery.data?.bookings ?? [];
+  const gamificationData: GamificationProfile | null = communityQuery.data?.gamification ?? null;
+  const suggestions: CommunityUser[] = communityQuery.data?.suggestions ?? [];
+  const backendAchievements: BackendAchievement[] = communityQuery.data?.achievements ?? [];
+
+  // Sincroniza followingIds ao carregar/atualizar communityQuery
+  useEffect(() => {
+    if (!communityQuery.data) return;
+    setFollowingIds(new Set(communityQuery.data.followingItems.map((u) => u.id)));
+  }, [communityQuery.data]);
+
+  // ── Ranking via TanStack (auto-refetch ao mudar período) ────────────────────
+  const rankingQuery = useAuthQuery(
+    queryKeys.community.ranking(rankingPeriod),
+    (token) => communityApi.getRanking(token, rankingPeriod, 1, 50),
+    { staleTime: 2 * 60 * 1000 }
+  );
+
+  const rankingLoading = rankingQuery.isLoading;
+  const rankingTransitioning = rankingQuery.isFetching && !!rankingQuery.data;
+
+  // Sincroniza ranking com detecção de subida de posição
+  useEffect(() => {
+    if (!rankingQuery.data) return;
+    const res = rankingQuery.data;
+    const prev = prevViewerPositionRef.current;
+    const next = res.viewerPosition;
+    if (prev !== null && next !== null && next < prev) {
+      void hapticAchievement();
+      showToast(`🎉 Você subiu para #${next} no ranking!`, "success");
+    }
+    prevViewerPositionRef.current = next;
+    setViewerPosition(res.viewerPosition);
+    setViewerXp(res.viewerXp ?? 0);
+    setRankingItems(res.items);
+  }, [rankingQuery.data, showToast]);
+
+  // ── Feed: carga inicial e pull-to-refresh ────────────────────────────────────
+  const loadFeed = useCallback(async () => {
+    setFeedLoading(true);
+    try {
+      const feedRes = await runWithAuth((token) =>
+        communityApi.getFeed(token, 1, 20).catch(() => ({ items: [] as FeedPost[], total: 0 }))
+      );
       setFeedItems(feedRes.items);
       setFeedPage(1);
       setFeedHasMore(feedRes.items.length === 20);
-      setFeedLoading(false);
-      setSuggestions(suggestionsRes);
-      setBackendAchievements(achRes);
-      setFollowingIds(new Set(followingRes.items.map((u) => u.id)));
       lastFocusRefreshRef.current = Date.now();
       initialLoadDoneRef.current = true;
     } catch { /* best effort */ }
+    finally { setFeedLoading(false); }
   }, [runWithAuth]);
 
-  useEffect(() => { void loadData(); }, [loadData]);
+  useEffect(() => { void loadFeed(); }, [loadFeed]);
 
-  // Pull-to-refresh: atualiza tudo silenciosamente (sem skeleton)
+  // Pull-to-refresh: atualiza feed + dados principais silenciosamente
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
+    setPendingFeedItems([]);
     lastFocusRefreshRef.current = Date.now();
     try {
-      const [bks, gam, feedRes, suggestionsRes, achRes, followingRes] = await Promise.all([
-        runWithAuth((token) => bookingsApi.me(token)),
-        runWithAuth((token) => gamificationApi.getMyProfile(token)),
-        runWithAuth((token) => communityApi.getFeed(token, 1, 20)).catch(() => ({ items: [] as FeedPost[], total: 0 })),
-        runWithAuth((token) => communityApi.getSuggestions(token, 10)).catch(() => [] as CommunityUser[]),
-        runWithAuth((token) => gamificationApi.getAchievements(token)).catch(() => [] as BackendAchievement[]),
-        runWithAuth((token) => communityApi.getFollowing(token, 1, 50)).catch(() => ({ items: [] as CommunityUser[], total: 0 })),
+      const [feedRes] = await Promise.all([
+        runWithAuth((token) => communityApi.getFeed(token, 1, 20).catch(() => ({ items: [] as FeedPost[], total: 0 }))),
+        communityQuery.refetch(),
       ]);
-      setBookings(bks);
-      setGamificationData(gam);
       setFeedItems(feedRes.items);
-      setPendingFeedItems([]);
       setFeedPage(1);
       setFeedHasMore(feedRes.items.length === 20);
-      setSuggestions(suggestionsRes);
-      setBackendAchievements(achRes);
-      setFollowingIds(new Set(followingRes.items.map((u) => u.id)));
     } catch { /* best effort */ }
     finally { setRefreshing(false); }
-  }, [runWithAuth]);
+  }, [runWithAuth, communityQuery.refetch]);
 
   // Ao voltar para a aba: refresh silencioso do feed se passaram mais de 60s
   useFocusEffect(
@@ -1143,36 +1162,6 @@ export function CommunityScreen({ navigation }: Props) {
         .catch(() => {});
     }, [runWithAuth, feedItems])
   );
-
-  // Carrega ranking quando período muda
-  const loadRanking = useCallback(async () => {
-    const hasData = rankingItems.length > 0;
-    if (hasData) {
-      setRankingTransitioning(true);
-    } else {
-      setRankingLoading(true);
-    }
-    try {
-      const res = await runWithAuth((token) => communityApi.getRanking(token, rankingPeriod, 1, 50));
-      setRankingItems(res.items);
-      setViewerXp(res.viewerXp ?? 0);
-      // Detecta subida no ranking e celebra
-      const prev = prevViewerPositionRef.current;
-      const next = res.viewerPosition;
-      if (prev !== null && next !== null && next < prev) {
-        void hapticAchievement();
-        showToast(`🎉 Você subiu para #${next} no ranking!`, "success");
-      }
-      prevViewerPositionRef.current = next;
-      setViewerPosition(res.viewerPosition);
-    } catch { /* best effort */ }
-    finally {
-      setRankingLoading(false);
-      setRankingTransitioning(false);
-    }
-  }, [runWithAuth, rankingPeriod, rankingItems.length]);
-
-  useEffect(() => { void loadRanking(); }, [loadRanking]);
 
   function closeCreatePost() {
     if (createSubmitting) return;
