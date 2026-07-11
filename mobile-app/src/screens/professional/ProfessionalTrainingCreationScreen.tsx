@@ -33,6 +33,8 @@ import { MvButton, MvCard, MvInput, MvMediaViewer, MvText } from "../../componen
 import { handleScreenError } from "../shared/api-helpers";
 import { StepProgressBar } from "../../components/professional/UXReformComponents";
 import { fileUriToDataUri } from "../../utils/media";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "TrainingCreation">;
 type ActiveTab = "mine" | "prebuilt";
@@ -268,9 +270,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
   const [mineExercises, setMineExercises] = useState<Exercise[]>([]);
   const [prebuiltExercises, setPrebuiltExercises] = useState<Exercise[]>([]);
   const [providerPlans, setProviderPlans] = useState<TrainingPlan[]>([]);
-  const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [crefApproved, setCrefApproved] = useState(false);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("mine");
   const [selectedCategory, setSelectedCategory] = useState<ExerciseCategory | "all">("all");
@@ -313,50 +312,56 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
     [theme.mode]
   );
 
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
+  const trainingQuery = useAuthQuery(
+    queryKeys.exercises.trainingScreen(),
+    async (token) => {
       const [mine, prebuilt, plans, credentials] = await Promise.all([
-        runWithAuth((token) => exerciseApi.listMine(token)).catch((error) => {
+        exerciseApi.listMine(token).catch((error) => {
           if (error instanceof ApiError && error.status === 404) return [] as Exercise[];
           throw error;
         }),
         exerciseApi.listPrebuilt(),
-        runWithAuth((token) => consultancyApi.providerPlans(token)).catch((error) => {
+        consultancyApi.providerPlans(token).catch((error) => {
           if (error instanceof ApiError && error.status === 404) return null;
           throw error;
         }),
-        runWithAuth((token) => providersApi.myCredentials(token)).catch(() => null),
+        providersApi.myCredentials(token).catch(() => null),
       ]);
+      const filteredPlans = plans
+        ? (plans as TrainingPlan[]).filter((plan) => plan.isPrebuilt && !plan.contractId && plan.isActive !== false)
+        : null;
+      return {
+        mineExercises: mine,
+        prebuiltExercises: prebuilt as Exercise[],
+        providerPlans: filteredPlans ?? [],
+        needsProfileSetup: plans === null,
+        crefApproved: (credentials as any)?.crefValidationStatus === "APPROVED",
+      };
+    },
+  );
 
-      setCrefApproved((credentials as any)?.crefValidationStatus === "APPROVED");
-      setMineExercises(mine);
-      setPrebuiltExercises(prebuilt);
+  const loading = trainingQuery.isLoading;
+  const needsProfileSetup = trainingQuery.data?.needsProfileSetup ?? false;
+  const crefApproved = trainingQuery.data?.crefApproved ?? false;
 
-      if (!plans) {
-        setNeedsProfileSetup(true);
-        setProviderPlans([]);
-      } else {
-        setNeedsProfileSetup(false);
-        setProviderPlans(
-          plans.filter((plan) => plan.isPrebuilt && !plan.contractId && plan.isActive !== false)
-        );
-      }
-    } catch (error) {
+  useEffect(() => {
+    const data = trainingQuery.data;
+    if (!data) return;
+    setMineExercises(data.mineExercises);
+    setPrebuiltExercises(data.prebuiltExercises);
+    setProviderPlans(data.providerPlans);
+  }, [trainingQuery.data]);
+
+  useEffect(() => {
+    if (trainingQuery.error) {
       handleScreenError({
-        error,
+        error: trainingQuery.error,
         showToast,
         fallbackMessage: "Falha ao carregar banco de exercícios.",
         navigation,
       });
-    } finally {
-      setLoading(false);
     }
-  }, [navigation, runWithAuth, showToast]);
-
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  }, [trainingQuery.error, showToast, navigation]);
 
   const filteredMine = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase();
@@ -635,7 +640,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
       setMediaUrlInput("");
       setShowCreateExerciseForm(false);
       setActiveTab("mine");
-      await loadData();
+      void trainingQuery.refetch();
     } catch (error) {
       handleScreenError({
         error,
@@ -719,7 +724,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         showToast("Treino criado com sucesso.", "success");
         resetNewPlanBuilder();
         setStep(0);
-        await loadData();
+        void trainingQuery.refetch();
       }
     } catch (error) {
       handleScreenError({
@@ -760,7 +765,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       showToast("Treino atualizado com sucesso.", "success");
       resetInlinePlanEdit();
-      await loadData();
+      void trainingQuery.refetch();
     } catch (error) {
       handleScreenError({
         error,
@@ -787,7 +792,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
               resetInlinePlanEdit();
             }
             showToast("Treino excluido.", "success");
-            await loadData();
+            void trainingQuery.refetch();
           } catch (error) {
             handleScreenError({
               error,

@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import {
   ActivityIndicator,
   FlatList,
@@ -106,8 +108,6 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
   // ── State ───────────────────────────────────────────────────────────────────
   const [tab, setTab] = useState<Tab>("active");
   const [chats, setChats] = useState<ChatSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [chatsLoadError, setChatsLoadError] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatOpen, setChatOpen] = useState(true);
@@ -132,28 +132,23 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
   );
 
   // ── Data loading ────────────────────────────────────────────────────────────
-  const loadChats = useCallback(async () => {
-    setChatsLoadError(false);
-    try {
-      const data = await runWithAuth((t) => chatApi.myChats(t));
-      if (!isMountedRef.current) return;
-      const enriched = await enrichMissingPhotos(
-        data,
-        (id) => runWithAuth((t) => chatApi.getOtherUser(t, id))
-      );
-      if (!isMountedRef.current) return;
-      setChats((prev) => mergeChatsPreservingPhoto(prev, enriched));
-    } catch {
-      if (isMountedRef.current) setChatsLoadError(true);
-    }
-    finally { if (isMountedRef.current) setLoading(false); }
-  }, [runWithAuth]);
+  const chatsQuery = useAuthQuery(
+    queryKeys.chat.myChats(),
+    async (token) => {
+      const data = await chatApi.myChats(token);
+      return enrichMissingPhotos(data, (id) => chatApi.getOtherUser(token, id));
+    },
+  );
 
   useEffect(() => {
-    isMountedRef.current = true;
-    void loadChats();
+    if (chatsQuery.data) {
+      setChats((prev) => mergeChatsPreservingPhoto(prev, chatsQuery.data!));
+    }
+  }, [chatsQuery.data]);
+
+  useEffect(() => {
     return () => { isMountedRef.current = false; };
-  }, [loadChats]);
+  }, []);
 
   const fetchMessages = useCallback(async (bookingId: string, initial = false) => {
     try {
@@ -487,7 +482,7 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
         </View>
         <PressableScale
           scale={0.92}
-          onPress={() => void loadChats()}
+          onPress={() => void chatsQuery.refetch()}
           style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", borderWidth: 1, borderColor: border, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="refresh-outline" size={16} color={text2} />
@@ -517,7 +512,7 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
       </View>
 
       {/* List */}
-      {loading ? (
+      {chatsQuery.isLoading ? (
         <View style={{ paddingTop: 8 }}>
           <SkeletonChatItem />
           <SkeletonChatItem />
@@ -531,7 +526,7 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 100, paddingTop: 4, gap: 10 }}
           ListEmptyComponent={
-            chatsLoadError ? (
+            chatsQuery.isError ? (
               <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32, marginTop: 24 }}>
                 <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: "rgba(239,68,68,0.10)", borderWidth: 1, borderColor: "rgba(239,68,68,0.20)", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
                   <Ionicons name="cloud-offline-outline" size={30} color="#EF4444" />

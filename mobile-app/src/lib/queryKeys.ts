@@ -135,6 +135,7 @@ export const queryKeys = {
     mine: (params?: object) => ["exercises", "mine", params] as const,
     prebuilt: (params?: object) => ["exercises", "prebuilt", params] as const,
     adminList: (params?: object) => ["exercises", "adminList", params] as const,
+    trainingScreen: () => ["exercises", "trainingScreen"] as const,
   },
 
   // ── Consultoria ────────────────────────────────────────────────────────────
