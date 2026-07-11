@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform,
   ScrollView, StatusBar, TextInput, TouchableOpacity, View,
@@ -19,6 +20,8 @@ import { MvButton, MvCard, MvDatePicker, MvInput, MvText } from "../../component
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "PersonalFinance">;
 type MvThemeValue = ReturnType<typeof import("../../theme/MvThemeContext").useMvTheme>["theme"];
@@ -93,6 +96,16 @@ const CAT_LABEL: Record<FinancialExpenseCategory, string> = {
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
+type FinancePageData = {
+  dashboard: FinancialDashboard;
+  students: FinancialStudent[];
+  incomes: FinancialIncome[];
+  expenses: FinancialExpense[];
+  goal: FinancialGoal | null;
+  appClients: FinancialAppClient[];
+  providerHasMp: boolean | null;
+};
+
 export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
@@ -100,18 +113,44 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   const isDark = theme.mode === "dark";
   const green = isDark ? theme.primary : "#16A34A";
   const RED   = isDark ? "#F87171" : "#E53935";
+  const queryClient = useQueryClient();
 
   const [month, setMonth] = useState(currentMonthStr());
-  const [loading, setLoading] = useState(true);
-  const [saving,  setSaving]  = useState(false);
 
-  const [dashboard,    setDashboard]    = useState<FinancialDashboard | null>(null);
-  const [students,     setStudents]     = useState<FinancialStudent[]>([]);
-  const [incomes,      setIncomes]      = useState<FinancialIncome[]>([]);
-  const [expenses,     setExpenses]     = useState<FinancialExpense[]>([]);
-  const [goal,         setGoal]         = useState<FinancialGoal | null>(null);
-  const [appClients,   setAppClients]   = useState<FinancialAppClient[]>([]);
-  const [providerHasMp, setProviderHasMp] = useState<boolean | null>(null);
+  const financeQuery = useAuthQuery(
+    queryKeys.financial.financePage(month),
+    async (token) => {
+      const [dash, studs, incs, exps, gl, appCl, mpStatus] = await Promise.all([
+        financialApi.dashboard(token, month),
+        financialApi.listStudents(token),
+        financialApi.listIncomes(token, month),
+        financialApi.listExpenses(token, month),
+        financialApi.getGoal(token, month),
+        financialApi.listAppClients(token, month),
+        paymentsApi.providerStatus(token).catch(() => null),
+      ]);
+      return {
+        dashboard: dash as FinancialDashboard,
+        students: studs as FinancialStudent[],
+        incomes: incs as FinancialIncome[],
+        expenses: exps as FinancialExpense[],
+        goal: gl as FinancialGoal | null,
+        appClients: appCl as FinancialAppClient[],
+        providerHasMp: mpStatus?.hasAccount ?? null,
+      };
+    },
+  );
+
+  const dashboard    = financeQuery.data?.dashboard ?? null;
+  const students     = financeQuery.data?.students ?? ([] as FinancialStudent[]);
+  const incomes      = financeQuery.data?.incomes ?? ([] as FinancialIncome[]);
+  const expenses     = financeQuery.data?.expenses ?? ([] as FinancialExpense[]);
+  const goal         = financeQuery.data?.goal ?? null;
+  const appClients   = financeQuery.data?.appClients ?? ([] as FinancialAppClient[]);
+  const providerHasMp = financeQuery.data?.providerHasMp ?? null;
+  const loading      = financeQuery.isLoading;
+
+  const [saving,  setSaving]  = useState(false);
 
   // Income modal state
   const [addIncomeModal, setAddIncomeModal] = useState(false);
@@ -159,42 +198,13 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   );
   const previstoTotalCents = unpaidStudentRevenueCents + (dashboard?.confirmedRevenueCents ?? 0);
 
-  // Load all data
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [dash, studs, incs, exps, gl, appCl, mpStatus] = await Promise.all([
-        runWithAuth(t => financialApi.dashboard(t, month)),
-        runWithAuth(t => financialApi.listStudents(t)),
-        runWithAuth(t => financialApi.listIncomes(t, month)),
-        runWithAuth(t => financialApi.listExpenses(t, month)),
-        runWithAuth(t => financialApi.getGoal(t, month)),
-        runWithAuth(t => financialApi.listAppClients(t, month)),
-        runWithAuth(t => paymentsApi.providerStatus(t)).catch(() => null),
-      ]);
-      setDashboard(dash);
-      setStudents(studs);
-      setIncomes(incs);
-      setExpenses(exps);
-      setGoal(gl);
-      setAppClients(appCl);
-      setProviderHasMp(mpStatus?.hasAccount ?? null);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar financeiro.", navigation });
-    } finally {
-      setLoading(false);
+  useFocusEffect(useCallback(() => { void financeQuery.refetch(); }, [financeQuery.refetch]));
+
+  useEffect(() => {
+    if (financeQuery.error) {
+      handleScreenError({ error: financeQuery.error, showToast, fallbackMessage: "Falha ao carregar financeiro.", navigation });
     }
-  }, [month, navigation, runWithAuth, showToast]);
-
-  // Initial load on mount + re-load when month changes
-  useEffect(() => { void load(); }, [load]);
-
-  // Refresh when returning from sub-screens
-  const initialLoadRef = useRef(false);
-  useFocusEffect(useCallback(() => {
-    if (!initialLoadRef.current) { initialLoadRef.current = true; return; }
-    void load();
-  }, [load]));
+  }, [financeQuery.error, showToast, navigation]);
 
   function prevMonth() {
     const [y, m] = month.split("-").map(Number);
@@ -235,7 +245,9 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
           amountCents: parseCents(iValue),
           paidAt: paidAtStr,
         }));
-        setIncomes(prev => prev.map(i => i.id === updated.id ? updated : i));
+        queryClient.setQueryData<FinancePageData>(queryKeys.financial.financePage(month), (old) =>
+          old ? { ...old, incomes: old.incomes.map(i => i.id === updated.id ? updated as FinancialIncome : i) } : old
+        );
         setEditingIncome(null);
         showToast("Receita atualizada.", "success");
       } else {
@@ -244,7 +256,9 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
           amountCents: parseCents(iValue),
           paidAt: paidAtStr,
         }));
-        setIncomes(prev => [...prev, newIncome]);
+        queryClient.setQueryData<FinancePageData>(queryKeys.financial.financePage(month), (old) =>
+          old ? { ...old, incomes: [...old.incomes, newIncome as FinancialIncome] } : old
+        );
         setAddIncomeModal(false);
         showToast("Receita registrada.", "success");
       }
@@ -267,7 +281,9 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
           category: eCat,
           paidAt: paidAtStr,
         }));
-        setExpenses(prev => prev.map(e => e.id === updated.id ? updated : e));
+        queryClient.setQueryData<FinancePageData>(queryKeys.financial.financePage(month), (old) =>
+          old ? { ...old, expenses: old.expenses.map(e => e.id === updated.id ? updated as FinancialExpense : e) } : old
+        );
         setEditingExpense(null);
         showToast("Despesa atualizada.", "success");
       } else {
@@ -277,7 +293,9 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
           category: eCat,
           paidAt: paidAtStr,
         }));
-        setExpenses(prev => [...prev, newExpense]);
+        queryClient.setQueryData<FinancePageData>(queryKeys.financial.financePage(month), (old) =>
+          old ? { ...old, expenses: [...old.expenses, newExpense as FinancialExpense] } : old
+        );
         setAddExpenseModal(false);
         showToast("Despesa registrada.", "success");
       }
