@@ -1,11 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { MvCard, MvText } from "../../components/mv";
-import { adminApi, AdminDashboardOverview } from "../../services/api/client";
+import { adminApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { AdminScaffold } from "./AdminScaffold";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 const MONTH_LABELS = [
   "Jan",
@@ -27,36 +29,25 @@ type Props = {
 };
 
 export function AdminHomeScreen({ navigation }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { showToast } = useAppState();
   const { theme } = useMvTheme();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const [loading, setLoading] = useState(false);
-  const [overview, setOverview] = useState<AdminDashboardOverview | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const payload = await runWithAuth((token) =>
-        adminApi.dashboardOverview(token, { month, year })
-      );
-      setOverview(payload);
-    } catch (error) {
-      handleScreenError({
-        error,
-        showToast,
-        fallbackMessage: "Falha ao carregar painel administrativo.",
-        navigation
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [month, navigation, runWithAuth, showToast, year]);
+  const overviewQuery = useAuthQuery(
+    queryKeys.admin.dashboard({ month, year }),
+    (token) => adminApi.dashboardOverview(token, { month, year })
+  );
+
+  const loading = overviewQuery.isLoading || overviewQuery.isFetching;
+  const overview = overviewQuery.data ?? null;
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (overviewQuery.error) {
+      handleScreenError({ error: overviewQuery.error, showToast, fallbackMessage: "Falha ao carregar painel administrativo.", navigation });
+    }
+  }, [overviewQuery.error, showToast, navigation]);
 
   const monthLabel = `${MONTH_LABELS[month - 1]} ${year}`;
   const maxUsersInDay = useMemo(() => {
@@ -94,8 +85,8 @@ export function AdminHomeScreen({ navigation }: Props) {
       <ScrollView
         refreshControl={
           <RefreshControl
-            refreshing={loading}
-            onRefresh={() => void load()}
+            refreshing={overviewQuery.isRefetching}
+            onRefresh={() => void overviewQuery.refetch()}
             tintColor={theme.primary}
             colors={[theme.primary]}
           />

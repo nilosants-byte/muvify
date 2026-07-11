@@ -12,6 +12,8 @@ import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { bookingsApi, communityApi, uploadsApi } from "../../services/api/client";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { computeUserProgress, computeAchievements } from "../../utils/gamification";
 import type { Achievement } from "../../types/gamification";
 
@@ -38,9 +40,15 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
   const [shareSelfieDataUri, setShareSelfieDataUri] = useState<string | null>(null);
   const [sharingPhoto, setSharingPhoto] = useState(false);
 
+  const bookingsQuery = useAuthQuery(
+    queryKeys.bookings.me(),
+    (token) => bookingsApi.me(token),
+    { staleTime: Infinity }
+  );
+
+  // Confetti + AsyncStorage na montagem
   useEffect(() => {
     confettiRef.current?.start();
-
     void (async () => {
       try {
         const lastWorkoutRaw = await AsyncStorage.getItem(LAST_WORKOUT_KEY);
@@ -58,11 +66,14 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
         }
       } catch { /* best effort */ }
     })();
+  }, [bookingId]);
 
+  // Calcula conquistas quando bookings carregam
+  useEffect(() => {
+    if (!bookingsQuery.data) return;
     void (async () => {
       try {
-        const bookings = await runWithAuth((token) => bookingsApi.me(token));
-        const prog = computeUserProgress(bookings as any);
+        const prog = computeUserProgress(bookingsQuery.data as any);
         const achievs = computeAchievements(prog);
 
         const seenRaw = await AsyncStorage.getItem(SEEN_ACHIEVEMENTS_KEY);
@@ -93,7 +104,7 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
         }
       } catch { /* best effort */ }
     })();
-  }, [runWithAuth, bookingId]);
+  }, [bookingsQuery.data]);
 
   async function handleShareSelfieYes() {
     if (!shareSelfieDataUri) return;

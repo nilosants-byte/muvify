@@ -2,12 +2,14 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Alert, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
-import { adminApi, AdminSupportTicket } from "../../services/api/client";
+import { adminApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { AdminScaffold } from "./AdminScaffold";
 import { formatBRDateTime } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = {
   navigation: any;
@@ -18,37 +20,30 @@ type SupportStatus = "OPEN" | "ANSWERED";
 export function AdminSupportScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
-  const [loading, setLoading] = useState(false);
-  const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
   const [status, setStatus] = useState<SupportStatus>("OPEN");
   const [answeringId, setAnsweringId] = useState<string | null>(null);
   const [responseMessage, setResponseMessage] = useState("");
   const [submittingId, setSubmittingId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const payload = await runWithAuth((token) =>
-        adminApi.listSupportTickets(token, { status, take: 100 })
-      );
-      setTickets(payload);
-    } catch (error) {
-      handleScreenError({
-        error,
-        showToast,
-        fallbackMessage: "Falha ao carregar chamados de suporte.",
-        navigation
-      });
-    } finally {
-      setLoading(false);
+  const ticketsQuery = useAuthQuery(
+    queryKeys.admin.supportTickets({ status, take: 100 }),
+    (token) => adminApi.listSupportTickets(token, { status, take: 100 })
+  );
+
+  const loading = ticketsQuery.isLoading;
+  const tickets = ticketsQuery.data ?? [];
+
+  useEffect(() => {
+    if (ticketsQuery.error) {
+      handleScreenError({ error: ticketsQuery.error, showToast, fallbackMessage: "Falha ao carregar chamados de suporte.", navigation });
     }
-  }, [navigation, runWithAuth, showToast, status]);
+  }, [ticketsQuery.error, showToast, navigation]);
 
   useFocusEffect(useCallback(() => {
     setAnsweringId(null);
     setResponseMessage("");
-    void load();
-  }, [load]));
+    void ticketsQuery.refetch();
+  }, [ticketsQuery.refetch]));
 
   async function submitReply(ticketId: string) {
     const message = responseMessage.trim();
@@ -67,7 +62,7 @@ export function AdminSupportScreen({ navigation }: Props) {
       showToast("Resposta enviada para o usuário.", "success");
       setAnsweringId(null);
       setResponseMessage("");
-      await load();
+      await ticketsQuery.refetch();
     } catch (error) {
       handleScreenError({
         error,
@@ -86,8 +81,8 @@ export function AdminSupportScreen({ navigation }: Props) {
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
-            refreshing={loading}
-            onRefresh={() => void load()}
+            refreshing={ticketsQuery.isRefetching}
+            onRefresh={() => void ticketsQuery.refetch()}
             tintColor={theme.primary}
             colors={[theme.primary]}
           />
