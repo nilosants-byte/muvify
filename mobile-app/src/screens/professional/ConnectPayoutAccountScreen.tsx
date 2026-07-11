@@ -12,6 +12,8 @@ import { MvBadge, MvButton, MvCard, MvText } from "../../components/mv";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ConnectPayoutAccount">;
 
@@ -20,23 +22,22 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
 
-  const [loading, setLoading] = useState(true);
-  const [mpStatus, setMpStatus] = useState<ProviderAccountStatus | null>(null);
+  const mpStatusQuery = useAuthQuery(
+    queryKeys.payments.providerStatus(),
+    (token) => paymentsApi.providerStatus(token).catch(() => null),
+  );
+
+  const mpStatus = (mpStatusQuery.data ?? null) as ProviderAccountStatus | null;
+  const loading = mpStatusQuery.isLoading;
   const [connectingMp, setConnectingMp] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const status = await runWithAuth((token) => paymentsApi.providerStatus(token)).catch(() => null);
-      setMpStatus(status);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar status do Mercado Pago.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [navigation, runWithAuth, showToast]);
+  useFocusEffect(useCallback(() => { void mpStatusQuery.refetch(); }, [mpStatusQuery.refetch]));
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useEffect(() => {
+    if (mpStatusQuery.error) {
+      handleScreenError({ error: mpStatusQuery.error, showToast, fallbackMessage: "Falha ao carregar status do Mercado Pago.", navigation });
+    }
+  }, [mpStatusQuery.error, showToast, navigation]);
 
   async function connectMpAccount() {
     try {
@@ -132,7 +133,7 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
             <MvButton
               variant="ghost"
               label="Atualizar status"
-              onPress={() => void load()}
+              onPress={() => void mpStatusQuery.refetch()}
             />
           ) : null}
 

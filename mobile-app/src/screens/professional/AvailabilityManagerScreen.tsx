@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { trackEvent } from "../../services/analytics";
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
@@ -14,6 +15,8 @@ import { MetricPill } from "../../components/professional/UXReformComponents";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { ServiceAreaInlineSection } from "./components/ServiceAreaInlineSection";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "AvailabilityManager">;
 
@@ -80,37 +83,36 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
 
-  const [items, setItems] = useState<Availability[]>([]);
+  const availabilityQuery = useAuthQuery(
+    queryKeys.availability.me(),
+    (token) => availabilityApi.me(token),
+  );
+
+  const items = (availabilityQuery.data ?? []) as Availability[];
+  const loading = availabilityQuery.isLoading;
+
   const [selectedDay, setSelectedDay] = useState<number>(1);
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("09:00");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [applyToMoreDays, setApplyToMoreDays] = useState(false);
   const [extraDays, setExtraDays] = useState<Set<number>>(new Set());
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await runWithAuth((token) => availabilityApi.me(token));
-      setItems(response);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "";
-      if (msg.toLowerCase().includes("perfil") || msg.toLowerCase().includes("profissional") || msg.toLowerCase().includes("provider")) {
-        showToast("Crie seu perfil profissional antes de configurar disponibilidade.", "error");
-        navigation.goBack();
-      } else {
-        handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar disponibilidade.", navigation });
-      }
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    const err = availabilityQuery.error;
+    if (!err) return;
+    const msg = err.message.toLowerCase();
+    if (msg.includes("perfil") || msg.includes("profissional") || msg.includes("provider")) {
+      showToast("Crie seu perfil profissional antes de configurar disponibilidade.", "error");
+      navigation.goBack();
+    } else {
+      handleScreenError({ error: err, showToast, fallbackMessage: "Falha ao carregar disponibilidade.", navigation });
     }
-  }, [navigation, runWithAuth, showToast]);
-
-  useEffect(() => { void load(); }, [load]);
+  }, [availabilityQuery.error, showToast, navigation]);
 
   function resetAddForm() {
     setShowAddForm(false);
@@ -165,7 +167,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
       trackEvent("availability_slot_added", { days_count: count });
       showToast(count > 1 ? `Horário adicionado em ${count} dias.` : "Horário adicionado.", "success");
       resetAddForm();
-      await load();
+      void availabilityQuery.refetch();
     } catch (error) {
       const msg = error instanceof Error ? error.message : "";
       if (msg.toLowerCase().includes("perfil") || msg.toLowerCase().includes("profissional") || msg.toLowerCase().includes("provider")) {
@@ -188,7 +190,9 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
           try {
             setDeletingId(id);
             await runWithAuth((token) => availabilityApi.delete(token, id));
-            setItems((current) => current.filter((item) => item.id !== id));
+            queryClient.setQueryData<Availability[]>(queryKeys.availability.me(), (old) =>
+              (old ?? []).filter((item) => item.id !== id)
+            );
             showToast("Horário removido.", "success");
           } catch (error) {
             handleScreenError({ error, showToast, fallbackMessage: "Falha ao remover horário.", navigation });

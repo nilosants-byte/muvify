@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import * as ImagePicker from "expo-image-picker";
@@ -20,6 +20,8 @@ import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { fileUriToDataUri, resolveMediaUrl } from "../../utils/media";
 
 type Props = BottomTabScreenProps<ProfessionalTabParamList, "ProfessionalProfileEditor">;
@@ -72,44 +74,46 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
   const [fixedLocations, setFixedLocations] = useState<ProviderFixedLocation[]>(
     Array.isArray(cachedProfile?.fixedLocations) ? (cachedProfile!.fixedLocations as ProviderFixedLocation[]) : []
   );
-  // Global state
-  const [loading, setLoading] = useState(!cachedProfile); // se já tem cache, não mostra spinner
+  const profileQuery = useAuthQuery(
+    queryKeys.user.me(),
+    (token) => userApi.me(token),
+  );
+
+  const loading = profileQuery.isLoading;
   const [savingProfile, setSavingProfile] = useState(false);
   const [hasExistingProfile, setHasExistingProfile] = useState(!!cachedProfile);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const me = await runWithAuth((token) => userApi.me(token));
-      setCurrentUser(me);
-      const profile = me.providerProfile;
-      if (profile) {
-        setHasExistingProfile(true);
-        setDisplayName(profile.displayName || me.name || "");
-        setBio(profile.bio || "");
-        setPhotoUrl(profile.photoUrl || "");
-        setPhotoPreviewUri(resolveMediaUrl(profile.photoUrl));
-        setPresentationVideoUrl((profile as any).presentationVideoUrl ?? null);
-        setVideoLocalUri(null);
-        setVideoProcessing(false);
-        setVideoRemoved(false);
-        setExperienceYears(String(profile.experienceYears || 1));
-        setPriceInput(maskPriceInput(String(profile.priceCents || 0)) || "0,00");
-        const specialties = Array.isArray(profile.specialties) ? (profile.specialties as string[]) : [];
-        setSelectedSpecialties(specialties);
-        setFixedLocations(Array.isArray(profile.fixedLocations) ? (profile.fixedLocations as ProviderFixedLocation[]) : []);
-      } else {
-        setHasExistingProfile(false);
-        setDisplayName(me.name || "");
-      }
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar perfil profissional.", navigation });
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    const me = profileQuery.data;
+    if (!me) return;
+    setCurrentUser(me);
+    const profile = me.providerProfile;
+    if (profile) {
+      setHasExistingProfile(true);
+      setDisplayName(profile.displayName || me.name || "");
+      setBio(profile.bio || "");
+      setPhotoUrl(profile.photoUrl || "");
+      setPhotoPreviewUri(resolveMediaUrl(profile.photoUrl));
+      setPresentationVideoUrl((profile as any).presentationVideoUrl ?? null);
+      setVideoLocalUri(null);
+      setVideoProcessing(false);
+      setVideoRemoved(false);
+      setExperienceYears(String(profile.experienceYears || 1));
+      setPriceInput(maskPriceInput(String(profile.priceCents || 0)) || "0,00");
+      const specialties = Array.isArray(profile.specialties) ? (profile.specialties as string[]) : [];
+      setSelectedSpecialties(specialties);
+      setFixedLocations(Array.isArray(profile.fixedLocations) ? (profile.fixedLocations as ProviderFixedLocation[]) : []);
+    } else {
+      setHasExistingProfile(false);
+      setDisplayName(me.name || "");
     }
-  }, [navigation, runWithAuth, setCurrentUser, showToast]);
+  }, [profileQuery.data, setCurrentUser]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (profileQuery.error) {
+      handleScreenError({ error: profileQuery.error, showToast, fallbackMessage: "Falha ao carregar perfil profissional.", navigation });
+    }
+  }, [profileQuery.error, showToast, navigation]);
 
   function toggleSpecialty(name: string) {
     setSelectedSpecialties((prev) =>
@@ -266,7 +270,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
         showToast("Perfil profissional criado com sucesso.", "success");
       }
       await syncCurrentUser();
-      await load();
+      void profileQuery.refetch();
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar perfil.", navigation });
     } finally {
