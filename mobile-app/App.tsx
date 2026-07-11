@@ -5,6 +5,8 @@ import React from "react";
 import { Platform } from "react-native";
 import { useFonts } from "expo-font";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./src/lib/queryClient";
 import { initSentry } from "./src/observability/sentry";
 import { RootNavigator } from "./src/navigation/root-stack";
 import { AppStateProvider } from "./src/state/AppState";
@@ -70,13 +72,15 @@ export default function App() {
 
   const content = (
     <ErrorBoundary>
-      <SafeAreaProvider>
-        <MvThemeProvider>
-          <AppStateProvider>
-            <AppContent />
-          </AppStateProvider>
-        </MvThemeProvider>
-      </SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <SafeAreaProvider>
+          <MvThemeProvider>
+            <AppStateProvider>
+              <AppContent />
+            </AppStateProvider>
+          </MvThemeProvider>
+        </SafeAreaProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 
