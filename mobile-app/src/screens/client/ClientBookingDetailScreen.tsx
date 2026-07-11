@@ -1,4 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -90,13 +92,49 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const isValidBookingId = UUID_REGEX.test(bookingId);
 
-  // ── Data state ─────────────────────────────────────────────────────────────
-  const [booking, setBooking] = useState<Booking | null>(null);
-  const [payment, setPayment] = useState<PaymentStatusResponse | null>(null);
+  // ── Data query ─────────────────────────────────────────────────────────────
+  const detailQuery = useAuthQuery(
+    queryKeys.bookings.detail(bookingId),
+    async (token) => {
+      const [bookings, paymentData] = await Promise.all([
+        bookingsApi.me(token),
+        paymentsApi.bookingPayment(token, bookingId),
+      ]);
+      const found = bookings.find((b) => b.id === bookingId) ?? null;
+      let attendanceData: AttendanceCodeResponse | null = null;
+      if (found && (found.status === "PENDING" || found.status === "CONFIRMED")) {
+        attendanceData = await bookingsApi.attendanceCode(token, found.id).catch(() => null);
+      }
+      return { booking: found, payment: paymentData, attendance: attendanceData };
+    },
+    { enabled: isValidBookingId }
+  );
+
+  const loading = detailQuery.isLoading;
+  const booking = detailQuery.data?.booking ?? null;
+  const payment = detailQuery.data?.payment ?? null;
+
+  // ── Local attendance state (also refreshable on-demand via button) ─────────
   const [attendance, setAttendance] = useState<AttendanceCodeResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+
+  useEffect(() => {
+    if (detailQuery.data) setAttendance(detailQuery.data.attendance);
+  }, [detailQuery.data]);
+
+  useEffect(() => {
+    if (!isValidBookingId) {
+      showToast("ID de agendamento inválido.", "error");
+      navigation.goBack();
+    }
+  }, [isValidBookingId, showToast, navigation]);
+
+  useEffect(() => {
+    if (detailQuery.error) {
+      handleScreenError({ error: detailQuery.error, showToast, fallbackMessage: "Falha ao carregar detalhes.", navigation });
+    }
+  }, [detailQuery.error, showToast, navigation]);
 
   // ── V2 stage state ─────────────────────────────────────────────────────────
   const [stage, setStage] = useState<Stage>("scheduled");
@@ -130,28 +168,6 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     finally { setAttendanceLoading(false); }
   }, [runWithAuth]);
 
-  const load = useCallback(async () => {
-    if (!isValidBookingId) {
-      showToast("ID de agendamento inválido.", "error");
-      navigation.goBack();
-      return;
-    }
-    try {
-      setLoading(true);
-      const [bookings, paymentStatus] = await Promise.all([
-        runWithAuth((token) => bookingsApi.me(token)),
-        runWithAuth((token) => paymentsApi.bookingPayment(token, bookingId)),
-      ]);
-      const found = bookings.find((b) => b.id === bookingId) ?? null;
-      setBooking(found);
-      setPayment(paymentStatus);
-      await loadAttendance(found);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar detalhes.", navigation });
-    } finally { setLoading(false); }
-  }, [bookingId, loadAttendance, navigation, runWithAuth, showToast]);
-
-  useEffect(() => { void load(); }, [load]);
 
   // ── Computed ───────────────────────────────────────────────────────────────
   const isActive = useMemo(() =>
