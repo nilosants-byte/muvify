@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -15,6 +15,8 @@ import { communityApi, CommunityUser } from "../../services/api/client";
 import { MvAvatar } from "../../components/mv";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { S, DISPLAY } from "../../theme/v2tokens";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "FriendsList">;
 
@@ -24,34 +26,30 @@ export function FriendsListScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
 
   const [friends, setFriends] = useState<CommunityUser[]>([]);
-  const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
   const [total, setTotal] = useState(0);
 
   // Evita chamadas duplicadas de unfollow em andamento
   const unfollowInFlightRef = useRef<Set<string>>(new Set());
   const [unfollowingIds, setUnfollowingIds] = useState<Set<string>>(new Set());
 
-  const loadPage = useCallback(async (pageNum: number, replace: boolean) => {
-    try {
-      const res = await runWithAuth((token) =>
-        communityApi.getFollowing(token, pageNum, 20)
-      );
-      setFriends((prev) => replace ? res.items : [...prev, ...res.items]);
-      setTotal(res.total);
-      setPage(pageNum);
-      setHasMore(res.items.length === 20);
-    } catch {
-      // best effort
-    }
-  }, [runWithAuth]);
+  const friendsQuery = useAuthQuery(
+    queryKeys.community.following(1, 20),
+    (token) => communityApi.getFollowing(token, 1, 20)
+  );
+
+  const loading = friendsQuery.isLoading;
 
   useEffect(() => {
-    setLoading(true);
-    loadPage(1, true).finally(() => setLoading(false));
-  }, [loadPage]);
+    const res = friendsQuery.data;
+    if (!res) return;
+    setFriends(res.items);
+    setTotal(res.total);
+    setPage(1);
+    setHasMore(res.items.length === 20);
+  }, [friendsQuery.data]);
 
   async function handleUnfollow(userId: string) {
     if (unfollowInFlightRef.current.has(userId)) return;
@@ -81,8 +79,18 @@ export function FriendsListScreen({ navigation }: Props) {
   async function loadMore() {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
-    await loadPage(page + 1, false);
-    setLoadingMore(false);
+    try {
+      const nextPage = page + 1;
+      const res = await runWithAuth((token) => communityApi.getFollowing(token, nextPage, 20));
+      setFriends((prev) => [...prev, ...res.items]);
+      setTotal(res.total);
+      setPage(nextPage);
+      setHasMore(res.items.length === 20);
+    } catch {
+      // best effort
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
   return (
