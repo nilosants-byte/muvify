@@ -11,7 +11,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { Booking, bookingsApi, paymentsApi, PaymentStatusResponse } from "../../services/api/client";
-import { _bookingDetailCache } from "./ProfessionalConfirmCompletionScreen";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
@@ -391,7 +390,6 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
                 label="Confirmar conclusão"
                 variant="outline"
                 onPress={() => {
-                  _bookingDetailCache.set(bookingId, booking);
                   navigation.navigate("ProfessionalConfirmCompletion", { bookingId });
                 }}
               />

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { FlatList, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -10,6 +10,8 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvCard, MvRefreshControl, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalArchivedRequests">;
 type ArchivedFilter = "ALL" | "REFUSED" | "EXPIRED_REFUNDED" | "ARCHIVED";
@@ -36,25 +38,22 @@ function variantFromStatus(status: ConsultancyRequest["status"]): "orange" | "re
 }
 
 export function ProfessionalArchivedRequestsScreen({ navigation }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { showToast } = useAppState();
   const { theme } = useMvTheme();
   const [filter, setFilter] = useState<ArchivedFilter>("ALL");
-  const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState<ConsultancyRequest[]>([]);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await runWithAuth((token) => consultancyApi.providerArchivedRequests(token, { status: filter }));
-      setItems(response);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar arquivados do profissional.", navigation });
-    } finally {
-      setLoading(false);
+  const archivedQuery = useAuthQuery(
+    queryKeys.consultancy.providerArchivedRequests({ status: filter }),
+    (token) => consultancyApi.providerArchivedRequests(token, { status: filter }),
+  );
+
+  const items = (archivedQuery.data ?? []) as ConsultancyRequest[];
+
+  useEffect(() => {
+    if (archivedQuery.error) {
+      handleScreenError({ error: archivedQuery.error, showToast, fallbackMessage: "Falha ao carregar arquivados do profissional.", navigation });
     }
-  }, [filter, navigation, runWithAuth, showToast]);
-
-  useEffect(() => { void load(); }, [load]);
+  }, [archivedQuery.error, showToast, navigation]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -88,7 +87,7 @@ export function ProfessionalArchivedRequestsScreen({ navigation }: Props) {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 8 }}
         data={items}
         keyExtractor={(item) => item.id}
-        refreshControl={<MvRefreshControl refreshing={loading} onRefresh={load} />}
+        refreshControl={<MvRefreshControl refreshing={archivedQuery.isRefetching} onRefresh={() => void archivedQuery.refetch()} />}
         renderItem={({ item }) => (
           <MvCard>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
@@ -104,7 +103,7 @@ export function ProfessionalArchivedRequestsScreen({ navigation }: Props) {
           </MvCard>
         )}
         ListEmptyComponent={
-          !loading ? (
+          !archivedQuery.isLoading ? (
             <View style={{ paddingTop: 40, alignItems: "center", gap: 12 }}>
               <MvText variant="body3" color="secondary">Nenhuma proposta arquivada neste filtro.</MvText>
               <TouchableOpacity

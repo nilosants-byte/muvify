@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
@@ -15,12 +15,10 @@ import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv"
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatBRDateTime } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalConfirmCompletion">;
-
-// Cache de módulo: populado por BookingDetailProfessionalScreen antes de navegar,
-// evitando buscar todos os agendamentos só para encontrar um pelo ID.
-export const _bookingDetailCache = new Map<string, Booking>();
 
 function extractQrTokenFromPayload(payload: string) {
   const raw = payload.trim();
@@ -41,8 +39,17 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
   const insets = useSafeAreaInsets();
   const bookingId = route.params.bookingId;
 
-  const [booking, setBooking] = useState<Booking | null>(null);
-  const [loading, setLoading] = useState(true);
+  const bookingQuery = useAuthQuery(
+    queryKeys.bookings.detail(bookingId),
+    async (token) => {
+      const bookings = await bookingsApi.me(token);
+      return (bookings.find((item) => item.id === bookingId) ?? null) as Booking | null;
+    },
+  );
+
+  const booking = (bookingQuery.data ?? null) as Booking | null;
+  const loading = bookingQuery.isLoading;
+
   const [submitting, setSubmitting] = useState(false);
   const [completionProof, setCompletionProof] = useState<CompletionProofInput | null>(null);
   const [attendanceCode, setAttendanceCode] = useState("");
@@ -53,25 +60,11 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
-  const load = useCallback(async () => {
-    const cached = _bookingDetailCache.get(bookingId);
-    if (cached) {
-      setBooking(cached);
-      setLoading(false);
-      return;
+  useEffect(() => {
+    if (bookingQuery.error) {
+      handleScreenError({ error: bookingQuery.error, showToast, fallbackMessage: "Falha ao carregar confirmação de conclusão.", navigation });
     }
-    try {
-      setLoading(true);
-      const bookings = await runWithAuth((token) => bookingsApi.me(token));
-      setBooking(bookings.find((item) => item.id === bookingId) ?? null);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar confirmação de conclusão.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [bookingId, navigation, runWithAuth, showToast]);
-
-  useEffect(() => { void load(); }, [load]);
+  }, [bookingQuery.error, showToast, navigation]);
 
   async function validateAttendanceCode() {
     const normalized = attendanceCode.replace(/\D/g, "");
@@ -86,7 +79,7 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast("Código presencial validado com sucesso.", "success");
       setAttendanceCode(normalized);
-      await load();
+      void bookingQuery.refetch();
     } catch (error) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao validar código presencial.", navigation });
@@ -101,7 +94,7 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
       await runWithAuth((t) => bookingsApi.verifyAttendanceQr(t, bookingId, token));
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast("QR validado com sucesso.", "success");
-      await load();
+      void bookingQuery.refetch();
     } catch (error) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao validar QR do atendimento.", navigation });
