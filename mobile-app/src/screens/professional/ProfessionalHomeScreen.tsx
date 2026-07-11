@@ -1,4 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import {
   Alert,
@@ -47,6 +48,8 @@ import { formatCurrencyBRL } from "../../utils/formatters";
 import { resolveMediaUrl } from "../../utils/media";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { MetricPill, UrgencyCard } from "../../components/professional/UXReformComponents";
 import { ProfessionalNotificationsDrawer } from "./components/ProfessionalNotificationsDrawer";
 import { ProfessionalOnboardingWizard } from "./components/ProfessionalOnboardingWizard";
@@ -147,12 +150,6 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const SCREEN_W = Dimensions.get("window").width;
   const DRAWER_W = Math.min(SCREEN_W * 0.82, 320);
 
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [timeline, setTimeline] = useState<ProviderTimelineResponse | null>(null);
-  const [availabilities, setAvailabilities] = useState<Availability[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [showCrefBanner, setShowCrefBanner] = useState(false);
   const [showProfileBanner, setShowProfileBanner] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -171,69 +168,68 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const crefChecked = useRef(false);
   const profileChecked = useRef(false);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      setLoadError(false);
-      const [bookingResponse, me, credentials, timelineResponse, availabilitiesResponse] =
-        await Promise.all([
-          runWithAuth((token) => bookingsApi.me(token)).catch(() => [] as Booking[]),
-          runWithAuth((token) => userApi.me(token)).catch(() => null),
-          runWithAuth((token) => providersApi.myCredentials(token)).catch((error) => {
-            if (error instanceof ApiError && error.status === 404) return null;
-            throw error;
-          }),
-          runWithAuth((token) => providersApi.getTimeline(token)).catch(() => null),
-          runWithAuth((token) => availabilityApi.me(token)).catch(() => [] as Availability[]),
-        ]);
+  const homeQuery = useAuthQuery(
+    queryKeys.providers.home(),
+    async (token) => {
+      const [bookingResponse, me, credentials, timelineResponse, availabilitiesResponse] = await Promise.all([
+        bookingsApi.me(token).catch(() => [] as Booking[]),
+        userApi.me(token).catch(() => null),
+        providersApi.myCredentials(token).catch((error) => {
+          if (error instanceof ApiError && error.status === 404) return null;
+          throw error;
+        }),
+        providersApi.getTimeline(token).catch(() => null),
+        availabilityApi.me(token).catch(() => [] as Availability[]),
+      ]);
+      return { bookings: bookingResponse, me, credentials, timeline: timelineResponse, availabilities: availabilitiesResponse };
+    },
+  );
 
-      const mine = bookingResponse.filter((item) => item.provider?.user?.id === user?.id);
-      setBookings(mine);
-      setTimeline(timelineResponse);
-      setAvailabilities(availabilitiesResponse);
+  const bookings = useMemo(() => {
+    const all = homeQuery.data?.bookings ?? [];
+    return all.filter((item) => item.provider?.user?.id === user?.id);
+  }, [homeQuery.data?.bookings, user?.id]);
+  const timeline = homeQuery.data?.timeline ?? null;
+  const availabilities = homeQuery.data?.availabilities ?? ([] as Availability[]);
+  const loading = homeQuery.isLoading;
+  const loadError = homeQuery.isError;
+  const refreshing = homeQuery.isRefetching;
 
-      if (me) setCurrentUser(me);
+  // Sync global user after fresh data arrives
+  useEffect(() => {
+    const me = homeQuery.data?.me;
+    if (me) setCurrentUser(me);
+  }, [homeQuery.data?.me, setCurrentUser]);
 
-      const profile = me?.providerProfile ?? null;
-      setProviderPhotoUrl(resolveMediaUrl(profile?.photoUrl, true));
-
-      if (!Boolean(profile) && !profileChecked.current) {
-        setShowProfileBanner(true);
-        profileChecked.current = true;
-      }
-      if (Boolean(profile)) setShowProfileBanner(false);
-      const crefStatus = credentials?.crefValidationStatus ?? "PENDING";
-      const crefApproved = crefStatus === "APPROVED";
-      if (Boolean(profile) && !crefChecked.current && credentials && !crefApproved) {
-        setShowCrefBanner(true);
-        crefChecked.current = true;
-      }
-      if (Boolean(profile) && crefApproved) {
-        setShowCrefBanner(false);
-      }
-    } catch (error) {
-      setLoadError(true);
-      handleScreenError({
-        error,
-        showToast,
-        fallbackMessage: "Falha ao carregar painel profissional.",
-        navigation,
-      });
-    } finally {
-      setLoading(false);
+  // CREF / profile banners — run only once per session via refs
+  useEffect(() => {
+    const data = homeQuery.data;
+    if (!data) return;
+    const profile = data.me?.providerProfile ?? null;
+    if (!Boolean(profile) && !profileChecked.current) {
+      setShowProfileBanner(true);
+      profileChecked.current = true;
     }
-  }, [navigation, runWithAuth, setCurrentUser, showToast, user?.id]);
+    if (Boolean(profile)) setShowProfileBanner(false);
+    const crefStatus = data.credentials?.crefValidationStatus ?? "PENDING";
+    const crefApproved = crefStatus === "APPROVED";
+    if (Boolean(profile) && !crefChecked.current && data.credentials && !crefApproved) {
+      setShowCrefBanner(true);
+      crefChecked.current = true;
+    }
+    if (Boolean(profile) && crefApproved) setShowCrefBanner(false);
+  }, [homeQuery.data]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (homeQuery.error) {
+      handleScreenError({ error: homeQuery.error, showToast, fallbackMessage: "Falha ao carregar painel profissional.", navigation });
+    }
+  }, [homeQuery.error, showToast, navigation]);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
+  const onRefresh = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await load();
-    setRefreshing(false);
-  }, [load]);
+    void homeQuery.refetch();
+  };
 
   useEffect(() => {
     setProviderPhotoUrl(resolveMediaUrl(user?.providerProfile?.photoUrl, true));
@@ -732,7 +728,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
             Verifique sua conexão e tente novamente.
           </MvText>
           <PressableScale
-            onPress={() => void load()}
+            onPress={() => void homeQuery.refetch()}
             scale={0.96}
             style={{ paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, backgroundColor: theme.primary }}
           >
