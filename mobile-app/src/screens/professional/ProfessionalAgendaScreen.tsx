@@ -20,6 +20,7 @@ import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQueryClient } from "@tanstack/react-query";
 import { ProfessionalTabParamList } from "../../navigation/route-types";
 import {
   Availability,
@@ -40,6 +41,8 @@ import { SkeletonAgendaList } from "../../components/polish/SkeletonCard";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { handleScreenError } from "../shared/api-helpers";
 import { MetricPill } from "../../components/professional/UXReformComponents";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 const MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const MONTHS_FULL_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -145,18 +148,14 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
   const { runWithAuth, showToast, user } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<AgendaTab>("day");
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [availabilities, setAvailabilities] = useState<Availability[]>([]);
-  const [manualBlocks, setManualBlocks] = useState<ManualBlock[]>([]);
-  const [offAppStudents, setOffAppStudents] = useState<FinancialStudent[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(() => startOfDay(new Date()));
   const [calendarCursor, setCalendarCursor] = useState(() => {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() };
   });
-  const [loading, setLoading] = useState(true);
   const [blockModalVisible, setBlockModalVisible] = useState(false);
   const [blockStart, setBlockStart] = useState("08:00");
   const [blockEnd, setBlockEnd] = useState("09:00");
@@ -171,39 +170,45 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
   const [deletingAvailId, setDeletingAvailId] = useState<string | null>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
+  const agendaQuery = useAuthQuery(
+    queryKeys.agenda.professional(),
+    async (token) => {
       const [bookingsPayload, availabilitiesPayload, blocksPayload, studentsPayload] = await Promise.all([
-        runWithAuth((token) => bookingsApi.me(token)),
-        runWithAuth((token) => availabilityApi.me(token)),
-        runWithAuth((token) => manualBlocksApi.list(token)),
-        runWithAuth((token) => financialApi.listStudents(token)),
+        bookingsApi.me(token),
+        availabilityApi.me(token),
+        manualBlocksApi.list(token),
+        financialApi.listStudents(token),
       ]);
-      const mine = bookingsPayload
-        .filter((item) => item.provider?.user?.id === user?.id)
-        .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
-      setBookings(mine);
-      setAvailabilities(availabilitiesPayload);
-      setManualBlocks(
-        blocksPayload.map((b) => ({
-          id: b.id,
-          dateKey: b.date,
-          startTime: b.startTime,
-          endTime: b.endTime,
-          label: b.label,
-          location: b.location ?? undefined,
-        }))
-      );
-      setOffAppStudents(studentsPayload.filter((s) => s.isActive && (s.type === "PRESENTIAL" || s.type === "BOTH") && Array.isArray(s.weeklySchedule) && (s.weeklySchedule as WeeklyScheduleSlot[]).length > 0));
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar agenda.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [navigation, runWithAuth, showToast, user?.id]);
+      return {
+        bookings: bookingsPayload
+          .filter((item) => item.provider?.user?.id === user?.id)
+          .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()),
+        availabilities: availabilitiesPayload,
+        manualBlocks: blocksPayload.map((b) => ({
+          id: b.id, dateKey: b.date, startTime: b.startTime,
+          endTime: b.endTime, label: b.label, location: b.location ?? undefined,
+        })),
+        offAppStudents: studentsPayload.filter(
+          (s) => s.isActive && (s.type === "PRESENTIAL" || s.type === "BOTH") &&
+          Array.isArray(s.weeklySchedule) && (s.weeklySchedule as WeeklyScheduleSlot[]).length > 0
+        ),
+      };
+    },
+  );
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  const bookings = agendaQuery.data?.bookings ?? ([] as Booking[]);
+  const availabilities = agendaQuery.data?.availabilities ?? ([] as Availability[]);
+  const manualBlocks = agendaQuery.data?.manualBlocks ?? ([] as ManualBlock[]);
+  const offAppStudents = agendaQuery.data?.offAppStudents ?? ([] as FinancialStudent[]);
+  const loading = agendaQuery.isLoading;
+
+  useEffect(() => {
+    if (agendaQuery.error) {
+      handleScreenError({ error: agendaQuery.error, showToast, fallbackMessage: "Falha ao carregar agenda.", navigation });
+    }
+  }, [agendaQuery.error, showToast, navigation]);
+
+  useFocusEffect(useCallback(() => { void agendaQuery.refetch(); }, [agendaQuery.refetch]));
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -325,17 +330,13 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
           location: blockLocation.trim() || undefined,
         })
       );
-      setManualBlocks((current) => [
-        ...current,
-        {
-          id: created.id,
-          dateKey: created.date,
-          startTime: created.startTime,
-          endTime: created.endTime,
-          label: created.label,
-          location: created.location ?? undefined,
-        },
-      ]);
+      queryClient.setQueryData<typeof agendaQuery.data>(queryKeys.agenda.professional(), (old) => ({
+        ...old!,
+        manualBlocks: [
+          ...(old?.manualBlocks ?? []),
+          { id: created.id, dateKey: created.date, startTime: created.startTime, endTime: created.endTime, label: created.label, location: created.location ?? undefined },
+        ],
+      }));
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       trackEvent("time_block_added");
       showToast("Horário bloqueado.", "success");
@@ -359,7 +360,10 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
         onPress: async () => {
           try {
             await runWithAuth((token) => manualBlocksApi.delete(token, id));
-            setManualBlocks((current) => current.filter((b) => b.id !== id));
+            queryClient.setQueryData<typeof agendaQuery.data>(queryKeys.agenda.professional(), (old) => ({
+              ...old!,
+              manualBlocks: (old?.manualBlocks ?? []).filter((b) => b.id !== id),
+            }));
             showToast("Bloqueio removido.", "success");
           } catch (error) {
             handleScreenError({ error, showToast, fallbackMessage: "Não foi possível remover bloqueio.", navigation });
@@ -438,7 +442,10 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
           )
         )
       );
-      setAvailabilities((prev) => [...prev, ...results]);
+      queryClient.setQueryData<typeof agendaQuery.data>(queryKeys.agenda.professional(), (old) => ({
+        ...old!,
+        availabilities: [...(old?.availabilities ?? []), ...results],
+      }));
       setAvailModalVisible(false);
       setAvailStart("08:00");
       setAvailEnd("09:00");
@@ -462,7 +469,10 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
           try {
             setDeletingAvailId(id);
             await runWithAuth((token) => availabilityApi.delete(token, id));
-            setAvailabilities((prev) => prev.filter((a) => a.id !== id));
+            queryClient.setQueryData<typeof agendaQuery.data>(queryKeys.agenda.professional(), (old) => ({
+              ...old!,
+              availabilities: (old?.availabilities ?? []).filter((a) => a.id !== id),
+            }));
             showToast("Horário removido.", "success");
           } catch (error) {
             handleScreenError({ error, showToast, fallbackMessage: "Falha ao remover horário.", navigation });
@@ -533,7 +543,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
           refreshControl={
-            <MvRefreshControl refreshing={loading} onRefresh={() => void load()} />
+            <MvRefreshControl refreshing={loading} onRefresh={() => void agendaQuery.refetch()} />
           }
           ListHeaderComponent={
             <View>

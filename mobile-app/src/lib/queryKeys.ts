@@ -48,6 +48,13 @@ export const queryKeys = {
     studentAnamnesis: (clientId: string) => ["providers", "studentAnamnesis", clientId] as const,
     timeline: () => ["providers", "timeline"] as const,
     profile: () => ["providers", "profile"] as const,
+    home: () => ["providers", "home"] as const,
+  },
+
+  // ── Agenda (dados combinados por tela) ─────────────────────────────────────
+  agenda: {
+    all: ["agenda"] as const,
+    professional: () => ["agenda", "professional"] as const,
   },
 
   // ── Disponibilidade ────────────────────────────────────────────────────────
