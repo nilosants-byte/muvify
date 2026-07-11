@@ -19,6 +19,7 @@ export const queryKeys = {
     anamnesis: () => ["user", "anamnesis"] as const,
     recoveryEmail: () => ["user", "recoveryEmail"] as const,
     bankAccount: () => ["user", "bankAccount"] as const,
+    profilePage: () => ["user", "profilePage"] as const,
   },
 
   // ── Notificações ───────────────────────────────────────────────────────────

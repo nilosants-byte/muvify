@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
+﻿import React, { useState } from "react";
 import { Alert, FlatList, RefreshControl, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
@@ -12,6 +12,8 @@ import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { MvAvatar } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = BottomTabScreenProps<ClientTabParamList, "Favorites">;
 
@@ -20,22 +22,19 @@ export function FavoritesScreen({ navigation }: Props) {
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Favorite[]>([]);
-  const [loading, setLoading] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await runWithAuth((token) => favoritesApi.list(token));
-      setItems(response);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar favoritos." });
-    } finally {
-      setLoading(false);
-    }
-  }, [runWithAuth, showToast]);
+  const favQuery = useAuthQuery(
+    queryKeys.favorites.list(),
+    (token) => favoritesApi.list(token),
+  );
 
-  useEffect(() => { void load(); }, [load]);
+  // Sync local items when fresh data arrives (not during active optimistic remove)
+  React.useEffect(() => {
+    if (favQuery.data && !removingId) {
+      setItems(favQuery.data as Favorite[]);
+    }
+  }, [favQuery.data, removingId]);
 
   const goToDetail = (providerId: string) => {
     const parent = navigation.getParent<any>();
@@ -94,16 +93,16 @@ export function FavoritesScreen({ navigation }: Props) {
         </View>
       </View>
 
-      {loading && items.length === 0 ? (
+      {favQuery.isLoading && items.length === 0 ? (
         <View style={{ paddingHorizontal: S.px, paddingTop: 16, gap: 10 }}>
           {[0, 1, 2, 3].map((i) => <SkeletonCard key={i} />)}
         </View>
       ) : null}
       <FlatList
         contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, gap: 10, paddingTop: 16 }}
-        data={loading && items.length === 0 ? [] : items}
+        data={favQuery.isLoading && items.length === 0 ? [] : items}
         keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={loading && items.length > 0} onRefresh={load} tintColor={theme.primary} colors={[theme.primary]} />}
+        refreshControl={<RefreshControl refreshing={favQuery.isRefetching} onRefresh={() => void favQuery.refetch()} tintColor={theme.primary} colors={[theme.primary]} />}
         renderItem={({ item }) => {
           const provider = item.provider;
           const rating = averageToFive(provider?.avgRating ?? provider?.averageRating);
@@ -146,7 +145,7 @@ export function FavoritesScreen({ navigation }: Props) {
           );
         }}
         ListEmptyComponent={
-          !loading ? (
+          !favQuery.isLoading ? (
             <View style={{ paddingTop: 60, alignItems: "center", gap: 10 }}>
               <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="heart-outline" size={30} color={theme.primary} />

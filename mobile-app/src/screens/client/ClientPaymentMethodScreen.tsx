@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import {
   ScrollView,
   StatusBar,
@@ -15,6 +15,8 @@ import { ClientStackParamList } from "../../navigation/route-types";
 import { useAppState } from "../../state/AppState";
 import { handleScreenError } from "../shared/api-helpers";
 import { useMvTheme } from "../../theme/MvThemeContext";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { hapticCta, hapticPaymentSuccess } from "../../utils/haptics";
 
@@ -151,31 +153,31 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
 
-  const [configured, setConfigured] = useState(false);
-  const [loadingStatus, setLoadingStatus] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [mpPublicKey, setMpPublicKey] = useState("");
   const [form, setForm] = useState<CardForm>({
     number: "", expiry: "", cvv: "", holderName: "", cpf: "", nickname: ""
   });
 
-  const loadStatus = useCallback(async () => {
-    try {
-      setLoadingStatus(true);
+  const paymentQuery = useAuthQuery(
+    queryKeys.payments.customerStatus(),
+    async (token) => {
       const [status, setup] = await Promise.all([
-        runWithAuth((token) => paymentsApi.customerStatus(token)),
-        runWithAuth((token) => paymentsApi.createCustomerSetupIntent(token))
+        paymentsApi.customerStatus(token),
+        paymentsApi.createCustomerSetupIntent(token),
       ]);
-      setConfigured(Boolean(status.configured));
-      if (setup.mpPublicKey) setMpPublicKey(setup.mpPublicKey);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao consultar método de pagamento." });
-    } finally {
-      setLoadingStatus(false);
-    }
-  }, [runWithAuth, showToast]);
+      return { configured: Boolean(status.configured), mpPublicKey: setup.mpPublicKey ?? "" };
+    },
+  );
 
-  useEffect(() => { void loadStatus(); }, [loadStatus]);
+  const configured = paymentQuery.data?.configured ?? false;
+  const mpPublicKey = paymentQuery.data?.mpPublicKey ?? "";
+  const loadingStatus = paymentQuery.isLoading;
+
+  useEffect(() => {
+    if (paymentQuery.error) {
+      handleScreenError({ error: paymentQuery.error, showToast, fallbackMessage: "Falha ao consultar método de pagamento." });
+    }
+  }, [paymentQuery.error, showToast]);
 
   async function saveCard() {
     if (!form.number.replace(/\s/g, "") || !form.expiry || !form.cvv || !form.holderName || !form.cpf) {
@@ -209,7 +211,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
       hapticPaymentSuccess();
       showToast("Cartão salvo com sucesso.", "success");
       setForm({ number: "", expiry: "", cvv: "", holderName: "", cpf: "", nickname: "" });
-      await loadStatus();
+      void paymentQuery.refetch();
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar cartão." });
     } finally {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -12,6 +12,8 @@ import { MvInput } from "../../components/mv/MvInput";
 import { MvText } from "../../components/mv/MvText";
 import { handleScreenError } from "../shared/api-helpers";
 import { useMvTheme } from "../../theme/MvThemeContext";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { C, S } from "../../theme/v2tokens";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 
@@ -285,7 +287,6 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
 
   const [answers, setAnswers] = useState<AnamnesisAnswers>(buildInitialAnswers());
   const [status, setStatus] = useState<"DRAFT" | "COMPLETED">("DRAFT");
-  const [loading, setLoading] = useState(true);
   const [savingDraft, setSavingDraft] = useState(false);
   const [savingFinal, setSavingFinal] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -300,26 +301,28 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
     }));
   };
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const payload = await runWithAuth((token) => userApi.myAnamnesis(token));
-      setStatus(payload.status);
-      setAnswers(buildInitialAnswers(payload.answers));
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar anamnese.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [navigation, runWithAuth, showToast]);
+  const anamnesisQuery = useAuthQuery(
+    queryKeys.user.anamnesis(),
+    (token) => userApi.myAnamnesis(token),
+  );
 
-  useEffect(() => { void load(); }, [load]);
+  const loading = anamnesisQuery.isLoading;
 
   useEffect(() => {
-    if (loading) return;
-    setWeightRaw(stripUnit(answers.personalData?.weightKg ?? "", "kg"));
-    setHeightRaw(stripUnit(answers.personalData?.heightM ?? "", "m"));
-  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
+    const data = anamnesisQuery.data;
+    if (!data) return;
+    setStatus(data.status);
+    const initialAnswers = buildInitialAnswers(data.answers);
+    setAnswers(initialAnswers);
+    setWeightRaw(stripUnit(initialAnswers.personalData?.weightKg ?? "", "kg"));
+    setHeightRaw(stripUnit(initialAnswers.personalData?.heightM ?? "", "m"));
+  }, [anamnesisQuery.data]);
+
+  useEffect(() => {
+    if (anamnesisQuery.error) {
+      handleScreenError({ error: anamnesisQuery.error, showToast, fallbackMessage: "Falha ao carregar anamnese.", navigation });
+    }
+  }, [anamnesisQuery.error, showToast, navigation]);
 
   const missingCount = useMemo(() => missingRequired(answers), [answers]);
 
