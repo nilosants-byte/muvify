@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { FlatList, RefreshControl, StatusBar, Text, TouchableOpacity, View } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
@@ -10,6 +10,8 @@ import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { formatBRDate } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
@@ -39,29 +41,25 @@ function variantFromStatus(status: ConsultancyRequest["status"]): "orange" | "re
 }
 
 export function ArchivedRequestsScreen({ navigation }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<ArchivedFilter>("ALL");
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
-  const [items, setItems] = useState<ConsultancyRequest[]>([]);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      setLoadError(false);
-      const result = await runWithAuth((token) => consultancyApi.myArchivedRequests(token, { status: filter }));
-      setItems(result);
-    } catch (error) {
-      setLoadError(true);
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar propostas arquivadas.", navigation });
-    } finally {
-      setLoading(false);
+  const archivedQuery = useAuthQuery(
+    queryKeys.consultancy.myArchivedRequests({ status: filter }),
+    (token) => consultancyApi.myArchivedRequests(token, { status: filter })
+  );
+
+  const loading = archivedQuery.isLoading;
+  const loadError = archivedQuery.isError;
+  const items = archivedQuery.data ?? [];
+
+  useEffect(() => {
+    if (archivedQuery.error) {
+      handleScreenError({ error: archivedQuery.error, showToast, fallbackMessage: "Falha ao carregar propostas arquivadas.", navigation });
     }
-  }, [filter, navigation, runWithAuth, showToast]);
-
-  useEffect(() => { void load(); }, [load]);
+  }, [archivedQuery.error, showToast, navigation]);
 
   const orderedItems = useMemo(() =>
     [...items].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
@@ -121,7 +119,7 @@ export function ArchivedRequestsScreen({ navigation }: Props) {
         contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, gap: 10 }}
         data={loading && items.length === 0 ? [] : orderedItems}
         keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={loading && items.length > 0} onRefresh={load} tintColor={theme.primary} colors={[theme.primary]} />}
+        refreshControl={<RefreshControl refreshing={archivedQuery.isRefetching} onRefresh={() => void archivedQuery.refetch()} tintColor={theme.primary} colors={[theme.primary]} />}
         renderItem={({ item }) => {
           const bs = variantFromStatus(item.status);
           const badgeColor = bs === "orange" ? C.amber : bs === "red" ? theme.danger : bs === "blue" ? C.sky : theme.text2;
