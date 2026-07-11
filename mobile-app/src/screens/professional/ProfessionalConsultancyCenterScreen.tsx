@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as Haptics from "expo-haptics";
 import { trackEvent } from "../../services/analytics";
 import { Alert, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
@@ -26,6 +26,17 @@ import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { formatBRDate, formatCurrencyBRL, maskDateInputBR, maskPriceInput } from "../../utils/formatters";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
+
+type CenterData = {
+  settings: { enabled: boolean; responseSlaDays: number } | null;
+  offers: ProviderServiceOffer[];
+  requests: ConsultancyRequest[];
+  crefValidated: boolean;
+  prebuiltPlanCount: number;
+  profileMissing: boolean;
+};
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalConsultancyCenter">;
 type CenterTab = "dashboard" | "offers" | "requests";
@@ -136,10 +147,6 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
 
   const iconColor = theme.mode === "dark" ? "#D8E0D8" : "#394239";
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
-  const [crefValidated, setCrefValidated] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [creatingOffer, setCreatingOffer] = useState(false);
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
@@ -149,7 +156,6 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
   const [selectedTab, setSelectedTab] = useState<CenterTab>("dashboard");
   const [settingsEnabled, setSettingsEnabled] = useState(false);
   const [responseSlaDays, setResponseSlaDays] = useState("7");
-  const [prebuiltPlanCount, setPrebuiltPlanCount] = useState(0);
   const [offers, setOffers] = useState<ProviderServiceOffer[]>([]);
   const [requests, setRequests] = useState<ConsultancyRequest[]>([]);
   const [selectedOfferByRequest, setSelectedOfferByRequest] = useState<Record<string, string>>({});
@@ -171,6 +177,75 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
 
   const mainScrollRef = useRef<ScrollView>(null);
   const tabsSectionYRef = useRef(0);
+
+  const centerQuery = useAuthQuery(
+    queryKeys.consultancy.providerCenter(),
+    async (token) => {
+      const [providerSettings, providerOffers, providerRequests, credentialsResult, providerPlans] = await Promise.all([
+        consultancyApi.providerSettings(token).catch((err) => {
+          const msg = err instanceof Error ? err.message : "";
+          const isMissing =
+            (err instanceof ApiError && err.status === 404) ||
+            msg.toLowerCase().includes("perfil profissional") ||
+            msg.toLowerCase().includes("provider profile");
+          if (isMissing) return null;
+          throw err;
+        }),
+        consultancyApi.providerOffers(token).catch(() => [] as ProviderServiceOffer[]),
+        consultancyApi.providerRequests(token).catch(() => [] as ConsultancyRequest[]),
+        providersApi.myCredentials(token).catch(() => null),
+        consultancyApi.providerPlans(token).catch(() => [] as unknown[]),
+      ]);
+      const credentials = credentialsResult as { crefValidationStatus?: string } | null;
+      const planList = providerPlans as Array<{ isPrebuilt?: boolean }>;
+      return {
+        settings: providerSettings ? (providerSettings as { enabled: boolean; responseSlaDays: number }) : null,
+        offers: providerOffers,
+        requests: providerRequests,
+        crefValidated: credentials?.crefValidationStatus === "APPROVED",
+        prebuiltPlanCount: planList.filter((item) => item.isPrebuilt !== false).length,
+        profileMissing: providerSettings === null,
+      } as CenterData;
+    },
+  );
+
+  const needsProfileSetup = centerQuery.data?.profileMissing ?? false;
+  const crefValidated = centerQuery.data?.crefValidated ?? false;
+  const prebuiltPlanCount = centerQuery.data?.prebuiltPlanCount ?? 0;
+  const loading = centerQuery.isLoading;
+
+  useEffect(() => {
+    const data = centerQuery.data;
+    if (!data) return;
+    setOffers(data.offers);
+    setRequests(data.requests);
+    if (!data.profileMissing && data.settings) {
+      setSettingsEnabled(data.settings.enabled);
+      setResponseSlaDays(String(data.settings.responseSlaDays));
+    }
+    const availableOnlineOffers = data.offers.filter(
+      (item) => item.isActive !== false &&
+        (item.kind === "ONLINE_CONSULTANCY" || item.kind === "ONLINE_CONSULTANCY_SPECIALIZED" || item.kind === "COMBO")
+    );
+    setResponseTextByRequest((current) => {
+      const next = { ...current };
+      data.requests.forEach((item) => { if (!next[item.id]) next[item.id] = ""; });
+      return next;
+    });
+    setSelectedOfferByRequest((current) => {
+      const next = { ...current };
+      data.requests.forEach((item) => {
+        if (!next[item.id] && availableOnlineOffers[0]) next[item.id] = availableOnlineOffers[0].id;
+      });
+      return next;
+    });
+  }, [centerQuery.data]);
+
+  useEffect(() => {
+    if (centerQuery.error) {
+      handleScreenError({ error: centerQuery.error, showToast, fallbackMessage: "Falha ao carregar central de consultoria.", navigation });
+    }
+  }, [centerQuery.error, showToast, navigation]);
 
   useEffect(() => {
     if (route.params?.openTab === "offers") {
@@ -293,83 +368,10 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
     [readinessChecklist]
   );
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [providerSettings, providerOffers, providerRequests, credentialsResult, providerPlans] = await Promise.all([
-        runWithAuth((token) => consultancyApi.providerSettings(token)).catch((err) => {
-          const msg = err instanceof Error ? err.message : "";
-          const profileMissing =
-            (err instanceof ApiError && err.status === 404) ||
-            msg.toLowerCase().includes("perfil profissional") ||
-            msg.toLowerCase().includes("provider profile");
-          if (profileMissing) return null;
-          throw err;
-        }),
-        runWithAuth((token) => consultancyApi.providerOffers(token)).catch(() => [] as ProviderServiceOffer[]),
-        runWithAuth((token) => consultancyApi.providerRequests(token)).catch(() => [] as ConsultancyRequest[]),
-        runWithAuth((token) => providersApi.myCredentials(token)).catch(() => null),
-        runWithAuth((token) => consultancyApi.providerPlans(token)).catch(() => []),
-      ]);
-
-      const profileMissing = providerSettings === null;
-      const availableOnlineOffers = providerOffers.filter(
-        (item) =>
-          item.isActive !== false &&
-          (item.kind === "ONLINE_CONSULTANCY" || item.kind === "ONLINE_CONSULTANCY_SPECIALIZED" || item.kind === "COMBO")
-      );
-
-      setNeedsProfileSetup(profileMissing);
-      const credentials = credentialsResult as
-        | {
-            crefValidatedAt?: string | null;
-            crefValidationStatus?: "PENDING" | "IN_REVIEW" | "APPROVED" | "REJECTED";
-          }
-        | null;
-      setCrefValidated(credentials?.crefValidationStatus === "APPROVED");
-      setPrebuiltPlanCount((providerPlans as Array<{ isPrebuilt?: boolean }>).filter((item) => item.isPrebuilt !== false).length);
-      setOffers(providerOffers);
-      setRequests(providerRequests);
-
-      if (!profileMissing && providerSettings) {
-        setSettingsEnabled(providerSettings.enabled);
-        setResponseSlaDays(String(providerSettings.responseSlaDays));
-      }
-
-      setResponseTextByRequest((current) => {
-        const next = { ...current };
-        providerRequests.forEach((item) => {
-          if (!next[item.id]) next[item.id] = "";
-        });
-        return next;
-      });
-
-      setSelectedOfferByRequest((current) => {
-        const next = { ...current };
-        providerRequests.forEach((item) => {
-          if (!next[item.id] && availableOnlineOffers[0]) {
-            next[item.id] = availableOnlineOffers[0].id;
-          }
-        });
-        return next;
-      });
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar central de consultoria.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [navigation, runWithAuth, showToast]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
+  async function onRefresh() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await load();
-    setRefreshing(false);
-  }, [load]);
+    void centerQuery.refetch();
+  }
 
   async function toggleOnlineSetting(enabled: boolean) {
     try {
@@ -502,7 +504,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
       }
 
       resetOfferForm();
-      await load();
+      void centerQuery.refetch();
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: editingOfferId ? "Falha ao atualizar oferta." : "Falha ao criar oferta.", navigation });
     } finally {
@@ -538,7 +540,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       showToast("Resposta enviada ao aluno.", "success");
       setResponseTextByRequest((current) => ({ ...current, [requestId]: "" }));
-      await load();
+      void centerQuery.refetch();
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao responder solicitação.", navigation });
     } finally {
@@ -717,7 +719,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 12 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <MvRefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />
+          <MvRefreshControl refreshing={centerQuery.isRefetching} onRefresh={() => void onRefresh()} />
         }
       >
         <MvCard style={{ padding: 0, overflow: "hidden" }}>
