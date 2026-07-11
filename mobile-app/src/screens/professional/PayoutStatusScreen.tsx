@@ -23,6 +23,8 @@ import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { AnimatedBar } from "../../components/professional/HomeWidgets";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "PayoutStatus">;
 type RevenueMonth = { key: string; label: string; gross: number };
@@ -182,16 +184,11 @@ function MetricCard({
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
 export function PayoutStatusScreen({ navigation }: Props) {
-  const { runWithAuth, showToast, user } = useAppState();
+  const { showToast, user } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const isLight = theme.mode === "light";
 
-  const [account, setAccount] = useState<ProviderBankAccount | null>(null);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [payouts, setPayouts] = useState<FinancialPayouts | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [firstPaymentBannerVisible, setFirstPaymentBannerVisible] = useState(false);
   const [monthlyGoal, setMonthlyGoal] = useState(0);
   const [editingGoal, setEditingGoal] = useState(false);
@@ -212,37 +209,35 @@ export function PayoutStatusScreen({ navigation }: Props) {
     chartTranslateY.value = withDelay(120, withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) }));
   }, []);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
+  const payoutQuery = useAuthQuery(
+    queryKeys.payments.providerPayouts(),
+    async (token) => {
       const [accountResponse, bookingsResponse, payoutsResponse] = await Promise.all([
-        runWithAuth((token) => userApi.providerBankAccount(token)).catch(() => null),
-        runWithAuth((token) => bookingsApi.me(token)),
-        runWithAuth((token) => financialApi.payouts(token)).catch(() => null),
+        userApi.providerBankAccount(token).catch(() => null as ProviderBankAccount | null),
+        bookingsApi.me(token),
+        financialApi.payouts(token).catch(() => null as FinancialPayouts | null),
       ]);
-      setAccount(accountResponse);
-      setBookings(bookingsResponse);
-      setPayouts(payoutsResponse);
-    } catch (error) {
-      handleScreenError({
-        error,
-        showToast,
-        fallbackMessage: "Falha ao consultar status financeiro.",
-        navigation,
-      });
-    } finally {
-      setLoading(false);
+      return { account: accountResponse, bookings: bookingsResponse, payouts: payoutsResponse };
+    },
+  );
+  const account = payoutQuery.data?.account ?? null;
+  const bookings = payoutQuery.data?.bookings ?? ([] as Booking[]);
+  const payouts = payoutQuery.data?.payouts ?? null;
+  const loading = payoutQuery.isLoading;
+  const refreshing = payoutQuery.isRefetching;
+
+  useEffect(() => {
+    if (payoutQuery.error) {
+      handleScreenError({ error: payoutQuery.error, showToast, fallbackMessage: "Falha ao consultar status financeiro.", navigation });
     }
-  }, [navigation, runWithAuth, showToast]);
+  }, [payoutQuery.error, showToast, navigation]);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(useCallback(() => { void payoutQuery.refetch(); }, [payoutQuery.refetch]));
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
+  const onRefresh = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await load();
-    setRefreshing(false);
-  }, [load]);
+    void payoutQuery.refetch();
+  };
 
   // ── Métricas derivadas ────────────────────────────────────────────────────
   const completedBookings = useMemo(

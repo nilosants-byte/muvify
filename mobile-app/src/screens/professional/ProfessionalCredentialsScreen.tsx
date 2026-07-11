@@ -6,6 +6,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQueryClient } from "@tanstack/react-query";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { providersApi, uploadsApi, ProviderCredentials, ProviderCredentialsDocument } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
@@ -17,6 +18,8 @@ import { ProfessionalScreenHeader } from "../../components/navigation/Profession
 import { formatBRDate } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { fileUriToDataUri } from "../../utils/media";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalCredentials">;
 type AttachedDoc = { name: string; uri: string; mimeType: string };
@@ -146,31 +149,37 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
 
-  const [credentials, setCredentials] = useState<ProviderCredentials | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [crefNumber, setCrefNumber] = useState("");
   const [frontDoc, setFrontDoc] = useState<AttachedDoc | null>(null);
   const [backDoc, setBackDoc] = useState<AttachedDoc | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await runWithAuth((token) => providersApi.myCredentials(token)) as ProviderCredentials;
-      setCredentials(data);
-      setCrefNumber(data.crefNumber ?? "");
-      const docs = data.credentials ?? [];
-      if (docs[0]) setFrontDoc({ name: docs[0].name, uri: docs[0].uri, mimeType: docs[0].mimeType ?? "application/octet-stream" });
-      if (docs[1]) setBackDoc({ name: docs[1].name, uri: docs[1].uri, mimeType: docs[1].mimeType ?? "application/octet-stream" });
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar credenciais.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [navigation, runWithAuth, showToast]);
+  const credentialsQuery = useAuthQuery(
+    queryKeys.providers.myCredentials(),
+    (t) => providersApi.myCredentials(t) as Promise<ProviderCredentials>,
+  );
+  const credentials = credentialsQuery.data ?? null;
+  const loading = credentialsQuery.isLoading;
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  // Sync form fields when data loads or refreshes on focus
+  useEffect(() => {
+    const data = credentialsQuery.data;
+    if (!data) return;
+    setCrefNumber(data.crefNumber ?? "");
+    const docs = data.credentials ?? [];
+    if (docs[0]) setFrontDoc({ name: docs[0].name, uri: docs[0].uri, mimeType: docs[0].mimeType ?? "application/octet-stream" });
+    if (docs[1]) setBackDoc({ name: docs[1].name, uri: docs[1].uri, mimeType: docs[1].mimeType ?? "application/octet-stream" });
+  }, [credentialsQuery.data]);
+
+  useEffect(() => {
+    if (credentialsQuery.error) {
+      handleScreenError({ error: credentialsQuery.error, showToast, fallbackMessage: "Falha ao carregar credenciais.", navigation });
+    }
+  }, [credentialsQuery.error, showToast, navigation]);
+
+  useFocusEffect(useCallback(() => { void credentialsQuery.refetch(); }, [credentialsQuery.refetch]));
 
   function applyPickedDoc(side: "front" | "back", doc: AttachedDoc) {
     if (side === "front") setFrontDoc(doc);
@@ -255,7 +264,7 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
           credentials: [frontEntry, backEntry],
         });
       }) as ProviderCredentials;
-      setCredentials(updated);
+      queryClient.setQueryData(queryKeys.providers.myCredentials(), updated);
       showToast("Credenciais salvas com sucesso.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar credenciais.", navigation });

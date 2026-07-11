@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
+﻿import React, { useEffect } from "react";
 import { ActivityIndicator, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,6 +10,8 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvCard, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalStudentAnamnesis">;
 
@@ -152,27 +154,23 @@ function AnamnesisSection({ sectionKey, data }: { sectionKey: string; data: Reco
 }
 
 export function ProfessionalStudentAnamnesisScreen({ navigation, route }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const { clientId, clientName } = route.params;
 
-  const [anamnesis, setAnamnesis] = useState<StudentAnamnesisResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const anamnesisQuery = useAuthQuery(
+    queryKeys.providers.studentAnamnesis(clientId),
+    (t) => providersApi.getStudentAnamnesis(t, clientId),
+  );
+  const anamnesis = anamnesisQuery.data ?? null;
+  const loading = anamnesisQuery.isLoading;
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await runWithAuth((token) => providersApi.getStudentAnamnesis(token, clientId));
-      setAnamnesis(data);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Não foi possível carregar a ficha do aluno." });
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (anamnesisQuery.error) {
+      handleScreenError({ error: anamnesisQuery.error, showToast, fallbackMessage: "Não foi possível carregar a ficha do aluno." });
     }
-  }, [clientId, runWithAuth, showToast]);
-
-  useEffect(() => { void load(); }, [load]);
+  }, [anamnesisQuery.error, showToast]);
 
   const statusBadge = () => {
     if (!anamnesis || anamnesis.status === "NONE") return <MvBadge label="Sem ficha" variant="gray" />;

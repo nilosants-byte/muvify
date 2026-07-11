@@ -88,6 +88,7 @@ export const queryKeys = {
     providerStatus: () => ["payments", "providerStatus"] as const,
     providerPayouts: () => ["payments", "providerPayouts"] as const,
     providerAccount: () => ["payments", "providerAccount"] as const,
+    bookingPayment: (id: string) => ["payments", "bookingPayment", id] as const,
     setupIntent: () => ["payments", "setupIntent"] as const,
   },
 

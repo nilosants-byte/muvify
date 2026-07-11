@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -11,6 +11,8 @@ import { MvBadge, MvButton, MvCard, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "BookingPaymentStatus">;
 
@@ -24,25 +26,22 @@ function paymentBadge(status: PaymentStatusResponse["status"]): { label: string;
 }
 
 export function BookingPaymentStatusScreen({ route, navigation }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { showToast } = useAppState();
   const { theme } = useMvTheme();
   const bookingId = route.params.bookingId;
-  const [payment, setPayment] = useState<PaymentStatusResponse | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await runWithAuth((token) => paymentsApi.bookingPayment(token, bookingId));
-      setPayment(response);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao consultar pagamento do agendamento.", navigation });
-    } finally {
-      setLoading(false);
+  const paymentQuery = useAuthQuery(
+    queryKeys.payments.bookingPayment(bookingId),
+    (t) => paymentsApi.bookingPayment(t, bookingId),
+  );
+  const payment = paymentQuery.data ?? null;
+  const loading = paymentQuery.isLoading;
+
+  useEffect(() => {
+    if (paymentQuery.error) {
+      handleScreenError({ error: paymentQuery.error, showToast, fallbackMessage: "Falha ao consultar pagamento do agendamento.", navigation });
     }
-  }, [bookingId, navigation, runWithAuth, showToast]);
-
-  useEffect(() => { void load(); }, [load]);
+  }, [paymentQuery.error, showToast, navigation]);
 
   const badge = payment ? paymentBadge(payment.status) : null;
 
@@ -79,7 +78,7 @@ export function BookingPaymentStatusScreen({ route, navigation }: Props) {
         </MvCard>
 
         <View style={{ gap: 10 }}>
-          <MvButton variant="outline" label="Atualizar" onPress={() => void load()} />
+          <MvButton variant="outline" label="Atualizar" onPress={() => void paymentQuery.refetch()} />
           <MvButton variant="ghost" label="Voltar" onPress={() => navigation.goBack()} />
         </View>
       </ScrollView>
