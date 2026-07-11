@@ -1,13 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { ActivityIndicator, ScrollView, View } from "react-native";
 import { MvCard, MvRefreshControl, MvText } from "../../components/mv";
-import { adminApi, AdminLookupBookingDetail } from "../../services/api/client";
+import { adminApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { formatBRDateTime, formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { AdminScaffold } from "./AdminScaffold";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = {
   navigation: any;
@@ -69,31 +71,23 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 
 export function AdminConsultasBookingDetailScreen({ navigation, route }: Props) {
   const { bookingId } = route.params;
-  const { runWithAuth, showToast } = useAppState();
+  const { showToast } = useAppState();
   const { theme } = useMvTheme();
-  const [booking, setBooking] = useState<AdminLookupBookingDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+
+  const bookingQuery = useAuthQuery(
+    queryKeys.admin.lookupBookingDetail(bookingId),
+    (token) => adminApi.lookupBookingDetail(token, bookingId)
+  );
 
   useEffect(() => {
-    void (async () => {
-      try {
-        const data = await runWithAuth((token) => adminApi.lookupBookingDetail(token, bookingId));
-        setBooking(data);
-      } catch (error) {
-        handleScreenError({
-          error,
-          showToast,
-          fallbackMessage: "Erro ao carregar agendamento.",
-          navigation
-        });
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [bookingId, navigation, runWithAuth, showToast]);
+    if (bookingQuery.error) {
+      handleScreenError({ error: bookingQuery.error, showToast, fallbackMessage: "Erro ao carregar agendamento.", navigation });
+    }
+  }, [bookingQuery.error, showToast, navigation]);
 
-  if (loading) {
+  const booking = bookingQuery.data ?? null;
+
+  if (bookingQuery.isLoading) {
     return (
       <AdminScaffold title="Agendamento" navigation={navigation} currentScreen="AdminConsultas">
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
@@ -121,14 +115,8 @@ export function AdminConsultasBookingDetailScreen({ navigation, route }: Props) 
         showsVerticalScrollIndicator={false}
         refreshControl={
           <MvRefreshControl
-            refreshing={refreshing}
-            onRefresh={useCallback(() => {
-              setRefreshing(true);
-              runWithAuth((token) => adminApi.lookupBookingDetail(token, bookingId))
-                .then((data) => setBooking(data))
-                .catch(() => {})
-                .finally(() => setRefreshing(false));
-            }, [bookingId, runWithAuth])}
+            refreshing={bookingQuery.isRefetching}
+            onRefresh={() => void bookingQuery.refetch()}
           />
         }
       >
