@@ -341,7 +341,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
         {/* Botão de atualizar status */}
         <TouchableOpacity
           disabled={loadingStatus}
-          onPress={() => void loadStatus()}
+          onPress={() => void paymentQuery.refetch()}
           style={{ height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", opacity: loadingStatus ? 0.5 : 1 }}
         >
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: C.zinc300 }}>

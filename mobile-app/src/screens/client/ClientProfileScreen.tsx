@@ -1,4 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { Alert, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
@@ -96,8 +98,6 @@ export function ClientProfileScreen({ navigation }: Props) {
   const [editingPhone, setEditingPhone] = useState(false);
   const [phoneSaving, setPhoneSaving] = useState(false);
   const [stats, setStats] = useState<ProfileStats>(initialStats);
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [progress, setProgress] = useState<UserProgress>({ level: 1, points: 0, streak: 0, weeklyGoal: { current: 0, target: 4 }, monthlyGoal: { current: 0, target: 18 }, totalWorkouts: 0 });
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [showAllAchievements, setShowAllAchievements] = useState(false);
@@ -120,57 +120,68 @@ export function ClientProfileScreen({ navigation }: Props) {
   const firstName = useMemo(() => user?.name?.split(" ")[0] ?? "Aluno", [user?.name]);
   const goToStack = (screen: string) => { const parent = navigation.getParent<any>(); if (parent) parent.navigate(screen); };
 
-  const loadStats = useCallback(async () => {
-    setStatsLoading(true);
-    try {
+  const profileQuery = useAuthQuery(
+    queryKeys.user.profilePage(),
+    async (token) => {
       const [bookingData, trainingData, anamnesisData, gamProfile, backendAchievements, followingRes] = await Promise.all([
-        runWithAuth((token) => bookingsApi.me(token)).catch(() => []),
-        runWithAuth((token) => consultancyApi.myTraining(token)).catch(() => null),
-        runWithAuth((token) => userApi.myAnamnesis(token)).catch(() => null),
-        runWithAuth((token) => gamificationApi.getMyProfile(token)).catch(() => null),
-        runWithAuth((token) => gamificationApi.getAchievements(token)).catch(() => [] as BackendAchievement[]),
-        runWithAuth((token) => communityApi.getFollowing(token, 1, 50)).catch(() => ({ items: [], total: 0 })),
+        bookingsApi.me(token).catch(() => []),
+        consultancyApi.myTraining(token).catch(() => null),
+        userApi.myAnamnesis(token).catch(() => null),
+        gamificationApi.getMyProfile(token).catch(() => null),
+        gamificationApi.getAchievements(token).catch(() => [] as BackendAchievement[]),
+        communityApi.getFollowing(token, 1, 50).catch(() => ({ items: [], total: 0 })),
       ]);
-      if (anamnesisData) {
-        const incomplete = anamnesisData.status !== "COMPLETED";
-        const outdated = anamnesisData.completedAt
+      const anamnesisNeedsAttention = anamnesisData
+        ? anamnesisData.status !== "COMPLETED" || (anamnesisData.completedAt
           ? new Date() >= new Date(new Date(anamnesisData.completedAt).setMonth(new Date(anamnesisData.completedAt).getMonth() + 6))
-          : false;
-        setAnamnesisNeedsAttention(incomplete || outdated);
-      }
-      const contracts = trainingData?.contracts ?? [];
-      const allBookings = bookingData ?? [];
-      setStats({
+          : false)
+        : false;
+      const contracts = (trainingData as any)?.contracts ?? [];
+      const allBookings = (bookingData as any[]) ?? [];
+      const computedStats: ProfileStats = {
         totalBookings: allBookings.length,
         upcomingBookings: allBookings.filter((b: any) => b.status === "PENDING" || b.status === "CONFIRMED").length,
         activeContracts: contracts.filter((c: any) => c.status === "ACTIVE" || c.status === "PENDING_PAYMENT").length,
         deliveredContracts: contracts.filter((c: any) => c.status === "DELIVERED").length,
-      });
+      };
       const prog = computeUserProgress(allBookings as any);
-      const achievs = backendAchievements.length > 0
-        ? backendAchievements.map((ach) => mapBackendAchievement(ach, {
+      const achievs = (backendAchievements as BackendAchievement[]).length > 0
+        ? (backendAchievements as BackendAchievement[]).map((ach) => mapBackendAchievement(ach, {
             totalWorkouts: prog.totalWorkouts,
-            currentStreak: gamProfile?.currentStreak ?? prog.streak,
-            currentLevel: gamProfile?.currentLevel ?? prog.level,
-            followingCount: followingRes.total ?? followingRes.items.length,
+            currentStreak: (gamProfile as any)?.currentStreak ?? prog.streak,
+            currentLevel: (gamProfile as any)?.currentLevel ?? prog.level,
+            followingCount: (followingRes as any).total ?? (followingRes as any).items.length,
           }))
         : computeAchievements(prog);
-      setProgress(prog);
-      setAchievements(achievs);
+      return { stats: computedStats, progress: prog, achievements: achievs, anamnesisNeedsAttention };
+    },
+  );
+
+  useEffect(() => {
+    const data = profileQuery.data;
+    if (!data) return;
+    setStats(data.stats);
+    setProgress(data.progress);
+    setAchievements(data.achievements);
+    setAnamnesisNeedsAttention(data.anamnesisNeedsAttention);
+  }, [profileQuery.data]);
+
+  useEffect(() => {
+    if (!achievements.length) return;
+    void (async () => {
       try {
         const seenRaw = await AsyncStorage.getItem(SEEN_ACHIEVEMENTS_KEY);
         const seen: string[] = seenRaw ? (JSON.parse(seenRaw) as string[]) : [];
-        const newlyUnlocked = achievs.filter((a) => a.unlocked && !seen.includes(a.id));
+        const newlyUnlocked = achievements.filter((a) => a.unlocked && !seen.includes(a.id));
         if (newlyUnlocked.length > 0) {
           hapticAchievement();
           await AsyncStorage.setItem(SEEN_ACHIEVEMENTS_KEY, JSON.stringify([...seen, ...newlyUnlocked.map((a) => a.id)]));
         }
       } catch { /* ignore storage errors */ }
-    } catch { /* silently ignore */ }
-    finally { setStatsLoading(false); }
-  }, [runWithAuth]);
+    })();
+  }, [achievements]);
 
-  useFocusEffect(useCallback(() => { void loadStats(); return undefined; }, [loadStats]));
+  useFocusEffect(useCallback(() => { void profileQuery.refetch(); return undefined; }, [profileQuery.refetch]));
 
   const saveNameIfNeeded = useCallback(async () => {
     const trimmed = displayName.trim();
@@ -267,11 +278,8 @@ export function ClientProfileScreen({ navigation }: Props) {
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <MvRefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              void loadStats().finally(() => setRefreshing(false));
-            }}
+            refreshing={profileQuery.isRefetching}
+            onRefresh={() => void profileQuery.refetch()}
           />
         }
       >
@@ -383,14 +391,14 @@ export function ClientProfileScreen({ navigation }: Props) {
         {/* Minha evolução — stats reais com skeleton */}
         <View style={{ paddingHorizontal: S.px, marginTop: S.gap }}>
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 18, color: theme.text1, letterSpacing: -0.03 * 18, marginBottom: 12 }}>Minha evolução</Text>
-          {statsLoading ? (
+          {profileQuery.isLoading ? (
             <View style={{ flexDirection: "row", gap: 8 }}>
               {[1, 2, 3, 4].map((i) => (
                 <View key={i} style={{ flex: 1, backgroundColor: theme.cardBg, borderRadius: 16, borderWidth: 1, borderColor: theme.border, height: 70 }} />
               ))}
             </View>
           ) : null}
-          <View style={{ flexDirection: "row", gap: 8, display: statsLoading ? "none" : "flex" }}>
+          <View style={{ flexDirection: "row", gap: 8, display: profileQuery.isLoading ? "none" : "flex" }}>
             {[
               { label: "Agendamentos", value: stats.totalBookings, color: theme.primary },
               { label: "Próximos", value: stats.upcomingBookings, color: C.amber },
@@ -417,7 +425,7 @@ export function ClientProfileScreen({ navigation }: Props) {
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>Ver todas ›</Text>
             </TouchableOpacity>
           </View>
-          {statsLoading ? (
+          {profileQuery.isLoading ? (
             <View style={{ flexDirection: "row", gap: 10 }}>
               {[1, 2, 3].map((i) => (
                 <View key={i} style={{ width: 84, height: 96, backgroundColor: theme.cardBg, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border }} />
