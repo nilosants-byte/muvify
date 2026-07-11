@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform,
   ScrollView, StatusBar, TextInput, TouchableOpacity, View,
@@ -19,6 +20,8 @@ import { MvDatePicker } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { useGooglePlacesSearch } from "../../hooks/useGooglePlacesSearch";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "FinancialStudents">;
@@ -123,6 +126,8 @@ function ModalSheet({ visible, title, onClose, children, theme, topInset }: {
   );
 }
 
+type StudentsPageData = { students: FinancialStudent[]; incomes: FinancialIncome[]; appClients: FinancialAppClient[] };
+
 export function FinancialStudentsScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
@@ -134,16 +139,37 @@ export function FinancialStudentsScreen({ navigation }: Props) {
   const warnColor  = isDark ? "#FCD34D" : "#B45309";
   const warnBg     = isDark ? "rgba(252,211,77,0.08)" : "rgba(180,83,9,0.07)";
   const warnBorder = isDark ? "rgba(252,211,77,0.18)" : "rgba(180,83,9,0.15)";
+  const queryClient = useQueryClient();
 
   const [month, setMonth] = useState(currentMonthStr());
-  const [loading, setLoading] = useState(true);
+
+  const studentsQuery = useAuthQuery(
+    queryKeys.financial.studentsPage(month),
+    async (token) => {
+      const [studs, incs, appCl] = await Promise.all([
+        financialApi.listStudents(token),
+        financialApi.listIncomes(token, month),
+        financialApi.listAppClients(token, month),
+      ]);
+      return { students: studs as FinancialStudent[], incomes: incs as FinancialIncome[], appClients: appCl as FinancialAppClient[] };
+    },
+  );
+
+  const students = studentsQuery.data?.students ?? ([] as FinancialStudent[]);
+  const incomes = studentsQuery.data?.incomes ?? ([] as FinancialIncome[]);
+  const appClients = studentsQuery.data?.appClients ?? ([] as FinancialAppClient[]);
+  const loading = studentsQuery.isLoading;
+
+  useEffect(() => {
+    if (studentsQuery.error) {
+      handleScreenError({ error: studentsQuery.error, showToast, fallbackMessage: "Falha ao carregar alunos.", navigation });
+    }
+  }, [studentsQuery.error, showToast, navigation]);
+
   const [saving, setSaving] = useState(false);
   const [addStudentModal, setAddStudentModal] = useState(false);
   const [togglingStudentId, setTogglingStudentId] = useState<string | null>(null);
 
-  const [students,       setStudents]       = useState<FinancialStudent[]>([]);
-  const [incomes,        setIncomes]        = useState<FinancialIncome[]>([]);
-  const [appClients,     setAppClients]     = useState<FinancialAppClient[]>([]);
   const [editingStudent, setEditingStudent] = useState<FinancialStudent | null>(null);
 
   const [sName, setSName] = useState("");
@@ -166,25 +192,6 @@ export function FinancialStudentsScreen({ navigation }: Props) {
     return set;
   }, [incomes]);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [studs, incs, appCl] = await Promise.all([
-        runWithAuth(t => financialApi.listStudents(t)),
-        runWithAuth(t => financialApi.listIncomes(t, month)),
-        runWithAuth(t => financialApi.listAppClients(t, month)),
-      ]);
-      setStudents(studs);
-      setIncomes(incs);
-      setAppClients(appCl);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar alunos.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [month, navigation, runWithAuth, showToast]);
-
-  useEffect(() => { void load(); }, [load]);
 
   function prevMonth() {
     const [y, m] = month.split("-").map(Number);
@@ -232,11 +239,15 @@ export function FinancialStudentsScreen({ navigation }: Props) {
       };
       if (editingStudent) {
         const updated = await runWithAuth(t => financialApi.updateStudent(t, editingStudent.id, payload));
-        setStudents(prev => prev.map(s => s.id === updated.id ? updated : s));
+        queryClient.setQueryData<StudentsPageData>(queryKeys.financial.studentsPage(month), (old) =>
+          old ? { ...old, students: old.students.map(s => s.id === updated.id ? updated as FinancialStudent : s) } : old
+        );
         showToast("Aluno atualizado.", "success");
       } else {
         const newStudent = await runWithAuth(t => financialApi.createStudent(t, payload));
-        setStudents(prev => [...prev, newStudent]);
+        queryClient.setQueryData<StudentsPageData>(queryKeys.financial.studentsPage(month), (old) =>
+          old ? { ...old, students: [...old.students, newStudent as FinancialStudent] } : old
+        );
         showToast("Aluno adicionado.", "success");
       }
       setAddStudentModal(false);
@@ -252,7 +263,9 @@ export function FinancialStudentsScreen({ navigation }: Props) {
       { text: "Remover", style: "destructive", onPress: async () => {
         try {
           await runWithAuth(t => financialApi.deleteStudent(t, id));
-          setStudents(prev => prev.filter(s => s.id !== id));
+          queryClient.setQueryData<StudentsPageData>(queryKeys.financial.studentsPage(month), (old) =>
+            old ? { ...old, students: old.students.filter(s => s.id !== id) } : old
+          );
         }
         catch { showToast("Falha ao remover.", "error"); }
       }},
@@ -267,7 +280,9 @@ export function FinancialStudentsScreen({ navigation }: Props) {
         const income = incomes.find(i => i.studentId === s.id);
         if (!income) return;
         await runWithAuth(t => financialApi.deleteIncome(t, income.id));
-        setIncomes(prev => prev.filter(i => i.id !== income.id));
+        queryClient.setQueryData<StudentsPageData>(queryKeys.financial.studentsPage(month), (old) =>
+          old ? { ...old, incomes: old.incomes.filter(i => i.id !== income.id) } : old
+        );
         showToast("Mensalidade desmarcada.", "success");
       } else {
         if (s.monthlyValueCents === 0) { showToast("Configure o valor mensal do aluno.", "error"); return; }
@@ -277,7 +292,9 @@ export function FinancialStudentsScreen({ navigation }: Props) {
           studentId: s.id,
           paidAt: `${new Date().toISOString().slice(0, 10)}T12:00:00.000Z`,
         }));
-        setIncomes(prev => [...prev, newIncome]);
+        queryClient.setQueryData<StudentsPageData>(queryKeys.financial.studentsPage(month), (old) =>
+          old ? { ...old, incomes: [...old.incomes, newIncome as FinancialIncome] } : old
+        );
         showToast("Mensalidade registrada.", "success");
       }
     } catch (error) {
