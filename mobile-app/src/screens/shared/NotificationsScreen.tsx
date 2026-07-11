@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FlatList, RefreshControl, StatusBar, View } from "react-native";
 import * as Location from "expo-location";
@@ -363,9 +364,8 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
   const { theme } = useMvTheme();
   const { runWithAuth, showToast, role } = useAppState();
   const insets = useSafeAreaInsets();
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [, setBookingsById] = useState<Record<string, Booking>>({});
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const notifQueryKey = ["notifications", "inbox", role] as const;
   const [activeCategory, setActiveCategory] = useState<ScreenCategory>("Todas");
 
   const loadNearbyMarketNotifications = useCallback(async (): Promise<NotificationItem[]> => {
@@ -503,9 +503,9 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
     return [] as NotificationItem[];
   }, [role, runWithAuth]);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
+  const { data: notifications = [], isLoading: loading, refetch, error } = useQuery<NotificationItem[]>({
+    queryKey: notifQueryKey,
+    queryFn: async () => {
       const { bookings, inbox } = await runWithAuth(async (token) => {
         const [bookingResult, inboxResult] = await Promise.all([
           bookingsApi.me(token),
@@ -513,14 +513,6 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
         ]);
         return { bookings: bookingResult, inbox: inboxResult };
       });
-
-      setBookingsById(
-        bookings.reduce<Record<string, Booking>>((acc, booking) => {
-          acc[booking.id] = booking;
-          return acc;
-        }, {})
-      );
-
       const inboxNotifications = inbox.map((item) => toInboxNotification(item, role));
       const hasBookingContext = inboxNotifications.some((item) =>
         item.action.type === "BOOKING_DETAIL" ||
@@ -534,23 +526,18 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
         loadNearbyMarketNotifications(),
         loadPendingConfigNotifications(),
       ]);
-
-      const merged = uniqueById([
+      return uniqueById([
         ...pendingConfigNotifications,
         ...marketNotifications,
         ...inboxNotifications,
         ...fallbackBookingNotifications,
-      ]).sort((a, b) => b.createdAtMs - a.createdAtMs);
+      ]).sort((a, b) => b.createdAtMs - a.createdAtMs).slice(0, 80);
+    },
+  });
 
-      setNotifications(merged.slice(0, 80));
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar notificações." });
-    } finally {
-      setLoading(false);
-    }
-  }, [loadNearbyMarketNotifications, loadPendingConfigNotifications, role, runWithAuth, showToast]);
-
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (error) handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar notificações." });
+  }, [error, showToast]);
 
   const unreadCount = useMemo(
     () => notifications.filter((item) => item.unread).length,
@@ -561,8 +548,8 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
     try {
       await runWithAuth((token) => notificationsApi.markAllRead(token));
     } catch { /* best effort */ }
-    setNotifications([]);
-  }, [runWithAuth]);
+    queryClient.setQueryData(notifQueryKey, []);
+  }, [notifQueryKey, queryClient, runWithAuth]);
 
   const openBookingDetail = useCallback(
     (bookingId: string) => {
@@ -587,8 +574,8 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
 
   const handleNotificationPress = useCallback(
     (item: NotificationItem) => {
-      setNotifications((current) =>
-        current.map((entry) => entry.id === item.id ? { ...entry, unread: false } : entry)
+      queryClient.setQueryData<NotificationItem[]>(notifQueryKey, (old) =>
+        (old ?? []).map((entry) => entry.id === item.id ? { ...entry, unread: false } : entry)
       );
       if (!navigation) return;
       switch (item.action.type) {
@@ -733,7 +720,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
         refreshControl={
           <RefreshControl
             refreshing={loading}
-            onRefresh={load}
+            onRefresh={() => void refetch()}
             tintColor={theme.primary}
             colors={[theme.primary]}
           />
@@ -955,7 +942,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
         label={loading ? "Atualizando..." : "Atualizar"}
         disabled={loading}
         loading={loading}
-        onPress={load}
+        onPress={() => void refetch()}
         style={{
           marginHorizontal: S.px,
           marginBottom: Math.max(14, insets.bottom + 14),

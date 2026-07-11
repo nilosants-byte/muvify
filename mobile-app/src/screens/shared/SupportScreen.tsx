@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppState } from "../../state/AppState";
 import { userApi } from "../../services/api/client";
+import { useAuthMutation } from "../../hooks/useAuthQuery";
 import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
@@ -15,36 +16,34 @@ const SUPPORT_WHATSAPP = "5511999999999"; // substituir pelo número real quando
 
 export function SupportScreen({ navigation }: { navigation?: any }) {
   const { theme } = useMvTheme();
-  const { runWithAuth, showToast } = useAppState();
+  const { showToast } = useAppState();
   const insets = useSafeAreaInsets();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
 
-  async function submitTicket() {
+  const supportMutation = useAuthMutation(
+    (token, vars: { subject?: string; message: string }) =>
+      userApi.sendSupportMessage(token, vars),
+    {
+      onSuccess: () => { setSubject(""); setMessage(""); setSent(true); },
+      onError: (error) => {
+        showToast(
+          error.message || "Falha ao enviar suporte. Tente novamente em instantes.",
+          "error"
+        );
+      },
+    }
+  );
+  const sending = supportMutation.isPending;
+
+  function submitTicket() {
     const normalizedMessage = message.trim();
     if (!normalizedMessage) {
       showToast("Descreva o problema para enviar suporte.", "error");
       return;
     }
-    try {
-      setSending(true);
-      await runWithAuth((token) =>
-        userApi.sendSupportMessage(token, {
-          subject: subject.trim() || undefined,
-          message: normalizedMessage,
-        })
-      );
-      setSubject("");
-      setMessage("");
-      setSent(true);
-    } catch (error) {
-      const fallback = "Falha ao enviar suporte. Tente novamente em instantes.";
-      showToast(error instanceof Error ? error.message : fallback, "error");
-    } finally {
-      setSending(false);
-    }
+    supportMutation.mutate({ subject: subject.trim() || undefined, message: normalizedMessage });
   }
 
   return (
@@ -161,7 +160,7 @@ export function SupportScreen({ navigation }: { navigation?: any }) {
               label={sending ? "Enviando..." : "Enviar solicitação"}
               disabled={sending}
               loading={sending}
-              onPress={() => void submitTicket()}
+              onPress={submitTicket}
             />
           </MvCard>
         )}

@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Modal, Pressable, ScrollView, StatusBar, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
@@ -8,6 +9,8 @@ import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { useAppState } from "../../state/AppState";
 import { userApi } from "../../services/api/client";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 function ActionRow({
   icon,
@@ -56,6 +59,15 @@ function ActionRow({
 export function SecurityScreen({ navigation }: { navigation?: any }) {
   const { theme } = useMvTheme();
   const { refreshSession, runWithAuth, showToast } = useAppState();
+  const queryClient = useQueryClient();
+
+  const recoveryEmailQuery = useAuthQuery(
+    queryKeys.user.recoveryEmail(),
+    (t) => userApi.getRecoveryEmail(t),
+  );
+  const accountEmail = recoveryEmailQuery.data?.accountEmail ?? "";
+  const customRecoveryEmail = recoveryEmailQuery.data?.custom ?? false;
+  const recoveryLoading = recoveryEmailQuery.isLoading;
 
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -64,34 +76,12 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
   const [passwordSaving, setPasswordSaving] = useState(false);
 
   const [recoveryModalVisible, setRecoveryModalVisible] = useState(false);
-  const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [recoverySaving, setRecoverySaving] = useState(false);
-  const [accountEmail, setAccountEmail] = useState("");
-  const [recoveryEmail, setRecoveryEmail] = useState("");
-  const [customRecoveryEmail, setCustomRecoveryEmail] = useState(false);
+  const [editRecoveryEmail, setEditRecoveryEmail] = useState("");
   const [emailModalVisible, setEmailModalVisible] = useState(false);
   const [newAccountEmail, setNewAccountEmail] = useState("");
   const [confirmAccountEmail, setConfirmAccountEmail] = useState("");
   const [emailSaving, setEmailSaving] = useState(false);
-
-  const loadRecoveryEmail = useCallback(async () => {
-    try {
-      setRecoveryLoading(true);
-      const payload = await runWithAuth((token) => userApi.getRecoveryEmail(token));
-      setAccountEmail(payload.accountEmail);
-      setRecoveryEmail(payload.recoveryEmail);
-      setCustomRecoveryEmail(payload.custom);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao carregar e-mail de recuperação.";
-      showToast(message, "error");
-    } finally {
-      setRecoveryLoading(false);
-    }
-  }, [runWithAuth, showToast]);
-
-  useEffect(() => {
-    void loadRecoveryEmail();
-  }, [loadRecoveryEmail]);
 
   async function submitPasswordChange() {
     if (!currentPassword || !newPassword || !confirmNewPassword) {
@@ -132,7 +122,7 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
   }
 
   async function submitRecoveryEmail() {
-    const normalized = recoveryEmail.trim().toLowerCase();
+    const normalized = editRecoveryEmail.trim().toLowerCase();
     if (!normalized) {
       showToast("Informe o e-mail de recuperação.", "error");
       return;
@@ -145,9 +135,7 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
     try {
       setRecoverySaving(true);
       const payload = await runWithAuth((token) => userApi.upsertRecoveryEmail(token, normalized));
-      setAccountEmail(payload.accountEmail);
-      setRecoveryEmail(payload.recoveryEmail);
-      setCustomRecoveryEmail(payload.custom);
+      queryClient.setQueryData(queryKeys.user.recoveryEmail(), payload);
       showToast("E-mail de recuperação atualizado.", "success");
       setRecoveryModalVisible(false);
     } catch (error) {
@@ -183,7 +171,7 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
       setEmailSaving(true);
       // TODO: mudança de email requer endpoint dedicado — funcionalidade temporariamente desabilitada
       throw new Error("Mudança de e-mail temporariamente indisponível. Contate o suporte.");
-      await Promise.all([loadRecoveryEmail(), refreshSession()]);
+      await refreshSession();
       showToast("E-mail de login atualizado.", "success");
       setEmailModalVisible(false);
       setNewAccountEmail("");
@@ -230,9 +218,12 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
               title="E-mail de recuperação"
               subtitle={recoveryLoading
                 ? "Carregando..."
-                : `Recebimento em: ${recoveryEmail || accountEmail || "não definido"}`}
+                : `Recebimento em: ${recoveryEmailQuery.data?.recoveryEmail || accountEmail || "não definido"}`}
               badge={{ label: customRecoveryEmail ? "Personalizado" : "Conta", variant: customRecoveryEmail ? "orange" : "green" }}
-              onPress={() => setRecoveryModalVisible(true)}
+              onPress={() => {
+                setEditRecoveryEmail(recoveryEmailQuery.data?.recoveryEmail ?? "");
+                setRecoveryModalVisible(true);
+              }}
             />
           </MvCard>
 
@@ -375,8 +366,8 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
             </MvText>
             <MvInput
               label="E-mail de recuperação"
-              value={recoveryEmail}
-              onChangeText={setRecoveryEmail}
+              value={editRecoveryEmail}
+              onChangeText={setEditRecoveryEmail}
               autoCapitalize="none"
               keyboardType="email-address"
               placeholder={accountEmail || "email@exemplo.com"}
