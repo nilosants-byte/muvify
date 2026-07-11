@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { useFocusEffect } from "@react-navigation/native";
 import { ClientNotificationsDrawer } from "./components/ClientNotificationsDrawer";
 import { ClientHomeDrawer, SideMenuItem } from "./components/ClientHomeDrawer";
@@ -273,9 +275,11 @@ export function ClientHomeScreen({ navigation }: Props) {
   const isLight = theme.mode === "light";
   const mapRef = useRef<import("react-native-maps").default>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [bookingsLoading, setBookingsLoading] = useState(true);
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const bookingsQuery = useAuthQuery(
+    queryKeys.bookings.me(),
+    (token) => bookingsApi.me(token),
+  );
+  const bookings = bookingsQuery.data ?? ([] as Booking[]);
   // Initialize from module-level cache so re-entering the screen shows data immediately
   const [providers, setProviders] = useState<ProviderWithExtras[]>(
     () => (globalThis as any).__mvProvidersCache?.data ?? []
@@ -737,26 +741,11 @@ export function ClientHomeScreen({ navigation }: Props) {
     });
   }, [providers, selectedSpecialties, filterMode, selectedAcademyFilter]);
 
-  const load = useCallback(async () => {
-    // Start location and bookings concurrently; don't block the UI on both
-    setLoading(true);
-    setBookingsLoading(true);
-
-    // Location runs in parallel — providers will reload when location resolves
+  // Fire location request on mount
+  useEffect(() => {
     void requestLocation().catch(() => {});
-
-    // Bookings fetch independently
-    runWithAuth((token) => bookingsApi.me(token))
-      .then((bks) => setBookings(bks))
-      .catch((error) => {
-        handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar agenda." });
-      })
-      .finally(() => setBookingsLoading(false));
-
-    setLoading(false);
-  }, [runWithAuth, showToast, requestLocation]);
-
-  useEffect(() => { void load(); }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Reload providers when location or filters change — but only after the persisted
   // radius has been read, so the first fetch always uses the correct stored value.
@@ -1225,8 +1214,8 @@ export function ClientHomeScreen({ navigation }: Props) {
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={
           <RefreshControl
-            refreshing={loading}
-            onRefresh={() => { hapticRefresh(); void load(); }}
+            refreshing={bookingsQuery.isRefetching}
+            onRefresh={() => { hapticRefresh(); void bookingsQuery.refetch(); void requestLocation().catch(() => {}); }}
             tintColor={theme.primary}
             colors={[theme.primary]}
             progressBackgroundColor={theme.cardBg}
@@ -1318,7 +1307,7 @@ export function ClientHomeScreen({ navigation }: Props) {
             filterDistance={filterDistance}
             visibleProviderCount={visibleProviderCount}
             visibleProviderLabel={visibleProviderLabel}
-            loading={loading}
+            loading={false}
             onSetActiveMapSearchModal={setActiveMapSearchModal}
             onSearchByLocation={() => void searchByLocation()}
             onApplyProviderNameSearch={applyProviderNameSearch}
