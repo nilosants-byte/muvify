@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   FlatList,
@@ -31,6 +31,8 @@ import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { MvMediaPreviewButton, MvMediaViewer } from "../../components/mv";
 import { formatDateLabel, formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import type { MvTheme } from "../../theme/MvColors";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
@@ -432,34 +434,41 @@ export function MyTrainingScreen({ navigation }: Props) {
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
 
-  const [data, setData] = useState<MyTrainingResponse | null>(null);
-  const [requests, setRequests] = useState<ConsultancyRequest[]>([]);
-  const [loading, setLoading] = useState(true);
   const [decidingRequestId, setDecidingRequestId] = useState<string | null>(null);
   const [paymentByRequestId, setPaymentByRequestId] = useState<Record<string, ConsultancyPaymentMethod>>({});
   const [activeTab, setActiveTab] = useState<TrainingTab>("active");
   const [selectedPlan, setSelectedPlan] = useState<FlatPlan | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
+  const trainingQuery = useAuthQuery(
+    queryKeys.consultancy.myTraining(),
+    async (token) => {
       const [trainingResult, requestsResult] = await Promise.all([
-        runWithAuth((token) => consultancyApi.myTraining(token)),
-        runWithAuth((token) => consultancyApi.myRequests(token)),
+        consultancyApi.myTraining(token),
+        consultancyApi.myRequests(token),
       ]);
-      setData(trainingResult);
-      setRequests(requestsResult);
-      setPaymentByRequestId((current) => {
-        const next = { ...current };
-        requestsResult.forEach((r) => { if (!next[r.id]) next[r.id] = "CREDIT_CARD"; });
-        return next;
-      });
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar treinos.", navigation });
-    } finally { setLoading(false); }
-  }, [navigation, runWithAuth, showToast]);
+      return { training: trainingResult, requests: requestsResult };
+    }
+  );
 
-  useEffect(() => { void load(); }, [load]);
+  const loading = trainingQuery.isLoading;
+  const data: MyTrainingResponse | null = trainingQuery.data?.training ?? null;
+  const requests: ConsultancyRequest[] = trainingQuery.data?.requests ?? [];
+
+  useEffect(() => {
+    if (trainingQuery.error) {
+      handleScreenError({ error: trainingQuery.error, showToast, fallbackMessage: "Falha ao carregar treinos.", navigation });
+    }
+  }, [trainingQuery.error, showToast, navigation]);
+
+  useEffect(() => {
+    const requestsResult = trainingQuery.data?.requests;
+    if (!requestsResult) return;
+    setPaymentByRequestId((current) => {
+      const next = { ...current };
+      requestsResult.forEach((r) => { if (!next[r.id]) next[r.id] = "CREDIT_CARD"; });
+      return next;
+    });
+  }, [trainingQuery.data]);
 
   const contracts = data?.contracts ?? [];
   const respondedRequests = useMemo(() => requests.filter((r) => r.status === "RESPONDED"), [requests]);
@@ -481,7 +490,7 @@ export function MyTrainingScreen({ navigation }: Props) {
       setDecidingRequestId(requestId);
       await runWithAuth((token) => consultancyApi.decideRequest(token, requestId, { decision, paymentMethod: pm }));
       showToast(decision === "ACCEPT" ? "Proposta aceita com sucesso." : "Proposta recusada.", "success");
-      await load();
+      await trainingQuery.refetch();
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao registrar decisão.", navigation });
     } finally { setDecidingRequestId(null); }
@@ -540,7 +549,7 @@ export function MyTrainingScreen({ navigation }: Props) {
         contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, paddingTop: 16, gap: 10 }}
         data={activeTab === "active" ? activePlans : activeTab === "pending" ? pendingPlans : historyPlans}
         keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={theme.primary} colors={[theme.primary]} />}
+        refreshControl={<RefreshControl refreshing={trainingQuery.isRefetching} onRefresh={() => void trainingQuery.refetch()} tintColor={theme.primary} colors={[theme.primary]} />}
         ListHeaderComponent={
           <View style={{ gap: 14, marginBottom: 4 }}>
             {/* Tabs V2 */}
