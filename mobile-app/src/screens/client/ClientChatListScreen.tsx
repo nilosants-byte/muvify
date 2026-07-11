@@ -15,6 +15,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientStackParamList } from "../../navigation/route-types";
 import { chatApi, ChatMessage, ChatSummary } from "../../services/api/client";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import {
   isSocketConnected,
   joinBookingRoom,
@@ -107,8 +109,6 @@ export function ClientChatListScreen({ navigation }: Props) {
   const [activeView, setActiveView] = useState<ChatView>("list");
   const [tab, setTab] = useState<Tab>("active");
   const [chats, setChats] = useState<ChatSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [chatsLoadError, setChatsLoadError] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -123,6 +123,26 @@ export function ClientChatListScreen({ navigation }: Props) {
   const isMountedRef = useRef(true);
   const lastMsgCountRef = useRef(0);
 
+  const chatsQuery = useAuthQuery(
+    queryKeys.chat.myChats(),
+    async (token) => {
+      const data = await chatApi.myChats(token);
+      return enrichMissingChatPhotos(
+        data,
+        (bookingId) => chatApi.getOtherUser(token, bookingId)
+      );
+    }
+  );
+
+  const loading = chatsQuery.isLoading;
+  const chatsLoadError = chatsQuery.isError;
+
+  useEffect(() => {
+    if (chatsQuery.data) {
+      setChats((prev) => mergeChatsPreservingPhoto(prev, chatsQuery.data!));
+    }
+  }, [chatsQuery.data]);
+
   const selectedChat = useMemo(
     () => chats.find((c) => c.bookingId === selectedId) ?? null,
     [chats, selectedId]
@@ -133,29 +153,10 @@ export function ClientChatListScreen({ navigation }: Props) {
     [chats, tab]
   );
 
-  const loadChats = useCallback(async () => {
-    setChatsLoadError(false);
-    try {
-      const data = await runWithAuth((token) => chatApi.myChats(token));
-      if (!isMountedRef.current) return;
-      const enriched = await enrichMissingChatPhotos(
-        data,
-        (bookingId) => runWithAuth((token) => chatApi.getOtherUser(token, bookingId))
-      );
-      if (!isMountedRef.current) return;
-      setChats((prev) => mergeChatsPreservingPhoto(prev, enriched));
-    } catch {
-      if (isMountedRef.current) setChatsLoadError(true);
-    } finally {
-      if (isMountedRef.current) setLoading(false);
-    }
-  }, [runWithAuth]);
-
   useEffect(() => {
     isMountedRef.current = true;
-    void loadChats();
     return () => { isMountedRef.current = false; };
-  }, [loadChats]);
+  }, []);
 
   const fetchPanelMessages = useCallback(
     async (bookingId: string, initial = false) => {
@@ -278,7 +279,7 @@ export function ClientChatListScreen({ navigation }: Props) {
         lastMsgCountRef.current = updated.length;
         return updated;
       });
-      void loadChats();
+      void chatsQuery.refetch();
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
     } catch {
       setInputText(text);
@@ -429,7 +430,7 @@ export function ClientChatListScreen({ navigation }: Props) {
               <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Conversas</Text>
               <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>chats liberados por serviços ativos</Text>
             </View>
-            <TouchableOpacity onPress={() => void loadChats()} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
+            <TouchableOpacity onPress={() => void chatsQuery.refetch()} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name="refresh-outline" size={16} color={theme.text2} />
             </TouchableOpacity>
           </View>
