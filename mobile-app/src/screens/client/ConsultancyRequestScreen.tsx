@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { Alert, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -25,6 +25,8 @@ import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 
@@ -37,14 +39,31 @@ export function ConsultancyRequestScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const providerId = route.params.professionalId;
 
-  const [catalog, setCatalog] = useState<ProviderConsultancyCatalog | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
   const [openQuestion, setOpenQuestion] = useState<QuestionKey | null>(null);
   const [trainingNeedText, setTrainingNeedText] = useState("");
   const [limitationText, setLimitationText] = useState("");
   const [extraInfoText, setExtraInfoText] = useState("");
+
+  const catalogQuery = useAuthQuery(
+    queryKeys.consultancy.catalog(providerId),
+    () => consultancyApi.providerCatalog(providerId)
+  );
+
+  const loading = catalogQuery.isLoading;
+  const catalog = catalogQuery.data ?? null;
+
+  useEffect(() => {
+    const firstOffer = catalogQuery.data?.offers?.[0];
+    if (firstOffer) setSelectedOfferId((current) => current ?? firstOffer.id);
+  }, [catalogQuery.data]);
+
+  useEffect(() => {
+    if (catalogQuery.error) {
+      handleScreenError({ error: catalogQuery.error, showToast, fallbackMessage: "Falha ao carregar consultoria do profissional.", navigation });
+    }
+  }, [catalogQuery.error, showToast, navigation]);
 
   const onlineOffers = useMemo(() =>
     (catalog?.offers ?? []).filter((item) =>
@@ -53,21 +72,6 @@ export function ConsultancyRequestScreen({ route, navigation }: Props) {
   );
 
   const selectedOffer = useMemo(() => onlineOffers.find((offer) => offer.id === selectedOfferId) ?? null, [onlineOffers, selectedOfferId]);
-
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const result = await consultancyApi.providerCatalog(providerId);
-      setCatalog(result);
-      setSelectedOfferId(result.offers?.[0]?.id ?? null);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar consultoria do profissional.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [navigation, providerId, showToast]);
-
-  useEffect(() => { void load(); }, [load]);
 
   async function submitRequest() {
     if (!catalog?.onlineConsultancyEnabled) {

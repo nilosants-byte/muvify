@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,6 +8,8 @@ import { consultancyApi, PromotionFeedItem } from "../../services/api/client";
 import { MvAvatar } from "../../components/mv";
 import { formatCurrencyBRL, getInitials } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
@@ -49,25 +51,26 @@ export function PromotionsScreen({ navigation }: Props) {
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
 
-  const [promotions, setPromotions] = useState<PromotionFeedItem[]>([]);
-  const [combos, setCombos] = useState<PromotionFeedItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<PromotionTab>("highlights");
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const feed = await consultancyApi.promotions();
-      setPromotions(feed.filter((item) => item.kind !== "COMBO"));
-      setCombos(feed.filter((item) => item.kind === "COMBO").sort((a, b) => a.providerName.localeCompare(b.providerName, "pt-BR")));
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar ofertas.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [navigation, showToast]);
+  const promotionsQuery = useAuthQuery(
+    queryKeys.consultancy.promotions(),
+    () => consultancyApi.promotions()
+  );
 
-  useEffect(() => { void load(); }, [load]);
+  const loading = promotionsQuery.isLoading;
+  const feed = promotionsQuery.data ?? [];
+  const promotions = useMemo(() => feed.filter((item) => item.kind !== "COMBO"), [feed]);
+  const combos = useMemo(
+    () => feed.filter((item) => item.kind === "COMBO").sort((a, b) => a.providerName.localeCompare(b.providerName, "pt-BR")),
+    [feed]
+  );
+
+  useEffect(() => {
+    if (promotionsQuery.error) {
+      handleScreenError({ error: promotionsQuery.error, showToast, fallbackMessage: "Falha ao carregar ofertas.", navigation });
+    }
+  }, [promotionsQuery.error, showToast, navigation]);
 
   const goToDetail = (providerId: string) => {
     const parent = navigation.getParent<any>();
@@ -249,7 +252,7 @@ export function PromotionsScreen({ navigation }: Props) {
       <ScreenEntrance>
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, gap: 10, paddingTop: 16 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={theme.primary} colors={[theme.primary]} />}
+        refreshControl={<RefreshControl refreshing={promotionsQuery.isRefetching} onRefresh={() => void promotionsQuery.refetch()} tintColor={theme.primary} colors={[theme.primary]} />}
         showsVerticalScrollIndicator={false}
       >
         {/* Hero card panorama */}
