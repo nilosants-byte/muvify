@@ -18,6 +18,8 @@ import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonBookingCard } from "../../components/polish/SkeletonCard";
 import { formatBRDateTime } from "../../utils/formatters";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = BottomTabScreenProps<ClientTabParamList, "ClientBookings">;
 type BookingFilter = "upcoming" | "pending" | "history" | "all";
@@ -59,28 +61,22 @@ function sortByDateDesc(list: Booking[]) {
 }
 
 export function ClientBookingsScreen({ navigation }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const { toTab } = useTabNav();
-
-  const [loading, setLoading] = useState(true);
-  const [bookings, setBookings] = useState<Booking[]>([]);
   const [activeFilter, setActiveFilter] = useState<BookingFilter>("upcoming");
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await runWithAuth((token) => bookingsApi.me(token));
-      setBookings(data);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar agenda." });
-    } finally {
-      setLoading(false);
-    }
-  }, [runWithAuth, showToast]);
+  const bookingsQuery = useAuthQuery(queryKeys.bookings.me(), (token) => bookingsApi.me(token));
+  const bookings = bookingsQuery.data ?? [];
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(useCallback(() => { void bookingsQuery.refetch(); return undefined; }, [bookingsQuery.refetch]));
+
+  useEffect(() => {
+    if (bookingsQuery.error) {
+      handleScreenError({ error: bookingsQuery.error, showToast, fallbackMessage: "Falha ao carregar agenda." });
+    }
+  }, [bookingsQuery.error, showToast]);
 
   const goToStack = (screen: string, params?: object) => {
     const parent = navigation.getParent<any>();
@@ -201,7 +197,7 @@ export function ClientBookingsScreen({ navigation }: Props) {
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, paddingTop: 16, gap: 10 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={theme.primary} colors={[theme.primary]} />}
+        refreshControl={<RefreshControl refreshing={bookingsQuery.isRefetching} onRefresh={() => void bookingsQuery.refetch()} tintColor={theme.primary} colors={[theme.primary]} />}
         ListHeaderComponent={
           <View style={{ gap: 14, marginBottom: 4 }}>
             {/* Hero card panorama V2 */}
@@ -287,7 +283,7 @@ export function ClientBookingsScreen({ navigation }: Props) {
           </View>
         }
         ListEmptyComponent={
-          loading ? (
+          bookingsQuery.isLoading ? (
             <View style={{ gap: 10, paddingTop: 4 }}>
               {[0, 1, 2].map((i) => <SkeletonBookingCard key={i} />)}
             </View>
