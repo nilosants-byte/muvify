@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -10,15 +11,23 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalFinancialDetails">;
 
 export function ProfessionalFinancialDetailsScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
+  const queryClient = useQueryClient();
 
-  const [account, setAccount] = useState<ProviderBankAccount | null>(null);
-  const [loading, setLoading] = useState(true);
+  const accountQuery = useAuthQuery(
+    queryKeys.user.bankAccount(),
+    (token) => userApi.providerBankAccount(token),
+  );
+
+  const account = accountQuery.data ?? null;
+  const loading = accountQuery.isLoading;
   const [saving, setSaving] = useState(false);
 
   const [bankName, setBankName] = useState("");
@@ -30,29 +39,24 @@ export function ProfessionalFinancialDetailsScreen({ navigation }: Props) {
   const [pixKey, setPixKey] = useState("");
   const [accountType, setAccountType] = useState<"CHECKING" | "SAVINGS">("CHECKING");
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await runWithAuth((token) => userApi.providerBankAccount(token));
-      if (data) {
-        setAccount(data);
-        setBankName(data.bankName ?? "");
-        setAgency(data.agency ?? "");
-        setAccountNumber(data.accountNumber ?? "");
-        setAccountDigit(data.accountDigit ?? "");
-        setHolderName((data as any).holderName ?? "");
-        setHolderDocument((data as any).holderDocument ?? "");
-        setPixKey(data.pixKey ?? "");
-        setAccountType(data.accountType ?? "CHECKING");
-      }
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar dados bancários.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [navigation, runWithAuth, showToast]);
+  useEffect(() => {
+    const data = accountQuery.data;
+    if (!data) return;
+    setBankName(data.bankName ?? "");
+    setAgency(data.agency ?? "");
+    setAccountNumber(data.accountNumber ?? "");
+    setAccountDigit(data.accountDigit ?? "");
+    setHolderName((data as any).holderName ?? "");
+    setHolderDocument((data as any).holderDocument ?? "");
+    setPixKey(data.pixKey ?? "");
+    setAccountType(data.accountType ?? "CHECKING");
+  }, [accountQuery.data]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (accountQuery.error) {
+      handleScreenError({ error: accountQuery.error, showToast, fallbackMessage: "Falha ao carregar dados bancários.", navigation });
+    }
+  }, [accountQuery.error, showToast, navigation]);
 
   async function handleSave() {
     if (!bankName.trim() || !agency.trim() || !accountNumber.trim() || !holderName.trim() || !holderDocument.trim()) {
@@ -73,7 +77,7 @@ export function ProfessionalFinancialDetailsScreen({ navigation }: Props) {
           pixKey: pixKey.trim() || undefined,
         })
       );
-      setAccount(updated);
+      queryClient.setQueryData(queryKeys.user.bankAccount(), updated);
       showToast("Dados bancários salvos com sucesso.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar dados bancários.", navigation });

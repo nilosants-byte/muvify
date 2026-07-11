@@ -107,10 +107,13 @@ export const queryKeys = {
     payouts: () => ["financial", "payouts"] as const,
     appClients: (month?: string) => ["financial", "appClients", month] as const,
     students: () => ["financial", "students"] as const,
+    studentsPage: (month?: string) => ["financial", "studentsPage", month] as const,
     incomes: (month?: string) => ["financial", "incomes", month] as const,
     expenses: (month?: string) => ["financial", "expenses", month] as const,
     goal: (month?: string) => ["financial", "goal", month] as const,
     sessions: (month?: string) => ["financial", "sessions", month] as const,
+    financePage: (month?: string) => ["financial", "financePage", month] as const,
+    history: (month?: string) => ["financial", "history", month] as const,
   },
 
   // ── Admin ──────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -17,6 +17,8 @@ import { MvButton, MvCard, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { PressableScale } from "../../components/polish/PressableScale";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "AnnualReport">;
@@ -40,28 +42,26 @@ type MonthEntry = {
 };
 
 export function ProfessionalAnnualReportScreen({ navigation }: Props) {
-  const { runWithAuth, showToast, user } = useAppState();
+  const { showToast, user } = useAppState();
   const { theme } = useMvTheme();
   const isDark = theme.mode === "dark";
 
-  const [loading, setLoading] = useState(true);
-  const [allMonths, setAllMonths] = useState<MonthEntry[]>([]);
+  const reportQuery = useAuthQuery(
+    queryKeys.financial.report(36),
+    (token) => financialApi.report(token, 36),
+  );
+
+  const allMonths = (reportQuery.data?.months ?? []) as MonthEntry[];
+  const loading = reportQuery.isLoading;
+
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [sharing, setSharing] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const report = await runWithAuth(t => financialApi.report(t, 36));
-      setAllMonths(report.months);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar relatório.", navigation });
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (reportQuery.error) {
+      handleScreenError({ error: reportQuery.error, showToast, fallbackMessage: "Falha ao carregar relatório.", navigation });
     }
-  }, [navigation, runWithAuth, showToast]);
-
-  useEffect(() => { void load(); }, [load]);
+  }, [reportQuery.error, showToast, navigation]);
 
   const availableYears = [...new Set(allMonths.map(m => Number(m.month.split("-")[0])))].sort((a, b) => b - a);
   if (!availableYears.includes(new Date().getFullYear())) availableYears.unshift(new Date().getFullYear());

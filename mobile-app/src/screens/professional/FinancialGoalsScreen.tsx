@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator, KeyboardAvoidingView, Modal, Platform,
   ScrollView, StatusBar, View,
@@ -15,6 +16,8 @@ import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "FinancialGoals">;
 type MvThemeValue = ReturnType<typeof import("../../theme/MvThemeContext").useMvTheme>["theme"];
@@ -90,52 +93,59 @@ export function FinancialGoalsScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const isDark = theme.mode === "dark";
   const green = isDark ? theme.primary : "#16A34A";
+  const queryClient = useQueryClient();
 
   const month = currentMonthStr();
 
-  const [loading, setLoading] = useState(true);
+  const goalsQuery = useAuthQuery(
+    queryKeys.financial.goal(month),
+    async (token) => {
+      const [gl, dash, studs, incs, appCl] = await Promise.all([
+        financialApi.getGoal(token, month),
+        financialApi.dashboard(token, month),
+        financialApi.listStudents(token),
+        financialApi.listIncomes(token, month),
+        financialApi.listAppClients(token, month),
+      ]);
+      return { goal: gl as FinancialGoal | null, dashboard: dash as FinancialDashboard, students: studs, incomes: incs, appClients: appCl };
+    },
+  );
+
+  const goal = goalsQuery.data?.goal ?? null;
+  const dashboard = goalsQuery.data?.dashboard ?? null;
+  const loading = goalsQuery.isLoading;
+
+  const effectiveRevenue = useMemo(() => {
+    const d = goalsQuery.data;
+    if (!d) return 0;
+    const stuRev = d.students.filter(s => s.isActive).reduce((s, st) => s + st.monthlyValueCents, 0);
+    const manRev = d.incomes.reduce((s, i) => s + i.amountCents, 0);
+    const appRev = d.appClients.length > 0
+      ? d.appClients.reduce((s, c) => s + c.completedCents, 0)
+      : (d.dashboard?.appRevenueCents ?? 0);
+    return appRev + stuRev + manRev;
+  }, [goalsQuery.data]);
+
   const [saving, setSaving] = useState(false);
   const [editModal, setEditModal] = useState(false);
-
-  const [goal, setGoal] = useState<FinancialGoal | null>(null);
-  const [dashboard, setDashboard] = useState<FinancialDashboard | null>(null);
-  const [effectiveRevenue, setEffectiveRevenue] = useState(0);
 
   const [gRevenue, setGRevenue] = useState("");
   const [gStudents, setGStudents] = useState("");
   const [gClasses, setGClasses] = useState("");
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [gl, dash, studs, incs, appCl] = await Promise.all([
-        runWithAuth(t => financialApi.getGoal(t, month)),
-        runWithAuth(t => financialApi.dashboard(t, month)),
-        runWithAuth(t => financialApi.listStudents(t)),
-        runWithAuth(t => financialApi.listIncomes(t, month)),
-        runWithAuth(t => financialApi.listAppClients(t, month)),
-      ]);
-      setGoal(gl);
-      setDashboard(dash);
-      if (gl) {
-        setGRevenue(gl.targetRevenueCents ? maskPriceInput(String(gl.targetRevenueCents)) : "");
-        setGStudents(gl.targetStudents ? String(gl.targetStudents) : "");
-        setGClasses(gl.targetWeeklyClasses ? String(gl.targetWeeklyClasses) : "");
-      }
-      const stuRev = studs.filter(s => s.isActive).reduce((s, st) => s + st.monthlyValueCents, 0);
-      const manRev = incs.reduce((s, i) => s + i.amountCents, 0);
-      const appRev = appCl.length > 0
-        ? appCl.reduce((s, c) => s + c.completedCents, 0)
-        : (dash?.appRevenueCents ?? 0);
-      setEffectiveRevenue(appRev + stuRev + manRev);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar metas.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [month, navigation, runWithAuth, showToast]);
+  useEffect(() => {
+    const gl = goalsQuery.data?.goal;
+    if (!gl) return;
+    setGRevenue(gl.targetRevenueCents ? maskPriceInput(String(gl.targetRevenueCents)) : "");
+    setGStudents(gl.targetStudents ? String(gl.targetStudents) : "");
+    setGClasses(gl.targetWeeklyClasses ? String(gl.targetWeeklyClasses) : "");
+  }, [goalsQuery.data?.goal]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (goalsQuery.error) {
+      handleScreenError({ error: goalsQuery.error, showToast, fallbackMessage: "Falha ao carregar metas.", navigation });
+    }
+  }, [goalsQuery.error, showToast, navigation]);
 
   async function handleSave() {
     try {
@@ -146,7 +156,9 @@ export function FinancialGoalsScreen({ navigation }: Props) {
         targetStudents: gStudents ? Number(gStudents) : undefined,
         targetWeeklyClasses: gClasses ? Number(gClasses) : undefined,
       }));
-      setGoal(savedGoal);
+      queryClient.setQueryData<typeof goalsQuery.data>(queryKeys.financial.goal(month), (old) =>
+        old ? { ...old, goal: savedGoal as FinancialGoal } : old
+      );
       setEditModal(false);
       showToast("Meta salva.", "success");
     } catch (error) {
