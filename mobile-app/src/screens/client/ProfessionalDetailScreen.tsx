@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { Alert, ScrollView, Share, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -24,6 +24,8 @@ import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { hapticCta } from "../../utils/haptics";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ProfessionalDetail">;
 type ProviderDetail = ProviderSummary & {
@@ -54,34 +56,44 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const providerId = route.params.professionalId;
 
-  const [provider, setProvider] = useState<ProviderDetail | null>(null);
-  const [favorite, setFavorite] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [savingFavorite, setSavingFavorite] = useState(false);
-  const [consultancyCatalog, setConsultancyCatalog] = useState<ProviderConsultancyCatalog | null>(null);
-  const [catalogLoadError, setCatalogLoadError] = useState(false);
-  const [anamnesisCompleted, setAnamnesisCompleted] = useState<boolean | null>(null);
-
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setCatalogLoadError(false);
+  const detailQuery = useAuthQuery(
+    queryKeys.providers.detail(providerId),
+    async (token) => {
+      let catalogLoadError = false;
       const [detail, catalog, currentFavorites, anamnesisProfile] = await Promise.all([
         providersApi.detail(providerId) as Promise<ProviderDetail>,
-        consultancyApi.providerCatalog(providerId).catch(() => { setCatalogLoadError(true); return null; }),
-        runWithAuth((token) => favoritesApi.list(token)),
-        runWithAuth((token) => userApi.myAnamnesis(token)).catch(() => null),
+        consultancyApi.providerCatalog(providerId).catch(() => { catalogLoadError = true; return null; }),
+        favoritesApi.list(token),
+        userApi.myAnamnesis(token).catch(() => null),
       ]);
-      setProvider(detail);
-      setConsultancyCatalog(catalog);
-      setFavorite(currentFavorites.some((item) => item.providerId === providerId));
-      setAnamnesisCompleted(anamnesisProfile?.status === "COMPLETED");
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar detalhes do profissional.", navigation });
-    } finally { setLoading(false); }
-  }, [navigation, providerId, runWithAuth, showToast]);
+      return {
+        provider: detail,
+        consultancyCatalog: catalog,
+        catalogLoadError,
+        anamnesisCompleted: anamnesisProfile ? anamnesisProfile.status === "COMPLETED" : null,
+        isFavorite: currentFavorites.some((item) => item.providerId === providerId),
+      };
+    }
+  );
 
-  useEffect(() => { void loadData(); }, [loadData]);
+  const loading = detailQuery.isLoading;
+  const provider = detailQuery.data?.provider ?? null;
+  const consultancyCatalog = detailQuery.data?.consultancyCatalog ?? null;
+  const catalogLoadError = detailQuery.data?.catalogLoadError ?? false;
+  const anamnesisCompleted = detailQuery.data?.anamnesisCompleted ?? null;
+
+  const [favorite, setFavorite] = useState(false);
+  const [savingFavorite, setSavingFavorite] = useState(false);
+
+  useEffect(() => {
+    if (detailQuery.data) setFavorite(detailQuery.data.isFavorite);
+  }, [detailQuery.data]);
+
+  useEffect(() => {
+    if (detailQuery.error) {
+      handleScreenError({ error: detailQuery.error, showToast, fallbackMessage: "Falha ao carregar detalhes do profissional.", navigation });
+    }
+  }, [detailQuery.error, showToast, navigation]);
 
   const categoryLabel = useMemo(() => {
     const names = provider?.categoryLinks?.map((l) => l.category?.name).filter(Boolean) as string[] | undefined;
@@ -424,7 +436,7 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
             </View>
           </View>
           {catalogLoadError ? (
-            <TouchableOpacity onPress={() => void loadData()} style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+            <TouchableOpacity onPress={() => void detailQuery.refetch()} style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
               <Ionicons name="refresh-outline" size={14} color={theme.primary} />
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>Tentar novamente</Text>
             </TouchableOpacity>
