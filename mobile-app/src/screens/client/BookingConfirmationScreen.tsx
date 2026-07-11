@@ -1,4 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { Linking, Modal, Pressable, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -53,10 +55,8 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
   const hasMultipleBookings = bookingCount > 1;
   const hasPartialAvailability = failedCount > 0;
 
-  const [booking, setBooking] = useState<Booking | null>(null);
   const [payment, setPayment] = useState<PaymentStatusResponse | null>(null);
   const [pixCharge, setPixCharge] = useState<PixChargeResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [pixCharging, setPixCharging] = useState(false);
   const [checkingPix, setCheckingPix] = useState(false);
@@ -65,21 +65,29 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
   const hasShownChatModalRef = useRef(false);
   const pixFailCountRef = useRef(0);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
+  const confirmationQuery = useAuthQuery(
+    queryKeys.bookings.detail(bookingId),
+    async (token) => {
       const [bookings, paymentStatus] = await Promise.all([
-        runWithAuth((token) => bookingsApi.me(token)),
-        runWithAuth((token) => paymentsApi.bookingPayment(token, bookingId)),
+        bookingsApi.me(token),
+        paymentsApi.bookingPayment(token, bookingId),
       ]);
-      setBooking(bookings.find((item) => item.id === bookingId) ?? null);
-      setPayment(paymentStatus);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar confirmação do serviço.", navigation });
-    } finally {
-      setLoading(false);
+      return { booking: bookings.find((item) => item.id === bookingId) ?? null, payment: paymentStatus };
     }
-  }, [bookingId, navigation, runWithAuth, showToast]);
+  );
+
+  const loading = confirmationQuery.isLoading;
+  const booking = confirmationQuery.data?.booking ?? null;
+
+  useEffect(() => {
+    if (confirmationQuery.data?.payment) setPayment(confirmationQuery.data.payment);
+  }, [confirmationQuery.data]);
+
+  useEffect(() => {
+    if (confirmationQuery.error) {
+      handleScreenError({ error: confirmationQuery.error, showToast, fallbackMessage: "Falha ao carregar confirmação do serviço.", navigation });
+    }
+  }, [confirmationQuery.error, showToast, navigation]);
 
   const checkPaymentOnly = useCallback(async () => {
     try {
@@ -93,8 +101,6 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
       if (pixFailCountRef.current >= 3) setPixPollError(true);
     }
   }, [bookingId, runWithAuth]);
-
-  useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
     if (booking?.status === "CONFIRMED" && !hasShownChatModalRef.current) {
@@ -162,7 +168,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
       setPixCharging(true);
       const result = await runWithAuth((token) => paymentsApi.createPixCharge(token, bookingId));
       setPixCharge(result);
-      await load();
+      void confirmationQuery.refetch();
       showToast("Cobrança PIX criada. Finalize para liberar a conclusão.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Não foi possível iniciar cobrança PIX.", navigation });
@@ -174,8 +180,8 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
   async function checkPixStatus() {
     try {
       setCheckingPix(true);
-      await load();
-      if (payment?.status === "CAPTURED") {
+      const result = await confirmationQuery.refetch();
+      if (result.data?.payment?.status === "CAPTURED") {
         showToast("Pagamento PIX confirmado!", "success");
       } else {
         showToast("Pagamento ainda não confirmado. Tente novamente em instantes.", "info");
