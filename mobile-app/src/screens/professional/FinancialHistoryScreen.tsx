@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator, KeyboardAvoidingView, Modal, Platform,
   ScrollView, StatusBar, TouchableOpacity, View,
@@ -25,6 +26,8 @@ import { MvButton, MvCard, MvDatePicker, MvInput, MvText } from "../../component
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "FinancialHistory">;
 type MvThemeValue = ReturnType<typeof import("../../theme/MvThemeContext").useMvTheme>["theme"];
@@ -210,6 +213,8 @@ function ModalSheet({ visible, title, onClose, children, theme, topInset }: {
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
+type TxData = { incomes: FinancialIncome[]; expenses: FinancialExpense[] };
+
 export function FinancialHistoryScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
@@ -217,19 +222,47 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   const isDark = theme.mode === "dark";
   const green = isDark ? theme.primary : "#16A34A";
   const RED   = isDark ? "#F87171" : "#E53935";
+  const queryClient = useQueryClient();
 
   const now = currentMonthStr();
   const [period, setPeriod] = useState<Period>(6);
   const [selectedMonth, setSelectedMonth] = useState(now);
   const [txFilter, setTxFilter] = useState<TxFilter>("all");
+  const [saving, setSaving] = useState(false);
 
-  const [reportLoading, setReportLoading] = useState(true);
-  const [txLoading,     setTxLoading]     = useState(false);
-  const [saving,        setSaving]         = useState(false);
+  const reportQuery = useAuthQuery(
+    queryKeys.financial.report(12),
+    (token) => financialApi.report(token, 12),
+  );
 
-  const [report,   setReport]   = useState<FinancialReport | null>(null);
-  const [incomes,  setIncomes]  = useState<FinancialIncome[]>([]);
-  const [expenses, setExpenses] = useState<FinancialExpense[]>([]);
+  const txQuery = useAuthQuery(
+    queryKeys.financial.history(selectedMonth),
+    async (token) => {
+      const [incs, exps] = await Promise.all([
+        financialApi.listIncomes(token, selectedMonth),
+        financialApi.listExpenses(token, selectedMonth),
+      ]);
+      return { incomes: incs as FinancialIncome[], expenses: exps as FinancialExpense[] };
+    },
+  );
+
+  const report = (reportQuery.data ?? null) as FinancialReport | null;
+  const incomes = txQuery.data?.incomes ?? ([] as FinancialIncome[]);
+  const expenses = txQuery.data?.expenses ?? ([] as FinancialExpense[]);
+  const reportLoading = reportQuery.isLoading;
+  const txLoading = txQuery.isLoading;
+
+  useEffect(() => {
+    if (reportQuery.error) {
+      handleScreenError({ error: reportQuery.error, showToast, fallbackMessage: "Falha ao carregar histórico.", navigation });
+    }
+  }, [reportQuery.error, showToast, navigation]);
+
+  useEffect(() => {
+    if (txQuery.error) {
+      showToast("Falha ao carregar lançamentos.", "error");
+    }
+  }, [txQuery.error, showToast]);
 
   const [addIncomeModal,  setAddIncomeModal]  = useState(false);
   const [addExpenseModal, setAddExpenseModal] = useState(false);
@@ -243,40 +276,6 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   const [eValue, setEValue] = useState("50,00");
   const [eCat,   setECat]   = useState<FinancialExpenseCategory>("OTHER");
   const [eDate,  setEDate]  = useState<Date>(new Date());
-
-  // Load 12-month report once
-  useEffect(() => {
-    void (async () => {
-      try {
-        setReportLoading(true);
-        const rep = await runWithAuth(t => financialApi.report(t, 12));
-        setReport(rep);
-      } catch (error) {
-        handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar histórico.", navigation });
-      } finally {
-        setReportLoading(false);
-      }
-    })();
-  }, [navigation, runWithAuth, showToast]);
-
-  // Load transactions for selected month
-  const loadTx = useCallback(async (m: string) => {
-    try {
-      setTxLoading(true);
-      const [incs, exps] = await Promise.all([
-        runWithAuth(t => financialApi.listIncomes(t, m)),
-        runWithAuth(t => financialApi.listExpenses(t, m)),
-      ]);
-      setIncomes(incs);
-      setExpenses(exps);
-    } catch {
-      showToast("Falha ao carregar lançamentos.", "error");
-    } finally {
-      setTxLoading(false);
-    }
-  }, [runWithAuth, showToast]);
-
-  useEffect(() => { void loadTx(selectedMonth); }, [loadTx, selectedMonth]);
 
   // Chart data
   const chartMonths = prevMonths(now, period);
@@ -330,7 +329,9 @@ export function FinancialHistoryScreen({ navigation }: Props) {
         amountCents: parseCents(iValue),
         paidAt: new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
       }));
-      setIncomes(prev => [...prev, newIncome]);
+      queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
+        old ? { ...old, incomes: [...old.incomes, newIncome as FinancialIncome] } : old
+      );
       setAddIncomeModal(false);
       setIDesc(""); setIValue("100,00"); setIDate(new Date());
       showToast("Receita registrada.", "success");
@@ -348,7 +349,9 @@ export function FinancialHistoryScreen({ navigation }: Props) {
         amountCents: parseCents(iValue),
         paidAt: new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
       }));
-      setIncomes(prev => prev.map(i => i.id === updated.id ? updated : i));
+      queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
+        old ? { ...old, incomes: old.incomes.map(i => i.id === updated.id ? updated as FinancialIncome : i) } : old
+      );
       setEditingIncome(null);
       setIDesc(""); setIValue("100,00"); setIDate(new Date());
       showToast("Receita atualizada.", "success");
@@ -360,7 +363,9 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   async function handleDeleteIncome(id: string) {
     try {
       await runWithAuth(t => financialApi.deleteIncome(t, id));
-      setIncomes(prev => prev.filter(i => i.id !== id));
+      queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
+        old ? { ...old, incomes: old.incomes.filter(i => i.id !== id) } : old
+      );
     } catch { showToast("Falha ao remover.", "error"); }
   }
 
@@ -374,7 +379,9 @@ export function FinancialHistoryScreen({ navigation }: Props) {
         category: eCat,
         paidAt: new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
       }));
-      setExpenses(prev => [...prev, newExpense]);
+      queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
+        old ? { ...old, expenses: [...old.expenses, newExpense as FinancialExpense] } : old
+      );
       setAddExpenseModal(false);
       setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date());
       showToast("Despesa registrada.", "success");
@@ -393,7 +400,9 @@ export function FinancialHistoryScreen({ navigation }: Props) {
         category: eCat,
         paidAt: new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
       }));
-      setExpenses(prev => prev.map(e => e.id === updated.id ? updated : e));
+      queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
+        old ? { ...old, expenses: old.expenses.map(e => e.id === updated.id ? updated as FinancialExpense : e) } : old
+      );
       setEditingExpense(null);
       setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date());
       showToast("Despesa atualizada.", "success");
@@ -405,7 +414,9 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   async function handleDeleteExpense(id: string) {
     try {
       await runWithAuth(t => financialApi.deleteExpense(t, id));
-      setExpenses(prev => prev.filter(e => e.id !== id));
+      queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
+        old ? { ...old, expenses: old.expenses.filter(e => e.id !== id) } : old
+      );
     } catch { showToast("Falha ao remover.", "error"); }
   }
 
