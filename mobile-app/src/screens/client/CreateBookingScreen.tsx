@@ -1,4 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
@@ -157,7 +159,6 @@ export function CreateBookingScreen({ navigation, route }: Props) {
       ? route.params.offerPriceCents
       : null;
 
-  const [provider, setProvider] = useState<ProviderDetail | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
 
@@ -166,17 +167,72 @@ export function CreateBookingScreen({ navigation, route }: Props) {
   const [loadingCalendarMonth, setLoadingCalendarMonth] = useState(false);
   const [calendarMonthError, setCalendarMonthError] = useState(false);
   const loadedMonthKeysRef = useRef<Set<string>>(new Set());
+  const hasInitialized = useRef(false);
 
   const [selectedDateKeys, setSelectedDateKeys] = useState<string[]>([]);
   const [selectedSlotsByDate, setSelectedSlotsByDate] = useState<Record<string, string>>({});
 
   const [sessionLocation, setSessionLocation] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
-  const [paymentReady, setPaymentReady] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>("CARD");
-  const [anamnesis, setAnamnesis] = useState<ClientAnamnesisProfile | null>(null);
-  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+
+  const createBookingQuery = useAuthQuery(
+    queryKeys.providers.detail(providerId),
+    async (token) => {
+      const [providerDetail, customerStatus, anamnesisProfile] = await Promise.all([
+        providersApi.detail(providerId) as Promise<ProviderDetail>,
+        paymentsApi.customerStatus(token),
+        userApi.myAnamnesis(token).catch(() => null),
+      ]);
+      const resolvedCategories = (providerDetail.categoryLinks ?? [])
+        .map((link) => link.category)
+        .filter((category): category is Category => Boolean(category));
+      return {
+        provider: providerDetail,
+        categories: resolvedCategories,
+        paymentReady: customerStatus.hasDefaultPaymentMethod,
+        anamnesis: anamnesisProfile,
+      };
+    },
+    { staleTime: 5 * 60 * 1000 }
+  );
+
+  const loading = createBookingQuery.isLoading;
+  const provider = createBookingQuery.data?.provider ?? null;
+  const paymentReady = createBookingQuery.data?.paymentReady ?? false;
+  const anamnesis = createBookingQuery.data?.anamnesis ?? null;
+
+  useEffect(() => {
+    const data = createBookingQuery.data;
+    if (!data || hasInitialized.current) return;
+    hasInitialized.current = true;
+    const cats = data.categories;
+    setCategories(cats);
+    setSelectedCategoryId((current) =>
+      current && cats.some((c) => c.id === current) ? current : (cats[0]?.id ?? "")
+    );
+    if (data.provider.serviceMode === "HOME_VISIT_ONLY") {
+      setSessionLocation("A domicílio");
+    }
+    loadedMonthKeysRef.current.clear();
+    setScheduleByDate({});
+    setSelectedDateKeys([]);
+    setSelectedSlotsByDate({});
+    setCalendarCursor(startOfMonth(new Date()));
+    void loadMonthSchedule(startOfMonth(new Date()), true);
+  }, [createBookingQuery.data, loadMonthSchedule]);
+
+  useEffect(() => {
+    if (createBookingQuery.error) {
+      handleScreenError({
+        error: createBookingQuery.error,
+        showToast,
+        fallbackMessage: "Falha ao preparar criacao de agendamento.",
+        navigation,
+      });
+    }
+  }, [createBookingQuery.error, showToast, navigation]);
 
   const anamnesisCompleted = anamnesis?.status === "COMPLETED";
   const anamnesisOutdated = anamnesisCompleted && anamnesis?.completedAt
@@ -253,58 +309,6 @@ export function CreateBookingScreen({ navigation, route }: Props) {
     [navigation, providerId, showToast]
   );
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      loadedMonthKeysRef.current.clear();
-      setScheduleByDate({});
-      setSelectedDateKeys([]);
-      setSelectedSlotsByDate({});
-      setCalendarCursor(startOfMonth(new Date()));
-
-      const [providerDetail, customerStatus, anamnesisProfile] = await Promise.all([
-        providersApi.detail(providerId),
-        runWithAuth((token) => paymentsApi.customerStatus(token)),
-        runWithAuth((token) => userApi.myAnamnesis(token)).catch(() => null),
-      ]);
-      setAnamnesis(anamnesisProfile);
-
-      setProvider(providerDetail);
-
-      if (providerDetail.serviceMode === "HOME_VISIT_ONLY") {
-        setSessionLocation("A domicílio");
-      }
-
-      // As especialidades visíveis para o cliente são exatamente as categorias vinculadas
-      // ao personal (categoryLinks). Elas já têm id e nome prontos para uso no agendamento.
-      const resolvedCategories = (providerDetail.categoryLinks ?? [])
-        .map((link) => link.category)
-        .filter((category): category is Category => Boolean(category));
-
-      setCategories(resolvedCategories);
-      setSelectedCategoryId((current) =>
-        current && resolvedCategories.some((category) => category.id === current)
-          ? current
-          : (resolvedCategories[0]?.id ?? "")
-      );
-      setPaymentReady(customerStatus.hasDefaultPaymentMethod);
-
-      await loadMonthSchedule(startOfMonth(new Date()), true);
-    } catch (error) {
-      handleScreenError({
-        error,
-        showToast,
-        fallbackMessage: "Falha ao preparar criacao de agendamento.",
-        navigation,
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [loadMonthSchedule, navigation, providerId, runWithAuth, showToast]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   useEffect(() => {
     setCalendarMonthError(false);
