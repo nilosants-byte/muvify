@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
@@ -11,6 +11,8 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar, MvBadge, MvButton, MvCard, MvRefreshControl, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalStudentDetail">;
 
@@ -63,41 +65,44 @@ function AssessmentRow({
 }
 
 export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { showToast } = useAppState();
   const { theme } = useMvTheme();
 
   const iconColor = theme.mode === "dark" ? "#D8E0D8" : "#394239";
 
-  const [detail, setDetail] = useState<ProviderStudentManagementDetail | null>(null);
-  const [studentBookings, setStudentBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { clientId } = route.params;
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
+  const studentDetailQuery = useAuthQuery(
+    queryKeys.providers.dashboardStudentDetail(clientId),
+    async (token) => {
       const [payload, allBookings] = await Promise.all([
-        runWithAuth((token) => providersApi.dashboardStudentDetail(token, route.params.clientId)),
-        runWithAuth((token) => bookingsApi.me(token)).catch(() => [] as Booking[]),
+        providersApi.dashboardStudentDetail(token, clientId),
+        bookingsApi.me(token).catch(() => [] as Booking[]),
       ]);
-      setDetail(payload);
-      const filtered = allBookings
-        .filter((booking) => (booking as any).clientId === route.params.clientId || booking.client?.id === route.params.clientId)
+      const filteredBookings = allBookings
+        .filter((booking) => (booking as any).clientId === clientId || booking.client?.id === clientId)
         .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
         .slice(0, 6);
-      setStudentBookings(filtered);
-    } catch (error) {
+      return { detail: payload as ProviderStudentManagementDetail, studentBookings: filteredBookings };
+    },
+  );
+
+  const detail = studentDetailQuery.data?.detail ?? null;
+  const studentBookings = studentDetailQuery.data?.studentBookings ?? ([] as Booking[]);
+  const loading = studentDetailQuery.isLoading;
+
+  useFocusEffect(useCallback(() => { void studentDetailQuery.refetch(); }, [studentDetailQuery.refetch]));
+
+  useEffect(() => {
+    if (studentDetailQuery.error) {
       handleScreenError({
-        error,
+        error: studentDetailQuery.error,
         showToast,
         fallbackMessage: "Falha ao carregar o perfil do aluno.",
         navigation,
       });
-    } finally {
-      setLoading(false);
     }
-  }, [navigation, route.params.clientId, runWithAuth, showToast]);
-
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  }, [studentDetailQuery.error, showToast, navigation]);
 
   const answers = detail?.anamnesis?.answers;
   const isAnamnesisComplete = detail?.anamnesis?.status === "COMPLETED";
@@ -134,7 +139,7 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <MvRefreshControl refreshing={loading} onRefresh={() => void load()} />
+          <MvRefreshControl refreshing={studentDetailQuery.isRefetching} onRefresh={() => void studentDetailQuery.refetch()} />
         }
       >
         {loading && !detail ? (

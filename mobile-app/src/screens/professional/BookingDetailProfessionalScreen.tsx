@@ -21,6 +21,8 @@ import { SkeletonBookingDetail } from "../../components/polish/SkeletonCard";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatBRDateTime } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "BookingDetailProfessional">;
 
@@ -62,9 +64,22 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const bookingId = route.params.bookingId;
 
-  const [booking, setBooking] = useState<Booking | null>(null);
-  const [payment, setPayment] = useState<PaymentStatusResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const bookingDetailQuery = useAuthQuery(
+    queryKeys.bookings.providerDetail(bookingId),
+    async (token) => {
+      const [bookings, paymentInfo] = await Promise.all([
+        bookingsApi.me(token),
+        paymentsApi.bookingPayment(token, bookingId),
+      ]);
+      const found = bookings.find((item) => item.id === bookingId) ?? null;
+      return { booking: found as Booking | null, payment: paymentInfo as PaymentStatusResponse };
+    },
+  );
+
+  const booking = bookingDetailQuery.data?.booking ?? null;
+  const payment = bookingDetailQuery.data?.payment ?? null;
+  const loading = bookingDetailQuery.isLoading;
+
   const [updating, setUpdating] = useState(false);
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [attendanceCode, setAttendanceCode] = useState("");
@@ -84,6 +99,19 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
     }
   }, []);
 
+  // Remove cache de validação se booking foi cancelado
+  useEffect(() => {
+    if (bookingDetailQuery.data?.booking?.status === "CANCELLED") {
+      _validatedCache.delete(bookingId);
+    }
+  }, [bookingDetailQuery.data?.booking?.status, bookingId]);
+
+  useEffect(() => {
+    if (bookingDetailQuery.error) {
+      handleScreenError({ error: bookingDetailQuery.error, showToast, fallbackMessage: "Falha ao carregar agendamento.", navigation });
+    }
+  }, [bookingDetailQuery.error, showToast, navigation]);
+
   const runValidationSuccess = useCallback(() => {
     _validatedCache.set(bookingId, true);
     setValidated(true);
@@ -101,25 +129,6 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [bookings, paymentInfo] = await Promise.all([
-        runWithAuth((token) => bookingsApi.me(token)),
-        runWithAuth((token) => paymentsApi.bookingPayment(token, bookingId)),
-      ]);
-      const found = bookings.find((item) => item.id === bookingId) ?? null;
-      if (found?.status === "CANCELLED") _validatedCache.delete(bookingId);
-      setBooking(found);
-      setPayment(paymentInfo);
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar agendamento.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [bookingId, navigation, runWithAuth, showToast]);
-
-  useEffect(() => { void load(); }, [load]);
 
   async function updateStatus(status: "CONFIRMED" | "CANCELLED" | "COMPLETED") {
     try {
@@ -127,7 +136,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
       await runWithAuth((token) => bookingsApi.updateStatus(token, bookingId, status));
       showToast("Status atualizado.", "success");
       setCancelModalVisible(false);
-      await load();
+      void bookingDetailQuery.refetch();
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao atualizar status.", navigation });
     } finally {
@@ -145,7 +154,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
       runValidationSuccess();
       showToast("Código presencial validado com sucesso.", "success");
       setAttendanceCode(normalized);
-      await load();
+      void bookingDetailQuery.refetch();
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao validar código presencial.", navigation });
     } finally {
@@ -161,7 +170,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
       runValidationSuccess();
       showToast("QR validado com sucesso.", "success");
       setScannerVisible(false);
-      await load();
+      void bookingDetailQuery.refetch();
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao validar QR do atendimento.", navigation });
       scannerReadLockRef.current = false;
@@ -397,7 +406,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
               />
             ) : null}
 
-            <MvButton variant="outline" label="Atualizar" onPress={() => void load()} />
+            <MvButton variant="outline" label="Atualizar" onPress={() => void bookingDetailQuery.refetch()} />
           </View>
         </ScrollView>
         </ScreenEntrance>

@@ -1,4 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import * as Haptics from "expo-haptics";
 import { Modal, Pressable, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -6,7 +8,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
-import { ApiError, ProviderDashboardStudentsResponse, ProviderStudent, providersApi } from "../../services/api/client";
+import { ProviderDashboardStudentsResponse, ProviderStudent, providersApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar, MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText } from "../../components/mv";
@@ -103,6 +105,16 @@ function toAssessmentForm(input: Record<string, unknown> | null | undefined): As
   };
 }
 
+function isProfileMissingError(err: Error | null): boolean {
+  if (!err) return false;
+  const message = err.message.toLowerCase();
+  return (
+    (err as unknown as { status?: number }).status === 404 ||
+    message.includes("perfil profissional") ||
+    message.includes("provider profile")
+  );
+}
+
 export function ProfessionalStudentsScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
@@ -110,10 +122,30 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
 
   const iconColor = theme.mode === "dark" ? "#D8E0D8" : "#394239";
 
-  const [data, setData] = useState<ProviderDashboardStudentsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
+  const studentsQuery = useAuthQuery(
+    queryKeys.providers.dashboardStudents(),
+    (token) => providersApi.dashboardStudents(token),
+    { retry: false },
+  );
+
+  const data = studentsQuery.data ?? null;
+  const loading = studentsQuery.isLoading;
+  const refreshing = studentsQuery.isRefetching;
+  const needsProfileSetup = studentsQuery.isError && isProfileMissingError(studentsQuery.error);
+
+  useFocusEffect(useCallback(() => { void studentsQuery.refetch(); }, [studentsQuery.refetch]));
+
+  const onRefresh = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void studentsQuery.refetch();
+  }, [studentsQuery.refetch]);
+
+  useEffect(() => {
+    if (studentsQuery.error && !isProfileMissingError(studentsQuery.error)) {
+      handleScreenError({ error: studentsQuery.error, showToast, fallbackMessage: "Falha ao carregar alunos.", navigation });
+    }
+  }, [studentsQuery.error, showToast, navigation]);
+
   const [activeServiceFilter, setActiveServiceFilter] = useState<ServiceFilter>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -125,42 +157,6 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
   const changeCounterRef = useRef(0);
   const hydratedRef = useRef(false);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const payload = await runWithAuth((token) => providersApi.dashboardStudents(token));
-      setNeedsProfileSetup(false);
-      setData(payload);
-    } catch (error) {
-      const message = error instanceof Error ? error.message.toLowerCase() : "";
-      const profileMissing =
-        (error instanceof ApiError && error.status === 404) ||
-        message.includes("perfil profissional") ||
-        message.includes("provider profile");
-      if (profileMissing) {
-        setNeedsProfileSetup(true);
-        setData(null);
-        return;
-      }
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar alunos.", navigation });
-    } finally {
-      setLoading(false);
-    }
-  }, [navigation, runWithAuth, showToast]);
-
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-      return undefined;
-    }, [load])
-  );
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await load();
-    setRefreshing(false);
-  }, [load]);
 
   const saveAssessment = useCallback(async () => {
     if (!selectedStudent) return;
