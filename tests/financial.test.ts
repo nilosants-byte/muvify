@@ -1,0 +1,286 @@
+import "dotenv/config";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import request from "supertest";
+import { app } from "../src/app";
+import { prisma } from "../src/config/prisma";
+
+const PASSWORD = "Test1234";
+let providerToken = "";
+let providerUserId = "";
+let providerId = "";          // ProviderProfile.id
+let categoryId = "";
+let studentId = "";
+let incomeId = "";
+let expenseId = "";
+let sessionId = "";
+
+function uid(prefix: string) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+describe("financial", () => {
+  beforeAll(async () => {
+    await prisma.$connect();
+
+    const category = await prisma.serviceCategory.create({
+      data: { name: `FinCat_${Date.now()}`, description: "test" },
+    });
+    categoryId = category.id;
+
+    const email = `${uid("fin_prov")}@test.com`;
+    const phone = `119${Date.now().toString().slice(-9)}`;
+
+    const reg = await request(app).post("/api/auth/register").send({
+      name: "Financial Provider",
+      email,
+      password: PASSWORD,
+      phone,
+      role: "PROVIDER",
+      termsVersion: "2026.05",
+      consentAccepted: true,
+    });
+    providerToken = reg.body.accessToken;
+    providerUserId = reg.body.user.id;
+
+    const profile = await request(app)
+      .post("/api/providers/profile")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        displayName: "Financial Provider",
+        bio: "Test bio for financial tests",
+        experienceYears: 2,
+        priceCents: 10000,
+        categoryIds: [categoryId],
+      });
+    providerId = profile.body.id;
+  });
+
+  afterAll(async () => {
+    await prisma.financialClassSession.deleteMany({ where: { providerId } });
+    await prisma.financialIncome.deleteMany({ where: { providerId } });
+    await prisma.financialExpense.deleteMany({ where: { providerId } });
+    await prisma.financialGoal.deleteMany({ where: { providerId } });
+    await prisma.financialStudent.deleteMany({ where: { providerId } });
+    await prisma.providerCategory.deleteMany({ where: { providerId } });
+    await prisma.providerProfile.deleteMany({ where: { id: providerId } });
+    await prisma.session.deleteMany({ where: { userId: providerUserId } });
+    await prisma.user.deleteMany({ where: { id: providerUserId } });
+    await prisma.serviceCategory.deleteMany({ where: { id: categoryId } });
+    await prisma.$disconnect();
+  });
+
+  // ── Dashboard ────────────────────────────────────────────────────────────
+  it("GET /financial/dashboard returns 200", async () => {
+    const res = await request(app)
+      .get("/api/financial/dashboard")
+      .set("Authorization", `Bearer ${providerToken}`);
+    expect(res.status).toBe(200);
+  });
+
+  it("GET /financial/dashboard rejects unauthenticated", async () => {
+    const res = await request(app).get("/api/financial/dashboard");
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /financial/report returns 200", async () => {
+    const res = await request(app)
+      .get("/api/financial/report")
+      .set("Authorization", `Bearer ${providerToken}`);
+    expect(res.status).toBe(200);
+  });
+
+  // ── Students ─────────────────────────────────────────────────────────────
+  it("POST /financial/students creates student", async () => {
+    const res = await request(app)
+      .post("/api/financial/students")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({ name: "Test Student", monthlyValueCents: 20000, type: "PRESENTIAL", weeklyFrequency: 3 });
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBeTruthy();
+    studentId = res.body.id;
+  });
+
+  it("POST /financial/students rejects missing required fields", async () => {
+    const res = await request(app)
+      .post("/api/financial/students")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({ name: "Incomplete" }); // missing monthlyValueCents and type
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /financial/students returns list", async () => {
+    const res = await request(app)
+      .get("/api/financial/students")
+      .set("Authorization", `Bearer ${providerToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.some((s: { id: string }) => s.id === studentId)).toBe(true);
+  });
+
+  it("PATCH /financial/students/:id updates student", async () => {
+    const res = await request(app)
+      .patch(`/api/financial/students/${studentId}`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({ name: "Updated Student", weeklyFrequency: 4 });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe("Updated Student");
+  });
+
+  // ── Incomes ───────────────────────────────────────────────────────────────
+  it("POST /financial/incomes creates income", async () => {
+    const res = await request(app)
+      .post("/api/financial/incomes")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({ description: "Mensalidade Janeiro", amountCents: 20000, studentId, paidAt: new Date().toISOString() });
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBeTruthy();
+    incomeId = res.body.id;
+  });
+
+  it("POST /financial/incomes rejects zero amount", async () => {
+    const res = await request(app)
+      .post("/api/financial/incomes")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({ description: "Zero", amountCents: 0, paidAt: new Date().toISOString() });
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /financial/incomes returns list", async () => {
+    const res = await request(app)
+      .get("/api/financial/incomes")
+      .set("Authorization", `Bearer ${providerToken}`);
+    expect(res.status).toBe(200);
+  });
+
+  it("PATCH /financial/incomes/:id updates income", async () => {
+    const res = await request(app)
+      .patch(`/api/financial/incomes/${incomeId}`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({ description: "Mensalidade Atualizada", amountCents: 22000 });
+    expect(res.status).toBe(200);
+    expect(res.body.amountCents).toBe(22000);
+  });
+
+  // ── Expenses ──────────────────────────────────────────────────────────────
+  it("POST /financial/expenses creates expense", async () => {
+    const res = await request(app)
+      .post("/api/financial/expenses")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({ description: "Mensalidade academia", amountCents: 15000, category: "GYM", paidAt: new Date().toISOString() });
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBeTruthy();
+    expenseId = res.body.id;
+  });
+
+  it("POST /financial/expenses rejects zero amount", async () => {
+    const res = await request(app)
+      .post("/api/financial/expenses")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({ description: "Zero", amountCents: 0, paidAt: new Date().toISOString() });
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /financial/expenses returns list", async () => {
+    const res = await request(app)
+      .get("/api/financial/expenses")
+      .set("Authorization", `Bearer ${providerToken}`);
+    expect(res.status).toBe(200);
+  });
+
+  it("PATCH /financial/expenses/:id updates expense", async () => {
+    const res = await request(app)
+      .patch(`/api/financial/expenses/${expenseId}`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({ amountCents: 16000 });
+    expect(res.status).toBe(200);
+    expect(res.body.amountCents).toBe(16000);
+  });
+
+  // ── Goals ─────────────────────────────────────────────────────────────────
+  it("PUT /financial/goals sets goal", async () => {
+    const month = new Date().toISOString().slice(0, 7);
+    const res = await request(app)
+      .put("/api/financial/goals")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({ month, targetRevenueCents: 500000, targetStudents: 20, targetWeeklyClasses: 40 });
+    expect(res.status).toBe(200);
+  });
+
+  it("GET /financial/goals returns goal", async () => {
+    const res = await request(app)
+      .get("/api/financial/goals")
+      .set("Authorization", `Bearer ${providerToken}`);
+    expect(res.status).toBe(200);
+  });
+
+  // ── Sessions ──────────────────────────────────────────────────────────────
+  it("POST /financial/sessions creates session", async () => {
+    const res = await request(app)
+      .post("/api/financial/sessions")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({ studentId, date: new Date().toISOString(), notes: "Sessão de teste" });
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBeTruthy();
+    sessionId = res.body.id;
+  });
+
+  it("GET /financial/sessions returns list", async () => {
+    const res = await request(app)
+      .get("/api/financial/sessions")
+      .set("Authorization", `Bearer ${providerToken}`);
+    expect(res.status).toBe(200);
+  });
+
+  it("DELETE /financial/sessions/:id removes session", async () => {
+    const res = await request(app)
+      .delete(`/api/financial/sessions/${sessionId}`)
+      .set("Authorization", `Bearer ${providerToken}`);
+    expect(res.status).toBe(204);
+  });
+
+  // ── Deletions ─────────────────────────────────────────────────────────────
+  it("DELETE /financial/incomes/:id removes income", async () => {
+    const res = await request(app)
+      .delete(`/api/financial/incomes/${incomeId}`)
+      .set("Authorization", `Bearer ${providerToken}`);
+    expect(res.status).toBe(204);
+  });
+
+  it("DELETE /financial/expenses/:id removes expense", async () => {
+    const res = await request(app)
+      .delete(`/api/financial/expenses/${expenseId}`)
+      .set("Authorization", `Bearer ${providerToken}`);
+    expect(res.status).toBe(204);
+  });
+
+  it("DELETE /financial/students/:id removes student", async () => {
+    const res = await request(app)
+      .delete(`/api/financial/students/${studentId}`)
+      .set("Authorization", `Bearer ${providerToken}`);
+    expect(res.status).toBe(204);
+  });
+
+  // ── Role guard ────────────────────────────────────────────────────────────
+  it("GET /financial/dashboard rejects CLIENT role", async () => {
+    const email = `${uid("fin_client")}@test.com`;
+    const phone = `118${Date.now().toString().slice(-9)}`;
+    const reg = await request(app).post("/api/auth/register").send({
+      name: "Client User",
+      email,
+      password: PASSWORD,
+      phone,
+      termsVersion: "2026.05",
+      consentAccepted: true,
+    });
+    const clientToken = reg.body.accessToken;
+    const clientId = reg.body.user.id;
+
+    const res = await request(app)
+      .get("/api/financial/dashboard")
+      .set("Authorization", `Bearer ${clientToken}`);
+    expect(res.status).toBe(403);
+
+    await prisma.session.deleteMany({ where: { userId: clientId } });
+    await prisma.user.deleteMany({ where: { id: clientId } });
+  });
+});
