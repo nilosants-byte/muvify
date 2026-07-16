@@ -7,6 +7,7 @@ import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { BookingController } from "../controllers/booking.controller";
 import {
   bookingIdParamSchema,
+  completionProofParamSchema,
   createBookingSchema,
   updateBookingStatusSchema,
   verifyAttendanceCodeSchema,
@@ -47,4 +48,10 @@ bookingRoutes.post(
   uploadRateLimiter,
   validate(bookingIdParamSchema),
   bookingController.reportNoShow
+);
+bookingRoutes.get(
+  "/:bookingId/completion-proof/:evidenceUserId",
+  clientOrProvider,
+  validate(completionProofParamSchema),
+  bookingController.getCompletionProofImage
 );

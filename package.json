@@ -21,6 +21,8 @@
     "db:backup:schedule": "tsx scripts/db-backup-schedule.ts",
     "data-retention:dry-run": "tsx scripts/data-retention-run.ts",
     "data-retention:apply": "tsx scripts/data-retention-run.ts --apply",
+    "backfill:completion-evidence:dry-run": "tsx scripts/backfill-completion-evidence-r2.ts",
+    "backfill:completion-evidence:apply": "tsx scripts/backfill-completion-evidence-r2.ts --apply",
     "db:restore": "tsx scripts/db-restore.ts",
     "db:reset": "tsx scripts/db-reset.ts",
     "test:prepare": "node -e \"const cp=require('child_process'); require('dotenv').config(); const fallback='postgresql://postgres:postgres@127.0.0.1:5432/personal_app_test'; const raw=process.env.TEST_DATABASE_URL||fallback; const testUrl=raw.replace('@localhost:','@127.0.0.1:'); const env={...process.env, DATABASE_URL:testUrl, DIRECT_URL:testUrl}; cp.execSync('npx prisma migrate deploy',{stdio:'inherit',env});\"",

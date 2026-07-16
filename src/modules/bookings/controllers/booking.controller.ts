@@ -65,4 +65,14 @@ export class BookingController {
     const booking = await bookingService.reportNoShow(request.user!.id, request.params.bookingId);
     return response.json(booking);
   }
+
+  async getCompletionProofImage(request: Request, response: Response) {
+    const { buffer, mimeType } = await bookingService.getCompletionProofImage(
+      request.user!.id,
+      request.params.bookingId,
+      request.params.evidenceUserId
+    );
+    response.setHeader("Cache-Control", "private, no-store");
+    return response.type(mimeType).send(buffer);
+  }
 }

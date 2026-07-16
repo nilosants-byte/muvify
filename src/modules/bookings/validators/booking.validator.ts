@@ -58,6 +58,13 @@ export const bookingIdParamSchema = z.object({
   })
 });
 
+export const completionProofParamSchema = z.object({
+  params: z.object({
+    bookingId: z.string().uuid(),
+    evidenceUserId: z.string().uuid()
+  })
+});
+
 export const verifyAttendanceCodeSchema = z.object({
   params: z.object({
     bookingId: z.string().uuid()

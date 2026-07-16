@@ -581,7 +581,8 @@ model CompletionEvidence {
   userId       String
   cameraFacing CameraFacing
   mimeType     String
-  imageBase64  String
+  imageBase64  String?
+  storageKey   String?
   capturedAt   DateTime     @default(now())
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt

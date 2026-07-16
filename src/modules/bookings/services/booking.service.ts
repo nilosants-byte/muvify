@@ -6,9 +6,10 @@ import { prisma } from "../../../config/prisma";
 import { redis } from "../../../config/redis";
 import { AppError } from "../../../shared/errors/app-error";
 import { deleteByPattern } from "../../../shared/utils/cache";
-import { encryptSensitiveText } from "../../../shared/utils/encryption";
+import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/utils/encryption";
 import { haversineKm } from "../../../shared/utils/geo";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
+import { getPrivateObject, putPrivateObject } from "../../../shared/services/storage.service";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { PaymentService } from "../../payments/services/payment.service";
 import { EmailService } from "../../../shared/services/email.service";
@@ -1285,6 +1286,10 @@ export class BookingService {
     userId: string,
     completionProof: CompletionProofInput
   ) {
+    const encrypted = encryptSensitiveText(completionProof.imageBase64);
+    const storageKey = `attendance-proofs/${bookingId}_${userId}.enc`;
+    await putPrivateObject(storageKey, encrypted);
+
     await prisma.completionEvidence.upsert({
       where: {
         bookingId_userId: {
@@ -1293,7 +1298,8 @@ export class BookingService {
         }
       },
       update: {
-        imageBase64: encryptSensitiveText(completionProof.imageBase64),
+        imageBase64: null,
+        storageKey,
         mimeType: completionProof.mimeType,
         cameraFacing: completionProof.cameraFacing,
         capturedAt: new Date()
@@ -1301,12 +1307,53 @@ export class BookingService {
       create: {
         bookingId,
         userId,
-        imageBase64: encryptSensitiveText(completionProof.imageBase64),
+        storageKey,
         mimeType: completionProof.mimeType,
         cameraFacing: completionProof.cameraFacing,
         capturedAt: new Date()
       }
     });
+  }
+
+  // Cliente ou profissional do próprio agendamento podem ver a comprovação enviada
+  // por qualquer um dos dois — decripta sob demanda, nunca serve o objeto do R2 direto
+  // (é um blob de texto cifrado, não uma imagem, então uma URL pública não adiantaria).
+  async getCompletionProofImage(requesterId: string, bookingId: string, evidenceUserId: string) {
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { provider: { select: { userId: true } } }
+    });
+
+    if (!booking) {
+      throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    const isClient = booking.clientId === requesterId;
+    const isProvider = booking.provider.userId === requesterId;
+    if (!isClient && !isProvider) {
+      throw new AppError("Sem permissão para visualizar esta comprovação.", StatusCodes.FORBIDDEN);
+    }
+
+    const evidence = await prisma.completionEvidence.findUnique({
+      where: { bookingId_userId: { bookingId, userId: evidenceUserId } }
+    });
+    if (!evidence) {
+      throw new AppError("Comprovação não encontrada.", StatusCodes.NOT_FOUND);
+    }
+
+    const encrypted = evidence.storageKey
+      ? await getPrivateObject(evidence.storageKey)
+      : evidence.imageBase64;
+    if (!encrypted) {
+      throw new AppError("Comprovação não encontrada.", StatusCodes.NOT_FOUND);
+    }
+
+    const base64 = decryptSensitiveText(encrypted);
+    if (!base64) {
+      throw new AppError("Falha ao processar comprovação.", StatusCodes.INTERNAL_SERVER_ERROR);
+    }
+
+    return { buffer: Buffer.from(base64, "base64"), mimeType: evidence.mimeType };
   }
 
   private async notifyBookingStatusChange(

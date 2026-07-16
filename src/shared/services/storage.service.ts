@@ -1,4 +1,4 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
 import { env } from "../../config/env";
 
@@ -148,4 +148,31 @@ export async function uploadMediaFromBuffer(
     mimeType,
     sizeBytes: buffer.byteLength
   };
+}
+
+// Opaque, already-encrypted content (e.g. an attendance-proof selfie run through
+// encryptSensitiveText) — stored under its own key, never exposed as a public URL.
+// No mime/magic-byte validation here since the body isn't an image anymore, it's ciphertext.
+export async function putPrivateObject(key: string, content: string): Promise<void> {
+  const config = getR2Config();
+  await getR2Client(config).send(
+    new PutObjectCommand({
+      Bucket: config.bucketName,
+      Key: key,
+      Body: Buffer.from(content, "utf8"),
+      ContentType: "application/octet-stream"
+    })
+  );
+}
+
+export async function getPrivateObject(key: string): Promise<string> {
+  const config = getR2Config();
+  const result = await getR2Client(config).send(
+    new GetObjectCommand({ Bucket: config.bucketName, Key: key })
+  );
+  const body = await result.Body?.transformToString("utf8");
+  if (body === undefined) {
+    throw new InvalidFileContentError("Objeto não encontrado ou vazio.");
+  }
+  return body;
 }
