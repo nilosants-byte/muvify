@@ -1,4 +1,4 @@
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import { env } from "../../config/env";
 export async function hashValue(value: string) {
   return bcrypt.hash(value, env.BCRYPT_ROUNDS);

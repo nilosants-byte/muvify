@@ -1,5 +1,9 @@
 ﻿FROM node:20-alpine AS deps
 WORKDIR /app
+# python3/make/g++ are needed to compile bcrypt's native addon from source —
+# Alpine (musl libc) isn't covered by bcrypt's prebuilt binaries, unlike glibc
+# Linux. Only needed in this stage; the runtime image never installs them.
+RUN apk add --no-cache python3 make g++
 COPY package*.json ./
 RUN npm ci
 
