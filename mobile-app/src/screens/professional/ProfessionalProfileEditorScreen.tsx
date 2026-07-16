@@ -22,7 +22,7 @@ import { maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
-import { fileUriToDataUri, resolveMediaUrl } from "../../utils/media";
+import { resolveMediaUrl } from "../../utils/media";
 
 type Props = BottomTabScreenProps<ProfessionalTabParamList, "ProfessionalProfileEditor">;
 
@@ -134,28 +134,24 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       if (fromCamera) {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== "granted") { showToast("Permissão para câmera não concedida.", "error"); return; }
-        result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.5, base64: true });
+        result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.5 });
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== "granted") { showToast("Permissão para galeria não concedida.", "error"); return; }
-        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.5, base64: true });
+        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.5 });
       }
       if (result.canceled) return;
       const asset = result.assets?.[0];
       if (!asset) return;
-      if (asset.base64) {
-        const estimatedBytes = Math.ceil((asset.base64.length * 3) / 4);
-        if (estimatedBytes > 3 * 1024 * 1024) { showToast("A foto deve ter no máximo 3MB.", "error"); return; }
-      }
+      if (asset.fileSize && asset.fileSize > 3 * 1024 * 1024) { showToast("A foto deve ter no máximo 3MB.", "error"); return; }
       const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
       const mimeType = asset.mimeType ?? "image/jpeg";
       if (!allowedTypes.includes(mimeType)) { showToast("Use JPEG, PNG ou WebP.", "error"); return; }
-      const dataUri = asset.base64
-        ? `data:${mimeType};base64,${asset.base64}`
-        : await fileUriToDataUri(asset.uri, mimeType);
       setPhotoPreviewUri(asset.uri);
       showToast("Enviando foto...", "info");
-      const { url } = await runWithAuth((token) => uploadsApi.uploadMedia(token, dataUri, "profile-photos"));
+      const { url } = await runWithAuth((token) =>
+        uploadsApi.uploadMedia(token, { uri: asset.uri, mimeType, fileName: "profile-photo.jpg" }, "profile-photos")
+      );
       setPhotoUrl(url);
       showToast("Foto enviada. Salve o perfil para concluir.", "success");
     } catch (error) {
@@ -181,7 +177,6 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
         allowsEditing: true,
         videoMaxDuration: 60,
         quality: 0.3,
-        base64: false,
       });
 
       if (result.canceled) return;
@@ -198,25 +193,22 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       const mimeType = asset.mimeType ?? "video/mp4";
       if (!allowedTypes.includes(mimeType)) { showToast("Use MP4, MOV, WebM ou 3GP.", "error"); return; }
 
-      // Mostra a prévia local (file://) imediatamente — nunca passar data:video/ pro WebView,
-      // pois a string base64 de 30-40MB esgota a memória do app.
+      if (asset.fileSize && asset.fileSize > 40 * 1024 * 1024) {
+        showToast("O vídeo deve ter no máximo 40MB. Use a ferramenta de corte para reduzir.", "error");
+        return;
+      }
+
+      // Prévia local (file://) — o vídeo em si nunca é convertido pra base64 na memória do app.
       setVideoLocalUri(asset.uri);
       setPresentationVideoUrl(null); // limpa a URL anterior até o novo upload terminar
       setVideoRemoved(false);
       setVideoProcessing(true);
       showToast("Enviando vídeo...", "info");
 
-      const dataUri = await fileUriToDataUri(asset.uri, mimeType);
-      const base64Part = dataUri.slice(dataUri.indexOf(",") + 1);
-      const estimatedBytes = Math.ceil((base64Part.length * 3) / 4);
-      if (estimatedBytes > 40 * 1024 * 1024) {
-        showToast("O vídeo deve ter no máximo 40MB. Use a ferramenta de corte para reduzir.", "error");
-        setVideoLocalUri(null);
-        setVideoProcessing(false);
-        return;
-      }
-
-      const { url } = await runWithAuth((token) => uploadsApi.uploadMedia(token, dataUri, "presentation-videos"));
+      const extension = mimeType === "video/quicktime" ? "mov" : mimeType === "video/webm" ? "webm" : mimeType === "video/3gpp" ? "3gp" : "mp4";
+      const { url } = await runWithAuth((token) =>
+        uploadsApi.uploadMedia(token, { uri: asset.uri, mimeType, fileName: `presentation-video.${extension}` }, "presentation-videos")
+      );
       setPresentationVideoUrl(url);
       setVideoProcessing(false);
       showToast("Vídeo enviado. Salve o perfil para concluir.", "success");

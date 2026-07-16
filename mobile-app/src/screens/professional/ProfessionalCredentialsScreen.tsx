@@ -17,7 +17,6 @@ import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatBRDate } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
-import { fileUriToDataUri } from "../../utils/media";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 
@@ -251,8 +250,11 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
           existing: ProviderCredentialsDocument | undefined
         ): Promise<ProviderCredentialsDocument> {
           if (!doc) return { name: existing!.name, uri: existing!.uri, mimeType: existing!.mimeType };
-          const dataUri = await fileUriToDataUri(doc.uri, doc.mimeType);
-          const { url } = await uploadsApi.uploadMedia(token, dataUri, "cref-documents");
+          const { url } = await uploadsApi.uploadMedia(
+            token,
+            { uri: doc.uri, mimeType: doc.mimeType, fileName: doc.name },
+            "cref-documents"
+          );
           return { name: doc.name, uri: url, mimeType: doc.mimeType };
         }
 

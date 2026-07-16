@@ -39,8 +39,6 @@ function getR2Client(config: ReturnType<typeof getR2Config>): S3Client {
   return cachedClient;
 }
 
-const DATA_URI_REGEX = /^data:([a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+);base64,(.+)$/;
-
 const EXTENSION_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/jpg": "jpg",
@@ -54,8 +52,16 @@ const EXTENSION_BY_MIME: Record<string, string> = {
   "application/pdf": "pdf"
 };
 
-export class InvalidDataUriError extends Error {}
+export class UnsupportedMediaTypeError extends Error {}
 export class InvalidFileContentError extends Error {}
+
+export type UploadFolder =
+  | "profile-photos"
+  | "presentation-videos"
+  | "feed-photos"
+  | "cref-documents"
+  | "attendance-proofs"
+  | "exercise-media";
 
 function validateMagicBytes(buffer: Buffer, mimeType: string): void {
   if (buffer.length < 4) {
@@ -109,22 +115,22 @@ function validateMagicBytes(buffer: Buffer, mimeType: string): void {
   }
 }
 
-function parseDataUri(dataUri: string): { mimeType: string; buffer: Buffer } {
-  const match = DATA_URI_REGEX.exec(dataUri);
-  if (!match) {
-    throw new InvalidDataUriError("Formato de mídia inválido. Esperado um data URI base64.");
+function assertAllowedMimeType(mimeType: string): void {
+  if (!(mimeType in EXTENSION_BY_MIME)) {
+    throw new UnsupportedMediaTypeError(
+      "Formato de mídia inválido. Use JPEG, PNG, WEBP, GIF, MP4, MOV, WebM, 3GP ou PDF."
+    );
   }
-  const [, mimeType, base64] = match;
-  return { mimeType, buffer: Buffer.from(base64, "base64") };
 }
 
-export async function uploadMediaFromDataUri(
-  dataUri: string,
-  folder: "profile-photos" | "presentation-videos" | "feed-photos" | "cref-documents" | "attendance-proofs" | "exercise-media"
+export async function uploadMediaFromBuffer(
+  buffer: Buffer,
+  mimeType: string,
+  folder: UploadFolder
 ): Promise<{ url: string; mimeType: string; sizeBytes: number }> {
-  const config = getR2Config();
-  const { mimeType, buffer } = parseDataUri(dataUri);
+  assertAllowedMimeType(mimeType);
   validateMagicBytes(buffer, mimeType);
+  const config = getR2Config();
   const extension = EXTENSION_BY_MIME[mimeType] ?? "bin";
   const key = `${folder}/${randomUUID()}.${extension}`;
 

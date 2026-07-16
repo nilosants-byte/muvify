@@ -21,3 +21,11 @@ process.env.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES =
   process.env.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES || "30";
 process.env.CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 process.env.MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET || "test_mp_webhook_secret";
+// Fake R2 config so storage.service.ts's getR2Config() doesn't throw in tests —
+// the actual network call is mocked out (see tests/uploads.test.ts) so these
+// values never need to resolve to a real Cloudflare account.
+process.env.R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "test-access-key";
+process.env.R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "test-secret-key";
+process.env.R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "test-bucket";
+process.env.R2_ENDPOINT = process.env.R2_ENDPOINT || "https://fake-r2.test";
+process.env.R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://fake-r2-public.test";

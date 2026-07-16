@@ -965,7 +965,7 @@ export function CommunityScreen({ navigation }: Props) {
   const [createCaption, setCreateCaption] = useState("");
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createPhotoUri, setCreatePhotoUri] = useState<string | null>(null);
-  const [createPhotoData, setCreatePhotoData] = useState<string | null>(null);
+  const [createPhotoData, setCreatePhotoData] = useState<{ uri: string; mimeType: string } | null>(null);
 
   // ── Banner de boas-vindas (exibido uma vez por usuário) ──────────────────────
   const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
@@ -1216,13 +1216,13 @@ export function CommunityScreen({ navigation }: Props) {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") { showToast("Permissão para galeria negada.", "error"); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
-      allowsEditing: true, quality: 0.7, base64: true,
+      allowsEditing: true, quality: 0.7,
     });
     if (result.canceled) return;
     const asset = result.assets?.[0];
-    if (!asset?.uri || !asset.base64) { showToast("Não foi possível carregar a imagem.", "error"); return; }
+    if (!asset?.uri) { showToast("Não foi possível carregar a imagem.", "error"); return; }
     setCreatePhotoUri(asset.uri);
-    setCreatePhotoData(`data:${asset.mimeType ?? "image/jpeg"};base64,${asset.base64}`);
+    setCreatePhotoData({ uri: asset.uri, mimeType: asset.mimeType ?? "image/jpeg" });
   }
 
   async function submitCreatePost() {
@@ -1233,7 +1233,11 @@ export function CommunityScreen({ navigation }: Props) {
       await runWithAuth(async (token) => {
         let imageUrl: string | undefined;
         if (createPhotoData) {
-          const uploaded = await uploadsApi.uploadMedia(token, createPhotoData, "feed-photos");
+          const uploaded = await uploadsApi.uploadMedia(
+            token,
+            { uri: createPhotoData.uri, mimeType: createPhotoData.mimeType, fileName: "feed-photo.jpg" },
+            "feed-photos"
+          );
           imageUrl = uploaded.url;
         }
         return communityApi.createPost(token, {

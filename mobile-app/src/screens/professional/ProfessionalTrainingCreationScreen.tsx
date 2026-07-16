@@ -32,7 +32,6 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvCard, MvInput, MvMediaViewer, MvText } from "../../components/mv";
 import { handleScreenError } from "../shared/api-helpers";
 import { StepProgressBar } from "../../components/professional/UXReformComponents";
-import { fileUriToDataUri } from "../../utils/media";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 
@@ -75,7 +74,6 @@ type MediaPreviewState = {
 
 const LIST_BOX_MAX_HEIGHT = 392;
 const MAX_MEDIA_UPLOAD_BYTES = 5_500_000;
-const MAX_MEDIA_PAYLOAD_CHARS = 7_500_000;
 const VIDEO_MAX_DURATION_SECONDS = 30; // ~30s é o limite razoável para demo de exercício
 
 const EMPTY_EXERCISE_FORM: CreateExerciseForm = {
@@ -517,7 +515,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         allowsEditing: kind === "video",
         videoMaxDuration: VIDEO_MAX_DURATION_SECONDS,
         quality: kind === "video" ? 0.5 : 0.7,
-        base64: kind === "image",
       });
 
       if (pickerResult.canceled) return;
@@ -540,21 +537,12 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
           ? "image/gif"
           : "image/jpeg");
 
-      let dataUri = "";
-
-      if (kind === "image" && asset.base64) {
-        dataUri = `data:${mimeType};base64,${asset.base64}`;
-      } else {
-        dataUri = await fileUriToDataUri(asset.uri, mimeType);
-      }
-
-      if (dataUri.length > MAX_MEDIA_PAYLOAD_CHARS) {
-        showToast("Midia muito grande para salvar. Use arquivo menor.", "error");
-        return;
-      }
+      const fileName = kind === "video" ? "exercise-video.mp4" : mimeType.includes("gif") ? "exercise-media.gif" : "exercise-media.jpg";
 
       showToast("Enviando midia...", "info");
-      const { url } = await runWithAuth((token) => uploadsApi.uploadMedia(token, dataUri, "exercise-media"));
+      const { url } = await runWithAuth((token) =>
+        uploadsApi.uploadMedia(token, { uri: asset.uri, mimeType, fileName }, "exercise-media")
+      );
 
       const resolvedType: ExerciseMediaType =
         kind === "video"

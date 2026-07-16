@@ -111,7 +111,11 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
     try {
       setSharingPhoto(true);
       const { url } = await runWithAuth((token) =>
-        uploadsApi.uploadMedia(token, shareSelfieDataUri, "feed-photos")
+        uploadsApi.uploadMedia(
+          token,
+          { uri: shareSelfieDataUri, mimeType: "image/jpeg", fileName: "feed-photo.jpg" },
+          "feed-photos"
+        )
       );
       await runWithAuth((token) =>
         communityApi.createPost(token, { imageUrl: url, caption: "Treino concluído! 💪" })

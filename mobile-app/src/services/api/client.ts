@@ -1116,6 +1116,10 @@ export async function apiRequest<T = unknown>(
     clearTimeout(timeoutId);
   }
 
+  return finalizeResponse<T>(response);
+}
+
+async function finalizeResponse<T>(response: Response): Promise<T> {
   const payload = await parseResponse(response);
   if (!response.ok) {
     let message: string;
@@ -1145,6 +1149,49 @@ export async function apiRequest<T = unknown>(
     throw new ApiError(response.status, message, payload);
   }
   return payload as T;
+}
+
+type UploadRequestConfig = {
+  token?: string;
+  formData: FormData;
+};
+
+// Multipart uploads: no Content-Type header here on purpose — fetch/RN sets
+// "multipart/form-data; boundary=..." automatically based on the FormData body.
+export async function apiUploadRequest<T = unknown>(
+  path: string,
+  { token, formData }: UploadRequestConfig
+): Promise<T> {
+  const requestUrl = `${API_BASE_URL}${path}`;
+  let response: Response;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
+
+  try {
+    response = await fetch(requestUrl, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(__DEV__ ? { "ngrok-skip-browser-warning": "true" } : {})
+      },
+      body: formData,
+      signal: controller.signal
+    });
+  } catch (error) {
+    const timedOut =
+      error instanceof Error &&
+      (error.name === "AbortError" || /aborted|timeout/i.test(error.message));
+    const cause = error instanceof Error ? error.message : "Network request failed";
+    throw new ApiError(0, timedOut ? buildTimeoutErrorMessage() : buildNetworkErrorMessage(), {
+      cause,
+      requestUrl,
+      method: "POST"
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  return finalizeResponse<T>(response);
 }
 
 export const authApi = {
@@ -1214,12 +1261,32 @@ export type UploadFolder =
   | "cref-documents"
   | "exercise-media";
 
+export type UploadFile = {
+  uri: string;
+  mimeType: string;
+  fileName?: string;
+};
+
 export const uploadsApi = {
-  uploadMedia(token: string, dataUri: string, folder: UploadFolder) {
-    return apiRequest<{ url: string; mimeType: string; sizeBytes: number }>("/uploads/media", {
-      method: "POST",
+  async uploadMedia(token: string, file: UploadFile, folder: UploadFolder) {
+    const formData = new FormData();
+    formData.append("folder", folder);
+    const fileName = file.fileName ?? `upload-${Date.now()}`;
+    if (file.uri.startsWith("data:")) {
+      // Already-in-memory data URI (e.g. a selfie stashed in AsyncStorage) — resolve
+      // it to a Blob directly, no local file:// path to hand to FormData.
+      const blob = await (await fetch(file.uri)).blob();
+      formData.append("file", blob, fileName);
+    } else {
+      formData.append("file", {
+        uri: file.uri,
+        name: fileName,
+        type: file.mimeType
+      } as unknown as Blob);
+    }
+    return apiUploadRequest<{ url: string; mimeType: string; sizeBytes: number }>("/uploads/media", {
       token,
-      body: { dataUri, folder }
+      formData
     });
   }
 };

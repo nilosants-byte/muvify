@@ -217,23 +217,22 @@ export function ClientProfileScreen({ navigation }: Props) {
       if (fromCamera) {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== "granted") { showToast("Permissão para câmera negada.", "error"); return; }
-        result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.6, base64: true });
+        result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.6 });
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== "granted") { showToast("Permissão para galeria negada.", "error"); return; }
-        result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.6, base64: true });
+        result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.6 });
       }
       if (result.canceled) return;
       const asset = result.assets?.[0];
       if (!asset?.uri) return;
-      if (!asset.base64) {
-        showToast("Não foi possível capturar a imagem. Tente novamente.", "error");
-        return;
-      }
-      const dataUri = `data:${asset.mimeType ?? "image/jpeg"};base64,${asset.base64}`;
       setPhotoUri(asset.uri);
       const updated = await runWithAuth(async (token) => {
-        const { url } = await uploadsApi.uploadMedia(token, dataUri, "profile-photos");
+        const { url } = await uploadsApi.uploadMedia(
+          token,
+          { uri: asset.uri, mimeType: asset.mimeType ?? "image/jpeg", fileName: "profile-photo.jpg" },
+          "profile-photos"
+        );
         return userApi.updateMe(token, { photoUrl: url });
       });
       setCurrentUser(updated);
