@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvText, MvToggle } from "../../components/mv";
+import { MvAvatar, MvPasswordConfirmModal, MvText, MvToggle } from "../../components/mv";
 import { useAppState } from "../../state/AppState";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
@@ -33,6 +33,8 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
   const { signOut, user, runWithAuth, analyticsEnabled, setAnalyticsPreference, setThemePreference } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
   const [pushEnabled, setPushEnabled] = useState(true);
+  const [showDeletePasswordModal, setShowDeletePasswordModal] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const lightModeEnabled = !isDark;
   const isLight = theme.mode === "light";
 
@@ -69,25 +71,23 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
         {
           text: "Continuar",
           style: "destructive",
-          onPress: () => {
-            Alert.prompt(
-              "Confirme sua senha",
-              "Digite sua senha para confirmar a exclusão da conta.",
-              async (password) => {
-                if (!password) return;
-                try {
-                  await runWithAuth((token) => userApi.deleteMe(token, password));
-                  await signOut();
-                } catch (error) {
-                  Alert.alert("Erro", error instanceof Error ? error.message : "Não foi possível excluir a conta.");
-                }
-              },
-              "secure-text"
-            );
-          },
+          onPress: () => setShowDeletePasswordModal(true),
         },
       ]
     );
+  }
+
+  async function handleConfirmDeleteAccount(password: string) {
+    setDeletingAccount(true);
+    try {
+      await runWithAuth((token) => userApi.deleteMe(token, password));
+      setShowDeletePasswordModal(false);
+      await signOut();
+    } catch (error) {
+      Alert.alert("Erro", error instanceof Error ? error.message : "Não foi possível excluir a conta.");
+    } finally {
+      setDeletingAccount(false);
+    }
   }
 
   async function handleExportData() {
@@ -258,7 +258,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
 
         {/* ── DOCUMENTOS ── */}
         <View style={{ marginHorizontal: 16, borderRadius: 16, borderWidth: 1, backgroundColor: cardBg, borderColor: border, overflow: "hidden", marginBottom: 12 }}>
-          <MenuItem icon="card-outline" label="Conta bancária" onPress={() => goToStack("ConnectPayoutAccount")} isFirst />
+          <MenuItem icon="card-outline" label="Conta de recebimento" sub="Mercado Pago" onPress={() => goToStack("ConnectPayoutAccount")} isFirst />
           <MenuItem icon="shield-checkmark-outline" label="CREF e documentos" onPress={() => goToStack("ProfessionalCredentials")} />
           <MenuItem icon="lock-closed-outline" label="Segurança" onPress={() => goToStack("Security")} />
           <MenuItem icon="download-outline" label="Baixar meus dados" sub="Exportar todas as suas informações" onPress={() => void handleExportData()} />
@@ -279,6 +279,16 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
       </ScrollView>
 
 {/* Settings accessed via home drawer — no bottom nav needed */}
+
+      <MvPasswordConfirmModal
+        visible={showDeletePasswordModal}
+        title="Confirme sua senha"
+        message="Digite sua senha para confirmar a exclusão da conta."
+        confirmLabel="Excluir conta"
+        loading={deletingAccount}
+        onCancel={() => setShowDeletePasswordModal(false)}
+        onConfirm={(password) => void handleConfirmDeleteAccount(password)}
+      />
     </View>
   );
 }

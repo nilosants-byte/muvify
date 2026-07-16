@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientStackParamList } from "../../navigation/route-types";
-import { MvToggle } from "../../components/mv";
+import { MvPasswordConfirmModal, MvToggle } from "../../components/mv";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { userApi } from "../../services/api/client";
@@ -82,6 +82,8 @@ export function ClientSettingsScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const [pushEnabled, setPushEnabled] = useState(true);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
+  const [showDeletePasswordModal, setShowDeletePasswordModal] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const lightModeEnabled = !isDark;
 
   function handleToggleAnalytics(enabled: boolean) {
@@ -97,25 +99,23 @@ export function ClientSettingsScreen({ navigation }: Props) {
         {
           text: "Continuar",
           style: "destructive",
-          onPress: () => {
-            Alert.prompt(
-              "Confirme sua senha",
-              "Digite sua senha para confirmar a exclusão da conta.",
-              async (password) => {
-                if (!password) return;
-                try {
-                  await runWithAuth((token) => userApi.deleteMe(token, password));
-                  await signOut();
-                } catch (error) {
-                  Alert.alert("Erro", error instanceof Error ? error.message : "Não foi possível excluir a conta.");
-                }
-              },
-              "secure-text"
-            );
-          },
+          onPress: () => setShowDeletePasswordModal(true),
         },
       ]
     );
+  }
+
+  async function handleConfirmDeleteAccount(password: string) {
+    setDeletingAccount(true);
+    try {
+      await runWithAuth((token) => userApi.deleteMe(token, password));
+      setShowDeletePasswordModal(false);
+      await signOut();
+    } catch (error) {
+      Alert.alert("Erro", error instanceof Error ? error.message : "Não foi possível excluir a conta.");
+    } finally {
+      setDeletingAccount(false);
+    }
   }
 
   async function handleExportData() {
@@ -318,6 +318,16 @@ export function ClientSettingsScreen({ navigation }: Props) {
           <AuthOnboardingScreen onDismiss={() => setShowHowItWorks(false)} />
         </View>
       </Modal>
+
+      <MvPasswordConfirmModal
+        visible={showDeletePasswordModal}
+        title="Confirme sua senha"
+        message="Digite sua senha para confirmar a exclusão da conta."
+        confirmLabel="Excluir conta"
+        loading={deletingAccount}
+        onCancel={() => setShowDeletePasswordModal(false)}
+        onConfirm={(password) => void handleConfirmDeleteAccount(password)}
+      />
     </View>
   );
 }

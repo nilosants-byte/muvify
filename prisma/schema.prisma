@@ -246,6 +246,7 @@ model User {
   twoFactorEnabled            Boolean   @default(false)
   twoFactorEnabledAt          DateTime?
   document                    String?
+  documentHash                String?
   trainingDaysPerWeek         Int       @default(3)
   customerPaymentMethods CustomerPaymentMethod[]
   createdAt       DateTime          @default(now())
@@ -283,6 +284,7 @@ model User {
   adminAuditLogs          AdminAuditLog[]
 
   @@index([createdAt])
+  @@index([documentHash])
 }
 
 model AdminAuditLog {

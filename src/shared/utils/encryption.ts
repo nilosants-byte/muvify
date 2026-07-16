@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from "node:crypto";
 import { env } from "../../config/env";
 
 const ENCRYPTION_PREFIX = "enc:v1:";
@@ -52,6 +52,18 @@ export function encryptSensitiveText(value: string) {
   return `${ENCRYPTION_PREFIX}${iv.toString("base64url")}.${tag.toString(
     "base64url"
   )}.${ciphertext.toString("base64url")}`;
+}
+
+// Deterministic HMAC for exact-match lookups on fields whose actual value is
+// stored encrypted (AES-GCM is randomized, so it can't be searched by
+// `WHERE column = value`). Store this alongside the encrypted value in a
+// companion `<field>Hash` column and query that column instead.
+export function hashLookupValue(value: string) {
+  const normalized = value.trim();
+  if (!normalized) {
+    return normalized;
+  }
+  return createHmac("sha256", resolveEncryptionSecret()).update(normalized).digest("hex");
 }
 
 export function decryptSensitiveText(value: string | null | undefined) {

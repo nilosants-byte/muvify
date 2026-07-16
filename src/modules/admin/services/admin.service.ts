@@ -6,6 +6,7 @@ import { env } from "../../../config/env";
 import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
 import { isAdminEmail } from "../../../shared/utils/admin-access";
+import { decryptSensitiveText, hashLookupValue } from "../../../shared/utils/encryption";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DataRetentionService } from "../../privacy/services/data-retention.service";
 
@@ -939,15 +940,19 @@ export class AdminService {
   }
 
   private maskDocument(doc: string | null | undefined): string {
-    if (!doc) return "***";
-    const d = doc.replace(/\D/g, "");
+    const decrypted = decryptSensitiveText(doc ?? null);
+    if (!decrypted) return "***";
+    const d = decrypted.replace(/\D/g, "");
     return d.length >= 4 ? `***.***.***-${d.slice(-2)}` : "***";
   }
 
+  // Lookup by document goes through documentHash (a deterministic HMAC) since
+  // `document` itself is stored encrypted with a randomized IV and can't be
+  // matched with a plain `WHERE document = value`.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private userByDoc(doc: string, extraSelect: Record<string, unknown> = {}) {
     return (prisma.user.findFirst as any)({
-      where: { document: doc },
+      where: { documentHash: hashLookupValue(doc) },
       select: { id: true, name: true, email: true, document: true, ...extraSelect }
     }) as Promise<any>;
   }

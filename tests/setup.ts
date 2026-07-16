@@ -20,3 +20,4 @@ process.env.REFRESH_TOKEN_EXPIRES_IN_DAYS = process.env.REFRESH_TOKEN_EXPIRES_IN
 process.env.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES =
   process.env.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES || "30";
 process.env.CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+process.env.MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET || "test_mp_webhook_secret";

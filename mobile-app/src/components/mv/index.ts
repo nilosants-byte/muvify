@@ -16,3 +16,4 @@ export { WheelPickerColumn } from "./WheelPickerColumn";
 export type { WheelItem } from "./WheelPickerColumn";
 export { TimeWheelPicker } from "./TimeWheelPicker";
 export { MvDatePicker } from "./MvDatePicker";
+export { MvPasswordConfirmModal } from "./MvPasswordConfirmModal";
