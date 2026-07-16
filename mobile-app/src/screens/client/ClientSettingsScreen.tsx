@@ -9,7 +9,7 @@ import { ClientStackParamList } from "../../navigation/route-types";
 import { MvPasswordConfirmModal, MvToggle } from "../../components/mv";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { userApi } from "../../services/api/client";
+import { authApi, userApi } from "../../services/api/client";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { AuthOnboardingScreen } from "../auth/AuthOnboardingScreen";
@@ -77,13 +77,14 @@ function ConfigGroup({ title, children }: { title: string; children: React.React
 }
 
 export function ClientSettingsScreen({ navigation }: Props) {
-  const { signOut, runWithAuth, analyticsEnabled, setAnalyticsPreference, setThemePreference } = useAppState();
+  const { signOut, runWithAuth, analyticsEnabled, setAnalyticsPreference, setThemePreference, user, showToast } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const [pushEnabled, setPushEnabled] = useState(true);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [showDeletePasswordModal, setShowDeletePasswordModal] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
   const lightModeEnabled = !isDark;
 
   function handleToggleAnalytics(enabled: boolean) {
@@ -115,6 +116,18 @@ export function ClientSettingsScreen({ navigation }: Props) {
       Alert.alert("Erro", error instanceof Error ? error.message : "Não foi possível excluir a conta.");
     } finally {
       setDeletingAccount(false);
+    }
+  }
+
+  async function handleResendVerificationEmail() {
+    setResendingVerification(true);
+    try {
+      await runWithAuth((token) => authApi.resendVerificationEmail(token));
+      Alert.alert("E-mail enviado", "Verifique sua caixa de entrada (e o spam) para confirmar seu e-mail.");
+    } catch (error) {
+      Alert.alert("Erro", "Não foi possível reenviar o e-mail de verificação. Tente novamente mais tarde.");
+    } finally {
+      setResendingVerification(false);
     }
   }
 
@@ -185,6 +198,17 @@ export function ClientSettingsScreen({ navigation }: Props) {
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, marginTop: 4 }}>Gerencie sua conta, segurança e preferências.</Text>
         </View>
 
+        {!user?.emailVerifiedAt ? (
+          <ConfigGroup title="Conta">
+            <ConfigRow
+              icon="mail-unread-outline"
+              title="Confirmar e-mail"
+              subtitle={resendingVerification ? "Enviando..." : "Reenviar e-mail de verificação"}
+              onPress={resendingVerification ? undefined : () => void handleResendVerificationEmail()}
+            />
+          </ConfigGroup>
+        ) : null}
+
         {/* Privacidade e segurança */}
         <ConfigGroup title="Privacidade e segurança">
           <ConfigRow
@@ -192,6 +216,7 @@ export function ClientSettingsScreen({ navigation }: Props) {
             title="Verificação em duas etapas"
             subtitle="Em breve"
             badge="Em breve"
+            onPress={() => showToast("Essa função ainda não está disponível para clientes.", "info")}
           />
           <ConfigRow
             icon="lock-closed-outline"

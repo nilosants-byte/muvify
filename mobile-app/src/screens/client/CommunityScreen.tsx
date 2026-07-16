@@ -269,12 +269,41 @@ function postThematicCard(type: string, theme: MvTheme): {
 const FEED_MAX_RATIO = 16 / 9;
 const FEED_MIN_RATIO = 3 / 4;
 
+// Image.getSize only reads the image header (fast, no full decode), so we can
+// know the real aspect ratio before the card renders and avoid the layout
+// jump that came from guessing a default ratio and correcting it on load.
+// Cached per URL since the same post can scroll in and out of view repeatedly.
+const feedImageRatioCache = new Map<string, number>();
+
+function clampFeedRatio(width: number, height: number) {
+  return Math.max(FEED_MIN_RATIO, Math.min(FEED_MAX_RATIO, width / height));
+}
+
 function FeedImage({ uri, fallback }: {
   uri: string;
   fallback: ReturnType<typeof postThematicCard>;
 }) {
   const [errored, setErrored] = useState(false);
-  const [ratio, setRatio] = useState(4 / 3); // padrão enquanto carrega
+  const [ratio, setRatio] = useState(() => feedImageRatioCache.get(uri) ?? 4 / 3);
+
+  useEffect(() => {
+    if (feedImageRatioCache.has(uri)) {
+      setRatio(feedImageRatioCache.get(uri)!);
+      return;
+    }
+    let cancelled = false;
+    Image.getSize(
+      uri,
+      (width, height) => {
+        if (cancelled || !width || !height) return;
+        const clamped = clampFeedRatio(width, height);
+        feedImageRatioCache.set(uri, clamped);
+        setRatio(clamped);
+      },
+      () => { /* fall back to onLoad below */ }
+    );
+    return () => { cancelled = true; };
+  }, [uri]);
 
   if (errored) {
     return (
@@ -290,8 +319,10 @@ function FeedImage({ uri, fallback }: {
       resizeMode="cover"
       onLoad={(e) => {
         const { width, height } = e.nativeEvent.source;
-        if (width && height) {
-          setRatio(Math.max(FEED_MIN_RATIO, Math.min(FEED_MAX_RATIO, width / height)));
+        if (width && height && !feedImageRatioCache.has(uri)) {
+          const clamped = clampFeedRatio(width, height);
+          feedImageRatioCache.set(uri, clamped);
+          setRatio(clamped);
         }
       }}
       onError={() => setErrored(true)}

@@ -96,11 +96,15 @@ function buildMonthGrid(cursor: Date) {
   return cells;
 }
 
+// Builds the scheduled instant using Brazil's fixed UTC-3 offset (no DST since
+// 2019) instead of Date.setHours, which would use the device's own timezone —
+// on a phone set to a different zone, the same wall-clock time would silently
+// resolve to a different real-world instant than the one shown on screen.
 function mergeDateAndSlot(isoDate: string, slot: string) {
-  const baseDate = fromIsoDate(isoDate);
-  const [hours, minutes] = slot.split(":").map((value) => Number(value));
-  baseDate.setHours(hours || 0, minutes || 0, 0, 0);
-  return baseDate;
+  const [hoursRaw, minutesRaw] = slot.split(":");
+  const hours = (hoursRaw ?? "00").padStart(2, "0");
+  const minutes = (minutesRaw ?? "00").padStart(2, "0");
+  return new Date(`${isoDate}T${hours}:${minutes}:00-03:00`);
 }
 
 function formatSelectedDayLabel(isoDate: string) {

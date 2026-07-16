@@ -599,12 +599,12 @@ export class BookingService {
       select: { id: true, clientId: true, provider: { select: { userId: true } } },
     });
 
-    for (const booking of due60) {
-      const upd60 = await prisma.booking.updateMany({
-        where: { id: booking.id, reminder60SentAt: null },
+    if (due60.length > 0) {
+      await prisma.booking.updateMany({
+        where: { id: { in: due60.map((b) => b.id) }, reminder60SentAt: null },
         data: { reminder60SentAt: referenceDate },
       });
-      if (upd60.count > 0) {
+      for (const booking of due60) {
         void notificationService
           .sendToUsers([booking.clientId, booking.provider.userId], {
             preferenceType: "BOOKINGS",
@@ -628,12 +628,12 @@ export class BookingService {
       select: { id: true, clientId: true, provider: { select: { userId: true } } },
     });
 
-    for (const booking of due30) {
-      const upd30 = await prisma.booking.updateMany({
-        where: { id: booking.id, reminder30SentAt: null },
+    if (due30.length > 0) {
+      await prisma.booking.updateMany({
+        where: { id: { in: due30.map((b) => b.id) }, reminder30SentAt: null },
         data: { reminder30SentAt: referenceDate },
       });
-      if (upd30.count > 0) {
+      for (const booking of due30) {
         void notificationService
           .sendToUsers([booking.clientId, booking.provider.userId], {
             preferenceType: "BOOKINGS",

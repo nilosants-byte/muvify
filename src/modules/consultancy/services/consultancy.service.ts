@@ -2158,12 +2158,12 @@ export class ConsultancyService {
       select: { id: true, clientId: true, provider: { select: { userId: true } } },
     });
 
-    for (const contract of due7d) {
-      const upd7d = await prisma.consultancyContract.updateMany({
-        where: { id: contract.id, expiry7dSentAt: null },
+    if (due7d.length > 0) {
+      await prisma.consultancyContract.updateMany({
+        where: { id: { in: due7d.map((c) => c.id) }, expiry7dSentAt: null },
         data: { expiry7dSentAt: referenceDate },
       });
-      if (upd7d.count > 0) {
+      for (const contract of due7d) {
         void notificationService
           .sendToUsers([contract.clientId, contract.provider.userId], {
             preferenceType: "CONSULTANCY",
@@ -2187,12 +2187,12 @@ export class ConsultancyService {
       select: { id: true, clientId: true, provider: { select: { userId: true } } },
     });
 
-    for (const contract of due1d) {
-      const upd1d = await prisma.consultancyContract.updateMany({
-        where: { id: contract.id, expiry1dSentAt: null },
+    if (due1d.length > 0) {
+      await prisma.consultancyContract.updateMany({
+        where: { id: { in: due1d.map((c) => c.id) }, expiry1dSentAt: null },
         data: { expiry1dSentAt: referenceDate },
       });
-      if (upd1d.count > 0) {
+      for (const contract of due1d) {
         void notificationService
           .sendToUsers([contract.clientId, contract.provider.userId], {
             preferenceType: "CONSULTANCY",
@@ -2213,12 +2213,12 @@ export class ConsultancyService {
       select: { id: true, clientId: true, provider: { select: { userId: true } } },
     });
 
-    for (const contract of expiredContracts) {
-      const updExp = await prisma.consultancyContract.updateMany({
-        where: { id: contract.id, expiryNoticeSentAt: null },
+    if (expiredContracts.length > 0) {
+      await prisma.consultancyContract.updateMany({
+        where: { id: { in: expiredContracts.map((c) => c.id) }, expiryNoticeSentAt: null },
         data: { expiryNoticeSentAt: referenceDate },
       });
-      if (updExp.count > 0) {
+      for (const contract of expiredContracts) {
         void notificationService
           .sendToUsers([contract.clientId, contract.provider.userId], {
             preferenceType: "CONSULTANCY",

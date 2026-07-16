@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { authRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { PaymentService } from "../services/payment.service";
 
 const paymentService = new PaymentService();
@@ -52,7 +53,7 @@ function renderHtml(title: string, description: string, hint: string) {
 
 export const mpConnectRoutes = Router();
 
-mpConnectRoutes.get("/mp/return", async (request, response) => {
+mpConnectRoutes.get("/mp/return", authRateLimiter, async (request, response) => {
   const code = readQueryString(request.query.code);
   const state = readQueryString(request.query.state);
   const oauthError = readQueryString(request.query.error);
@@ -102,7 +103,7 @@ mpConnectRoutes.get("/mp/return", async (request, response) => {
   }
 });
 
-mpConnectRoutes.get("/mp/refresh", (_request, response) => {
+mpConnectRoutes.get("/mp/refresh", authRateLimiter, (_request, response) => {
   response.status(200).type("html").send(
     renderHtml(
       "Reconectar Mercado Pago",
