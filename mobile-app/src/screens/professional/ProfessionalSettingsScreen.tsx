@@ -30,7 +30,7 @@ function rateApp() {
 }
 
 export function ProfessionalSettingsScreen({ navigation }: Props) {
-  const { signOut, user, runWithAuth, analyticsEnabled, setAnalyticsPreference } = useAppState();
+  const { signOut, user, runWithAuth, analyticsEnabled, setAnalyticsPreference, setThemePreference } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
   const [pushEnabled, setPushEnabled] = useState(true);
   const lightModeEnabled = !isDark;
@@ -103,7 +103,10 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
   }
 
   function handleLightModeToggle(enabled: boolean) {
-    if (enabled !== lightModeEnabled) toggleTheme();
+    if (enabled !== lightModeEnabled) {
+      toggleTheme();
+      void setThemePreference(enabled ? "light" : "dark");
+    }
   }
 
   function handleShareApp() {

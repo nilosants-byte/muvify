@@ -855,7 +855,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
               onSubmitEditing={() => { void searchAddress(); }}
               placeholder="Buscar endereço no mapa"
               placeholderTextColor={theme.text3}
-              style={{ flex: 1, padding: 0, color: theme.text2, fontSize: 13 }}
+              style={{ flex: 1, padding: 0, color: theme.text1, fontSize: 13 }}
               returnKeyType="search"
             />
             {mainAddrLoading ? <ActivityIndicator size="small" color={theme.primary} /> : null}
@@ -960,7 +960,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
                   value={customRadius}
                   onChangeText={setCustomRadius}
                   keyboardType="number-pad"
-                  style={{ flex: 1, padding: 0, color: theme.text2, fontSize: 11 }}
+                  style={{ flex: 1, padding: 0, color: theme.text1, fontSize: 11 }}
                   placeholder="km"
                   placeholderTextColor={theme.text3}
                 />
@@ -1111,7 +1111,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
                       }}
                       placeholder="Nome do local (academia, parque, praça, praia...)"
                       placeholderTextColor={theme.text3}
-                      style={{ flex: 1, padding: 0, color: theme.text2, fontSize: 12 }}
+                      style={{ flex: 1, padding: 0, color: theme.text1, fontSize: 12 }}
                     />
                   </View>
 
@@ -1217,7 +1217,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
                         }}
                         placeholder="Endereço ou nome do lugar..."
                         placeholderTextColor={theme.text3}
-                        style={{ flex: 1, padding: 0, color: theme.text2, fontSize: 12 }}
+                        style={{ flex: 1, padding: 0, color: theme.text1, fontSize: 12 }}
                       />
                     </View>
                     <TouchableOpacity

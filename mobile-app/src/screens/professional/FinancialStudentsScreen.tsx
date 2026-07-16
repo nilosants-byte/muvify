@@ -94,9 +94,9 @@ function CompactSchedulePicker({ schedule, onChange, theme }: {
       </View>
       {selectedDays.length > 0 ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <TextInput value={startTime} onChangeText={onChangeStart} placeholder="07:00" placeholderTextColor={theme.text3} keyboardType="numbers-and-punctuation" maxLength={5} style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 8, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 7, color: theme.text2, fontSize: 13, textAlign: "center", fontFamily: "DMSans_400Regular" }} />
+          <TextInput value={startTime} onChangeText={onChangeStart} placeholder="07:00" placeholderTextColor={theme.text3} keyboardType="numbers-and-punctuation" maxLength={5} style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 8, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 7, color: theme.text1, fontSize: 13, textAlign: "center", fontFamily: "DMSans_400Regular" }} />
           <MvText variant="body4" color="secondary">às</MvText>
-          <TextInput value={endTime} onChangeText={onChangeEnd} placeholder="08:00" placeholderTextColor={theme.text3} keyboardType="numbers-and-punctuation" maxLength={5} style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 8, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 7, color: theme.text2, fontSize: 13, textAlign: "center", fontFamily: "DMSans_400Regular" }} />
+          <TextInput value={endTime} onChangeText={onChangeEnd} placeholder="08:00" placeholderTextColor={theme.text3} keyboardType="numbers-and-punctuation" maxLength={5} style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 8, backgroundColor: theme.inputBg, paddingHorizontal: 10, paddingVertical: 7, color: theme.text1, fontSize: 13, textAlign: "center", fontFamily: "DMSans_400Regular" }} />
         </View>
       ) : null}
     </View>
@@ -492,7 +492,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
                   onBlur={() => { locBlurRef.current = setTimeout(() => setSLocSuggOpen(false), 400); }}
                   placeholder="Local de atendimento (opcional)"
                   placeholderTextColor={theme.text3}
-                  style={{ flex: 1, padding: 0, color: theme.text2, fontSize: 13, fontFamily: "DMSans_400Regular" }}
+                  style={{ flex: 1, padding: 0, color: theme.text1, fontSize: 13, fontFamily: "DMSans_400Regular" }}
                 />
                 {locationSuggsLoading ? <ActivityIndicator size="small" color={theme.primary} /> : null}
               </View>

@@ -77,7 +77,7 @@ function ConfigGroup({ title, children }: { title: string; children: React.React
 }
 
 export function ClientSettingsScreen({ navigation }: Props) {
-  const { signOut, runWithAuth, analyticsEnabled, setAnalyticsPreference } = useAppState();
+  const { signOut, runWithAuth, analyticsEnabled, setAnalyticsPreference, setThemePreference } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const [pushEnabled, setPushEnabled] = useState(true);
@@ -148,7 +148,10 @@ export function ClientSettingsScreen({ navigation }: Props) {
   }
 
   function handleToggleLight(enabled: boolean) {
-    if (enabled !== lightModeEnabled) toggleTheme();
+    if (enabled !== lightModeEnabled) {
+      toggleTheme();
+      void setThemePreference(enabled ? "light" : "dark");
+    }
   }
 
   return (
