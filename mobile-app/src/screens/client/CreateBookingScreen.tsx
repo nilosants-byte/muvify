@@ -211,26 +211,6 @@ export function CreateBookingScreen({ navigation, route }: Props) {
   const anamnesis = createBookingQuery.data?.anamnesis ?? null;
 
   useEffect(() => {
-    const data = createBookingQuery.data;
-    if (!data || hasInitialized.current) return;
-    hasInitialized.current = true;
-    const cats = data.categories;
-    setCategories(cats);
-    setSelectedCategoryId((current) =>
-      current && cats.some((c) => c.id === current) ? current : (cats[0]?.id ?? "")
-    );
-    if (data.provider.serviceMode === "HOME_VISIT_ONLY") {
-      setSessionLocation("A domicílio");
-    }
-    loadedMonthKeysRef.current.clear();
-    setScheduleByDate({});
-    setSelectedDateKeys([]);
-    setSelectedSlotsByDate({});
-    setCalendarCursor(startOfMonth(new Date()));
-    void loadMonthSchedule(startOfMonth(new Date()), true);
-  }, [createBookingQuery.data, loadMonthSchedule]);
-
-  useEffect(() => {
     if (createBookingQuery.error) {
       handleScreenError({
         error: createBookingQuery.error,
@@ -316,6 +296,25 @@ export function CreateBookingScreen({ navigation, route }: Props) {
     [navigation, providerId, showToast]
   );
 
+  useEffect(() => {
+    const data = createBookingQuery.data;
+    if (!data || hasInitialized.current) return;
+    hasInitialized.current = true;
+    const cats = data.categories;
+    setCategories(cats);
+    setSelectedCategoryId((current) =>
+      current && cats.some((c) => c.id === current) ? current : (cats[0]?.id ?? "")
+    );
+    if (data.provider.serviceMode === "HOME_VISIT_ONLY") {
+      setSessionLocation("A domicílio");
+    }
+    loadedMonthKeysRef.current.clear();
+    setScheduleByDate({});
+    setSelectedDateKeys([]);
+    setSelectedSlotsByDate({});
+    setCalendarCursor(startOfMonth(new Date()));
+    void loadMonthSchedule(startOfMonth(new Date()), true);
+  }, [createBookingQuery.data, loadMonthSchedule]);
 
   useEffect(() => {
     setCalendarMonthError(false);
