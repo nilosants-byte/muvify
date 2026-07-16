@@ -11,7 +11,7 @@
  * - Rate limit (429) em endpoints de pagamento
  * - Serviço indisponível (503)
  */
-import { ApiError, paymentsApi, userApi, PaymentStatusResponse, PixChargeResponse } from "../services/api/client";
+import { ApiError, paymentsApi, PaymentStatusResponse, PixChargeResponse } from "../services/api/client";
 
 const mockFetch = jest.fn();
 global.fetch = mockFetch as unknown as typeof fetch;
@@ -268,38 +268,5 @@ describe("Cenários de erro de pagamento", () => {
     await expect(paymentsApi.bookingPayment(TOKEN, "booking-nao-existe")).rejects.toMatchObject({
       status: 404,
     });
-  });
-});
-
-describe("Conta bancária do provider", () => {
-  const TOKEN = "provider-token-bank";
-
-  it("cria/atualiza conta bancária do provider", async () => {
-    const bankAccount = {
-      id: "bank-001",
-      providerId: "prov-001",
-      bankName: "Banco do Brasil",
-      accountType: "CHECKING",
-      agency: "1234",
-      accountNumber: "56789",
-      accountDigit: "0",
-      holderName: "Coach Silva",
-      holderDocument: "12345678900",
-      pixKey: "coach@email.com",
-    };
-    mockFetch.mockReturnValueOnce(jsonResponse(bankAccount));
-
-    const result = await userApi.upsertProviderBankAccount(TOKEN, {
-      bankName: "Banco do Brasil",
-      accountType: "CHECKING",
-      agency: "1234",
-      accountNumber: "56789",
-      accountDigit: "0",
-      holderName: "Coach Silva",
-      holderDocument: "12345678900",
-    });
-
-    expect(result.bankName).toBe("Banco do Brasil");
-    expect(result.pixKey).toBe("coach@email.com");
   });
 });

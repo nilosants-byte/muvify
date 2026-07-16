@@ -67,6 +67,7 @@ describe("auth-isolation", () => {
         email: providerAEmail,
         password,
         phone: `1193${Date.now().toString().slice(-7)}`,
+        role: "PROVIDER",
         termsVersion: "2026.05",
         consentAccepted: true
       });

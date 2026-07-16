@@ -147,37 +147,6 @@ describe("users — extended profile, security and preferences", () => {
     expect(res.status).toBe(403);
   });
 
-  // ── Bank account (PROVIDER only) ──────────────────────────────────────────
-  it("GET /users/me/provider-bank-account returns data", async () => {
-    const res = await request(app)
-      .get("/api/users/me/provider-bank-account")
-      .set("Authorization", `Bearer ${providerToken}`);
-    expect([200, 404]).toContain(res.status);
-  });
-
-  it("PUT /users/me/provider-bank-account sets bank info", async () => {
-    const res = await request(app)
-      .put("/api/users/me/provider-bank-account")
-      .set("Authorization", `Bearer ${providerToken}`)
-      .send({
-        holderName: "Extended Provider",
-        holderDocument: "12345678909",
-        bankName: "341 - Itaú",
-        agency: "0001",
-        accountNumber: "123456",
-        accountDigit: "7",
-        accountType: "CHECKING",
-      });
-    expect(res.status).toBe(200);
-  });
-
-  it("GET /users/me/provider-bank-account rejects CLIENT role", async () => {
-    const res = await request(app)
-      .get("/api/users/me/provider-bank-account")
-      .set("Authorization", `Bearer ${token}`);
-    expect(res.status).toBe(403);
-  });
-
   // ── Security ──────────────────────────────────────────────────────────────
   it("POST /users/me/security/password changes password", async () => {
     const res = await request(app)

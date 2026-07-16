@@ -35,16 +35,6 @@ export class UserController {
     return response.json(user);
   }
 
-  async getProviderBankAccount(request: Request, response: Response) {
-    const bankAccount = await userService.getProviderBankAccount(request.user!.id);
-    return response.json(bankAccount);
-  }
-
-  async upsertProviderBankAccount(request: Request, response: Response) {
-    const bankAccount = await userService.upsertProviderBankAccount(request.user!.id, request.body);
-    return response.json(bankAccount);
-  }
-
   async getMyAnamnesis(request: Request, response: Response) {
     const anamnesis = await userService.getMyAnamnesis(request.user!.id);
     return response.json(anamnesis);

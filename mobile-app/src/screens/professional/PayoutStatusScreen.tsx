@@ -12,7 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Booking, FinancialPayouts, ProviderBankAccount, bookingsApi, financialApi, userApi } from "../../services/api/client";
+import { Booking, FinancialPayouts, ProviderAccountStatus, bookingsApi, financialApi, paymentsApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -213,7 +213,7 @@ export function PayoutStatusScreen({ navigation }: Props) {
     queryKeys.payments.providerPayouts(),
     async (token) => {
       const [accountResponse, bookingsResponse, payoutsResponse] = await Promise.all([
-        userApi.providerBankAccount(token).catch(() => null as ProviderBankAccount | null),
+        paymentsApi.providerStatus(token).catch(() => null as ProviderAccountStatus | null),
         bookingsApi.me(token),
         financialApi.payouts(token).catch(() => null as FinancialPayouts | null),
       ]);
@@ -367,7 +367,7 @@ export function PayoutStatusScreen({ navigation }: Props) {
         ) : null}
 
         {/* ── CTA CONTA MP (quando conta não configurada) ── */}
-        {!account ? (
+        {!account?.hasAccount ? (
           <TouchableOpacity
             onPress={() => navigation.navigate("ConnectPayoutAccount")}
             style={{
@@ -380,7 +380,7 @@ export function PayoutStatusScreen({ navigation }: Props) {
             <Ionicons name="alert-circle-outline" size={20} color="#F59E0B" />
             <View style={{ flex: 1 }}>
               <MvText variant="semi3" style={{ color: "#F59E0B" }}>Conecte sua conta para receber</MvText>
-              <MvText variant="body4" color="secondary">Cadastre sua conta bancária para liberar saques do seu saldo.</MvText>
+              <MvText variant="body4" color="secondary">Conecte sua conta Mercado Pago para liberar o repasse do seu saldo.</MvText>
             </View>
             <Ionicons name="chevron-forward" size={16} color="#F59E0B" />
           </TouchableOpacity>
@@ -433,7 +433,7 @@ export function PayoutStatusScreen({ navigation }: Props) {
             </View>
 
             <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
-              <MvBadge label={account ? "Conta ativa" : "Conta pendente"} variant={account ? "green" : "orange"} />
+              <MvBadge label={account?.hasAccount ? "Conta ativa" : "Conta pendente"} variant={account?.hasAccount ? "green" : "orange"} />
               <MvBadge label="Últimos 6 meses" variant="gray" />
             </View>
           </View>
@@ -613,23 +613,23 @@ export function PayoutStatusScreen({ navigation }: Props) {
           )}
         </View>
 
-        {/* ── CONTA BANCÁRIA ── */}
+        {/* ── CONTA DE RECEBIMENTO (Mercado Pago) ── */}
         <View style={{ borderRadius: 16, borderWidth: 1, backgroundColor: cardBg, borderColor: border, overflow: "hidden" }}>
           <View style={{ padding: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: account ? "rgba(34,197,94,0.12)" : "rgba(245,158,11,0.10)", alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="card-outline" size={18} color={account ? green : "#F59E0B"} />
+              <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: account?.hasAccount ? "rgba(34,197,94,0.12)" : "rgba(245,158,11,0.10)", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="card-outline" size={18} color={account?.hasAccount ? green : "#F59E0B"} />
               </View>
               <View>
                 <MvText variant="semi3">Conta de recebimento</MvText>
                 <MvText variant="body4" color="secondary" numberOfLines={1} style={{ maxWidth: 200 }}>
-                  {account
-                    ? `${account.bankName} · ag ${account.agency} · cc ${account.accountNumber}-${account.accountDigit}`
-                    : "Cadastre sua conta para receber repasses"}
+                  {account?.hasAccount
+                    ? `Mercado Pago · ID ${account.accountId}`
+                    : "Conecte sua conta Mercado Pago para receber repasses"}
                 </MvText>
               </View>
             </View>
-            <MvBadge label={account ? "Configurada" : "Pendente"} variant={account ? "green" : "orange"} />
+            <MvBadge label={account?.hasAccount ? "Configurada" : "Pendente"} variant={account?.hasAccount ? "green" : "orange"} />
           </View>
 
           {/* CTA */}
@@ -640,14 +640,14 @@ export function PayoutStatusScreen({ navigation }: Props) {
               marginBottom: 16,
               paddingVertical: 13,
               borderRadius: 12,
-              backgroundColor: account ? "transparent" : green,
-              borderWidth: account ? 1 : 0,
+              backgroundColor: account?.hasAccount ? "transparent" : green,
+              borderWidth: account?.hasAccount ? 1 : 0,
               borderColor: border,
               alignItems: "center",
             }}
           >
-            <MvText variant="semi3" style={{ color: account ? text2 : "#fff" }}>
-              {account ? "Gerenciar conta bancária" : "Cadastrar conta bancária"}
+            <MvText variant="semi3" style={{ color: account?.hasAccount ? text2 : "#fff" }}>
+              {account?.hasAccount ? "Gerenciar conta Mercado Pago" : "Conectar conta Mercado Pago"}
             </MvText>
           </TouchableOpacity>
         </View>

@@ -48,7 +48,6 @@ import { ProfessionalArchivedRequestsScreen } from "../screens/professional/Prof
 import { ProfessionalConfirmCompletionScreen } from "../screens/professional/ProfessionalConfirmCompletionScreen";
 import { ProfessionalConsultancyCenterScreen } from "../screens/professional/ProfessionalConsultancyCenterScreen";
 import { ProfessionalCredentialsScreen } from "../screens/professional/ProfessionalCredentialsScreen";
-import { ProfessionalFinancialDetailsScreen } from "../screens/professional/ProfessionalFinancialDetailsScreen";
 import { ProfessionalPersonalFinanceScreen } from "../screens/professional/ProfessionalPersonalFinanceScreen";
 import { ProfessionalAnnualReportScreen } from "../screens/professional/ProfessionalAnnualReportScreen";
 import { FinancialStudentsScreen } from "../screens/professional/FinancialStudentsScreen";
@@ -399,10 +398,6 @@ export function RootNavigator() {
         name="PayoutStatus"
         component={PayoutStatusScreen as React.ComponentType<any>}
         options={{ headerShown: false }}
-      />
-      <ProfessionalStack.Screen
-        name="ProfessionalFinancialDetails"
-        component={ProfessionalFinancialDetailsScreen as React.ComponentType<any>}
       />
       <ProfessionalStack.Screen
         name="PersonalFinance"

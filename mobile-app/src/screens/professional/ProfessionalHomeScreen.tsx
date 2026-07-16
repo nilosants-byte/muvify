@@ -152,6 +152,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
 
   const [showCrefBanner, setShowCrefBanner] = useState(false);
   const [showProfileBanner, setShowProfileBanner] = useState(false);
+  const [showPayoutBanner, setShowPayoutBanner] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [providerPhotoUrl, setProviderPhotoUrl] = useState<string | null>(
     () => resolveMediaUrl(user?.providerProfile?.photoUrl, true)
@@ -167,6 +168,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const drawerAnim = useRef(new Animated.Value(-DRAWER_W)).current;
   const crefChecked = useRef(false);
   const profileChecked = useRef(false);
+  const payoutChecked = useRef(false);
 
   const homeQuery = useAuthQuery(
     queryKeys.providers.home(),
@@ -218,6 +220,13 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
       crefChecked.current = true;
     }
     if (Boolean(profile) && crefApproved) setShowCrefBanner(false);
+
+    const payoutConnected = Boolean(profile?.mpAccountId);
+    if (Boolean(profile) && crefApproved && !payoutChecked.current && !payoutConnected) {
+      setShowPayoutBanner(true);
+      payoutChecked.current = true;
+    }
+    if (payoutConnected) setShowPayoutBanner(false);
   }, [homeQuery.data]);
 
   useEffect(() => {
@@ -549,6 +558,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     const urgent: string[] = [];
     if (showProfileBanner) urgent.push("Configure seu perfil para aparecer nas buscas");
     if (showCrefBanner) urgent.push("Valide seu CREF para receber clientes");
+    if (showPayoutBanner) urgent.push("Conecte sua conta Mercado Pago para receber pagamentos");
     if (pendingCount > 0) urgent.push(`${pendingCount} solicitaç${pendingCount > 1 ? "ões" : "ão"} aguarda${pendingCount > 1 ? "m" : ""} confirmação`);
     if (unreadChatCount > 0) urgent.push(`${unreadChatCount} mensagem${unreadChatCount > 1 ? "ns" : ""} não lida${unreadChatCount > 1 ? "s" : ""}`);
     if (confirmedToday > 0) urgent.push(`${confirmedToday} atendimento${confirmedToday > 1 ? "s" : ""} confirmado${confirmedToday > 1 ? "s" : ""} hoje`);
@@ -572,7 +582,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     tips.push("Compartilhe seu perfil para atrair novos alunos");
 
     return tips[new Date().getDate() % tips.length]!;
-  }, [loading, showProfileBanner, showCrefBanner, pendingCount, unreadChatCount, confirmedToday, nextBooking, availabilities, todayFreeSlots, activeStudents]);
+  }, [loading, showProfileBanner, showCrefBanner, showPayoutBanner, pendingCount, unreadChatCount, confirmedToday, nextBooking, availabilities, todayFreeSlots, activeStudents]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -775,6 +785,18 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
               title="Valide seu CREF para desbloquear todos os recursos"
               cta="Validar"
               onPress={() => { setShowCrefBanner(false); goToStack("ProfessionalCredentials"); }}
+            />
+          ) : null}
+
+          {/* ── BANNER: MERCADO PAGO NÃO CONECTADO ── */}
+          {showPayoutBanner ? (
+            <UrgencyCard
+              icon="card-outline"
+              tone="amber"
+              subtitle="pagamento pendente"
+              title="Conecte sua conta Mercado Pago — sem isso você não aparece para alunos"
+              cta="Conectar"
+              onPress={() => { setShowPayoutBanner(false); goToStack("ConnectPayoutAccount"); }}
             />
           ) : null}
 

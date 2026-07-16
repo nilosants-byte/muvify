@@ -283,6 +283,36 @@ function parseRange(range: ProviderCalendarRangeInput) {
   return { from, to };
 }
 
+// Scalar fields of ProviderProfile safe to return to any client (public search,
+// provider detail, or the profile owner). Deliberately excludes payment OAuth
+// tokens (mpAccessToken/mpRefreshToken/mpTokenExpiresAt) and CREF review
+// internals (crefDocumentUrl/credentialDocuments/crefRejectionReason/
+// crefReviewedAt/crefReviewedByUserId) — those must never leave the server.
+const PUBLIC_PROVIDER_SELECT = {
+  id: true,
+  userId: true,
+  displayName: true,
+  bio: true,
+  experienceYears: true,
+  priceCents: true,
+  serviceRadiusKm: true,
+  latitude: true,
+  longitude: true,
+  serviceMode: true,
+  fixedLocations: true,
+  excludedLocations: true,
+  averageRating: true,
+  totalReviews: true,
+  photoUrl: true,
+  presentationVideoUrl: true,
+  crefNumber: true,
+  crefValidatedAt: true,
+  crefValidationStatus: true,
+  specialties: true,
+  createdAt: true,
+  updatedAt: true
+} as const;
+
 export class ProviderService {
   private emailService = new EmailService();
 
@@ -922,7 +952,8 @@ export class ProviderService {
     if (!hasGeo) {
       const providers = await prisma.providerProfile.findMany({
         where,
-        include: {
+        select: {
+          ...PUBLIC_PROVIDER_SELECT,
           user: { select: { id: true, name: true } },
           categoryLinks: {
             select: {
@@ -1090,7 +1121,8 @@ export class ProviderService {
     const pageIds = pagedOrdered.map((item) => item.id);
     const pageProviders = await prisma.providerProfile.findMany({
       where: { id: { in: pageIds } },
-      include: {
+      select: {
+        ...PUBLIC_PROVIDER_SELECT,
         user: { select: { id: true, name: true } },
         categoryLinks: {
           select: {
@@ -1118,6 +1150,7 @@ export class ProviderService {
 
   async getById(providerId: string) {
     const include = {
+      ...PUBLIC_PROVIDER_SELECT,
       user: {
         select: {
           id: true,
@@ -1146,7 +1179,7 @@ export class ProviderService {
 
     let provider = await prisma.providerProfile.findUnique({
       where: { id: providerId },
-      include
+      select: include
     });
     if (!provider) {
       throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
@@ -1181,7 +1214,7 @@ export class ProviderService {
         });
         const refreshed = await prisma.providerProfile.findUnique({
           where: { id: providerId },
-          include
+          select: include
         });
         if (refreshed) {
           provider = refreshed;

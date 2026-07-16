@@ -38,6 +38,7 @@ async function createProviderProfile(input: {
       experienceYears: 3,
       priceCents: 15000,
       crefValidationStatus: CrefValidationStatus.APPROVED,
+      mpAccountId: `mp_${user.id}`,
       latitude: input.latitude,
       longitude: input.longitude,
       serviceRadiusKm: input.serviceRadiusKm,

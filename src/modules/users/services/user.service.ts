@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   AnamnesisStatus,
-  BankAccountType,
   NotificationPreferenceType,
   Prisma,
   SupportTicketStatus,
@@ -27,17 +26,6 @@ type UpdateMeInput = {
   apelido?: string;
   phone?: string;
   photoUrl?: string;
-};
-
-type UpsertProviderBankAccountInput = {
-  bankName: string;
-  accountType: BankAccountType;
-  agency: string;
-  accountNumber: string;
-  accountDigit: string;
-  holderName: string;
-  holderDocument: string;
-  pixKey?: string;
 };
 
 type UpsertMyAnamnesisInput = {
@@ -103,41 +91,6 @@ function checkImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
 }
 
 export class UserService {
-  private serializeBankAccount(
-    bankAccount:
-      | {
-          id: string;
-          providerId: string;
-          bankName: string;
-          accountType: BankAccountType;
-          agency: string;
-          accountNumber: string;
-          accountDigit: string;
-          holderName: string;
-          holderDocument: string;
-          pixKey: string | null;
-          createdAt: Date;
-          updatedAt: Date;
-        }
-      | null
-      | undefined
-  ) {
-    if (!bankAccount) {
-      return bankAccount ?? null;
-    }
-
-    return {
-      ...bankAccount,
-      bankName: decryptSensitiveText(bankAccount.bankName) ?? "",
-      agency: decryptSensitiveText(bankAccount.agency) ?? "",
-      accountNumber: decryptSensitiveText(bankAccount.accountNumber) ?? "",
-      accountDigit: decryptSensitiveText(bankAccount.accountDigit) ?? "",
-      holderName: decryptSensitiveText(bankAccount.holderName) ?? "",
-      holderDocument: decryptSensitiveText(bankAccount.holderDocument) ?? "",
-      pixKey: decryptSensitiveText(bankAccount.pixKey)
-    };
-  }
-
   private normalizeEmail(value: string) {
     return value.trim().toLowerCase();
   }
@@ -198,13 +151,37 @@ export class UserService {
         createdAt: true,
         updatedAt: true,
         providerProfile: {
-          include: {
+          // Never select mpAccessToken/mpRefreshToken/mpTokenExpiresAt or the CREF
+          // review internals here — this payload reaches the client device.
+          select: {
+            id: true,
+            userId: true,
+            displayName: true,
+            bio: true,
+            experienceYears: true,
+            priceCents: true,
+            serviceRadiusKm: true,
+            latitude: true,
+            longitude: true,
+            serviceMode: true,
+            fixedLocations: true,
+            excludedLocations: true,
+            averageRating: true,
+            totalReviews: true,
+            photoUrl: true,
+            presentationVideoUrl: true,
+            mpAccountId: true,
+            crefNumber: true,
+            crefValidatedAt: true,
+            crefValidationStatus: true,
+            specialties: true,
+            createdAt: true,
+            updatedAt: true,
             categoryLinks: {
               include: {
                 category: true
               }
-            },
-            bankAccount: true
+            }
           }
         }
       }
@@ -222,8 +199,7 @@ export class UserService {
       providerProfile: user.providerProfile
         ? {
             ...user.providerProfile,
-            photoUrl: this.mapProviderPhotoUrl(user.providerProfile),
-            bankAccount: this.serializeBankAccount(user.providerProfile.bankAccount)
+            photoUrl: this.mapProviderPhotoUrl(user.providerProfile)
           }
         : null
     };
@@ -507,68 +483,6 @@ export class UserService {
     }
 
     return { buffer, mimeType };
-  }
-
-  async getProviderBankAccount(userId: string) {
-    const provider = await prisma.providerProfile.findUnique({
-      where: { userId },
-      select: {
-        id: true,
-        userId: true,
-        bankAccount: true
-      }
-    });
-
-    if (!provider) {
-      throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
-    }
-
-    return this.serializeBankAccount(provider.bankAccount);
-  }
-
-  async upsertProviderBankAccount(userId: string, input: UpsertProviderBankAccountInput) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { role: true }
-    });
-
-    if (!user || user.role !== UserRole.PROVIDER) {
-      throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
-    }
-
-    const provider = await prisma.providerProfile.findUnique({
-      where: { userId },
-      select: { id: true }
-    });
-
-    if (!provider) {
-      throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
-    }
-
-    return prisma.providerBankAccount.upsert({
-      where: { providerId: provider.id },
-      update: {
-        bankName: encryptSensitiveText(input.bankName),
-        accountType: input.accountType,
-        agency: encryptSensitiveText(input.agency),
-        accountNumber: encryptSensitiveText(input.accountNumber),
-        accountDigit: encryptSensitiveText(input.accountDigit),
-        holderName: encryptSensitiveText(input.holderName),
-        holderDocument: encryptSensitiveText(input.holderDocument),
-        pixKey: input.pixKey?.trim() ? encryptSensitiveText(input.pixKey) : null
-      },
-      create: {
-        providerId: provider.id,
-        bankName: encryptSensitiveText(input.bankName),
-        accountType: input.accountType,
-        agency: encryptSensitiveText(input.agency),
-        accountNumber: encryptSensitiveText(input.accountNumber),
-        accountDigit: encryptSensitiveText(input.accountDigit),
-        holderName: encryptSensitiveText(input.holderName),
-        holderDocument: encryptSensitiveText(input.holderDocument),
-        pixKey: input.pixKey?.trim() ? encryptSensitiveText(input.pixKey) : null
-      }
-    });
   }
 
   async getMyAnamnesis(userId: string) {

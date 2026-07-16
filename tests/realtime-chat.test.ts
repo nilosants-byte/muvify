@@ -78,6 +78,7 @@ describe("realtime-chat", () => {
       email: uniqueEmail("provider"),
       password,
       phone: `1188${phoneBase}`,
+      role: "PROVIDER",
       termsVersion: "2026.05",
       consentAccepted: true
     });

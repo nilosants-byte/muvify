@@ -41,7 +41,7 @@ export type AuthUser = {
       categoryId: string;
       category?: Category;
     }>;
-    bankAccount?: ProviderBankAccount | null;
+    mpAccountId?: string | null;
   } | null;
 };
 
@@ -397,21 +397,6 @@ export type ProviderAccountStatus = {
   accountId?: string;
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
-};
-
-export type ProviderBankAccount = {
-  id: string;
-  providerId: string;
-  bankName: string;
-  accountType: "CHECKING" | "SAVINGS";
-  agency: string;
-  accountNumber: string;
-  accountDigit: string;
-  holderName: string;
-  holderDocument: string;
-  pixKey?: string | null;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export type ProviderCredentialsDocument = {
@@ -1244,28 +1229,6 @@ export const userApi = {
   updateMe(token: string, input: { name?: string; apelido?: string; phone?: string; photoUrl?: string }) {
     // Nota: email foi removido — mudança de email requer endpoint dedicado no futuro
     return apiRequest<AuthUser>("/users/me", { method: "PATCH", token, body: input });
-  },
-  providerBankAccount(token: string) {
-    return apiRequest<ProviderBankAccount | null>("/users/me/provider-bank-account", { token });
-  },
-  upsertProviderBankAccount(
-    token: string,
-    input: {
-      bankName: string;
-      accountType: "CHECKING" | "SAVINGS";
-      agency: string;
-      accountNumber: string;
-      accountDigit: string;
-      holderName: string;
-      holderDocument: string;
-      pixKey?: string;
-    }
-  ) {
-    return apiRequest<ProviderBankAccount>("/users/me/provider-bank-account", {
-      method: "PUT",
-      token,
-      body: input
-    });
   },
   myAnamnesis(token: string) {
     return apiRequest<ClientAnamnesisProfile>("/users/me/anamnesis", { token });

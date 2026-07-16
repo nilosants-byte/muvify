@@ -43,19 +43,6 @@ export const updateMeSchema = z.object({
     })
 });
 
-export const upsertProviderBankAccountSchema = z.object({
-  body: z.object({
-    bankName: z.string().trim().min(2).max(100),
-    accountType: z.enum(["CHECKING", "SAVINGS"]),
-    agency: z.string().trim().min(2).max(20),
-    accountNumber: z.string().trim().min(2).max(30),
-    accountDigit: z.string().trim().min(1).max(5),
-    holderName: z.string().trim().min(3).max(120),
-    holderDocument: z.string().trim().min(11).max(18),
-    pixKey: z.string().trim().min(3).max(120).optional()
-  })
-});
-
 export const changeMyPasswordSchema = z.object({
   body: z
     .object({

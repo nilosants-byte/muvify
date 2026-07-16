@@ -64,6 +64,7 @@ describe("flows", () => {
         email: providerEmail,
         password,
         phone: providerPhone,
+        role: "PROVIDER",
         termsVersion: "2026.05",
         consentAccepted: true
       });

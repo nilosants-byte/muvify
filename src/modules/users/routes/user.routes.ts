@@ -14,8 +14,7 @@ import {
   updateMeSchema,
   upsertNotificationPreferencesSchema,
   upsertRecoveryEmailSchema,
-  upsertMyAnamnesisSchema,
-  upsertProviderBankAccountSchema
+  upsertMyAnamnesisSchema
 } from "../validators/user.validator";
 
 const userController = new UserController();
@@ -42,18 +41,6 @@ userRoutes.put(
   uploadRateLimiter,
   validate(upsertMyAnamnesisSchema),
   userController.upsertMyAnamnesis
-);
-userRoutes.get(
-  "/me/provider-bank-account",
-  ensureRole(UserRole.PROVIDER),
-  userController.getProviderBankAccount
-);
-userRoutes.put(
-  "/me/provider-bank-account",
-  ensureRole(UserRole.PROVIDER),
-  uploadRateLimiter,
-  validate(upsertProviderBankAccountSchema),
-  userController.upsertProviderBankAccount
 );
 userRoutes.post(
   "/me/security/password",
