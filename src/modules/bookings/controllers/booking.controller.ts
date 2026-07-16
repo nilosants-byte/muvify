@@ -13,7 +13,9 @@ export class BookingController {
       request.body.offerId,
       request.body.paymentMethod,
       request.body.notes,
-      request.body.sessionLocation
+      request.body.sessionLocation,
+      request.body.clientLatitude,
+      request.body.clientLongitude
     );
     return response.status(StatusCodes.CREATED).json(booking);
   }
@@ -57,5 +59,10 @@ export class BookingController {
       request.body.qrToken
     );
     return response.json(payload);
+  }
+
+  async reportNoShow(request: Request, response: Response) {
+    const booking = await bookingService.reportNoShow(request.user!.id, request.params.bookingId);
+    return response.json(booking);
   }
 }

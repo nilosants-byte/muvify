@@ -78,4 +78,24 @@ export class ReviewService {
 
     return review;
   }
+
+  async respondToReview(providerUserId: string, reviewId: string, response: string) {
+    const review = await prisma.review.findUnique({
+      where: { id: reviewId },
+      include: { provider: { select: { userId: true } } }
+    });
+
+    if (!review) {
+      throw new AppError("Avaliação não encontrada.", StatusCodes.NOT_FOUND);
+    }
+
+    if (review.provider.userId !== providerUserId) {
+      throw new AppError("Sem permissao para responder esta avaliação.", StatusCodes.FORBIDDEN);
+    }
+
+    return prisma.review.update({
+      where: { id: reviewId },
+      data: { providerResponse: response, providerRespondedAt: new Date() }
+    });
+  }
 }

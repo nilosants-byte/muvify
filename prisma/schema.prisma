@@ -248,6 +248,7 @@ model User {
   document                    String?
   documentHash                String?
   trainingDaysPerWeek         Int       @default(3)
+  noShowStrikes               Int       @default(0)
   customerPaymentMethods CustomerPaymentMethod[]
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -282,6 +283,8 @@ model User {
   feedPostComments        FeedPostComment[]
   rankingSnapshots        RankingSnapshot[]
   adminAuditLogs          AdminAuditLog[]
+  noShowReportsReceived   NoShowReport[] @relation("NoShowReported")
+  noShowReportsFiled      NoShowReport[] @relation("NoShowReportedBy")
 
   @@index([createdAt])
   @@index([documentHash])
@@ -418,11 +421,23 @@ model Booking {
   payment       Payment?
   completionEvidences CompletionEvidence[]
   chatMessages        BookingMessage[]
+  noShowReport        NoShowReport?
   @@index([providerId, scheduledAt])
   @@index([clientId, scheduledAt])
   @@index([providerId, status])
   @@index([clientId, status])
   @@index([status, scheduledAt])
+}
+model NoShowReport {
+  id               String   @id @default(uuid())
+  bookingId        String   @unique
+  reportedUserId   String
+  reportedByUserId String
+  createdAt        DateTime @default(now())
+  booking          Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  reportedUser     User     @relation("NoShowReported", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  reportedByUser   User     @relation("NoShowReportedBy", fields: [reportedByUserId], references: [id], onDelete: Cascade)
+  @@index([reportedUserId])
 }
 model Review {
   id          String           @id @default(uuid())
@@ -432,6 +447,8 @@ model Review {
   providerId  String
   rating      Int
   comment     String?
+  providerResponse     String?   @db.VarChar(500)
+  providerRespondedAt  DateTime?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   booking     Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)

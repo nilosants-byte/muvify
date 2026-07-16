@@ -27,7 +27,9 @@ export const createBookingSchema = z.object({
     offerId: z.string().uuid().optional(),
     paymentMethod: z.enum(["CARD", "CREDIT_CARD", "DEBIT_CARD", "PIX"]).default("CREDIT_CARD"),
     notes: z.string().trim().max(500).optional(),
-    sessionLocation: z.string().trim().max(300).optional()
+    sessionLocation: z.string().trim().max(300).optional(),
+    clientLatitude: z.number().min(-90).max(90).optional(),
+    clientLongitude: z.number().min(-180).max(180).optional()
   })
 });
 export const updateBookingStatusSchema = z.object({

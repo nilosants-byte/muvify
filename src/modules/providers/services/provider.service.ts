@@ -17,6 +17,7 @@ import { EmailService } from "../../../shared/services/email.service";
 import { isAdminEmail } from "../../../shared/utils/admin-access";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { deleteByPattern, getCache, setCache } from "../../../shared/utils/cache";
+import { haversineKm } from "../../../shared/utils/geo";
 import {
   toProviderPhotoUrl,
   toProviderVideoUrl,
@@ -70,17 +71,6 @@ function paginateProviders<T>(items: T[], offset: number, take?: number) {
   if (!Number.isFinite(offset) || offset < 0) return take ? items.slice(0, take) : items;
   if (!take) return items.slice(offset);
   return items.slice(offset, offset + take);
-}
-
-/** Haversine distance in kilometers between two lat/lng points */
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function formatDateKeyInTimezone(date: Date, timeZone: string) {

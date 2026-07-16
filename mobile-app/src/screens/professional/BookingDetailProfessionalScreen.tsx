@@ -5,7 +5,7 @@ import Animated, {
   withTiming, withSequence, Easing,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -86,6 +86,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   const [scannerVisible, setScannerVisible] = useState(false);
   const scannerReadLockRef = useRef(false);
   const [validated, setValidated] = useState(() => _validatedCache.get(bookingId) ?? false);
+  const [reportingNoShow, setReportingNoShow] = useState(false);
 
   const checkScale = useSharedValue(0);
   const checkOpacity = useSharedValue(0);
@@ -141,6 +142,32 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
     } finally {
       setUpdating(false);
     }
+  }
+
+  function reportNoShow() {
+    Alert.alert(
+      "Reportar falta",
+      "O aluno não compareceu no horário marcado? Isso encerra o agendamento agora e o valor é estornado.",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Reportar falta",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setReportingNoShow(true);
+              await runWithAuth((token) => bookingsApi.reportNoShow(token, bookingId));
+              showToast("Agendamento encerrado.", "success");
+              void bookingDetailQuery.refetch();
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível reportar a falta.", navigation });
+            } finally {
+              setReportingNoShow(false);
+            }
+          },
+        },
+      ]
+    );
   }
 
   async function validateAttendanceCode() {
@@ -401,6 +428,15 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
                 label="Cancelar agendamento"
                 loading={updating}
                 onPress={() => setCancelModalVisible(true)}
+              />
+            ) : null}
+
+            {booking.status === "CONFIRMED" && !validated && new Date(booking.scheduledAt) < new Date() ? (
+              <MvButton
+                variant="danger"
+                label="O aluno não compareceu"
+                loading={reportingNoShow}
+                onPress={reportNoShow}
               />
             ) : null}
 

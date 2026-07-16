@@ -2,8 +2,9 @@ import { randomBytes } from "node:crypto";
 import { StatusCodes } from "http-status-codes";
 import { authenticator } from "otplib";
 import qrcode from "qrcode";
+import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
-import { redis } from "../../../config/redis";
+import { connectRedis, redis } from "../../../config/redis";
 import { AppError } from "../../../shared/errors/app-error";
 import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/utils/encryption";
 import { compareHash } from "../../../shared/utils/hash";
@@ -36,6 +37,8 @@ export class TwoFactorService {
   }
 
   async confirm(userId: string, code: string): Promise<{ backupCodes: string[] }> {
+    await this.ensureTwoFactorNotLocked(userId);
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { twoFactorSecret: true, twoFactorEnabled: true }
@@ -54,8 +57,10 @@ export class TwoFactorService {
     }
 
     if (!authenticator.verify({ token: code, secret })) {
+      await this.registerTwoFactorFailure(userId);
       throw new AppError("Codigo invalido. Verifique seu app autenticador e tente novamente.", StatusCodes.BAD_REQUEST);
     }
+    await this.clearTwoFactorFailures(userId);
 
     await prisma.user.update({
       where: { id: userId },
@@ -144,7 +149,45 @@ export class TwoFactorService {
     });
   }
 
+  // Per-account attempt limit — separate from the IP-based authRateLimiter on the
+  // route, which someone with several IPs could otherwise sidestep to keep
+  // guessing a specific user's code. Mirrors AuthService's login lockout
+  // (LOGIN_MAX_ATTEMPTS / LOGIN_LOCK_MINUTES) so both share one tunable config.
+  private twoFactorAttemptsKey(userId: string) {
+    return `2fa:attempts:${userId}`;
+  }
+
+  private async ensureTwoFactorNotLocked(userId: string) {
+    if (env.NODE_ENV === "test") return;
+    await connectRedis();
+    if (redis.status !== "ready") return;
+    const attempts = await redis.get(this.twoFactorAttemptsKey(userId));
+    if (attempts && Number(attempts) >= env.LOGIN_MAX_ATTEMPTS) {
+      throw new AppError("Muitas tentativas. Tente novamente mais tarde.", StatusCodes.TOO_MANY_REQUESTS);
+    }
+  }
+
+  private async registerTwoFactorFailure(userId: string) {
+    if (env.NODE_ENV === "test") return;
+    await connectRedis();
+    if (redis.status !== "ready") return;
+    const key = this.twoFactorAttemptsKey(userId);
+    const attempts = await redis.incr(key);
+    if (attempts === 1) {
+      await redis.expire(key, env.LOGIN_LOCK_MINUTES * 60);
+    }
+  }
+
+  private async clearTwoFactorFailures(userId: string) {
+    if (env.NODE_ENV === "test") return;
+    await connectRedis();
+    if (redis.status !== "ready") return;
+    await redis.del(this.twoFactorAttemptsKey(userId));
+  }
+
   async verifyCode(userId: string, code: string): Promise<void> {
+    await this.ensureTwoFactorNotLocked(userId);
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { twoFactorSecret: true, twoFactorEnabled: true }
@@ -157,8 +200,10 @@ export class TwoFactorService {
     if (!secret) throw new AppError("Erro interno ao verificar codigo.", StatusCodes.INTERNAL_SERVER_ERROR);
 
     if (!authenticator.verify({ token: code, secret })) {
+      await this.registerTwoFactorFailure(userId);
       throw new AppError("Codigo invalido ou expirado.", StatusCodes.BAD_REQUEST);
     }
+    await this.clearTwoFactorFailures(userId);
 
     // Anti-replay: rejeita o mesmo código TOTP dentro da janela de 30s
     // Fail-safe: sem Redis, bloqueia o login para impedir replay attacks

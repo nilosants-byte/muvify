@@ -7,6 +7,7 @@ import { redis } from "../../../config/redis";
 import { AppError } from "../../../shared/errors/app-error";
 import { deleteByPattern } from "../../../shared/utils/cache";
 import { encryptSensitiveText } from "../../../shared/utils/encryption";
+import { haversineKm } from "../../../shared/utils/geo";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { PaymentService } from "../../payments/services/payment.service";
@@ -123,7 +124,9 @@ export class BookingService {
     offerId?: string,
     paymentMethod: PaymentMethod = PaymentMethod.CREDIT_CARD,
     notes?: string,
-    sessionLocation?: string
+    sessionLocation?: string,
+    clientLatitude?: number,
+    clientLongitude?: number
   ) {
     const scheduleDate = new Date(scheduledAt);
     if (Number.isNaN(scheduleDate.getTime()) || scheduleDate <= new Date()) {
@@ -222,6 +225,32 @@ export class BookingService {
       );
       if (!available) {
         throw new AppError("Horário fora da disponibilidade informada.");
+      }
+
+      // Distance check only applies to at-home visits — a booking at one of the
+      // provider's own fixed locations (gym, studio) never needs it, since the
+      // client is the one traveling there.
+      if (sessionLocation) {
+        const fixedLocations = Array.isArray(provider.fixedLocations)
+          ? (provider.fixedLocations as unknown as Array<{ name: string }>)
+          : [];
+        const isFixedLocation = fixedLocations.some((loc) => loc.name === sessionLocation);
+
+        if (!isFixedLocation && provider.serviceRadiusKm && provider.latitude != null && provider.longitude != null) {
+          if (clientLatitude == null || clientLongitude == null) {
+            throw new AppError(
+              "Informe o endereço do atendimento a domicílio para confirmar se está dentro da área de cobertura do profissional.",
+              StatusCodes.BAD_REQUEST
+            );
+          }
+          const distanceKm = haversineKm(provider.latitude, provider.longitude, clientLatitude, clientLongitude);
+          if (distanceKm > provider.serviceRadiusKm) {
+            throw new AppError(
+              `Este endereço está fora do raio de atendimento do profissional (${provider.serviceRadiusKm} km).`,
+              StatusCodes.BAD_REQUEST
+            );
+          }
+        }
       }
 
       const conflict = await tx.booking.findFirst({
@@ -1109,6 +1138,93 @@ export class BookingService {
       })
       .catch((error) => {
         console.error("Booking push notification failed:", error);
+      });
+
+    return updated;
+  }
+
+  // Lets either party close out a CONFIRMED booking early (instead of waiting for the
+  // 48h auto-expire in autoExpireStaleBookings) when the other side never showed up.
+  // Only usable once the scheduled time has passed and the attendance code was never
+  // validated — if it was validated, both people were physically present, so this
+  // isn't a no-show situation. The reported party takes a strike, visible to admins
+  // via the /admin/no-show-reports lookup; nothing here auto-bans anyone.
+  async reportNoShow(reporterId: string, bookingId: string) {
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        provider: true,
+        client: { select: { id: true, name: true } }
+      }
+    });
+
+    if (!booking) {
+      throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    const isClient = booking.clientId === reporterId;
+    const isProvider = booking.provider.userId === reporterId;
+    if (!isClient && !isProvider) {
+      throw new AppError("Sem permissao para reportar este agendamento.", StatusCodes.FORBIDDEN);
+    }
+
+    if (booking.status !== BookingStatus.CONFIRMED) {
+      throw new AppError("Apenas agendamentos confirmados podem ser reportados.", StatusCodes.BAD_REQUEST);
+    }
+
+    if (booking.scheduledAt > new Date()) {
+      throw new AppError("O horário do agendamento ainda não passou.", StatusCodes.BAD_REQUEST);
+    }
+
+    if (booking.attendanceCodeValidatedAt) {
+      throw new AppError(
+        "A presença já foi confirmada neste agendamento — não é possível reportar falta.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    const reportedUserId = isClient ? booking.provider.userId : booking.clientId;
+
+    const { updated, alreadyReported } = await prisma.$transaction(async (tx) => {
+      const existing = await tx.noShowReport.findUnique({ where: { bookingId } });
+      if (existing) {
+        return { updated: booking, alreadyReported: true };
+      }
+
+      await tx.noShowReport.create({
+        data: { bookingId, reportedUserId, reportedByUserId: reporterId }
+      });
+      await tx.user.update({
+        where: { id: reportedUserId },
+        data: { noShowStrikes: { increment: 1 } }
+      });
+      const updatedBooking = await tx.booking.update({
+        where: { id: bookingId },
+        data: { status: BookingStatus.CANCELLED },
+        include: {
+          client: { select: { id: true, name: true } },
+          provider: { select: { userId: true, displayName: true } }
+        }
+      });
+
+      return { updated: updatedBooking, alreadyReported: false };
+    });
+
+    if (alreadyReported) {
+      throw new AppError("Este agendamento já foi reportado.", StatusCodes.CONFLICT);
+    }
+
+    await paymentService.cancelPaymentForBooking(bookingId);
+
+    void notificationService
+      .sendToUsers([booking.clientId, booking.provider.userId], {
+        preferenceType: "BOOKINGS",
+        title: "Agendamento encerrado por falta",
+        body: `O agendamento de ${formatPtBrDate(booking.scheduledAt)} foi encerrado por falta de comparecimento.`,
+        data: { type: "BOOKING_NO_SHOW", bookingId }
+      })
+      .catch((error) => {
+        console.error("No-show notification failed:", error);
       });
 
     return updated;

@@ -48,6 +48,7 @@ import { ProfessionalArchivedRequestsScreen } from "../screens/professional/Prof
 import { ProfessionalConfirmCompletionScreen } from "../screens/professional/ProfessionalConfirmCompletionScreen";
 import { ProfessionalConsultancyCenterScreen } from "../screens/professional/ProfessionalConsultancyCenterScreen";
 import { ProfessionalCredentialsScreen } from "../screens/professional/ProfessionalCredentialsScreen";
+import { ProfessionalReviewsScreen } from "../screens/professional/ProfessionalReviewsScreen";
 import { ProfessionalPersonalFinanceScreen } from "../screens/professional/ProfessionalPersonalFinanceScreen";
 import { ProfessionalAnnualReportScreen } from "../screens/professional/ProfessionalAnnualReportScreen";
 import { FinancialStudentsScreen } from "../screens/professional/FinancialStudentsScreen";
@@ -427,6 +428,10 @@ export function RootNavigator() {
       <ProfessionalStack.Screen
         name="ProfessionalCredentials"
         component={ProfessionalCredentialsScreen as React.ComponentType<any>}
+      />
+      <ProfessionalStack.Screen
+        name="ProfessionalReviews"
+        component={ProfessionalReviewsScreen as React.ComponentType<any>}
       />
       <ProfessionalStack.Screen
         name="ProfessionalSettings"

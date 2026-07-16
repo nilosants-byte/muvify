@@ -173,6 +173,9 @@ export function CreateBookingScreen({ navigation, route }: Props) {
   const [selectedSlotsByDate, setSelectedSlotsByDate] = useState<Record<string, string>>({});
 
   const [sessionLocation, setSessionLocation] = useState<string | null>(null);
+  const [homeAddressQuery, setHomeAddressQuery] = useState("");
+  const [homeAddressCoords, setHomeAddressCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [searchingHomeAddress, setSearchingHomeAddress] = useState(false);
   const [notes, setNotes] = useState("");
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>("CARD");
   const [creating, setCreating] = useState(false);
@@ -354,6 +357,39 @@ export function CreateBookingScreen({ navigation, route }: Props) {
     setSelectedSlotsByDate((current) => ({ ...current, [dateKey]: slot }));
   }
 
+  async function searchHomeAddress() {
+    const query = homeAddressQuery.trim();
+    if (!query) return;
+    try {
+      setSearchingHomeAddress(true);
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=br`;
+      const resp = await fetch(url, {
+        headers: { "Accept-Language": "pt-BR", "User-Agent": "Muvify-App/1.0" },
+      });
+      const results = (await resp.json()) as Array<{ display_name: string; lat: string; lon: string }>;
+      const first = results[0];
+      if (!first) {
+        showToast("Endereço não encontrado.", "info");
+        setHomeAddressCoords(null);
+        return;
+      }
+      const lat = parseFloat(first.lat);
+      const lng = parseFloat(first.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        showToast("Endereço inválido.", "error");
+        setHomeAddressCoords(null);
+        return;
+      }
+      setHomeAddressCoords({ lat, lng });
+      setHomeAddressQuery(first.display_name);
+    } catch {
+      showToast("Falha ao buscar endereço.", "error");
+      setHomeAddressCoords(null);
+    } finally {
+      setSearchingHomeAddress(false);
+    }
+  }
+
   async function handleContinue() {
     if (!anamnesisCompleted) {
       showToast("Preencha sua ficha de saúde antes de agendar.", "error");
@@ -376,6 +412,10 @@ export function CreateBookingScreen({ navigation, route }: Props) {
       provider?.serviceMode === "PRESENTIAL_ONLY" || provider?.serviceMode === "BOTH";
     if (needsLocation && !sessionLocation) {
       showToast("Selecione o local onde a aula será realizada.", "error");
+      return;
+    }
+    if (sessionLocation === "A domicílio" && !homeAddressCoords) {
+      showToast("Busque e confirme o endereço do atendimento a domicílio.", "error");
       return;
     }
     if (selectedPaymentMethod === "CARD" && !paymentReady) {
@@ -403,6 +443,8 @@ export function CreateBookingScreen({ navigation, route }: Props) {
               paymentMethod: selectedPaymentMethod,
               notes: notes.trim() || undefined,
               sessionLocation: sessionLocation ?? undefined,
+              clientLatitude: sessionLocation === "A domicílio" ? homeAddressCoords?.lat : undefined,
+              clientLongitude: sessionLocation === "A domicílio" ? homeAddressCoords?.lng : undefined,
             })
           );
           createdBookingIds.push(booking.id);
@@ -536,6 +578,33 @@ export function CreateBookingScreen({ navigation, route }: Props) {
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: sessionLocation ? theme.primary : theme.text3 }}>
               {sessionLocation ? `Local selecionado: ${sessionLocation}` : "Selecione onde a aula será realizada."}
             </Text>
+            {sessionLocation === "A domicílio" ? (
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                  <TextInput
+                    value={homeAddressQuery}
+                    onChangeText={(v) => { setHomeAddressQuery(v); setHomeAddressCoords(null); }}
+                    onSubmitEditing={() => void searchHomeAddress()}
+                    placeholder="Endereço completo do atendimento"
+                    placeholderTextColor={theme.text3}
+                    returnKeyType="search"
+                    style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 10, backgroundColor: theme.inputBg, paddingHorizontal: 12, paddingVertical: 10, color: theme.text1, fontSize: 13 }}
+                  />
+                  <TouchableOpacity
+                    onPress={() => void searchHomeAddress()}
+                    disabled={searchingHomeAddress || !homeAddressQuery.trim()}
+                    style={{ height: 40, paddingHorizontal: 14, borderRadius: 10, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", opacity: searchingHomeAddress || !homeAddressQuery.trim() ? 0.6 : 1 }}
+                  >
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: "#000" }}>
+                      {searchingHomeAddress ? "..." : "Buscar"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: homeAddressCoords ? theme.primary : theme.text3 }}>
+                  {homeAddressCoords ? "Endereço confirmado." : "Busque e confirme o endereço para checar se está dentro da área de atendimento."}
+                </Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 

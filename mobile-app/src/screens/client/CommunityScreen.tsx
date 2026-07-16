@@ -370,7 +370,11 @@ function ThematicCard({ post, theme }: { post: FeedPost; theme: MvTheme }) {
 }
 
 // ── Card individual de post do feed ──────────────────────────────────────────
-function FeedPostCard({
+// FeedPostCard owns its own like/comment state after mount (initialized once from
+// `post`), so it's safe to skip re-render whenever the same post/viewer combo comes
+// through again — this avoids re-rendering every card in the feed on every parent
+// state change (search, scroll position, etc.) as the list grows while scrolling.
+const FeedPostCard = React.memo(function FeedPostCard({
   post,
   runWithAuth,
   onNavigateToProvider,
@@ -880,7 +884,7 @@ function FeedPostCard({
       </Modal>
     </View>
   );
-}
+}, (prev, next) => prev.post.id === next.post.id && prev.viewerId === next.viewerId);
 
 // ── CommunityScreen ───────────────────────────────────────────────────────────
 export function CommunityScreen({ navigation }: Props) {
@@ -1044,7 +1048,13 @@ export function CommunityScreen({ navigation }: Props) {
       setFeedLoadingMore(true);
       const nextPage = feedPage + 1;
       const res = await runWithAuth((token) => communityApi.getFeed(token, nextPage, 20));
-      setFeedItems((prev) => [...prev, ...res.items]);
+      // Bounds memory/render cost during long scroll sessions — trims the oldest
+      // posts once the feed grows past a comfortable in-memory window.
+      const FEED_MAX_ITEMS = 100;
+      setFeedItems((prev) => {
+        const merged = [...prev, ...res.items];
+        return merged.length > FEED_MAX_ITEMS ? merged.slice(merged.length - FEED_MAX_ITEMS) : merged;
+      });
       setFeedPage(nextPage);
       setFeedHasMore(res.items.length === 20);
     } catch { /* best effort */ }
@@ -1328,6 +1338,7 @@ export function CommunityScreen({ navigation }: Props) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
+        removeClippedSubviews
         scrollEventThrottle={400}
         onScroll={(e) => {
           const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;

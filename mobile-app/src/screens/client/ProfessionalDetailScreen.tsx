@@ -30,7 +30,7 @@ import { queryKeys } from "../../lib/queryKeys";
 type Props = NativeStackScreenProps<ClientStackParamList, "ProfessionalDetail">;
 type ProviderDetail = ProviderSummary & {
   categoryLinks?: Array<{ category?: { name: string } }>;
-  reviews?: Array<{ id: string; rating: number; comment?: string | null; user?: { name?: string } }>;
+  reviews?: Array<{ id: string; rating: number; comment?: string | null; providerResponse?: string | null; user?: { name?: string } }>;
   fixedLocations?: Array<{ id: string; name: string; latitude?: number | null; longitude?: number | null }>;
   presentationVideoUrl?: string | null;
 };
@@ -488,6 +488,16 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
                     <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
                       {review.comment}
                     </Text>
+                  ) : null}
+                  {review.providerResponse ? (
+                    <View style={{ backgroundColor: theme.chipBg, borderRadius: 10, padding: 10, marginTop: 8 }}>
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.text3, marginBottom: 2 }}>
+                        Resposta do profissional
+                      </Text>
+                      <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
+                        {review.providerResponse}
+                      </Text>
+                    </View>
                   ) : null}
                 </View>
               ))}

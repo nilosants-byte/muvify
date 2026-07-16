@@ -260,6 +260,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
         <View style={{ marginHorizontal: 16, borderRadius: 16, borderWidth: 1, backgroundColor: cardBg, borderColor: border, overflow: "hidden", marginBottom: 12 }}>
           <MenuItem icon="card-outline" label="Conta de recebimento" sub="Mercado Pago" onPress={() => goToStack("ConnectPayoutAccount")} isFirst />
           <MenuItem icon="shield-checkmark-outline" label="CREF e documentos" onPress={() => goToStack("ProfessionalCredentials")} />
+          <MenuItem icon="star-outline" label="Minhas avaliações" onPress={() => goToStack("ProfessionalReviews")} />
           <MenuItem icon="lock-closed-outline" label="Segurança" onPress={() => goToStack("Security")} />
           <MenuItem icon="download-outline" label="Baixar meus dados" sub="Exportar todas as suas informações" onPress={() => void handleExportData()} />
           <MenuItem icon="trash-outline" label="Excluir minha conta" sub="Remover permanentemente todos os dados" onPress={handleDeleteAccount} danger />

@@ -79,6 +79,7 @@ export type ProfessionalStackParamList = {
   PersonalFinance: undefined;
   AnnualReport: undefined;
   ProfessionalCredentials: undefined;
+  ProfessionalReviews: undefined;
   ProfessionalSettings: undefined;
   AvailabilityManager: undefined;
   ProfessionalConsultancyCenter: { openTab?: "offers" } | undefined;

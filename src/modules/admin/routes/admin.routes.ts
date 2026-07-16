@@ -94,6 +94,7 @@ adminRoutes.get("/lookup/cref", validate(adminLookupCrefSchema), adminController
 adminRoutes.get("/lookup/chats", validate(adminLookupChatsSchema), adminController.lookupChats);
 adminRoutes.get("/lookup/bookings", validate(adminLookupBookingsSchema), adminController.lookupBookings);
 adminRoutes.get("/lookup/bookings/:bookingId", validate(adminLookupBookingDetailSchema), adminController.lookupBookingDetail);
+adminRoutes.get("/no-show-reports", adminController.listNoShowReports);
 
 adminRoutes.get("/exercises", validate(listExercisesSchema), adminController.listPrebuiltExercises.bind(adminController));
 adminRoutes.post("/exercises", uploadRateLimiter, validate(createPrebuiltExerciseSchema), adminController.createPrebuiltExercise.bind(adminController));

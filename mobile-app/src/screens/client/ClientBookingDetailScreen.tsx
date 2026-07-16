@@ -118,6 +118,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   const [attendance, setAttendance] = useState<AttendanceCodeResponse | null>(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [reportingNoShow, setReportingNoShow] = useState(false);
 
   useEffect(() => {
     if (detailQuery.data) setAttendance(detailQuery.data.attendance);
@@ -175,6 +176,10 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     [booking?.status]
   );
   const isValidated = attendance?.validated === true;
+  const canReportNoShow = useMemo(() =>
+    booking?.status === "CONFIRMED" && !isValidated && new Date(booking.scheduledAt) < new Date(),
+    [booking?.status, booking?.scheduledAt, isValidated]
+  );
 
   // ── Animação de validação do código (scale bounce + fade) ─────────────────
   const checkScale = useSharedValue(0);
@@ -212,6 +217,31 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             } catch (error) {
               handleScreenError({ error, showToast, fallbackMessage: "Não foi possível cancelar.", navigation });
             } finally { setCancelling(false); }
+          },
+        },
+      ]
+    );
+  }
+
+  function handleReportNoShow() {
+    if (!booking) return;
+    Alert.alert(
+      "Reportar falta",
+      "O personal não compareceu no horário marcado? Isso encerra o agendamento agora e devolve o valor pago.",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Reportar falta",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setReportingNoShow(true);
+              await runWithAuth((token) => bookingsApi.reportNoShow(token, booking.id));
+              showToast("Agendamento encerrado.", "success");
+              navigation.goBack();
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível reportar a falta.", navigation });
+            } finally { setReportingNoShow(false); }
           },
         },
       ]
@@ -623,6 +653,17 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                 {cancelling ? "Cancelando..." : "Cancelar agendamento"}
               </Text>
             </TouchableOpacity>
+            {canReportNoShow ? (
+              <TouchableOpacity
+                disabled={reportingNoShow}
+                onPress={handleReportNoShow}
+                style={{ height: 44, borderRadius: S.btnR, alignItems: "center", justifyContent: "center", opacity: reportingNoShow ? 0.6 : 1 }}
+              >
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.danger }}>
+                  {reportingNoShow ? "Reportando..." : "O personal não compareceu"}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
       </ScrollView>

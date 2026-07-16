@@ -1133,6 +1133,39 @@ export class AdminService {
     });
 
     if (!booking) throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
-    return booking;
+    return {
+      ...booking,
+      client: { ...booking.client, document: undefined, documentMasked: this.maskDocument(booking.client.document) },
+      provider: {
+        ...booking.provider,
+        user: {
+          ...booking.provider.user,
+          document: undefined,
+          documentMasked: this.maskDocument(booking.provider.user.document)
+        }
+      }
+    };
+  }
+
+  // Reincidência de faltas (NoShowReport) é registrada automaticamente pelo
+  // booking.service.ts quando um dos lados reporta a falta do outro. Nenhuma
+  // consequência automática é aplicada — cabe a um admin revisar os casos
+  // recorrentes (minStrikes) e decidir manualmente.
+  async listNoShowReports(adminId: string, minStrikes = 1) {
+    console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=listNoShowReports minStrikes=${minStrikes}`);
+
+    const reports = await prisma.noShowReport.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      select: {
+        id: true,
+        bookingId: true,
+        createdAt: true,
+        reportedUser: { select: { id: true, name: true, email: true, role: true, noShowStrikes: true } },
+        reportedByUser: { select: { id: true, name: true, email: true } }
+      }
+    });
+
+    return reports.filter((r) => r.reportedUser.noShowStrikes >= minStrikes);
   }
 }

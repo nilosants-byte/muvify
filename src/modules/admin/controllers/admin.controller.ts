@@ -129,6 +129,12 @@ export class AdminController {
     return response.json(payload);
   }
 
+  async listNoShowReports(request: Request, response: Response) {
+    const minStrikes = request.query.minStrikes ? Number(request.query.minStrikes) : undefined;
+    const payload = await adminService.listNoShowReports(request.user!.id, minStrikes);
+    return response.json(payload);
+  }
+
   async listPrebuiltExercises(request: Request, response: Response) {
     const { category, q } = request.query as Record<string, string | undefined>;
     const exercises = await exerciseService.listPrebuilt(category, q);

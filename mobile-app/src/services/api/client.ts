@@ -102,6 +102,8 @@ export type ProviderReview = {
   id: string;
   rating: number;
   comment?: string | null;
+  providerResponse?: string | null;
+  providerRespondedAt?: string | null;
   createdAt: string;
   user?: {
     id: string;
@@ -1678,6 +1680,8 @@ export const bookingsApi = {
       paymentMethod?: PaymentMethod;
       notes?: string;
       sessionLocation?: string;
+      clientLatitude?: number;
+      clientLongitude?: number;
     }
   ) {
     return apiRequest<Booking>("/bookings", { method: "POST", token, body });
@@ -1722,6 +1726,12 @@ export const bookingsApi = {
       method: "POST",
       token,
       body: { qrToken }
+    });
+  },
+  reportNoShow(token: string, bookingId: string) {
+    return apiRequest<Booking>(`/bookings/${bookingId}/report-no-show`, {
+      method: "POST",
+      token
     });
   }
 };
@@ -1790,6 +1800,13 @@ export const reviewsApi = {
     }
   ) {
     return apiRequest<unknown>("/reviews", { method: "POST", token, body });
+  },
+  respond(token: string, reviewId: string, response: string) {
+    return apiRequest<unknown>(`/reviews/${reviewId}/response`, {
+      method: "PATCH",
+      token,
+      body: { response }
+    });
   }
 };
 

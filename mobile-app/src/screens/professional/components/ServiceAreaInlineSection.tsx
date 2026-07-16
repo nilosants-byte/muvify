@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   Keyboard,
   ScrollView,
@@ -353,23 +354,17 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
     }
   }
 
-  const toggleBackgroundLocation = useCallback(async (nextValue: boolean) => {
+  const enableBackgroundLocation = useCallback(async () => {
     setBackgroundLocationBusy(true);
     try {
-      if (nextValue) {
-        const started = await startProviderBackgroundLocation();
-        if (!started.enabled) {
-          showToast(started.message ?? "Não foi possível ativar localização em background.", "error");
-          await refreshBackgroundLocationStatus();
-          return;
-        }
+      const started = await startProviderBackgroundLocation();
+      if (!started.enabled) {
+        showToast(started.message ?? "Não foi possível ativar localização em background.", "error");
         await refreshBackgroundLocationStatus();
-        showToast("Localização em background ativada.", "success");
-      } else {
-        await stopProviderBackgroundLocation();
-        await refreshBackgroundLocationStatus();
-        showToast("Localização em background desativada.", "info");
+        return;
       }
+      await refreshBackgroundLocationStatus();
+      showToast("Localização automática ativada.", "success");
     } catch {
       showToast("Falha ao atualizar configuração de localização.", "error");
       await refreshBackgroundLocationStatus();
@@ -377,6 +372,29 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
       setBackgroundLocationBusy(false);
     }
   }, [refreshBackgroundLocationStatus, showToast]);
+
+  const toggleBackgroundLocation = useCallback((nextValue: boolean) => {
+    if (nextValue) {
+      // The OS permission dialog gives no context — explain what this does and
+      // why (battery/privacy implications) before asking for it.
+      Alert.alert(
+        "Ativar localização automática?",
+        "O Muvify vai atualizar sua posição no mapa periodicamente, mesmo com o app fechado, para que alunos vejam sua localização em tempo real. Isso consome mais bateria. Você pode desativar quando quiser.",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Ativar", onPress: () => void enableBackgroundLocation() },
+        ]
+      );
+      return;
+    }
+
+    setBackgroundLocationBusy(true);
+    stopProviderBackgroundLocation()
+      .then(() => refreshBackgroundLocationStatus())
+      .then(() => showToast("Localização automática desativada.", "info"))
+      .catch(() => showToast("Falha ao atualizar configuração de localização.", "error"))
+      .finally(() => setBackgroundLocationBusy(false));
+  }, [enableBackgroundLocation, refreshBackgroundLocationStatus, showToast]);
 
   async function searchAddress() {
     const query = addressQuery.trim();
@@ -790,9 +808,13 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
 
           <TouchableOpacity
             onPress={() => {
-              void toggleBackgroundLocation(!backgroundLocationEnabled);
+              toggleBackgroundLocation(!backgroundLocationEnabled);
             }}
             disabled={backgroundLocationBusy}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: backgroundLocationEnabled }}
+            accessibilityLabel="Localização automática em segundo plano"
+            accessibilityHint="Atualiza sua posição no mapa periodicamente mesmo com o app fechado, usando mais bateria"
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -816,7 +838,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
               />
             )}
             <MvText variant="badge" style={{ color: backgroundLocationEnabled ? theme.textGreen : theme.text2, fontSize: 11 }}>
-              {backgroundLocationEnabled ? "BG on" : "BG off"}
+              {backgroundLocationEnabled ? "Localização automática: ativada" : "Localização automática: desativada"}
             </MvText>
           </TouchableOpacity>
         </View>

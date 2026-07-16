@@ -41,3 +41,10 @@ bookingRoutes.post(
   bookingController.verifyAttendanceQr
 );
 bookingRoutes.patch("/:bookingId/status", clientOrProvider, uploadRateLimiter, validate(updateBookingStatusSchema), bookingController.updateStatus);
+bookingRoutes.post(
+  "/:bookingId/report-no-show",
+  clientOrProvider,
+  uploadRateLimiter,
+  validate(bookingIdParamSchema),
+  bookingController.reportNoShow
+);

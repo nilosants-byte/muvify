@@ -12,4 +12,13 @@ export class ReviewController {
     );
     return response.status(StatusCodes.CREATED).json(review);
   }
+
+  async respond(request: Request, response: Response) {
+    const review = await reviewService.respondToReview(
+      request.user!.id,
+      request.params.reviewId,
+      request.body.response
+    );
+    return response.json(review);
+  }
 }
