@@ -477,14 +477,14 @@ export function ClientHomeMapSection({
                     <Text style={{ color: theme.text3, fontFamily: "DMSans_400Regular", fontSize: 12 }}>Ou buscar por cidade/bairro</Text>
                   </TouchableOpacity>
                 </>
-              ) : (
+              ) : filterDistanceCommitted < 10 ? (
                 <>
                   <Text style={{ fontSize: 32 }}>🔍</Text>
                   <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: theme.text1, letterSpacing: -0.02 * 20, marginTop: 12, textAlign: "center" }}>
-                    Nenhum personal aqui
+                    Nenhum personal por aqui ainda
                   </Text>
                   <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, marginTop: 8, textAlign: "center", lineHeight: 20 }}>
-                    Aumente o raio de busca para encontrar profissionais disponíveis.
+                    Tente ampliar um pouco o raio de busca — pode ter alguém logo ali.
                   </Text>
                   <TouchableOpacity
                     onPress={() => { onSetFilterDistance(10); onSetFilterDistanceCommitted(10); onClearProviderSelection(); }}
@@ -492,6 +492,16 @@ export function ClientHomeMapSection({
                   >
                     <Text style={{ color: theme.primary, fontFamily: "DMSans_700Bold", fontSize: 13 }}>Ampliar para 10 km</Text>
                   </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 32 }}>🌱</Text>
+                  <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: theme.text1, letterSpacing: -0.02 * 20, marginTop: 12, textAlign: "center" }}>
+                    Ainda não chegamos até você
+                  </Text>
+                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, marginTop: 8, textAlign: "center", lineHeight: 20 }}>
+                    Não encontramos nenhum personal disponível na sua região por enquanto. Novos profissionais aparecem por aqui toda semana — volte em breve para conferir!
+                  </Text>
                 </>
               )}
             </View>
