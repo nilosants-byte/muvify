@@ -210,6 +210,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
         uploadsApi.uploadMedia(token, { uri: asset.uri, mimeType, fileName: `presentation-video.${extension}` }, "presentation-videos")
       );
       setPresentationVideoUrl(url);
+      setVideoLocalUri(null); // troca pra URL real do R2 assim que sobe — a prévia local pode não tocar no WebView
       setVideoProcessing(false);
       showToast("Vídeo enviado. Salve o perfil para concluir.", "success");
     } catch (error) {
