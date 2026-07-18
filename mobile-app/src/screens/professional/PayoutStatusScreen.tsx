@@ -13,7 +13,7 @@ import { ProfessionalStackParamList } from "../../navigation/route-types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Booking, FinancialDashboard, FinancialExpense, FinancialExpenseCategory, FinancialIncome,
-  FinancialPayouts, FinancialStudent, ProviderAccountStatus, bookingsApi, financialApi, paymentsApi,
+  FinancialPayouts, FinancialRecurrence, FinancialStudent, ProviderAccountStatus, bookingsApi, financialApi, paymentsApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
@@ -51,6 +51,13 @@ const EXPENSE_CAT_LABEL: Record<FinancialExpenseCategory, string> = {
   PROFESSIONAL_SERVICES: "Serv. Prof.", RENT: "Aluguel",
   UNIFORM: "Uniforme", NUTRITION: "Nutrição", OTHER: "Outros",
 };
+
+type BillingOption = "one_time" | "recurring" | "period";
+const BILLING_OPTIONS: { key: BillingOption; label: string }[] = [
+  { key: "one_time", label: "Avulso" },
+  { key: "recurring", label: "Recorrente" },
+  { key: "period", label: "Por período" },
+];
 
 // ─── Monthly bar chart ───────────────────────────────────────────────────────
 function MonthlyBarChart({
@@ -263,7 +270,7 @@ export function PayoutStatusScreen({ navigation }: Props) {
   const previstoCents = useMemo(() => {
     const paidStudentIds = new Set(manualIncomes.filter((i) => i.studentId).map((i) => i.studentId));
     const unpaidStudentRevenueCents = students
-      .filter((s) => s.isActive && !paidStudentIds.has(s.id))
+      .filter((s) => s.isActive && s.billableThisMonth && !paidStudentIds.has(s.id))
       .reduce((sum, s) => sum + s.monthlyValueCents, 0);
     return unpaidStudentRevenueCents + (dashboard?.confirmedRevenueCents ?? 0);
   }, [students, manualIncomes, dashboard]);
@@ -307,13 +314,18 @@ export function PayoutStatusScreen({ navigation }: Props) {
   const [iDesc, setIDesc] = React.useState("");
   const [iValue, setIValue] = React.useState("100,00");
   const [iDate, setIDate] = React.useState<Date>(new Date());
+  const [iBilling, setIBilling] = React.useState<BillingOption>("one_time");
+  const [iRecurrenceEndDate, setIRecurrenceEndDate] = React.useState<Date>(() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d; });
   const [eDesc, setEDesc] = React.useState("");
   const [eValue, setEValue] = React.useState("50,00");
   const [eCat, setECat] = React.useState<FinancialExpenseCategory>("OTHER");
   const [eDate, setEDate] = React.useState<Date>(new Date());
+  const [eBilling, setEBilling] = React.useState<BillingOption>("one_time");
+  const [eRecurrenceEndDate, setERecurrenceEndDate] = React.useState<Date>(() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d; });
 
   async function handleAddIncome() {
     if (!iDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
+    if (iBilling === "period" && iRecurrenceEndDate <= iDate) { showToast("A data de término precisa ser depois da data do lançamento.", "error"); return; }
     try {
       setSavingEntry(true);
       const paidAtStr = new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString();
@@ -321,12 +333,14 @@ export function PayoutStatusScreen({ navigation }: Props) {
         description: iDesc.trim(),
         amountCents: parseCents(iValue),
         paidAt: paidAtStr,
+        recurrence: (iBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
+        recurrenceEndDate: iBilling === "period" ? iRecurrenceEndDate.toISOString() : null,
       }));
       queryClient.setQueryData(queryKeys.payments.providerPayouts(), (old: any) =>
         old ? { ...old, incomes: [...(old.incomes ?? []), newIncome] } : old
       );
       setAddIncomeModal(false);
-      setIDesc(""); setIValue("100,00"); setIDate(new Date());
+      setIDesc(""); setIValue("100,00"); setIDate(new Date()); setIBilling("one_time");
       showToast("Receita registrada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar receita." });
@@ -335,6 +349,7 @@ export function PayoutStatusScreen({ navigation }: Props) {
 
   async function handleAddExpense() {
     if (!eDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
+    if (eBilling === "period" && eRecurrenceEndDate <= eDate) { showToast("A data de término precisa ser depois da data do lançamento.", "error"); return; }
     try {
       setSavingEntry(true);
       const paidAtStr = new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString();
@@ -343,12 +358,14 @@ export function PayoutStatusScreen({ navigation }: Props) {
         amountCents: parseCents(eValue),
         category: eCat,
         paidAt: paidAtStr,
+        recurrence: (eBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
+        recurrenceEndDate: eBilling === "period" ? eRecurrenceEndDate.toISOString() : null,
       }));
       queryClient.setQueryData(queryKeys.payments.providerPayouts(), (old: any) =>
         old ? { ...old, expenses: [...(old.expenses ?? []), newExpense] } : old
       );
       setAddExpenseModal(false);
-      setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date());
+      setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); setEBilling("one_time");
       showToast("Despesa registrada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar despesa." });
@@ -583,13 +600,24 @@ export function PayoutStatusScreen({ navigation }: Props) {
       <MvModalSheet
         visible={addIncomeModal}
         title="Registrar receita"
-        onClose={() => { setAddIncomeModal(false); setIDesc(""); setIValue("100,00"); setIDate(new Date()); }}
+        onClose={() => { setAddIncomeModal(false); setIDesc(""); setIValue("100,00"); setIDate(new Date()); setIBilling("one_time"); }}
       >
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvInput placeholder="Descrição" value={iDesc} onChangeText={setIDesc} />
           <MvInput keyboardType="numeric" placeholder="Valor (R$)" value={iValue} onChangeText={(v) => setIValue(maskPriceInput(v))} />
           <MvText variant="body4" color="secondary">Data</MvText>
           <MvDatePicker value={iDate} onChange={setIDate} />
+          <View style={{ gap: 7 }}>
+            <MvText variant="body4" color="secondary">Cobrança</MvText>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              {BILLING_OPTIONS.map((opt) => (
+                <PressableScale key={opt.key} scale={0.95} onPress={() => setIBilling(opt.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: iBilling === opt.key ? theme.primarySubtle : theme.chipBg, borderWidth: 1, borderColor: iBilling === opt.key ? theme.primarySubtleBorder : theme.border }}>
+                  <MvText variant="body4" style={{ color: iBilling === opt.key ? theme.primary : theme.text2 }}>{opt.label}</MvText>
+                </PressableScale>
+              ))}
+            </View>
+            {iBilling === "period" ? <MvDatePicker value={iRecurrenceEndDate} onChange={setIRecurrenceEndDate} /> : null}
+          </View>
           <MvButton label="Salvar receita" loading={savingEntry} onPress={() => void handleAddIncome()} />
         </View>
       </MvModalSheet>
@@ -597,7 +625,7 @@ export function PayoutStatusScreen({ navigation }: Props) {
       <MvModalSheet
         visible={addExpenseModal}
         title="Registrar despesa"
-        onClose={() => { setAddExpenseModal(false); setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); }}
+        onClose={() => { setAddExpenseModal(false); setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); setEBilling("one_time"); }}
       >
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvInput placeholder="Descrição" value={eDesc} onChangeText={setEDesc} />
@@ -620,6 +648,17 @@ export function PayoutStatusScreen({ navigation }: Props) {
           </View>
           <MvText variant="body4" color="secondary">Data</MvText>
           <MvDatePicker value={eDate} onChange={setEDate} />
+          <View style={{ gap: 7 }}>
+            <MvText variant="body4" color="secondary">Cobrança</MvText>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              {BILLING_OPTIONS.map((opt) => (
+                <PressableScale key={opt.key} scale={0.95} onPress={() => setEBilling(opt.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: eBilling === opt.key ? theme.primarySubtle : theme.chipBg, borderWidth: 1, borderColor: eBilling === opt.key ? theme.primarySubtleBorder : theme.border }}>
+                  <MvText variant="body4" style={{ color: eBilling === opt.key ? theme.primary : theme.text2 }}>{opt.label}</MvText>
+                </PressableScale>
+              ))}
+            </View>
+            {eBilling === "period" ? <MvDatePicker value={eRecurrenceEndDate} onChange={setERecurrenceEndDate} /> : null}
+          </View>
           <MvButton label="Salvar despesa" loading={savingEntry} onPress={() => void handleAddExpense()} />
         </View>
       </MvModalSheet>

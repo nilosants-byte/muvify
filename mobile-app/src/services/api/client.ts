@@ -2021,6 +2021,8 @@ export type WeeklyScheduleSlot = {
   endTime: string;   // "HH:mm"
 };
 
+export type FinancialRecurrence = "RECURRING" | "ONE_TIME";
+
 export type FinancialStudent = {
   id: string;
   providerId: string;
@@ -2033,6 +2035,11 @@ export type FinancialStudent = {
   notes?: string | null;
   location?: string | null;
   weeklySchedule?: WeeklyScheduleSlot[] | null;
+  recurrence: FinancialRecurrence;
+  startDate: string;
+  recurrenceEndDate?: string | null;
+  /** calculado pelo backend: esse aluno "cobra" no mês atual? */
+  billableThisMonth: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -2045,6 +2052,10 @@ export type FinancialIncome = {
   amountCents: number;
   source: string;
   paidAt: string;
+  recurrence: FinancialRecurrence;
+  recurrenceEndDate?: string | null;
+  /** true quando é uma projeção de um lançamento recorrente de mês anterior (não editável diretamente) */
+  isVirtual?: boolean;
   createdAt: string;
   student?: { id: string; name: string } | null;
 };
@@ -2056,6 +2067,9 @@ export type FinancialExpense = {
   amountCents: number;
   category: FinancialExpenseCategory;
   paidAt: string;
+  recurrence: FinancialRecurrence;
+  recurrenceEndDate?: string | null;
+  isVirtual?: boolean;
   createdAt: string;
 };
 
@@ -2160,10 +2174,10 @@ export const financialApi = {
   listStudents(token: string) {
     return apiRequest<FinancialStudent[]>("/financial/students", { token });
   },
-  createStudent(token: string, body: { name: string; monthlyValueCents: number; type: FinancialStudentType; weeklyFrequency?: number; paymentDueDay?: number; notes?: string; location?: string; weeklySchedule?: WeeklyScheduleSlot[] }) {
+  createStudent(token: string, body: { name: string; monthlyValueCents: number; type: FinancialStudentType; weeklyFrequency?: number; paymentDueDay?: number; notes?: string; location?: string; weeklySchedule?: WeeklyScheduleSlot[]; recurrence?: FinancialRecurrence; startDate?: string; recurrenceEndDate?: string | null }) {
     return apiRequest<FinancialStudent>("/financial/students", { method: "POST", token, body });
   },
-  updateStudent(token: string, id: string, body: Partial<{ name: string; monthlyValueCents: number; type: FinancialStudentType; weeklyFrequency: number; isActive: boolean; paymentDueDay: number | null; notes: string; location: string; weeklySchedule: WeeklyScheduleSlot[] }>) {
+  updateStudent(token: string, id: string, body: Partial<{ name: string; monthlyValueCents: number; type: FinancialStudentType; weeklyFrequency: number; isActive: boolean; paymentDueDay: number | null; notes: string; location: string; weeklySchedule: WeeklyScheduleSlot[]; recurrence: FinancialRecurrence; startDate: string; recurrenceEndDate: string | null }>) {
     return apiRequest<FinancialStudent>(`/financial/students/${id}`, { method: "PATCH", token, body });
   },
   deleteStudent(token: string, id: string) {
@@ -2173,10 +2187,10 @@ export const financialApi = {
     const q = month ? `?month=${month}` : "";
     return apiRequest<FinancialIncome[]>(`/financial/incomes${q}`, { token });
   },
-  createIncome(token: string, body: { description: string; amountCents: number; studentId?: string; paidAt: string }) {
+  createIncome(token: string, body: { description: string; amountCents: number; studentId?: string; paidAt: string; recurrence?: FinancialRecurrence; recurrenceEndDate?: string | null }) {
     return apiRequest<FinancialIncome>("/financial/incomes", { method: "POST", token, body });
   },
-  updateIncome(token: string, id: string, body: { description?: string; amountCents?: number; studentId?: string | null; paidAt?: string }) {
+  updateIncome(token: string, id: string, body: { description?: string; amountCents?: number; studentId?: string | null; paidAt?: string; recurrence?: FinancialRecurrence; recurrenceEndDate?: string | null }) {
     return apiRequest<FinancialIncome>(`/financial/incomes/${id}`, { method: "PATCH", token, body });
   },
   deleteIncome(token: string, id: string) {
@@ -2186,10 +2200,10 @@ export const financialApi = {
     const q = month ? `?month=${month}` : "";
     return apiRequest<FinancialExpense[]>(`/financial/expenses${q}`, { token });
   },
-  createExpense(token: string, body: { description: string; amountCents: number; category?: FinancialExpenseCategory; paidAt: string }) {
+  createExpense(token: string, body: { description: string; amountCents: number; category?: FinancialExpenseCategory; paidAt: string; recurrence?: FinancialRecurrence; recurrenceEndDate?: string | null }) {
     return apiRequest<FinancialExpense>("/financial/expenses", { method: "POST", token, body });
   },
-  updateExpense(token: string, id: string, body: { description?: string; amountCents?: number; category?: FinancialExpenseCategory; paidAt?: string }) {
+  updateExpense(token: string, id: string, body: { description?: string; amountCents?: number; category?: FinancialExpenseCategory; paidAt?: string; recurrence?: FinancialRecurrence; recurrenceEndDate?: string | null }) {
     return apiRequest<FinancialExpense>(`/financial/expenses/${id}`, { method: "PATCH", token, body });
   },
   deleteExpense(token: string, id: string) {

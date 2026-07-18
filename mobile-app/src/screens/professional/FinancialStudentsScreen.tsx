@@ -9,7 +9,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import {
-  FinancialAppClient, FinancialIncome, FinancialStudent, FinancialStudentType,
+  FinancialAppClient, FinancialIncome, FinancialRecurrence, FinancialStudent, FinancialStudentType,
   WeeklyScheduleSlot, financialApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
@@ -39,6 +39,17 @@ function monthLabel(m: string) {
 
 const DAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
+
+type BillingOption = "recurring" | "period" | "one_time";
+const BILLING_OPTIONS: { key: BillingOption; label: string }[] = [
+  { key: "recurring", label: "Recorrente" },
+  { key: "period", label: "Por período" },
+  { key: "one_time", label: "Avulso" },
+];
+function billingOptionOf(s: Pick<FinancialStudent, "recurrence" | "recurrenceEndDate">): BillingOption {
+  if (s.recurrence === "ONE_TIME") return "one_time";
+  return s.recurrenceEndDate ? "period" : "recurring";
+}
 
 function normalizeTimeInput(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 4);
@@ -155,6 +166,10 @@ export function FinancialStudentsScreen({ navigation }: Props) {
   const [sLocationQuery, setSLocationQuery] = useState("");
   const [sLocSuggOpen, setSLocSuggOpen] = useState(false);
   const [sPaymentDueDay, setSPaymentDueDay] = useState("");
+  const [sBilling, setSBilling] = useState<BillingOption>("recurring");
+  const [sRecurrenceEndDate, setSRecurrenceEndDate] = useState<Date>(() => {
+    const d = new Date(); d.setMonth(d.getMonth() + 1); return d;
+  });
   const locBlurRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { suggestions: locationSuggs, loading: locationSuggsLoading } = useGooglePlacesSearch(
@@ -182,6 +197,8 @@ export function FinancialStudentsScreen({ navigation }: Props) {
   function resetStudentForm() {
     setSName(""); setSValue("100,00"); setSType("PRESENTIAL"); setSSchedule([]);
     setSLocation(""); setSLocationQuery(""); setSLocSuggOpen(false); setSPaymentDueDay("");
+    setSBilling("recurring");
+    const d = new Date(); d.setMonth(d.getMonth() + 1); setSRecurrenceEndDate(d);
     setEditingStudent(null);
   }
 
@@ -194,11 +211,17 @@ export function FinancialStudentsScreen({ navigation }: Props) {
     setSLocation(s.location ?? "");
     setSLocationQuery(s.location ?? "");
     setSPaymentDueDay(s.paymentDueDay ? String(s.paymentDueDay) : "");
+    setSBilling(billingOptionOf(s));
+    setSRecurrenceEndDate(s.recurrenceEndDate ? new Date(s.recurrenceEndDate) : (() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d; })());
     setAddStudentModal(true);
   }
 
   async function handleAddStudent() {
     if (!sName.trim()) { showToast("Informe o nome.", "error"); return; }
+    if (sBilling === "period" && sRecurrenceEndDate <= new Date()) {
+      showToast("A data de término precisa ser no futuro.", "error");
+      return;
+    }
     try {
       setSaving(true);
       const parsedDueDay = Number(sPaymentDueDay);
@@ -211,6 +234,8 @@ export function FinancialStudentsScreen({ navigation }: Props) {
         paymentDueDay: parsedDueDay >= 1 && parsedDueDay <= 31 ? parsedDueDay : undefined,
         location: hasPresential && sLocation.trim() ? sLocation.trim() : undefined,
         weeklySchedule: hasPresential && sSchedule.length > 0 ? sSchedule : undefined,
+        recurrence: (sBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
+        recurrenceEndDate: sBilling === "period" ? sRecurrenceEndDate.toISOString() : null,
       };
       if (editingStudent) {
         const updated = await runWithAuth(t => financialApi.updateStudent(t, editingStudent.id, payload));
@@ -282,7 +307,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
   const hasPresential = sType === "PRESENTIAL" || sType === "BOTH";
   const active   = students.filter(s => s.isActive);
   const inactive = students.filter(s => !s.isActive);
-  const pending  = active.filter(s => !paidStudentIds.has(s.id));
+  const pending  = active.filter(s => s.billableThisMonth && !paidStudentIds.has(s.id));
   const pendingAmount = pending.reduce((sum, s) => sum + s.monthlyValueCents, 0);
   const todayDay = new Date().getDate();
 
@@ -293,6 +318,10 @@ export function FinancialStudentsScreen({ navigation }: Props) {
     const typeLabel = s.type === "BOTH" ? "Consultoria e presencial"
       : s.type === "ONLINE" ? "Consultoria"
       : s.type === "PRESENTIAL" ? "Presencial" : "Pelo app";
+    const billing = billingOptionOf(s);
+    const billingLabel = billing === "one_time" ? "Avulso"
+      : billing === "period" && s.recurrenceEndDate ? `Até ${new Date(s.recurrenceEndDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}`
+      : null;
     const isPaid = paidStudentIds.has(s.id);
     const daysOverdue = s.paymentDueDay && !isPaid ? Math.max(0, todayDay - s.paymentDueDay) : 0;
 
@@ -304,7 +333,12 @@ export function FinancialStudentsScreen({ navigation }: Props) {
               <MvText variant="semi3" style={{ flex: 1 }}>{s.name}</MvText>
               <MvText variant="badge" style={{ color: blue }}>{fmtCents(s.monthlyValueCents)}</MvText>
             </View>
-            <MvText variant="body4" style={{ color: blue, fontSize: 10, marginTop: 2 }}>{typeLabel}</MvText>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+              <MvText variant="body4" style={{ color: blue, fontSize: 10 }}>{typeLabel}</MvText>
+              {billingLabel ? (
+                <MvText variant="body4" style={{ color: warnColor, fontSize: 10 }}>· {billingLabel}</MvText>
+              ) : null}
+            </View>
             {dayLabels ? (
               <MvText variant="body4" color="secondary" style={{ fontSize: 11, marginTop: 2 }}>
                 {dayLabels}{timeStr ? ` - ${timeStr}` : ""}{s.location ? ` - ${s.location}` : ""}
@@ -318,7 +352,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
             <Ionicons name="trash-outline" size={16} color={RED} />
           </PressableScale>
         </View>
-        {s.isActive && !dim ? (
+        {s.isActive && !dim && s.billableThisMonth ? (
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: theme.border }}>
             {!isPaid && (daysOverdue > 0 || s.paymentDueDay) ? (
               <MvText variant="badge" style={{ fontSize: 10, color: daysOverdue > 0 ? RED : warnColor }}>
@@ -335,6 +369,10 @@ export function FinancialStudentsScreen({ navigation }: Props) {
                 disabled={togglingStudentId !== null}
               />
             </View>
+          </View>
+        ) : s.isActive && !dim ? (
+          <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: theme.border }}>
+            <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Sem cobrança neste mês</MvText>
           </View>
         ) : null}
       </MvCard>
@@ -496,6 +534,22 @@ export function FinancialStudentsScreen({ navigation }: Props) {
           <MvInput keyboardType="numeric" placeholder="Valor mensal (R$)" value={sValue} onChangeText={v => setSValue(maskPriceInput(v))} />
           <MvInput keyboardType="numeric" placeholder="Dia de vencimento (ex: 5)" value={sPaymentDueDay} onChangeText={v => setSPaymentDueDay(v.replace(/\D/g, "").slice(0, 2))} />
           {hasPresential ? <CompactSchedulePicker schedule={sSchedule} onChange={setSSchedule} theme={theme} /> : null}
+          <View style={{ gap: 7 }}>
+            <MvText variant="badge" style={{ color: theme.text3, fontSize: 10 }}>Cobrança</MvText>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              {BILLING_OPTIONS.map(opt => (
+                <PressableScale key={opt.key} scale={0.95} onPress={() => setSBilling(opt.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: sBilling === opt.key ? "rgba(34,197,94,0.12)" : theme.chipBg, borderWidth: 1, borderColor: sBilling === opt.key ? "rgba(34,197,94,0.30)" : theme.border }}>
+                  <MvText variant="body4" style={{ color: sBilling === opt.key ? theme.primary : theme.text2 }}>{opt.label}</MvText>
+                </PressableScale>
+              ))}
+            </View>
+            <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>
+              {sBilling === "recurring" ? "Cobra todo mês, sem data pra parar."
+                : sBilling === "period" ? "Cobra todo mês até a data de término abaixo."
+                : "Vale só para o mês em que o aluno foi cadastrado."}
+            </MvText>
+            {sBilling === "period" ? <MvDatePicker value={sRecurrenceEndDate} onChange={setSRecurrenceEndDate} /> : null}
+          </View>
           <MvButton label={editingStudent ? "Salvar alterações" : "Salvar aluno"} loading={saving} onPress={() => void handleAddStudent()} />
         </View>
       </MvModalSheet>

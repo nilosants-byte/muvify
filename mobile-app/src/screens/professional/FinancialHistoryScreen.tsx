@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ActivityIndicator,
+  ActivityIndicator, Alert,
   ScrollView, StatusBar, TouchableOpacity, View,
 } from "react-native";
 import { PressableScale } from "../../components/polish/PressableScale";
@@ -16,7 +16,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import {
-  FinancialExpense, FinancialExpenseCategory, FinancialIncome, FinancialPayoutItem, FinancialPayouts, FinancialReport,
+  FinancialExpense, FinancialExpenseCategory, FinancialIncome, FinancialPayoutItem, FinancialPayouts, FinancialRecurrence, FinancialReport,
   financialApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
@@ -52,6 +52,16 @@ function methodLabel(method: string): string {
   if (method.includes("CREDIT")) return "Cartão crédito";
   if (method.includes("DEBIT")) return "Cartão débito";
   return "Cartão";
+}
+type BillingOption = "one_time" | "recurring" | "period";
+const BILLING_OPTIONS: { key: BillingOption; label: string }[] = [
+  { key: "one_time", label: "Avulso" },
+  { key: "recurring", label: "Recorrente" },
+  { key: "period", label: "Por período" },
+];
+function billingOptionOf(item: Pick<FinancialIncome | FinancialExpense, "recurrence" | "recurrenceEndDate">): BillingOption {
+  if (item.recurrence === "ONE_TIME") return "one_time";
+  return item.recurrenceEndDate ? "period" : "recurring";
 }
 function prevMonths(fromMonth: string, count: number): string[] {
   const [y, mo] = fromMonth.split("-").map(Number);
@@ -265,10 +275,14 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   const [iDesc,  setIDesc]  = useState("");
   const [iValue, setIValue] = useState("100,00");
   const [iDate,  setIDate]  = useState<Date>(new Date());
+  const [iBilling, setIBilling] = useState<BillingOption>("one_time");
+  const [iRecurrenceEndDate, setIRecurrenceEndDate] = useState<Date>(() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d; });
   const [eDesc,  setEDesc]  = useState("");
   const [eValue, setEValue] = useState("50,00");
   const [eCat,   setECat]   = useState<FinancialExpenseCategory>("OTHER");
   const [eDate,  setEDate]  = useState<Date>(new Date());
+  const [eBilling, setEBilling] = useState<BillingOption>("one_time");
+  const [eRecurrenceEndDate, setERecurrenceEndDate] = useState<Date>(() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d; });
 
   // Chart data
   const chartMonths = prevMonths(now, period);
@@ -317,18 +331,21 @@ export function FinancialHistoryScreen({ navigation }: Props) {
 
   async function handleAddIncome() {
     if (!iDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
+    if (iBilling === "period" && iRecurrenceEndDate <= iDate) { showToast("A data de término precisa ser depois da data do lançamento.", "error"); return; }
     try {
       setSaving(true);
       const newIncome = await runWithAuth(t => financialApi.createIncome(t, {
         description: iDesc.trim(),
         amountCents: parseCents(iValue),
         paidAt: new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
+        recurrence: (iBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
+        recurrenceEndDate: iBilling === "period" ? iRecurrenceEndDate.toISOString() : null,
       }));
       queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
         old ? { ...old, incomes: [...old.incomes, newIncome as FinancialIncome] } : old
       );
       setAddIncomeModal(false);
-      setIDesc(""); setIValue("100,00"); setIDate(new Date());
+      setIDesc(""); setIValue("100,00"); setIDate(new Date()); setIBilling("one_time");
       showToast("Receita registrada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar receita." });
@@ -343,29 +360,48 @@ export function FinancialHistoryScreen({ navigation }: Props) {
         description: iDesc.trim(),
         amountCents: parseCents(iValue),
         paidAt: new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
+        recurrence: (iBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
+        recurrenceEndDate: iBilling === "period" ? iRecurrenceEndDate.toISOString() : null,
       }));
       queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
         old ? { ...old, incomes: old.incomes.map(i => i.id === updated.id ? updated as FinancialIncome : i) } : old
       );
       setEditingIncome(null);
-      setIDesc(""); setIValue("100,00"); setIDate(new Date());
+      setIDesc(""); setIValue("100,00"); setIDate(new Date()); setIBilling("one_time");
       showToast("Receita atualizada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao atualizar receita." });
     } finally { setSaving(false); }
   }
 
-  async function handleDeleteIncome(id: string) {
-    try {
-      await runWithAuth(t => financialApi.deleteIncome(t, id));
-      queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
-        old ? { ...old, incomes: old.incomes.filter(i => i.id !== id) } : old
-      );
-    } catch { showToast("Falha ao remover.", "error"); }
+  async function handleDeleteIncome(item: FinancialIncome) {
+    const message = item.isVirtual
+      ? "Isso encerra a recorrência a partir deste mês. Os meses anteriores continuam registrados."
+      : item.recurrence === "RECURRING"
+      ? "Esse lançamento se repete todo mês. Remover vai encerrar toda a recorrência, inclusive meses futuros."
+      : "Remover este lançamento?";
+    Alert.alert("Remover receita", message, [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Remover", style: "destructive", onPress: async () => {
+        try {
+          if (item.isVirtual) {
+            const d = new Date(item.paidAt);
+            const endOfPrevMonth = new Date(d.getFullYear(), d.getMonth(), 0, 23, 59, 59);
+            await runWithAuth(t => financialApi.updateIncome(t, item.id, { recurrenceEndDate: endOfPrevMonth.toISOString() }));
+          } else {
+            await runWithAuth(t => financialApi.deleteIncome(t, item.id));
+          }
+          queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
+            old ? { ...old, incomes: old.incomes.filter(i => i.id !== item.id) } : old
+          );
+        } catch { showToast("Falha ao remover.", "error"); }
+      }},
+    ]);
   }
 
   async function handleAddExpense() {
     if (!eDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
+    if (eBilling === "period" && eRecurrenceEndDate <= eDate) { showToast("A data de término precisa ser depois da data do lançamento.", "error"); return; }
     try {
       setSaving(true);
       const newExpense = await runWithAuth(t => financialApi.createExpense(t, {
@@ -373,12 +409,14 @@ export function FinancialHistoryScreen({ navigation }: Props) {
         amountCents: parseCents(eValue),
         category: eCat,
         paidAt: new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
+        recurrence: (eBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
+        recurrenceEndDate: eBilling === "period" ? eRecurrenceEndDate.toISOString() : null,
       }));
       queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
         old ? { ...old, expenses: [...old.expenses, newExpense as FinancialExpense] } : old
       );
       setAddExpenseModal(false);
-      setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date());
+      setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); setEBilling("one_time");
       showToast("Despesa registrada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar despesa." });
@@ -394,31 +432,51 @@ export function FinancialHistoryScreen({ navigation }: Props) {
         amountCents: parseCents(eValue),
         category: eCat,
         paidAt: new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
+        recurrence: (eBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
+        recurrenceEndDate: eBilling === "period" ? eRecurrenceEndDate.toISOString() : null,
       }));
       queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
         old ? { ...old, expenses: old.expenses.map(e => e.id === updated.id ? updated as FinancialExpense : e) } : old
       );
       setEditingExpense(null);
-      setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date());
+      setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); setEBilling("one_time");
       showToast("Despesa atualizada.", "success");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao atualizar despesa." });
     } finally { setSaving(false); }
   }
 
-  async function handleDeleteExpense(id: string) {
-    try {
-      await runWithAuth(t => financialApi.deleteExpense(t, id));
-      queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
-        old ? { ...old, expenses: old.expenses.filter(e => e.id !== id) } : old
-      );
-    } catch { showToast("Falha ao remover.", "error"); }
+  async function handleDeleteExpense(item: FinancialExpense) {
+    const message = item.isVirtual
+      ? "Isso encerra a recorrência a partir deste mês. Os meses anteriores continuam registrados."
+      : item.recurrence === "RECURRING"
+      ? "Essa despesa se repete todo mês. Remover vai encerrar toda a recorrência, inclusive meses futuros."
+      : "Remover esta despesa?";
+    Alert.alert("Remover despesa", message, [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Remover", style: "destructive", onPress: async () => {
+        try {
+          if (item.isVirtual) {
+            const d = new Date(item.paidAt);
+            const endOfPrevMonth = new Date(d.getFullYear(), d.getMonth(), 0, 23, 59, 59);
+            await runWithAuth(t => financialApi.updateExpense(t, item.id, { recurrenceEndDate: endOfPrevMonth.toISOString() }));
+          } else {
+            await runWithAuth(t => financialApi.deleteExpense(t, item.id));
+          }
+          queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
+            old ? { ...old, expenses: old.expenses.filter(e => e.id !== item.id) } : old
+          );
+        } catch { showToast("Falha ao remover.", "error"); }
+      }},
+    ]);
   }
 
   function openEditIncome(inc: FinancialIncome) {
     setIDesc(inc.description);
     setIValue(maskPriceInput(String(inc.amountCents)));
     setIDate(new Date(inc.paidAt));
+    setIBilling(billingOptionOf(inc));
+    setIRecurrenceEndDate(inc.recurrenceEndDate ? new Date(inc.recurrenceEndDate) : (() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d; })());
     setEditingIncome(inc);
   }
 
@@ -427,6 +485,8 @@ export function FinancialHistoryScreen({ navigation }: Props) {
     setEValue(maskPriceInput(String(exp.amountCents)));
     setECat(exp.category);
     setEDate(new Date(exp.paidAt));
+    setEBilling(billingOptionOf(exp));
+    setERecurrenceEndDate(exp.recurrenceEndDate ? new Date(exp.recurrenceEndDate) : (() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d; })());
     setEditingExpense(exp);
   }
 
@@ -606,11 +666,14 @@ export function FinancialHistoryScreen({ navigation }: Props) {
                         <MvText variant="badge" style={{ fontSize: 9, color: theme.text3 }}>App</MvText>
                       </View>
                     ) : (
-                      <View style={{ flexDirection: "row", gap: 2 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                        {tx.item.recurrence === "RECURRING" ? (
+                          <Ionicons name="repeat" size={12} color={theme.text3} style={{ marginRight: 2 }} />
+                        ) : null}
                         <PressableScale scale={0.88} onPress={() => isInc ? openEditIncome(tx.item as FinancialIncome) : openEditExpense(tx.item as FinancialExpense)} style={{ padding: 6 }}>
                           <Ionicons name="pencil-outline" size={14} color={theme.text3} />
                         </PressableScale>
-                        <PressableScale scale={0.88} onPress={() => isInc ? void handleDeleteIncome(id) : void handleDeleteExpense(id)} style={{ padding: 6 }}>
+                        <PressableScale scale={0.88} onPress={() => isInc ? void handleDeleteIncome(tx.item as FinancialIncome) : void handleDeleteExpense(tx.item as FinancialExpense)} style={{ padding: 6 }}>
                           <Ionicons name="trash-outline" size={14} color={RED} />
                         </PressableScale>
                       </View>
@@ -627,13 +690,24 @@ export function FinancialHistoryScreen({ navigation }: Props) {
       <MvModalSheet
         visible={addIncomeModal || editingIncome !== null}
         title={editingIncome ? "Editar receita" : "Registrar receita"}
-        onClose={() => { setAddIncomeModal(false); setEditingIncome(null); setIDesc(""); setIValue("100,00"); setIDate(new Date()); }}
+        onClose={() => { setAddIncomeModal(false); setEditingIncome(null); setIDesc(""); setIValue("100,00"); setIDate(new Date()); setIBilling("one_time"); }}
       >
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvInput placeholder="Descrição" value={iDesc} onChangeText={setIDesc} />
           <MvInput keyboardType="numeric" placeholder="Valor (R$)" value={iValue} onChangeText={v => setIValue(maskPriceInput(v))} />
           <MvText variant="body4" color="secondary">Data</MvText>
           <MvDatePicker value={iDate} onChange={setIDate} />
+          <View style={{ gap: 7 }}>
+            <MvText variant="body4" color="secondary">Cobrança</MvText>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              {BILLING_OPTIONS.map(opt => (
+                <PressableScale key={opt.key} scale={0.95} onPress={() => setIBilling(opt.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: iBilling === opt.key ? "rgba(34,197,94,0.12)" : theme.chipBg, borderWidth: 1, borderColor: iBilling === opt.key ? "rgba(34,197,94,0.30)" : theme.border }}>
+                  <MvText variant="body4" style={{ color: iBilling === opt.key ? theme.primary : theme.text2 }}>{opt.label}</MvText>
+                </PressableScale>
+              ))}
+            </View>
+            {iBilling === "period" ? <MvDatePicker value={iRecurrenceEndDate} onChange={setIRecurrenceEndDate} /> : null}
+          </View>
           <MvButton label={editingIncome ? "Salvar alterações" : "Salvar receita"} loading={saving} onPress={() => editingIncome ? void handleEditIncome() : void handleAddIncome()} />
         </View>
       </MvModalSheet>
@@ -642,7 +716,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
       <MvModalSheet
         visible={addExpenseModal || editingExpense !== null}
         title={editingExpense ? "Editar despesa" : "Registrar despesa"}
-        onClose={() => { setAddExpenseModal(false); setEditingExpense(null); setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); }}
+        onClose={() => { setAddExpenseModal(false); setEditingExpense(null); setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); setEBilling("one_time"); }}
       >
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvInput placeholder="Descrição" value={eDesc} onChangeText={setEDesc} />
@@ -656,6 +730,17 @@ export function FinancialHistoryScreen({ navigation }: Props) {
           </View>
           <MvText variant="body4" color="secondary">Data</MvText>
           <MvDatePicker value={eDate} onChange={setEDate} />
+          <View style={{ gap: 7 }}>
+            <MvText variant="body4" color="secondary">Cobrança</MvText>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              {BILLING_OPTIONS.map(opt => (
+                <PressableScale key={opt.key} scale={0.95} onPress={() => setEBilling(opt.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: eBilling === opt.key ? "rgba(34,197,94,0.12)" : theme.chipBg, borderWidth: 1, borderColor: eBilling === opt.key ? "rgba(34,197,94,0.30)" : theme.border }}>
+                  <MvText variant="body4" style={{ color: eBilling === opt.key ? theme.primary : theme.text2 }}>{opt.label}</MvText>
+                </PressableScale>
+              ))}
+            </View>
+            {eBilling === "period" ? <MvDatePicker value={eRecurrenceEndDate} onChange={setERecurrenceEndDate} /> : null}
+          </View>
           <MvButton label={editingExpense ? "Salvar alterações" : "Salvar despesa"} loading={saving} onPress={() => editingExpense ? void handleEditExpense() : void handleAddExpense()} />
         </View>
       </MvModalSheet>
