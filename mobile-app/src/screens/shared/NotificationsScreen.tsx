@@ -487,7 +487,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
           title: isRejected ? "CREF reprovado" : isInReview ? "CREF em análise" : "CREF pendente",
           body: isRejected
             ? "Seu CREF foi reprovado. Ajuste os documentos para seguir usando os recursos profissionais."
-            : "Você já pode usar o app normalmente — só a publicação de ofertas fica bloqueada até a aprovação.",
+            : "Publicar ofertas depende da aprovação do seu CREF. Valide seus documentos para liberar sua consultoria para os alunos.",
           timeLabel: "Agora",
           icon: "document-text-outline",
           variant: isRejected ? "red" : "orange",

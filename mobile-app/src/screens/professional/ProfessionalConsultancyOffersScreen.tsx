@@ -474,12 +474,12 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                   onChangeText={setOfferTitle}
                 />
                 {offerKind === "PRESENTIAL" ? (
-                  <MvInput keyboardType="numeric" placeholder="Dias por semana (presencial)" value={daysPerWeek} onChangeText={setDaysPerWeek} />
+                  <MvInput keyboardType="numeric" label="Dias por semana (presencial)" placeholder="Ex: 3" value={daysPerWeek} onChangeText={setDaysPerWeek} />
                 ) : null}
                 {offerKind === "COMBO" ? (
                   <>
-                    <MvInput keyboardType="numeric" placeholder="Dias presenciais por semana" value={comboPresentialDaysPerWeek} onChangeText={setComboPresentialDaysPerWeek} />
-                    <MvInput keyboardType="numeric" placeholder="Dias online por semana" value={comboOnlineDaysPerWeek} onChangeText={setComboOnlineDaysPerWeek} />
+                    <MvInput keyboardType="numeric" label="Dias presenciais por semana" placeholder="Ex: 3" value={comboPresentialDaysPerWeek} onChangeText={setComboPresentialDaysPerWeek} />
+                    <MvInput keyboardType="numeric" label="Dias online por semana" placeholder="Ex: 2" value={comboOnlineDaysPerWeek} onChangeText={setComboOnlineDaysPerWeek} />
                     {comboDaysError ? <MvText variant="body4" color="danger">{comboDaysError}</MvText> : null}
                   </>
                 ) : null}
@@ -572,12 +572,12 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                       <MvInput placeholder="Título da oferta" value={offerTitle} onChangeText={setOfferTitle} />
                     ) : null}
                     {offerKind === "PRESENTIAL" ? (
-                      <MvInput keyboardType="numeric" placeholder="Dias por semana (presencial)" value={daysPerWeek} onChangeText={setDaysPerWeek} />
+                      <MvInput keyboardType="numeric" label="Dias por semana (presencial)" placeholder="Ex: 3" value={daysPerWeek} onChangeText={setDaysPerWeek} />
                     ) : null}
                     {offerKind === "COMBO" ? (
                       <>
-                        <MvInput keyboardType="numeric" placeholder="Dias presenciais por semana" value={comboPresentialDaysPerWeek} onChangeText={setComboPresentialDaysPerWeek} />
-                        <MvInput keyboardType="numeric" placeholder="Dias online por semana" value={comboOnlineDaysPerWeek} onChangeText={setComboOnlineDaysPerWeek} />
+                        <MvInput keyboardType="numeric" label="Dias presenciais por semana" placeholder="Ex: 3" value={comboPresentialDaysPerWeek} onChangeText={setComboPresentialDaysPerWeek} />
+                        <MvInput keyboardType="numeric" label="Dias online por semana" placeholder="Ex: 2" value={comboOnlineDaysPerWeek} onChangeText={setComboOnlineDaysPerWeek} />
                         {comboDaysError ? <MvText variant="body4" color="danger">{comboDaysError}</MvText> : null}
                       </>
                     ) : null}
