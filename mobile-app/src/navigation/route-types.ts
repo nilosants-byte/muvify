@@ -76,7 +76,6 @@ export type ClientStackParamList = {
 export type ProfessionalStackParamList = {
   ProfessionalTabs: NavigatorScreenParams<ProfessionalTabParamList>;
   PayoutStatus: undefined;
-  PersonalFinance: undefined;
   AnnualReport: undefined;
   ProfessionalCredentials: undefined;
   ProfessionalReviews: undefined;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator,
@@ -16,7 +16,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import {
-  FinancialExpense, FinancialExpenseCategory, FinancialIncome, FinancialReport,
+  FinancialExpense, FinancialExpenseCategory, FinancialIncome, FinancialPayoutItem, FinancialPayouts, FinancialReport,
   financialApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
@@ -46,6 +46,12 @@ function monthLabel(m: string) {
 function getMonthAbbr(m: string): string {
   const mo = Number(m.split("-")[1]);
   return ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][mo - 1] ?? "";
+}
+function methodLabel(method: string): string {
+  if (method === "PIX") return "PIX";
+  if (method.includes("CREDIT")) return "Cartão crédito";
+  if (method.includes("DEBIT")) return "Cartão débito";
+  return "Cartão";
 }
 function prevMonths(fromMonth: string, count: number): string[] {
   const [y, mo] = fromMonth.split("-").map(Number);
@@ -187,7 +193,7 @@ function RevenueAreaChart({
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
-type TxData = { incomes: FinancialIncome[]; expenses: FinancialExpense[] };
+type TxData = { incomes: FinancialIncome[]; expenses: FinancialExpense[]; payouts: FinancialPayouts | null };
 
 export function FinancialHistoryScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
@@ -211,11 +217,12 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   const txQuery = useAuthQuery(
     queryKeys.financial.history(selectedMonth),
     async (token) => {
-      const [incs, exps] = await Promise.all([
+      const [incs, exps, payoutsRes] = await Promise.all([
         financialApi.listIncomes(token, selectedMonth),
         financialApi.listExpenses(token, selectedMonth),
+        financialApi.payouts(token).catch(() => null),
       ]);
-      return { incomes: incs as FinancialIncome[], expenses: exps as FinancialExpense[] };
+      return { incomes: incs as FinancialIncome[], expenses: exps as FinancialExpense[], payouts: payoutsRes };
     },
   );
 
@@ -224,6 +231,19 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   const expenses = txQuery.data?.expenses ?? ([] as FinancialExpense[]);
   const reportLoading = reportQuery.isLoading;
   const txLoading = txQuery.isLoading;
+
+  // Pagamentos reais do app (Mercado Pago) capturados no mês selecionado —
+  // sem isso, o extrato mostrava um total no topo que incluia receita do app,
+  // mas a lista de lancamentos abaixo so trazia entradas manuais.
+  const appPayments = useMemo(() => {
+    const all = txQuery.data?.payouts?.payments ?? [];
+    return all.filter((p) => {
+      if (p.status !== "CAPTURED") return false;
+      const d = new Date(p.capturedAt ?? p.scheduledAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      return key === selectedMonth;
+    });
+  }, [txQuery.data, selectedMonth]);
 
   useEffect(() => {
     if (reportQuery.error) {
@@ -280,15 +300,17 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   // Transactions list
   type TxItem =
     | { type: "income"; item: FinancialIncome; date: Date }
-    | { type: "expense"; item: FinancialExpense; date: Date };
+    | { type: "expense"; item: FinancialExpense; date: Date }
+    | { type: "app_payment"; item: FinancialPayoutItem; date: Date };
 
   const allTx: TxItem[] = [
     ...incomes.map(i => ({ type: "income" as const, item: i, date: new Date(i.paidAt) })),
     ...expenses.map(e => ({ type: "expense" as const, item: e, date: new Date(e.paidAt) })),
+    ...appPayments.map(p => ({ type: "app_payment" as const, item: p, date: new Date(p.capturedAt ?? p.scheduledAt) })),
   ].sort((a, b) => b.date.getTime() - a.date.getTime());
 
   const filteredTx = txFilter === "income"
-    ? allTx.filter(t => t.type === "income")
+    ? allTx.filter(t => t.type === "income" || t.type === "app_payment")
     : txFilter === "expense"
     ? allTx.filter(t => t.type === "expense")
     : allTx;
@@ -545,23 +567,30 @@ export function FinancialHistoryScreen({ navigation }: Props) {
           <View style={{ paddingHorizontal: 16, gap: 6, paddingBottom: 32 }}>
             {filteredTx.map(tx => {
               const isInc = tx.type === "income";
-              const id = tx.item.id;
-              const desc = isInc
-                ? (tx.item as FinancialIncome).description
-                : (tx.item as FinancialExpense).description;
-              const amount = isInc
-                ? (tx.item as FinancialIncome).amountCents
-                : (tx.item as FinancialExpense).amountCents;
+              const isAppPayment = tx.type === "app_payment";
+              const id = tx.type === "app_payment" ? tx.item.bookingId : tx.item.id;
+              const desc = tx.type === "income"
+                ? tx.item.description
+                : tx.type === "expense"
+                ? tx.item.description
+                : `Sessão via app · ${methodLabel(tx.item.method)}`;
+              const amount = tx.type === "income"
+                ? tx.item.amountCents
+                : tx.type === "expense"
+                ? tx.item.amountCents
+                : tx.item.providerAmountCents;
               const dateStr = tx.date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" });
-              const sub = isInc
-                ? ((tx.item as FinancialIncome).student?.name ?? null)
-                : catLabel[(tx.item as FinancialExpense).category];
+              const sub = tx.type === "income"
+                ? (tx.item.student?.name ?? null)
+                : tx.type === "expense"
+                ? catLabel[tx.item.category]
+                : null;
 
               return (
                 <MvCard key={`${tx.type}-${id}`}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isInc ? (isDark ? "rgba(0,200,83,0.10)" : "rgba(22,163,74,0.08)") : (isDark ? "rgba(248,113,113,0.10)" : "rgba(229,57,53,0.08)"), alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name={isInc ? "arrow-up" : "arrow-down"} size={14} color={isInc ? green : RED} />
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isInc || isAppPayment ? (isDark ? "rgba(0,200,83,0.10)" : "rgba(22,163,74,0.08)") : (isDark ? "rgba(248,113,113,0.10)" : "rgba(229,57,53,0.08)"), alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name={isInc || isAppPayment ? "arrow-up" : "arrow-down"} size={14} color={isInc || isAppPayment ? green : RED} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <MvText variant="semi3" style={{ fontSize: 13 }} numberOfLines={1}>{desc}</MvText>
@@ -569,17 +598,23 @@ export function FinancialHistoryScreen({ navigation }: Props) {
                         {sub ? `${sub} · ` : ""}{dateStr}
                       </MvText>
                     </View>
-                    <MvText variant="semi2" style={{ color: isInc ? green : RED, fontSize: 14, letterSpacing: -0.4 }}>
-                      {isInc ? "+" : "-"}{fmtCents(amount)}
+                    <MvText variant="semi2" style={{ color: isInc || isAppPayment ? green : RED, fontSize: 14, letterSpacing: -0.4 }}>
+                      {isInc || isAppPayment ? "+" : "-"}{fmtCents(amount)}
                     </MvText>
-                    <View style={{ flexDirection: "row", gap: 2 }}>
-                      <PressableScale scale={0.88} onPress={() => isInc ? openEditIncome(tx.item as FinancialIncome) : openEditExpense(tx.item as FinancialExpense)} style={{ padding: 6 }}>
-                        <Ionicons name="pencil-outline" size={14} color={theme.text3} />
-                      </PressableScale>
-                      <PressableScale scale={0.88} onPress={() => isInc ? void handleDeleteIncome(id) : void handleDeleteExpense(id)} style={{ padding: 6 }}>
-                        <Ionicons name="trash-outline" size={14} color={RED} />
-                      </PressableScale>
-                    </View>
+                    {isAppPayment ? (
+                      <View style={{ paddingHorizontal: 6, paddingVertical: 3, borderRadius: 8, backgroundColor: theme.chipBg }}>
+                        <MvText variant="badge" style={{ fontSize: 9, color: theme.text3 }}>App</MvText>
+                      </View>
+                    ) : (
+                      <View style={{ flexDirection: "row", gap: 2 }}>
+                        <PressableScale scale={0.88} onPress={() => isInc ? openEditIncome(tx.item as FinancialIncome) : openEditExpense(tx.item as FinancialExpense)} style={{ padding: 6 }}>
+                          <Ionicons name="pencil-outline" size={14} color={theme.text3} />
+                        </PressableScale>
+                        <PressableScale scale={0.88} onPress={() => isInc ? void handleDeleteIncome(id) : void handleDeleteExpense(id)} style={{ padding: 6 }}>
+                          <Ionicons name="trash-outline" size={14} color={RED} />
+                        </PressableScale>
+                      </View>
+                    )}
                   </View>
                 </MvCard>
               );

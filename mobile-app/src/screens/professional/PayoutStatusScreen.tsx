@@ -7,21 +7,25 @@ import Animated, {
 import { ScrollView, StatusBar, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
+import { useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Booking, FinancialPayouts, ProviderAccountStatus, bookingsApi, financialApi, paymentsApi } from "../../services/api/client";
+import {
+  Booking, FinancialDashboard, FinancialExpense, FinancialExpenseCategory, FinancialIncome,
+  FinancialPayouts, ProviderAccountStatus, bookingsApi, financialApi, paymentsApi,
+} from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvRefreshControl, MvText } from "../../components/mv";
+import { MvBadge, MvButton, MvCard, MvDatePicker, MvInput, MvModalSheet, MvRefreshControl, MvText } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { AnimatedBar } from "../../components/professional/HomeWidgets";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
-import { formatCurrencyBRL } from "../../utils/formatters";
+import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
@@ -35,6 +39,18 @@ function monthKey(date: Date) {
 function monthLabel(date: Date) {
   return date.toLocaleDateString("pt-BR", { month: "short", timeZone: "America/Sao_Paulo" }).replace(".", "");
 }
+function currentMonthStr() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+function parseCents(v: string) { return Number(v.replace(/\D/g, "")); }
+
+const EXPENSE_CAT_LABEL: Record<FinancialExpenseCategory, string> = {
+  GYM: "Academia", TRANSPORT: "Transporte", EQUIPMENT: "Equipamento",
+  MARKETING: "Marketing", FORMATION: "Cursos", SOFTWARE: "Softwares",
+  PROFESSIONAL_SERVICES: "Serv. Prof.", RENT: "Aluguel",
+  UNIFORM: "Uniforme", NUTRITION: "Nutrição", OTHER: "Outros",
+};
 
 // ─── Monthly bar chart ───────────────────────────────────────────────────────
 function MonthlyBarChart({
@@ -130,7 +146,7 @@ function QuickChip({
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
 export function PayoutStatusScreen({ navigation }: Props) {
-  const { showToast, user } = useAppState();
+  const { showToast, user, runWithAuth } = useAppState();
   const { theme } = useMvTheme();
   const isLight = theme.mode === "light";
 
@@ -147,20 +163,31 @@ export function PayoutStatusScreen({ navigation }: Props) {
     chartTranslateY.value = withDelay(120, withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) }));
   }, []);
 
+  const queryClient = useQueryClient();
+  const currentMonth = currentMonthStr();
+
   const payoutQuery = useAuthQuery(
     queryKeys.payments.providerPayouts(),
     async (token) => {
-      const [accountResponse, bookingsResponse, payoutsResponse] = await Promise.all([
+      const [accountResponse, bookingsResponse, payoutsResponse, dashboardResponse, incomesResponse, expensesResponse] = await Promise.all([
         paymentsApi.providerStatus(token).catch(() => null as ProviderAccountStatus | null),
         bookingsApi.me(token),
         financialApi.payouts(token).catch(() => null as FinancialPayouts | null),
+        financialApi.dashboard(token, currentMonth).catch(() => null as FinancialDashboard | null),
+        financialApi.listIncomes(token, currentMonth).catch(() => [] as FinancialIncome[]),
+        financialApi.listExpenses(token, currentMonth).catch(() => [] as FinancialExpense[]),
       ]);
-      return { account: accountResponse, bookings: bookingsResponse, payouts: payoutsResponse };
+      return {
+        account: accountResponse, bookings: bookingsResponse, payouts: payoutsResponse,
+        dashboard: dashboardResponse, incomes: incomesResponse, expenses: expensesResponse,
+      };
     },
   );
   const account = payoutQuery.data?.account ?? null;
   const bookings = payoutQuery.data?.bookings ?? ([] as Booking[]);
   const payouts = payoutQuery.data?.payouts ?? null;
+  const dashboard = payoutQuery.data?.dashboard ?? null;
+  const manualIncomes = payoutQuery.data?.incomes ?? ([] as FinancialIncome[]);
   const loading = payoutQuery.isLoading;
   const refreshing = payoutQuery.isRefetching;
 
@@ -215,6 +242,17 @@ export function PayoutStatusScreen({ navigation }: Props) {
       .reduce((s, b) => s + Number(b.priceCents ?? 0) / 100, 0);
   }, [completedBookings]);
 
+  // "Disponível para saque" (acima) é só o saldo que o Mercado Pago vai repassar.
+  // "Total recebido no mês" é um número mais amplo: soma o que veio pelo app com
+  // o que foi lançado manualmente (dinheiro/PIX recebido por fora do app) — as
+  // duas perguntas são diferentes e por isso os dois números convivem no hero.
+  const manualIncomeCentsThisMonth = useMemo(
+    () => manualIncomes.reduce((sum, i) => sum + i.amountCents, 0),
+    [manualIncomes]
+  );
+  const appRevenueCentsThisMonth = dashboard?.appRevenueCents ?? Math.round(currentMonthGross * 100);
+  const totalReceivedThisMonth = (appRevenueCentsThisMonth + manualIncomeCentsThisMonth) / 100;
+
   const revenueByMonth = useMemo<RevenueMonth[]>(() => {
     const now = new Date();
     const months: RevenueMonth[] = [];
@@ -246,6 +284,61 @@ export function PayoutStatusScreen({ navigation }: Props) {
   }, [estimatedGross, user?.id]);
 
   const barBg = isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.06)";
+
+  // ── Lançamento manual (receita/despesa) direto na tela principal ──────────
+  const [addIncomeModal, setAddIncomeModal] = React.useState(false);
+  const [addExpenseModal, setAddExpenseModal] = React.useState(false);
+  const [savingEntry, setSavingEntry] = React.useState(false);
+  const [iDesc, setIDesc] = React.useState("");
+  const [iValue, setIValue] = React.useState("100,00");
+  const [iDate, setIDate] = React.useState<Date>(new Date());
+  const [eDesc, setEDesc] = React.useState("");
+  const [eValue, setEValue] = React.useState("50,00");
+  const [eCat, setECat] = React.useState<FinancialExpenseCategory>("OTHER");
+  const [eDate, setEDate] = React.useState<Date>(new Date());
+
+  async function handleAddIncome() {
+    if (!iDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
+    try {
+      setSavingEntry(true);
+      const paidAtStr = new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString();
+      const newIncome = await runWithAuth((token) => financialApi.createIncome(token, {
+        description: iDesc.trim(),
+        amountCents: parseCents(iValue),
+        paidAt: paidAtStr,
+      }));
+      queryClient.setQueryData(queryKeys.payments.providerPayouts(), (old: any) =>
+        old ? { ...old, incomes: [...(old.incomes ?? []), newIncome] } : old
+      );
+      setAddIncomeModal(false);
+      setIDesc(""); setIValue("100,00"); setIDate(new Date());
+      showToast("Receita registrada.", "success");
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar receita." });
+    } finally { setSavingEntry(false); }
+  }
+
+  async function handleAddExpense() {
+    if (!eDesc.trim()) { showToast("Informe a descrição.", "error"); return; }
+    try {
+      setSavingEntry(true);
+      const paidAtStr = new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString();
+      const newExpense = await runWithAuth((token) => financialApi.createExpense(token, {
+        description: eDesc.trim(),
+        amountCents: parseCents(eValue),
+        category: eCat,
+        paidAt: paidAtStr,
+      }));
+      queryClient.setQueryData(queryKeys.payments.providerPayouts(), (old: any) =>
+        old ? { ...old, expenses: [...(old.expenses ?? []), newExpense] } : old
+      );
+      setAddExpenseModal(false);
+      setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date());
+      showToast("Despesa registrada.", "success");
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar despesa." });
+    } finally { setSavingEntry(false); }
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.finance">
@@ -333,11 +426,34 @@ export function PayoutStatusScreen({ navigation }: Props) {
           </View>
         </View>
 
+        {/* ── Total recebido no mês (app + manual) — número diferente, propósito diferente ── */}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 12, backgroundColor: theme.inputBg }}>
+          <View style={{ flex: 1 }}>
+            <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Total recebido este mês</MvText>
+            <MvText variant="semi2" style={{ fontSize: 18, color: theme.text1 }}>{formatCurrencyBRL(totalReceivedThisMonth)}</MvText>
+            <MvText variant="caption" color="secondary">
+              {manualIncomeCentsThisMonth > 0
+                ? `Inclui ${formatCurrencyBRL(manualIncomeCentsThisMonth / 100)} registrado manualmente`
+                : "Pelo app — lance abaixo o que recebeu por fora"}
+            </MvText>
+          </View>
+        </View>
+
         <View style={{ flexDirection: "row", gap: 4 }}>
           <QuickChip icon="receipt-outline" label="Extrato" onPress={() => navigation.navigate("FinancialHistory")} />
           <QuickChip icon="flag-outline" label="Metas" onPress={() => navigation.navigate("FinancialGoals")} />
           <QuickChip icon="people-outline" label="Alunos" onPress={() => navigation.navigate("FinancialStudents")} />
           <QuickChip icon="document-text-outline" label="Relatório" onPress={() => navigation.navigate("AnnualReport")} />
+        </View>
+
+        {/* ── Lançamento manual (dinheiro recebido/pago fora do app) ── */}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <MvButton variant="outline" label="+ Receita" onPress={() => setAddIncomeModal(true)} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <MvButton variant="outline" label="+ Despesa" onPress={() => setAddExpenseModal(true)} />
+          </View>
         </View>
 
         {/* ── Últimas transações ── */}
@@ -373,28 +489,6 @@ export function PayoutStatusScreen({ navigation }: Props) {
             })}
           </MvCard>
         ) : null}
-
-        {/* ── CONTROLE FINANCEIRO PESSOAL ── */}
-        <PressableScale
-          onPress={() => navigation.navigate("PersonalFinance")}
-          scale={0.97}
-          style={{
-            flexDirection: "row", alignItems: "center", gap: 14,
-            borderRadius: 16, borderWidth: 1,
-            borderColor: theme.border,
-            backgroundColor: theme.inputBg,
-            padding: 16,
-          }}
-        >
-          <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
-            <Ionicons name="stats-chart" size={20} color={theme.textGreen} />
-          </View>
-          <View style={{ flex: 1, gap: 2 }}>
-            <MvText variant="semi2">Controle Financeiro</MvText>
-            <MvText variant="body4" color="secondary">Lance receitas e despesas manuais, veja seu resumo completo</MvText>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={theme.text3} />
-        </PressableScale>
 
         {/* ── GRID DE MÉTRICAS 2 linhas × 3 ── */}
         <View style={{ gap: 8 }}>
@@ -463,6 +557,50 @@ export function PayoutStatusScreen({ navigation }: Props) {
         )}
       </ScrollView>
       </ScreenEntrance>
+
+      <MvModalSheet
+        visible={addIncomeModal}
+        title="Registrar receita"
+        onClose={() => { setAddIncomeModal(false); setIDesc(""); setIValue("100,00"); setIDate(new Date()); }}
+      >
+        <View style={{ gap: 10, paddingBottom: 40 }}>
+          <MvInput placeholder="Descrição" value={iDesc} onChangeText={setIDesc} />
+          <MvInput keyboardType="numeric" placeholder="Valor (R$)" value={iValue} onChangeText={(v) => setIValue(maskPriceInput(v))} />
+          <MvText variant="body4" color="secondary">Data</MvText>
+          <MvDatePicker value={iDate} onChange={setIDate} />
+          <MvButton label="Salvar receita" loading={savingEntry} onPress={() => void handleAddIncome()} />
+        </View>
+      </MvModalSheet>
+
+      <MvModalSheet
+        visible={addExpenseModal}
+        title="Registrar despesa"
+        onClose={() => { setAddExpenseModal(false); setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); }}
+      >
+        <View style={{ gap: 10, paddingBottom: 40 }}>
+          <MvInput placeholder="Descrição" value={eDesc} onChangeText={setEDesc} />
+          <MvInput keyboardType="numeric" placeholder="Valor (R$)" value={eValue} onChangeText={(v) => setEValue(maskPriceInput(v))} />
+          <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+            {(Object.keys(EXPENSE_CAT_LABEL) as FinancialExpenseCategory[]).map((c) => (
+              <PressableScale
+                key={c}
+                scale={0.95}
+                onPress={() => setECat(c)}
+                style={{
+                  paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+                  backgroundColor: eCat === c ? theme.primarySubtle : theme.chipBg,
+                  borderWidth: 1, borderColor: eCat === c ? theme.primarySubtleBorder : theme.border,
+                }}
+              >
+                <MvText variant="body4" style={{ color: eCat === c ? theme.primary : theme.text2, fontSize: 12 }}>{EXPENSE_CAT_LABEL[c]}</MvText>
+              </PressableScale>
+            ))}
+          </View>
+          <MvText variant="body4" color="secondary">Data</MvText>
+          <MvDatePicker value={eDate} onChange={setEDate} />
+          <MvButton label="Salvar despesa" loading={savingEntry} onPress={() => void handleAddExpense()} />
+        </View>
+      </MvModalSheet>
 
       <ProfessionalBottomNav
         activeKey="financeiro"

@@ -217,15 +217,9 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
           <MenuItem
             icon="wallet-outline"
             label="Financeiro"
-            sub="Saldo, repasses e comparativo"
+            sub="Saldo, repasses, receitas e despesas"
             onPress={() => goToStack("PayoutStatus")}
             isFirst
-          />
-          <MenuItem
-            icon="stats-chart-outline"
-            label="Controle Financeiro"
-            sub="Receitas, despesas e metas"
-            onPress={() => goToStack("PersonalFinance")}
           />
         </View>
 
