@@ -496,7 +496,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                   </>
                 ) : null}
                 {!crefValidated ? (
-                  <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Esta funcionalidade ficará disponível quando seu CREF for aprovado.</MvText>
+                  <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Publicar ofertas fica disponível quando seu CREF for aprovado.</MvText>
                 ) : null}
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   <View style={{ flex: 1 }}>
@@ -624,7 +624,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                       ) : null}
                     </View>
                     {!crefValidated ? (
-                      <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Esta funcionalidade ficará disponível quando seu CREF for aprovado.</MvText>
+                      <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Publicar ofertas fica disponível quando seu CREF for aprovado.</MvText>
                     ) : null}
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       <View style={{ flex: 1 }}>

@@ -199,7 +199,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
                 <MvText variant="semi2">CREF pendente de validação</MvText>
               </View>
               <MvText variant="body4" color="secondary" style={{ marginBottom: 10 }}>
-                Esta funcionalidade ficará disponível quando seu CREF for aprovado.
+                Você já pode configurar sua consultoria e responder alunos. Só a publicação de novas ofertas fica bloqueada até a aprovação do CREF.
               </MvText>
               <MvButton
                 variant="outline"
