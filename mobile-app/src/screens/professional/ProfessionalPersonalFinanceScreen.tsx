@@ -1,14 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform,
+  ActivityIndicator, Alert,
   ScrollView, StatusBar, TextInput, TouchableOpacity, View,
 } from "react-native";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import {
   FinancialAppClient, FinancialDashboard, FinancialExpense, FinancialExpenseCategory,
@@ -16,7 +15,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvCard, MvDatePicker, MvInput, MvText } from "../../components/mv";
+import { MvButton, MvCard, MvDatePicker, MvInput, MvModalSheet, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
@@ -37,30 +36,6 @@ function monthLabel(m: string) {
   return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 }
 
-// ─── Modal sheet ─────────────────────────────────────────────────────────────
-
-function ModalSheet({ visible, title, onClose, children, theme, topInset }: {
-  visible: boolean; title: string; onClose: () => void;
-  children: React.ReactNode; theme: MvThemeValue; topInset: number;
-}) {
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: topInset + 16, paddingHorizontal: 16 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 10 }}>
-            <PressableScale scale={0.92} onPress={onClose} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="close" size={18} color={theme.text1} />
-            </PressableScale>
-            <MvText variant="semi2">{title}</MvText>
-          </View>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
-            {children}
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
 
 // ─── Section header ───────────────────────────────────────────────────────────
 
@@ -109,7 +84,6 @@ type FinancePageData = {
 export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
-  const insets = useSafeAreaInsets();
   const isDark = theme.mode === "dark";
   const green = isDark ? theme.primary : "#16A34A";
   const RED   = isDark ? "#F87171" : "#E53935";
@@ -568,11 +542,10 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
       </ScrollView>
 
       {/* Add Income modal */}
-      <ModalSheet
+      <MvModalSheet
         visible={addIncomeModal || editingIncome !== null}
         title={editingIncome ? "Editar receita" : "Registrar receita"}
         onClose={() => { setAddIncomeModal(false); setEditingIncome(null); setIDesc(""); setIValue("100,00"); setIDate(new Date()); }}
-        theme={theme} topInset={insets.top}
       >
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvInput placeholder="Descrição" value={iDesc} onChangeText={setIDesc} />
@@ -581,14 +554,13 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
           <MvDatePicker value={iDate} onChange={setIDate} />
           <MvButton label={editingIncome ? "Salvar alterações" : "Salvar receita"} loading={saving} onPress={() => void handleAddIncome()} />
         </View>
-      </ModalSheet>
+      </MvModalSheet>
 
       {/* Add Expense modal */}
-      <ModalSheet
+      <MvModalSheet
         visible={addExpenseModal || editingExpense !== null}
         title={editingExpense ? "Editar despesa" : "Registrar despesa"}
         onClose={() => { setAddExpenseModal(false); setEditingExpense(null); setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); }}
-        theme={theme} topInset={insets.top}
       >
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvInput placeholder="Descrição" value={eDesc} onChangeText={setEDesc} />
@@ -604,7 +576,7 @@ export function ProfessionalPersonalFinanceScreen({ navigation }: Props) {
           <MvDatePicker value={eDate} onChange={setEDate} />
           <MvButton label={editingExpense ? "Salvar alterações" : "Salvar despesa"} loading={saving} onPress={() => void handleAddExpense()} />
         </View>
-      </ModalSheet>
+      </MvModalSheet>
 
     </View>
   );

@@ -84,9 +84,9 @@ export function ProfessionalAnnualReportScreen({ navigation }: Props) {
   const emptyMonths = allYearSlots.filter(m => m === null).length;
   const completeness = monthsElapsed > 0 ? Math.round(((monthsElapsed - emptyMonths) / monthsElapsed) * 100) : 100;
 
-  const GREEN  = isDark ? theme.primary : "#16A34A";
-  const RED    = isDark ? "#F87171"     : "#E53935";
-  const YELLOW = isDark ? "#FACC15"     : "#CA8A04";
+  const GREEN  = theme.textGreen;
+  const RED    = theme.danger;
+  const YELLOW = theme.warning;
 
   async function handleShare() {
     try {
@@ -204,10 +204,20 @@ export function ProfessionalAnnualReportScreen({ navigation }: Props) {
               allYearSlots.map((m, i) => {
                 const rev = m ? m.revenueCents + m.appRevenueCents : 0;
                 const isEmpty = m === null;
+                const isCurrentMonth = selectedYear === now.getFullYear() && i === now.getMonth();
                 return (
-                  <View key={i} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: i < allYearSlots.length - 1 ? 1 : 0, borderBottomColor: theme.border }}>
+                  <View
+                    key={i}
+                    style={{
+                      flexDirection: "row", alignItems: "center", paddingVertical: 8, paddingHorizontal: isCurrentMonth ? 8 : 0,
+                      marginHorizontal: isCurrentMonth ? -8 : 0,
+                      borderRadius: isCurrentMonth ? 10 : 0,
+                      backgroundColor: isCurrentMonth ? theme.primarySubtle : "transparent",
+                      borderBottomWidth: isCurrentMonth ? 0 : (i < allYearSlots.length - 1 ? 1 : 0), borderBottomColor: theme.border,
+                    }}
+                  >
                     <View style={{ width: 36 }}>
-                      <MvText variant="semi3" style={{ fontSize: 12, color: isEmpty ? theme.text3 : theme.text1 }}>{MONTH_NAMES[i]}</MvText>
+                      <MvText variant="semi3" style={{ fontSize: 12, color: isCurrentMonth ? theme.textGreen : isEmpty ? theme.text3 : theme.text1 }}>{MONTH_NAMES[i]}</MvText>
                     </View>
                     {isEmpty ? (
                       <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 5 }}>

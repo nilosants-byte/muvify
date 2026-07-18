@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ActivityIndicator, KeyboardAvoidingView, Modal, Platform,
+  ActivityIndicator,
   ScrollView, StatusBar, TouchableOpacity, View,
 } from "react-native";
 import { PressableScale } from "../../components/polish/PressableScale";
@@ -14,7 +14,6 @@ import Svg, {
 const SvgDefs = Defs as React.ComponentType<{ children?: React.ReactNode }>;
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import {
   FinancialExpense, FinancialExpenseCategory, FinancialIncome, FinancialReport,
@@ -22,7 +21,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvCard, MvDatePicker, MvInput, MvText } from "../../components/mv";
+import { MvButton, MvCard, MvDatePicker, MvInput, MvModalSheet, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
@@ -186,31 +185,6 @@ function RevenueAreaChart({
   );
 }
 
-// ─── Modal sheet ─────────────────────────────────────────────────────────────
-
-function ModalSheet({ visible, title, onClose, children, theme, topInset }: {
-  visible: boolean; title: string; onClose: () => void;
-  children: React.ReactNode; theme: MvThemeValue; topInset: number;
-}) {
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: topInset + 16, paddingHorizontal: 16 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 10 }}>
-            <PressableScale scale={0.92} onPress={onClose} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="close" size={18} color={theme.text1} />
-            </PressableScale>
-            <MvText variant="semi2">{title}</MvText>
-          </View>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {children}
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
 type TxData = { incomes: FinancialIncome[]; expenses: FinancialExpense[] };
@@ -218,7 +192,6 @@ type TxData = { incomes: FinancialIncome[]; expenses: FinancialExpense[] };
 export function FinancialHistoryScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
-  const insets = useSafeAreaInsets();
   const isDark = theme.mode === "dark";
   const green = isDark ? theme.primary : "#16A34A";
   const RED   = isDark ? "#F87171" : "#E53935";
@@ -616,11 +589,10 @@ export function FinancialHistoryScreen({ navigation }: Props) {
       </ScrollView>
 
       {/* Income modal */}
-      <ModalSheet
+      <MvModalSheet
         visible={addIncomeModal || editingIncome !== null}
         title={editingIncome ? "Editar receita" : "Registrar receita"}
         onClose={() => { setAddIncomeModal(false); setEditingIncome(null); setIDesc(""); setIValue("100,00"); setIDate(new Date()); }}
-        theme={theme} topInset={insets.top}
       >
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvInput placeholder="Descrição" value={iDesc} onChangeText={setIDesc} />
@@ -629,14 +601,13 @@ export function FinancialHistoryScreen({ navigation }: Props) {
           <MvDatePicker value={iDate} onChange={setIDate} />
           <MvButton label={editingIncome ? "Salvar alterações" : "Salvar receita"} loading={saving} onPress={() => editingIncome ? void handleEditIncome() : void handleAddIncome()} />
         </View>
-      </ModalSheet>
+      </MvModalSheet>
 
       {/* Expense modal */}
-      <ModalSheet
+      <MvModalSheet
         visible={addExpenseModal || editingExpense !== null}
         title={editingExpense ? "Editar despesa" : "Registrar despesa"}
         onClose={() => { setAddExpenseModal(false); setEditingExpense(null); setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); }}
-        theme={theme} topInset={insets.top}
       >
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvInput placeholder="Descrição" value={eDesc} onChangeText={setEDesc} />
@@ -652,7 +623,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
           <MvDatePicker value={eDate} onChange={setEDate} />
           <MvButton label={editingExpense ? "Salvar alterações" : "Salvar despesa"} loading={saving} onPress={() => editingExpense ? void handleEditExpense() : void handleAddExpense()} />
         </View>
-      </ModalSheet>
+      </MvModalSheet>
     </View>
   );
 }

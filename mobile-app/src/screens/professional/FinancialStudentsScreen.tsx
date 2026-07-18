@@ -1,13 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform,
+  ActivityIndicator, Alert,
   ScrollView, StatusBar, TextInput, TouchableOpacity, View,
 } from "react-native";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import {
   FinancialAppClient, FinancialIncome, FinancialStudent, FinancialStudentType,
@@ -15,7 +14,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvButton, MvCard, MvInput, MvText, MvToggle } from "../../components/mv";
+import { MvAvatar, MvButton, MvCard, MvInput, MvModalSheet, MvText, MvToggle } from "../../components/mv";
 import { MvDatePicker } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
@@ -103,35 +102,11 @@ function CompactSchedulePicker({ schedule, onChange, theme }: {
   );
 }
 
-function ModalSheet({ visible, title, onClose, children, theme, topInset }: {
-  visible: boolean; title: string; onClose: () => void;
-  children: React.ReactNode; theme: MvThemeValue; topInset: number;
-}) {
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: topInset + 16, paddingHorizontal: 16 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 10 }}>
-            <PressableScale scale={0.92} onPress={onClose} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="close" size={18} color={theme.text1} />
-            </PressableScale>
-            <MvText variant="semi2">{title}</MvText>
-          </View>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
-            {children}
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
 type StudentsPageData = { students: FinancialStudent[]; incomes: FinancialIncome[]; appClients: FinancialAppClient[] };
 
 export function FinancialStudentsScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
-  const insets = useSafeAreaInsets();
   const isDark = theme.mode === "dark";
   const green = isDark ? theme.primary : "#16A34A";
   const blue  = isDark ? "#38BDF8" : "#0284C7";
@@ -471,7 +446,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
       )}
 
       {/* Add / Edit Student Modal */}
-      <ModalSheet visible={addStudentModal} title={editingStudent ? "Editar aluno" : "Novo aluno"} onClose={() => { setAddStudentModal(false); resetStudentForm(); }} theme={theme} topInset={insets.top}>
+      <MvModalSheet visible={addStudentModal} title={editingStudent ? "Editar aluno" : "Novo aluno"} onClose={() => { setAddStudentModal(false); resetStudentForm(); }}>
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvInput placeholder="Nome do aluno" value={sName} onChangeText={setSName} />
           <View style={{ flexDirection: "row", gap: 6 }}>
@@ -523,7 +498,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
           {hasPresential ? <CompactSchedulePicker schedule={sSchedule} onChange={setSSchedule} theme={theme} /> : null}
           <MvButton label={editingStudent ? "Salvar alterações" : "Salvar aluno"} loading={saving} onPress={() => void handleAddStudent()} />
         </View>
-      </ModalSheet>
+      </MvModalSheet>
 
     </View>
   );

@@ -1,26 +1,26 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import * as Haptics from "expo-haptics";
 import Animated, {
   useSharedValue, useAnimatedStyle,
   withTiming, withDelay, Easing,
 } from "react-native-reanimated";
-import { ScrollView, StatusBar, TextInput, TouchableOpacity, View } from "react-native";
-import Svg, { Circle, Path } from "react-native-svg";
+import { ScrollView, StatusBar, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Booking, FinancialPayouts, ProviderAccountStatus, bookingsApi, financialApi, paymentsApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
+import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvCard, MvRefreshControl, MvText } from "../../components/mv";
+import { MvBadge, MvButton, MvCard, MvRefreshControl, MvText } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { AnimatedBar } from "../../components/professional/HomeWidgets";
+import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
@@ -34,74 +34,6 @@ function monthKey(date: Date) {
 }
 function monthLabel(date: Date) {
   return date.toLocaleDateString("pt-BR", { month: "short", timeZone: "America/Sao_Paulo" }).replace(".", "");
-}
-
-const MONTHLY_GOAL_KEY = "@muvify:provider_monthly_goal";
-
-// ─── SVG Line Chart ─────────────────────────────────────────────────────────
-function buildLinePath(values: number[], w: number, h: number, padding = 12): string {
-  if (values.length === 0) return "";
-  // Com apenas 1 ponto, duplica para gerar uma linha horizontal
-  const normalized = values.length === 1 ? [values[0], values[0]] : values;
-  const max = Math.max(...normalized, 1);
-  const pts = normalized.map((v, i) => ({
-    x: padding + (i / (normalized.length - 1)) * (w - padding * 2),
-    y: padding + (1 - v / max) * (h - padding * 2),
-  }));
-  let d = `M ${pts[0].x} ${pts[0].y}`;
-  for (let i = 1; i < pts.length; i++) {
-    const cpx = (pts[i - 1].x + pts[i].x) / 2;
-    d += ` C ${cpx} ${pts[i - 1].y}, ${cpx} ${pts[i].y}, ${pts[i].x} ${pts[i].y}`;
-  }
-  return d;
-}
-
-function buildAreaPath(values: number[], w: number, h: number, padding = 12): string {
-  const line = buildLinePath(values, w, h, padding);
-  if (!line) return "";
-  const lastX = padding + (w - padding * 2);
-  const firstX = padding;
-  return `${line} L ${lastX} ${h} L ${firstX} ${h} Z`;
-}
-
-function LineChart({
-  data,
-  green,
-  width = 300,
-  height = 110,
-}: {
-  data: RevenueMonth[];
-  green: string;
-  width?: number;
-  height?: number;
-}) {
-  const values = data.map((d) => d.gross);
-  const max = Math.max(...values, 1);
-  const padding = 12;
-  const linePath = buildLinePath(values, width, height, padding);
-  const areaPath = buildAreaPath(values, width, height, padding);
-
-  const pts = values.map((v, i) => ({
-    x: padding + (i / (values.length - 1)) * (width - padding * 2),
-    y: padding + (1 - v / max) * (height - padding * 2),
-    v,
-  }));
-
-  const areaFill = green.startsWith("#")
-    ? green + "28"
-    : "rgba(34,197,94,0.16)";
-
-  return (
-    <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-      {areaPath ? <Path d={areaPath} fill={areaFill} /> : null}
-      {linePath ? (
-        <Path d={linePath} stroke={green} strokeWidth={2} fill="none" strokeLinejoin="round" />
-      ) : null}
-      {pts.map((pt, i) => (
-        <Circle key={i} cx={pt.x} cy={pt.y} r={3.5} fill={green} />
-      ))}
-    </Svg>
-  );
 }
 
 // ─── Monthly bar chart ───────────────────────────────────────────────────────
@@ -156,23 +88,16 @@ function MonthlyBarChart({
 function MetricCard({
   label,
   value,
-  green,
-  cardBg,
-  border,
-  text1,
   highlight = false,
 }: {
   label: string;
   value: string;
-  green: string;
-  cardBg: string;
-  border: string;
-  text1: string;
   highlight?: boolean;
 }) {
+  const { theme } = useMvTheme();
   return (
-    <View style={{ flex: 1, borderRadius: 16, padding: 14, borderWidth: 1, backgroundColor: cardBg, borderColor: border }}>
-      <MvText variant="semi2" style={{ color: highlight ? green : text1, fontSize: 15 }} numberOfLines={1}>
+    <View style={{ flex: 1, borderRadius: 16, padding: 14, borderWidth: 1, backgroundColor: theme.inputBg, borderColor: theme.border }}>
+      <MvText variant="semi2" style={{ color: highlight ? theme.textGreen : theme.text1, fontSize: 15 }} numberOfLines={1}>
         {value}
       </MvText>
       <MvText variant="body4" color="secondary" style={{ marginTop: 3 }} numberOfLines={1}>
@@ -182,19 +107,32 @@ function MetricCard({
   );
 }
 
+// ─── Quick action chip (ação rápida do hero) ─────────────────────────────────
+function QuickChip({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  const { theme } = useMvTheme();
+  return (
+    <PressableScale scale={0.94} onPress={onPress} style={{ alignItems: "center", gap: 6, flex: 1 }}>
+      <View style={{ width: 46, height: 46, borderRadius: 16, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
+        <Ionicons name={icon} size={20} color={theme.textGreen} />
+      </View>
+      <MvText variant="caption" color="secondary" numberOfLines={1}>{label}</MvText>
+    </PressableScale>
+  );
+}
+
 // ─── Main screen ─────────────────────────────────────────────────────────────
 export function PayoutStatusScreen({ navigation }: Props) {
   const { showToast, user } = useAppState();
   const { theme } = useMvTheme();
-  const insets = useSafeAreaInsets();
   const isLight = theme.mode === "light";
-
-  const [firstPaymentBannerVisible, setFirstPaymentBannerVisible] = useState(false);
-  const [monthlyGoal, setMonthlyGoal] = useState(0);
-  const [editingGoal, setEditingGoal] = useState(false);
-  const [goalInput, setGoalInput] = useState("");
-  const chartContainerRef = useRef<View>(null);
-  const [chartWidth, setChartWidth] = useState(300);
 
   const chartOpacity = useSharedValue(0);
   const chartTranslateY = useSharedValue(12);
@@ -295,6 +233,7 @@ export function PayoutStatusScreen({ navigation }: Props) {
 
   const hasRevenue = estimatedGross > 0;
 
+  const [firstPaymentBannerVisible, setFirstPaymentBannerVisible] = React.useState(false);
   useEffect(() => {
     if (!user?.id || estimatedGross === 0) return;
     const key = `@muvify:firstPaymentSeen:${user.id}`;
@@ -306,41 +245,17 @@ export function PayoutStatusScreen({ navigation }: Props) {
     }).catch(() => {});
   }, [estimatedGross, user?.id]);
 
-  useEffect(() => {
-    AsyncStorage.getItem(MONTHLY_GOAL_KEY).then((val) => {
-      if (val) setMonthlyGoal(Number(val));
-    }).catch(() => {});
-  }, []);
-
-  // ── Cores ─────────────────────────────────────────────────────────────────
-  const bg = theme.bg;
-  const cardBg = theme.cardBg;
-  const border = theme.border;
-  const green = theme.textGreen;
-  const text1 = theme.text1;
-  const text2 = theme.text2;
-  const text3 = theme.text3;
-  const heroBg = isLight ? "rgba(34,197,94,0.05)" : "#0F1A12";
-  const heroBorder = isLight ? "rgba(34,197,94,0.18)" : "rgba(34,197,94,0.18)";
   const barBg = isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.06)";
 
   return (
-    <View style={{ flex: 1, backgroundColor: bg }} testID="screen.professional.finance">
-      <StatusBar barStyle={isLight ? "dark-content" : "light-content"} backgroundColor={bg} />
+    <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.finance">
+      <StatusBar barStyle={isLight ? "dark-content" : "light-content"} backgroundColor={theme.bg} />
 
-      {/* ── Header ── */}
-      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
-        >
-          <Ionicons name="chevron-back" size={20} color={text2} />
-        </TouchableOpacity>
-        <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, color: theme.text1, letterSpacing: -0.3, flex: 1 }}>Financeiro</MvText>
-        {loading ? (
-          <MvText variant="body4" color="secondary">Atualizando...</MvText>
-        ) : null}
-      </View>
+      <ProfessionalScreenHeader
+        title="Financeiro"
+        subtitle={loading ? "Atualizando..." : "Seu saldo e repasses"}
+        onBack={() => navigation.goBack()}
+      />
 
       <ScreenEntrance>
       <ScrollView
@@ -350,17 +265,24 @@ export function PayoutStatusScreen({ navigation }: Props) {
           <MvRefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />
         }
       >
+        {loading ? (
+          <>
+            <SkeletonCard />
+            <SkeletonCard />
+          </>
+        ) : (
+        <>
         {/* ── BANNER PRIMEIRO PAGAMENTO (exibido uma única vez) ── */}
         {firstPaymentBannerVisible ? (
           <View style={{
             flexDirection: "row", alignItems: "center", gap: 10,
             borderRadius: 14, padding: 14,
-            backgroundColor: "rgba(34,197,94,0.10)",
-            borderWidth: 1, borderColor: "rgba(34,197,94,0.25)",
+            backgroundColor: theme.primarySubtle,
+            borderWidth: 1, borderColor: theme.primarySubtleBorder,
           }}>
-            <Ionicons name="star-outline" size={20} color={green} />
+            <Ionicons name="star-outline" size={20} color={theme.textGreen} />
             <View style={{ flex: 1 }}>
-              <MvText variant="semi3" style={{ color: green }}>Seu primeiro pagamento está chegando!</MvText>
+              <MvText variant="semi3" style={{ color: theme.textGreen }}>Seu primeiro pagamento está chegando!</MvText>
               <MvText variant="body4" color="secondary">Continue confirmando suas sessões para liberar o saldo.</MvText>
             </View>
           </View>
@@ -368,118 +290,89 @@ export function PayoutStatusScreen({ navigation }: Props) {
 
         {/* ── CTA CONTA MP (quando conta não configurada) ── */}
         {!account?.hasAccount ? (
-          <TouchableOpacity
+          <PressableScale
             onPress={() => navigation.navigate("ConnectPayoutAccount")}
             style={{
               flexDirection: "row", alignItems: "center", gap: 10,
               borderRadius: 14, padding: 14,
-              backgroundColor: "rgba(245,158,11,0.08)",
-              borderWidth: 1, borderColor: "rgba(245,158,11,0.25)",
+              backgroundColor: theme.warningSubtle,
+              borderWidth: 1, borderColor: theme.warningSubtleBorder,
             }}
           >
-            <Ionicons name="alert-circle-outline" size={20} color="#F59E0B" />
+            <Ionicons name="alert-circle-outline" size={20} color={theme.warning} />
             <View style={{ flex: 1 }}>
-              <MvText variant="semi3" style={{ color: "#F59E0B" }}>Conecte sua conta para receber</MvText>
+              <MvText variant="semi3" style={{ color: theme.warning }}>Conecte sua conta para receber</MvText>
               <MvText variant="body4" color="secondary">Conecte sua conta Mercado Pago para liberar o repasse do seu saldo.</MvText>
             </View>
-            <Ionicons name="chevron-forward" size={16} color="#F59E0B" />
-          </TouchableOpacity>
+            <Ionicons name="chevron-forward" size={16} color={theme.warning} />
+          </PressableScale>
         ) : null}
 
-        {/* ── CARD PRINCIPAL UNIFICADO ── */}
-        <View style={{ borderRadius: 16, borderWidth: 1, backgroundColor: heroBg, borderColor: heroBorder, overflow: "hidden" }}>
-          <View style={{ padding: 20 }}>
-            <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <MvText variant="caption" color="secondary">RECEITA DO APP</MvText>
-                  <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: "rgba(161,161,170,0.12)" }}>
-                    <MvText style={{ fontSize: 9, color: text3, fontFamily: "DMSans_500Medium" }}>sessões concluídas</MvText>
+        {/* ── HERO: um número, ações rápidas ── */}
+        <View style={{ alignItems: "center", paddingVertical: 14, gap: 4 }}>
+          <MvText variant="caption" color="secondary" style={{ textTransform: "uppercase", letterSpacing: 0.4 }}>
+            Disponível para saque
+          </MvText>
+          <AnimatedNumber
+            value={estimatedNet}
+            format={formatCurrencyBRL}
+            style={{
+              fontFamily: "PlusJakartaSans_800ExtraBold",
+              fontSize: 44,
+              letterSpacing: -0.8,
+              color: theme.text1,
+              lineHeight: 52,
+            }}
+          />
+          <MvText variant="body4" color="secondary">
+            Bruto {formatCurrencyBRL(estimatedGross)} · Comissão {formatCurrencyBRL(commission)}
+            {pendingNet > 0 ? ` · ${formatCurrencyBRL(pendingNet)} a caminho` : ""}
+          </MvText>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+            <MvBadge label={account?.hasAccount ? "Conta ativa" : "Conta pendente"} variant={account?.hasAccount ? "green" : "orange"} />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 4 }}>
+          <QuickChip icon="receipt-outline" label="Extrato" onPress={() => navigation.navigate("FinancialHistory")} />
+          <QuickChip icon="flag-outline" label="Metas" onPress={() => navigation.navigate("FinancialGoals")} />
+          <QuickChip icon="people-outline" label="Alunos" onPress={() => navigation.navigate("FinancialStudents")} />
+          <QuickChip icon="document-text-outline" label="Relatório" onPress={() => navigation.navigate("AnnualReport")} />
+        </View>
+
+        {/* ── Últimas transações ── */}
+        {payouts != null && payouts.payments.length > 0 ? (
+          <MvCard style={{ padding: 0, overflow: "hidden" }}>
+            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+              <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Últimas transações</MvText>
+            </View>
+            {payouts.payments.slice(0, 5).map((p) => {
+              const isCaptured = p.status === "CAPTURED";
+              const date = new Date(p.capturedAt ?? p.scheduledAt);
+              const dateStr = date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" });
+              const methodLabel = p.method === "PIX" ? "PIX" : p.method.includes("CREDIT") ? "Cartão crédito" : p.method.includes("DEBIT") ? "Cartão débito" : "Cartão";
+              return (
+                <View key={p.bookingId} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.border }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isCaptured ? theme.primarySubtle : theme.warningSubtle, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+                    <Ionicons name={isCaptured ? "checkmark-circle-outline" : "time-outline"} size={16} color={isCaptured ? theme.textGreen : theme.warning} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <MvText variant="semi3" style={{ fontSize: 12 }}>{methodLabel}</MvText>
+                    <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>{dateStr} · {isCaptured ? "Concluído" : "Aguardando captura"}</MvText>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <MvText variant="semi3" style={{ fontSize: 13, color: isCaptured ? theme.textGreen : theme.warning }}>
+                      {formatCurrencyBRL(p.providerAmountCents / 100)}
+                    </MvText>
+                    <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>
+                      de {formatCurrencyBRL(p.amountCents / 100)}
+                    </MvText>
                   </View>
                 </View>
-                <AnimatedNumber
-                  value={estimatedNet}
-                  format={formatCurrencyBRL}
-                  style={{
-                    fontFamily: "PlusJakartaSans_800ExtraBold",
-                    fontSize: 38,
-                    letterSpacing: -0.6,
-                    color: theme.primary,
-                    marginTop: 4,
-                    lineHeight: 46,
-                  }}
-                />
-                <View style={{ marginTop: 8, gap: 3 }}>
-                  <MvText variant="body4" color="secondary">Bruto: {formatCurrencyBRL(estimatedGross)}</MvText>
-                  <MvText variant="body4" color="secondary">Comissão app (10%): -{formatCurrencyBRL(commission)}</MvText>
-                </View>
-              </View>
-              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(34,197,94,0.12)", borderWidth: 1, borderColor: "rgba(34,197,94,0.22)", alignItems: "center", justifyContent: "center", marginTop: 4 }}>
-                <Ionicons name="wallet-outline" size={20} color={green} />
-              </View>
-            </View>
-
-            <View style={{ flexDirection: "row", marginTop: 16, gap: 8 }}>
-              <View style={{ flex: 1, borderRadius: 12, padding: 12, backgroundColor: "rgba(34,197,94,0.08)", borderWidth: 1, borderColor: "rgba(34,197,94,0.18)" }}>
-                <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginBottom: 2 }}>DISPONÍVEL</MvText>
-                <MvText variant="semi1" style={{ color: green, fontSize: 15 }}>{formatCurrencyBRL(estimatedNet)}</MvText>
-                <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>{payouts != null ? "saldo liberado" : "estimativa"}</MvText>
-              </View>
-              <View style={{ flex: 1, borderRadius: 12, padding: 12, backgroundColor: "rgba(245,158,11,0.07)", borderWidth: 1, borderColor: "rgba(245,158,11,0.20)" }}>
-                <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginBottom: 2 }}>A CAMINHO</MvText>
-                <MvText variant="semi1" style={{ color: "#F59E0B", fontSize: 15 }}>{formatCurrencyBRL(pendingNet)}</MvText>
-                <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 2 }}>{payouts != null ? "sessões autorizadas" : "sem dados MP"}</MvText>
-              </View>
-            </View>
-
-            <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
-              <MvBadge label={account?.hasAccount ? "Conta ativa" : "Conta pendente"} variant={account?.hasAccount ? "green" : "orange"} />
-              <MvBadge label="Últimos 6 meses" variant="gray" />
-            </View>
-          </View>
-
-          {payouts != null ? (
-            payouts.payments.length > 0 ? (
-              <>
-                <View style={{ height: 1, backgroundColor: border }} />
-                <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 }}>
-                  <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Últimas transações</MvText>
-                </View>
-                {payouts.payments.slice(0, 5).map((p) => {
-                  const isCaptured = p.status === "CAPTURED";
-                  const date = new Date(p.capturedAt ?? p.scheduledAt);
-                  const dateStr = date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" });
-                  const methodLabel = p.method === "PIX" ? "PIX" : p.method.includes("CREDIT") ? "Cartão crédito" : p.method.includes("DEBIT") ? "Cartão débito" : "Cartão";
-                  return (
-                    <View key={p.bookingId} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: border }}>
-                      <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isCaptured ? "rgba(34,197,94,0.10)" : "rgba(245,158,11,0.10)", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
-                        <Ionicons name={isCaptured ? "checkmark-circle-outline" : "time-outline"} size={16} color={isCaptured ? green : "#F59E0B"} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <MvText variant="semi3" style={{ fontSize: 12 }}>{methodLabel}</MvText>
-                        <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>{dateStr} · {isCaptured ? "Concluído" : "Aguardando captura"}</MvText>
-                      </View>
-                      <View style={{ alignItems: "flex-end" }}>
-                        <MvText variant="semi3" style={{ fontSize: 13, color: isCaptured ? green : "#F59E0B" }}>
-                          {formatCurrencyBRL(p.providerAmountCents / 100)}
-                        </MvText>
-                        <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>
-                          de {formatCurrencyBRL(p.amountCents / 100)}
-                        </MvText>
-                      </View>
-                    </View>
-                  );
-                })}
-              </>
-            ) : (
-              <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-                <MvText variant="body4" color="secondary" style={{ fontSize: 12 }}>
-                  Nenhuma transação registrada ainda. As sessões confirmadas e concluídas aparecerão aqui.
-                </MvText>
-              </View>
-            )
-          ) : null}
-        </View>
+              );
+            })}
+          </MvCard>
+        ) : null}
 
         {/* ── CONTROLE FINANCEIRO PESSOAL ── */}
         <PressableScale
@@ -487,124 +380,50 @@ export function PayoutStatusScreen({ navigation }: Props) {
           scale={0.97}
           style={{
             flexDirection: "row", alignItems: "center", gap: 14,
-            borderRadius: 16, borderWidth: 1.5,
-            borderColor: "rgba(34,197,94,0.35)",
-            backgroundColor: "rgba(34,197,94,0.07)",
+            borderRadius: 16, borderWidth: 1,
+            borderColor: theme.border,
+            backgroundColor: theme.inputBg,
             padding: 16,
           }}
         >
-          <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: "rgba(34,197,94,0.18)", borderWidth: 1, borderColor: "rgba(34,197,94,0.30)", alignItems: "center", justifyContent: "center" }}>
-            <Ionicons name="stats-chart" size={24} color={green} />
+          <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="stats-chart" size={20} color={theme.textGreen} />
           </View>
           <View style={{ flex: 1, gap: 2 }}>
-            <MvText variant="semi1" style={{ color: green }}>Controle Financeiro</MvText>
-            <MvText variant="body3" color="secondary">Alunos, receitas, despesas e metas</MvText>
+            <MvText variant="semi2">Controle Financeiro</MvText>
+            <MvText variant="body4" color="secondary">Lance receitas e despesas manuais, veja seu resumo completo</MvText>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={green} />
+          <Ionicons name="chevron-forward" size={18} color={theme.text3} />
         </PressableScale>
-
-        {/* ── META MENSAL ── */}
-        <View style={{ borderRadius: 14, padding: 14, borderWidth: 1, backgroundColor: cardBg, borderColor: border, gap: 8 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <MvText variant="semi3">Meta mensal</MvText>
-            {!editingGoal ? (
-              <TouchableOpacity onPress={() => { setGoalInput(monthlyGoal > 0 ? String(monthlyGoal) : ""); setEditingGoal(true); }}>
-                <MvText variant="body4" style={{ color: green, fontSize: 12 }}>
-                  {monthlyGoal > 0 ? "Editar" : "+ Definir"}
-                </MvText>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-          {editingGoal ? (
-            <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-              <TextInput
-                value={goalInput}
-                onChangeText={setGoalInput}
-                keyboardType="numeric"
-                placeholder="Ex: 5000"
-                placeholderTextColor={text3}
-                style={{ flex: 1, borderWidth: 1, borderColor: border, borderRadius: 8, backgroundColor: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.06)", paddingHorizontal: 10, paddingVertical: 7, color: text1, fontSize: 14 }}
-              />
-              <TouchableOpacity
-                onPress={() => {
-                  const v = Number(goalInput.replace(",", "."));
-                  if (!isNaN(v) && v > 0) {
-                    void AsyncStorage.setItem(MONTHLY_GOAL_KEY, String(v));
-                    setMonthlyGoal(v);
-                  } else {
-                    void AsyncStorage.removeItem(MONTHLY_GOAL_KEY);
-                    setMonthlyGoal(0);
-                  }
-                  setEditingGoal(false);
-                }}
-                style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: green }}
-              >
-                <MvText style={{ color: "#fff", fontFamily: "DMSans_700Bold", fontSize: 13 }}>Salvar</MvText>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setEditingGoal(false)}>
-                <Ionicons name="close-outline" size={18} color={text3} />
-              </TouchableOpacity>
-            </View>
-          ) : null}
-          {monthlyGoal > 0 && !editingGoal ? (
-            <>
-              <View style={{ height: 6, borderRadius: 99, backgroundColor: `${green}28`, overflow: "hidden" }}>
-                <View
-                  style={{
-                    height: 6,
-                    borderRadius: 99,
-                    backgroundColor: green,
-                    width: `${Math.min(100, Math.round((currentMonthGross / monthlyGoal) * 100))}%`,
-                  }}
-                />
-              </View>
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>
-                  {Math.round((currentMonthGross / monthlyGoal) * 100)}% atingido
-                </MvText>
-                <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>
-                  {formatCurrencyBRL(currentMonthGross)} / {formatCurrencyBRL(monthlyGoal)}
-                </MvText>
-              </View>
-            </>
-          ) : null}
-          {monthlyGoal === 0 && !editingGoal ? (
-            <MvText variant="body4" color="secondary" style={{ fontSize: 12 }}>
-              Defina uma meta para acompanhar seu progresso mensal.
-            </MvText>
-          ) : null}
-        </View>
 
         {/* ── GRID DE MÉTRICAS 2 linhas × 3 ── */}
         <View style={{ gap: 8 }}>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <MetricCard label="Alunos únicos" value={String(uniqueStudents)} green={green} cardBg={cardBg} border={border} text1={text1} />
-            <MetricCard label="Sessões concluídas" value={String(completedCount)} green={green} cardBg={cardBg} border={border} text1={text1} />
-            <MetricCard label="Pendentes" value={String(pendingCount)} green={green} cardBg={cardBg} border={border} text1={text1} highlight={pendingCount > 0} />
+            <MetricCard label="Alunos únicos" value={String(uniqueStudents)} />
+            <MetricCard label="Sessões concluídas" value={String(completedCount)} />
+            <MetricCard label="Pendentes" value={String(pendingCount)} highlight={pendingCount > 0} />
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <MetricCard label="Este mês" value={formatCurrencyBRL(currentMonthGross)} green={green} cardBg={cardBg} border={border} text1={text1} highlight />
-            <MetricCard label="Bruto total" value={formatCurrencyBRL(estimatedGross)} green={green} cardBg={cardBg} border={border} text1={text1} />
-            <MetricCard label="Líquido total" value={formatCurrencyBRL(estimatedNet)} green={green} cardBg={cardBg} border={border} text1={text1} highlight />
+            <MetricCard label="Este mês" value={formatCurrencyBRL(currentMonthGross)} highlight />
+            <MetricCard label="Bruto total" value={formatCurrencyBRL(estimatedGross)} />
+            <MetricCard label="Líquido total" value={formatCurrencyBRL(estimatedNet)} highlight />
           </View>
         </View>
 
         {/* ── GRÁFICO COMPARATIVO MENSAL ── */}
-        <View style={{ borderRadius: 16, padding: 18, borderWidth: 1, backgroundColor: cardBg, borderColor: border }}>
+        <View style={{ borderRadius: 16, padding: 18, borderWidth: 1, backgroundColor: theme.inputBg, borderColor: theme.border }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <MvText variant="semi2">Comparativo mensal</MvText>
-            <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: "rgba(34,197,94,0.10)", borderWidth: 1, borderColor: "rgba(34,197,94,0.20)" }}>
-              <MvText variant="body4" style={{ color: green, fontSize: 11 }}>Últimos 6 meses</MvText>
-            </View>
+            <MvBadge label="Últimos 6 meses" variant="green" />
           </View>
 
           {hasRevenue ? (
             <Animated.View style={[{ width: "100%", paddingHorizontal: 4 }, chartAnimStyle]}>
-              <MonthlyBarChart data={revenueByMonth} primaryColor={green} barBg={barBg} />
+              <MonthlyBarChart data={revenueByMonth} primaryColor={theme.textGreen} barBg={barBg} />
             </Animated.View>
           ) : (
             <View style={{ paddingVertical: 28, alignItems: "center", gap: 8 }}>
-              <Ionicons name="bar-chart-outline" size={28} color={text3} />
+              <Ionicons name="bar-chart-outline" size={28} color={theme.text3} />
               <MvText variant="body4" color="secondary">Nenhuma receita registrada ainda</MvText>
               <MvText variant="body4" color="secondary" style={{ textAlign: "center", fontSize: 12 }}>
                 Quando suas sessões forem concluídas, seus ganhos aparecerão aqui.
@@ -614,17 +433,17 @@ export function PayoutStatusScreen({ navigation }: Props) {
         </View>
 
         {/* ── CONTA DE RECEBIMENTO (Mercado Pago) ── */}
-        <View style={{ borderRadius: 16, borderWidth: 1, backgroundColor: cardBg, borderColor: border, overflow: "hidden" }}>
+        <MvCard style={{ padding: 0, overflow: "hidden" }}>
           <View style={{ padding: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: account?.hasAccount ? "rgba(34,197,94,0.12)" : "rgba(245,158,11,0.10)", alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="card-outline" size={18} color={account?.hasAccount ? green : "#F59E0B"} />
+              <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: account?.hasAccount ? theme.primarySubtle : theme.warningSubtle, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="card-outline" size={18} color={account?.hasAccount ? theme.textGreen : theme.warning} />
               </View>
               <View>
                 <MvText variant="semi3">Conta de recebimento</MvText>
                 <MvText variant="body4" color="secondary" numberOfLines={1} style={{ maxWidth: 200 }}>
                   {account?.hasAccount
-                    ? `Mercado Pago · ID ${account.accountId}`
+                    ? "Mercado Pago conectado"
                     : "Conecte sua conta Mercado Pago para receber repasses"}
                 </MvText>
               </View>
@@ -632,25 +451,16 @@ export function PayoutStatusScreen({ navigation }: Props) {
             <MvBadge label={account?.hasAccount ? "Configurada" : "Pendente"} variant={account?.hasAccount ? "green" : "orange"} />
           </View>
 
-          {/* CTA */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate("ConnectPayoutAccount")}
-            style={{
-              marginHorizontal: 16,
-              marginBottom: 16,
-              paddingVertical: 13,
-              borderRadius: 12,
-              backgroundColor: account?.hasAccount ? "transparent" : green,
-              borderWidth: account?.hasAccount ? 1 : 0,
-              borderColor: border,
-              alignItems: "center",
-            }}
-          >
-            <MvText variant="semi3" style={{ color: account?.hasAccount ? text2 : "#fff" }}>
-              {account?.hasAccount ? "Gerenciar conta Mercado Pago" : "Conectar conta Mercado Pago"}
-            </MvText>
-          </TouchableOpacity>
-        </View>
+          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+            <MvButton
+              variant={account?.hasAccount ? "outline" : "primary"}
+              label={account?.hasAccount ? "Gerenciar conta Mercado Pago" : "Conectar conta Mercado Pago"}
+              onPress={() => navigation.navigate("ConnectPayoutAccount")}
+            />
+          </View>
+        </MvCard>
+        </>
+        )}
       </ScrollView>
       </ScreenEntrance>
 

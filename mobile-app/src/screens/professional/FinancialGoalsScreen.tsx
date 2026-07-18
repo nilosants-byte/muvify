@@ -1,18 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ActivityIndicator, KeyboardAvoidingView, Modal, Platform,
+  ActivityIndicator,
   ScrollView, StatusBar, View,
 } from "react-native";
-import { PressableScale } from "../../components/polish/PressableScale";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { FinancialDashboard, FinancialGoal, financialApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvButton, MvCard, MvInput, MvModalSheet, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
@@ -20,7 +18,6 @@ import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "FinancialGoals">;
-type MvThemeValue = ReturnType<typeof import("../../theme/MvThemeContext").useMvTheme>["theme"];
 
 function parseCents(v: string) { return Number(v.replace(/\D/g, "")); }
 function fmtCents(cents: number) { return formatCurrencyBRL(cents / 100); }
@@ -64,33 +61,9 @@ function GoalBar({
   );
 }
 
-function ModalSheet({ visible, title, onClose, children, theme, topInset }: {
-  visible: boolean; title: string; onClose: () => void;
-  children: React.ReactNode; theme: MvThemeValue; topInset: number;
-}) {
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: topInset + 16, paddingHorizontal: 16 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 10 }}>
-            <PressableScale scale={0.92} onPress={onClose} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="close" size={18} color={theme.text1} />
-            </PressableScale>
-            <MvText variant="semi2">{title}</MvText>
-          </View>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {children}
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
 export function FinancialGoalsScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
-  const insets = useSafeAreaInsets();
   const isDark = theme.mode === "dark";
   const green = isDark ? theme.primary : "#16A34A";
   const queryClient = useQueryClient();
@@ -208,7 +181,7 @@ export function FinancialGoalsScreen({ navigation }: Props) {
         </ScrollView>
       )}
 
-      <ModalSheet visible={editModal} title={hasGoal ? "Editar metas" : "Definir metas"} onClose={() => setEditModal(false)} theme={theme} topInset={insets.top}>
+      <MvModalSheet visible={editModal} title={hasGoal ? "Editar metas" : "Definir metas"} onClose={() => setEditModal(false)}>
         <View style={{ gap: 10, paddingBottom: 40 }}>
           <MvText variant="body4" color="secondary">
             Configure as metas para {monthLabel(month)}. Deixe em branco para não monitorar.
@@ -219,7 +192,7 @@ export function FinancialGoalsScreen({ navigation }: Props) {
           <MvButton label="Salvar metas" loading={saving} onPress={() => void handleSave()} />
           <MvButton variant="ghost" label="Cancelar" onPress={() => setEditModal(false)} />
         </View>
-      </ModalSheet>
+      </MvModalSheet>
     </View>
   );
 }

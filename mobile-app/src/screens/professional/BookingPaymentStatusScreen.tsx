@@ -51,8 +51,6 @@ export function BookingPaymentStatusScreen({ route, navigation }: Props) {
       <ProfessionalScreenHeader title="Status do pagamento" onBack={() => navigation.goBack()} />
 
       <ScrollView automaticallyAdjustKeyboardInsets={true} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false}>
-        <MvText variant="body4" color="secondary">Agendamento: {bookingId.slice(0, 8)}...</MvText>
-
         <MvCard>
           {loading ? (
             <MvText variant="body4" color="secondary">Consultando pagamento...</MvText>
@@ -62,7 +60,6 @@ export function BookingPaymentStatusScreen({ route, navigation }: Props) {
               <MvText variant="h3" style={{ color: theme.textGreen }}>
                 {formatCurrencyBRL((payment.amountCents ?? 0) / 100)}
               </MvText>
-              <MvText variant="body4" color="secondary">ID pagamento: {payment.id}</MvText>
               <MvText variant="body4" color="secondary">Moeda: {payment.currency}</MvText>
               <MvText variant="body4" color="secondary">Método: {payment.method ?? "-"}</MvText>
               {payment.status === "FAILED" && payment.failureReason ? (
