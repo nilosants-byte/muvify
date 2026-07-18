@@ -82,7 +82,9 @@ export type ProfessionalStackParamList = {
   ProfessionalReviews: undefined;
   ProfessionalSettings: undefined;
   AvailabilityManager: undefined;
-  ProfessionalConsultancyCenter: { openTab?: "offers" } | undefined;
+  ProfessionalConsultancyCenter: undefined;
+  ProfessionalConsultancyOffers: undefined;
+  ProfessionalConsultancyRequests: undefined;
   ProfessionalArchivedRequests: undefined;
   ProfessionalChatList: undefined;
   BookingDetailProfessional: { bookingId: string };

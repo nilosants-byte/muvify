@@ -983,7 +983,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
             <View style={{ flexDirection: "row", gap: 8 }}>
               {([
                 { key: "newTraining" as const,    icon: "barbell-outline" as const,   label: "Treinos" },
-                { key: "newConsultancy" as const, icon: "flash-outline" as const,     label: "Oferta" },
+                { key: "newConsultancy" as const, icon: "flash-outline" as const,     label: "Consultoria" },
                 { key: "addSlot" as const,        icon: "time-outline" as const,      label: "Horários e\nLocais" },
                 { key: "addFinancial" as const,   icon: "stats-chart-outline" as const, label: "Controle\nFinanceiro" },
               ] as const).map((s) => (

@@ -26,6 +26,9 @@
   chipText: string;
   textOnPrimary: string;
   danger: string;
+  warning: string;
+  warningSubtle: string;
+  warningSubtleBorder: string;
 }
 
 export const darkTheme: MvTheme = {
@@ -56,6 +59,9 @@ export const darkTheme: MvTheme = {
   chipText: "#A1A1AA",
   textOnPrimary: "#000000",
   danger: "#EF4444",
+  warning: "#F59E0B",
+  warningSubtle: "rgba(245,158,11,0.12)",
+  warningSubtleBorder: "rgba(245,158,11,0.20)",
 };
 
 export const lightTheme: MvTheme = {
@@ -86,6 +92,9 @@ export const lightTheme: MvTheme = {
   chipText: "#3D4D3D",
   textOnPrimary: "#FFFFFF",
   danger: "#DC2626",
+  warning: "#D97706",
+  warningSubtle: "rgba(217,119,6,0.10)",
+  warningSubtleBorder: "rgba(217,119,6,0.18)",
 };
 
 export const cardShadowLight = {
