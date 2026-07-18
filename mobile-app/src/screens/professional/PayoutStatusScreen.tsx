@@ -13,7 +13,7 @@ import { ProfessionalStackParamList } from "../../navigation/route-types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Booking, FinancialDashboard, FinancialExpense, FinancialExpenseCategory, FinancialIncome,
-  FinancialPayouts, ProviderAccountStatus, bookingsApi, financialApi, paymentsApi,
+  FinancialPayouts, FinancialStudent, ProviderAccountStatus, bookingsApi, financialApi, paymentsApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
@@ -169,17 +169,19 @@ export function PayoutStatusScreen({ navigation }: Props) {
   const payoutQuery = useAuthQuery(
     queryKeys.payments.providerPayouts(),
     async (token) => {
-      const [accountResponse, bookingsResponse, payoutsResponse, dashboardResponse, incomesResponse, expensesResponse] = await Promise.all([
+      const [accountResponse, bookingsResponse, payoutsResponse, dashboardResponse, incomesResponse, expensesResponse, studentsResponse] = await Promise.all([
         paymentsApi.providerStatus(token).catch(() => null as ProviderAccountStatus | null),
         bookingsApi.me(token),
         financialApi.payouts(token).catch(() => null as FinancialPayouts | null),
         financialApi.dashboard(token, currentMonth).catch(() => null as FinancialDashboard | null),
         financialApi.listIncomes(token, currentMonth).catch(() => [] as FinancialIncome[]),
         financialApi.listExpenses(token, currentMonth).catch(() => [] as FinancialExpense[]),
+        financialApi.listStudents(token).catch(() => [] as FinancialStudent[]),
       ]);
       return {
         account: accountResponse, bookings: bookingsResponse, payouts: payoutsResponse,
         dashboard: dashboardResponse, incomes: incomesResponse, expenses: expensesResponse,
+        students: studentsResponse,
       };
     },
   );
@@ -188,6 +190,7 @@ export function PayoutStatusScreen({ navigation }: Props) {
   const payouts = payoutQuery.data?.payouts ?? null;
   const dashboard = payoutQuery.data?.dashboard ?? null;
   const manualIncomes = payoutQuery.data?.incomes ?? ([] as FinancialIncome[]);
+  const students = payoutQuery.data?.students ?? ([] as FinancialStudent[]);
   const loading = payoutQuery.isLoading;
   const refreshing = payoutQuery.isRefetching;
 
@@ -252,6 +255,18 @@ export function PayoutStatusScreen({ navigation }: Props) {
   );
   const appRevenueCentsThisMonth = dashboard?.appRevenueCents ?? Math.round(currentMonthGross * 100);
   const totalReceivedThisMonth = (appRevenueCentsThisMonth + manualIncomeCentsThisMonth) / 100;
+
+  // Previsto: mensalidades de alunos recorrentes ainda não pagas este mês +
+  // sessões já confirmadas mas ainda não concluídas (dinheiro que deve entrar,
+  // mas ainda não entrou — diferente de "a caminho", que já foi capturado
+  // pelo Mercado Pago e só está aguardando liberação).
+  const previstoCents = useMemo(() => {
+    const paidStudentIds = new Set(manualIncomes.filter((i) => i.studentId).map((i) => i.studentId));
+    const unpaidStudentRevenueCents = students
+      .filter((s) => s.isActive && !paidStudentIds.has(s.id))
+      .reduce((sum, s) => sum + s.monthlyValueCents, 0);
+    return unpaidStudentRevenueCents + (dashboard?.confirmedRevenueCents ?? 0);
+  }, [students, manualIncomes, dashboard]);
 
   const revenueByMonth = useMemo<RevenueMonth[]>(() => {
     const now = new Date();
@@ -437,6 +452,13 @@ export function PayoutStatusScreen({ navigation }: Props) {
                 : "Pelo app — lance abaixo o que recebeu por fora"}
             </MvText>
           </View>
+          {previstoCents > 0 && (
+            <View style={{ alignItems: "flex-end", paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: theme.border }}>
+              <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Previsto</MvText>
+              <MvText variant="semi2" style={{ fontSize: 16, color: theme.warning }}>{formatCurrencyBRL(previstoCents / 100)}</MvText>
+              <MvText variant="caption" color="secondary" style={{ fontSize: 10 }}>alunos + sessões</MvText>
+            </View>
+          )}
         </View>
 
         <View style={{ flexDirection: "row", gap: 4 }}>

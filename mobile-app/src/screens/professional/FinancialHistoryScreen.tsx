@@ -440,7 +440,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <ProfessionalScreenHeader title="Histórico" onBack={() => navigation.goBack()} />
+      <ProfessionalScreenHeader title="Extrato" onBack={() => navigation.goBack()} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Period selector */}
