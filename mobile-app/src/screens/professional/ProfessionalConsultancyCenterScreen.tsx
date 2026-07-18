@@ -9,7 +9,6 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvButton, MvCard, MvInput, MvProgressBar, MvRefreshControl, MvText, MvToggle } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
-import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
@@ -45,6 +44,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
 
   const [savingSettings, setSavingSettings] = React.useState(false);
   const [slaEditorOpen, setSlaEditorOpen] = React.useState(false);
+  const [checklistExpanded, setChecklistExpanded] = React.useState(false);
   const { runWithAuth, showToast } = useAppState();
 
   React.useEffect(() => {
@@ -68,48 +68,33 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
     }
   }
 
-  function StatCard({
-    label,
-    value,
-    hint,
-    icon,
-    numericValue,
-    formatValue,
-  }: {
-    label: string;
-    value: string;
-    hint: string;
-    icon: keyof typeof Ionicons.glyphMap;
-    numericValue?: number;
-    formatValue?: (n: number) => string;
-  }) {
-    const valueStyle = { fontFamily: "PlusJakartaSans_800ExtraBold" as const, fontSize: 22, fontWeight: "800" as const, letterSpacing: -0.2, lineHeight: 28, color: theme.text1 };
+  function StatStrip({ items }: { items: { label: string; value: string }[] }) {
     return (
       <View
         style={{
-          flexBasis: "48%",
-          flexGrow: 1,
+          flexDirection: "row",
           borderWidth: 1,
           borderColor: theme.border,
           backgroundColor: theme.inputBg,
-          borderRadius: 14,
-          padding: 12,
-          gap: 4,
+          borderRadius: 12,
+          paddingVertical: 10,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
-            <Ionicons name={icon} size={15} color={theme.textGreen} />
+        {items.map((it, idx) => (
+          <View
+            key={it.label}
+            style={{
+              flex: 1,
+              alignItems: "center",
+              gap: 2,
+              borderRightWidth: idx < items.length - 1 ? 1 : 0,
+              borderRightColor: theme.border,
+            }}
+          >
+            <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 15, color: theme.text1 }}>{it.value}</MvText>
+            <MvText variant="caption" color="secondary" style={{ fontSize: 9.5 }} numberOfLines={1}>{it.label}</MvText>
           </View>
-          <MvText variant="caption" color="secondary">{label}</MvText>
-        </View>
-        {numericValue !== undefined
-          ? <AnimatedNumber value={numericValue} format={formatValue} style={valueStyle} />
-          : <MvText style={valueStyle}>{value}</MvText>
-        }
-        <MvText variant="caption" color="secondary">
-          {hint}
-        </MvText>
+        ))}
       </View>
     );
   }
@@ -260,13 +245,15 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
           </View>
 
           <View style={{ padding: 12, gap: 8 }}>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              <StatCard label="Abertas" value={String(openRequests.length)} numericValue={openRequests.length} hint="Aguardando sua resposta" icon="mail-unread-outline" />
-              <StatCard label="Em analise" value={String(respondedRequests.length)} numericValue={respondedRequests.length} hint="Aluno ainda decide" icon="time-outline" />
-              <StatCard label="Aceitas" value={String(acceptedRequests.length)} numericValue={acceptedRequests.length} hint="Contratos ativos" icon="checkmark-done-outline" />
-              <StatCard label="Ticket online" value={averageTicket ? formatCurrencyBRL(averageTicket / 100) : "R$ 0,00"} numericValue={averageTicket ? averageTicket / 100 : 0} formatValue={formatCurrencyBRL} hint="Media por oferta online" icon="cash-outline" />
-            </View>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            <StatStrip
+              items={[
+                { label: "Abertas", value: String(openRequests.length) },
+                { label: "Em análise", value: String(respondedRequests.length) },
+                { label: "Aceitas", value: String(acceptedRequests.length) },
+                { label: "Ticket online", value: averageTicket ? formatCurrencyBRL(averageTicket / 100) : "R$ 0,00" },
+              ]}
+            />
+            <View style={{ flexDirection: "row", gap: 8 }}>
               <QuickAction
                 icon="chatbubble-ellipses-outline"
                 title="Responder agora"
@@ -279,18 +266,6 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
                 title="Nova oferta"
                 subtitle="Cadastrar e publicar serviço"
                 onPress={() => navigation.replace("ProfessionalConsultancyOffers")}
-              />
-              <QuickAction
-                icon="barbell-outline"
-                title="Treino pré-pronto"
-                subtitle={prebuiltPlanCount ? `${prebuiltPlanCount} ${prebuiltPlanCount === 1 ? "cadastrado" : "cadastrados"}` : "Criar primeira base"}
-                onPress={() => navigation.navigate("TrainingCreation")}
-              />
-              <QuickAction
-                icon="archive-outline"
-                title="Arquivados"
-                subtitle="Histórico de solicitações"
-                onPress={() => navigation.navigate("ProfessionalArchivedRequests")}
               />
             </View>
           </View>
@@ -363,29 +338,36 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
               >
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <MvText variant="semi2">Checklist de prontidão</MvText>
-                  <MvText variant="body4" color="secondary">
-                    {Math.round(readinessScore * 100)}%
-                  </MvText>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <MvText variant="body4" color="secondary">
+                      {Math.round(readinessScore * 100)}%
+                    </MvText>
+                    <PressableScale onPress={() => setChecklistExpanded((v) => !v)} style={{ padding: 4 }}>
+                      <Ionicons name={checklistExpanded ? "chevron-up" : "chevron-down"} size={16} color={theme.text3} />
+                    </PressableScale>
+                  </View>
                 </View>
                 <MvProgressBar progress={readinessScore} height={5} />
-                <View style={{ gap: 8 }}>
-                  {readinessChecklist.map((item) => (
-                    <View key={item.key} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
-                      <Ionicons
-                        name={item.done ? "checkmark-circle" : "ellipse-outline"}
-                        size={16}
-                        color={item.done ? theme.textGreen : theme.text2}
-                        style={{ marginTop: 1 }}
-                      />
-                      <View style={{ flex: 1 }}>
-                        <MvText variant="semi3">{item.title}</MvText>
-                        <MvText variant="caption" color="secondary">
-                          {item.detail}
-                        </MvText>
+                {checklistExpanded ? (
+                  <View style={{ gap: 8 }}>
+                    {readinessChecklist.map((item) => (
+                      <View key={item.key} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+                        <Ionicons
+                          name={item.done ? "checkmark-circle" : "ellipse-outline"}
+                          size={16}
+                          color={item.done ? theme.textGreen : theme.text2}
+                          style={{ marginTop: 1 }}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <MvText variant="semi3">{item.title}</MvText>
+                          <MvText variant="caption" color="secondary">
+                            {item.detail}
+                          </MvText>
+                        </View>
                       </View>
-                    </View>
-                  ))}
-                </View>
+                    ))}
+                  </View>
+                ) : null}
               </View>
             )}
 

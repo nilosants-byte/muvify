@@ -123,7 +123,7 @@ function MetricCard({
       <MvText variant="semi2" style={{ color: highlight ? theme.textGreen : theme.text1, fontSize: 15 }} numberOfLines={1}>
         {value}
       </MvText>
-      <MvText variant="body4" color="secondary" style={{ marginTop: 3 }} numberOfLines={1}>
+      <MvText variant="body4" color="secondary" style={{ marginTop: 3 }} numberOfLines={2}>
         {label}
       </MvText>
     </View>
@@ -458,15 +458,14 @@ export function PayoutStatusScreen({ navigation }: Props) {
           </View>
         </View>
 
-        {/* ── Total recebido no mês (app + manual) — número diferente, propósito diferente ── */}
+        {/* ── Este mês: recebido (app + manual) e previsto ── */}
+        <MvText variant="eyebrow" color="secondary" style={{ marginBottom: -4 }}>Este mês</MvText>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 12, backgroundColor: theme.inputBg }}>
           <View style={{ flex: 1 }}>
-            <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Total recebido este mês</MvText>
+            <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Recebido</MvText>
             <MvText variant="semi2" style={{ fontSize: 18, color: theme.text1 }}>{formatCurrencyBRL(totalReceivedThisMonth)}</MvText>
             <MvText variant="caption" color="secondary">
-              {manualIncomeCentsThisMonth > 0
-                ? `Inclui ${formatCurrencyBRL(manualIncomeCentsThisMonth / 100)} registrado manualmente`
-                : "Pelo app — lance abaixo o que recebeu por fora"}
+              Pelo app: {formatCurrencyBRL(appRevenueCentsThisMonth / 100)} · Manual: {formatCurrencyBRL(manualIncomeCentsThisMonth / 100)}
             </MvText>
           </View>
           {previstoCents > 0 && (
@@ -529,15 +528,15 @@ export function PayoutStatusScreen({ navigation }: Props) {
           </MvCard>
         ) : null}
 
-        {/* ── GRID DE MÉTRICAS 2 linhas × 3 ── */}
+        {/* ── GRID DE MÉTRICAS — acumulado desde o início, pelo app ── */}
+        <MvText variant="eyebrow" color="secondary" style={{ marginBottom: -4 }}>Acumulado</MvText>
         <View style={{ gap: 8 }}>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <MetricCard label="Alunos únicos" value={String(uniqueStudents)} />
-            <MetricCard label="Sessões concluídas" value={String(completedCount)} />
+            <MetricCard label="Clientes atendidos" value={String(uniqueStudents)} />
+            <MetricCard label="Concluídas" value={String(completedCount)} />
             <MetricCard label="Pendentes" value={String(pendingCount)} highlight={pendingCount > 0} />
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <MetricCard label="Este mês" value={formatCurrencyBRL(currentMonthGross)} highlight />
             <MetricCard label="Bruto total" value={formatCurrencyBRL(estimatedGross)} />
             <MetricCard label="Líquido total" value={formatCurrencyBRL(estimatedNet)} highlight />
           </View>
