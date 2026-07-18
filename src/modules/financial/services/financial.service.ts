@@ -1,4 +1,4 @@
-import { BookingStatus, FinancialExpenseCategory, FinancialStudentType, PaymentStatus, Prisma } from "@prisma/client";
+import { BookingStatus, FinancialExpenseCategory, FinancialRecurrence, FinancialStudentType, PaymentStatus, Prisma } from "@prisma/client";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
@@ -14,6 +14,36 @@ function monthBounds(month: string) {
   const from = new Date(y, m - 1, 1);
   const to = new Date(y, m, 0, 23, 59, 59, 999);
   return { from, to };
+}
+
+function monthKeyOf(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// Projeta a data de um lançamento recorrente pro mês-alvo, mantendo o dia
+// (e "clampando" pro último dia do mês quando o mês-alvo for mais curto).
+function clampDayToMonth(date: Date, month: string) {
+  const [y, m] = month.split("-").map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const day = Math.min(date.getDate(), lastDay);
+  return new Date(y, m - 1, day, date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
+}
+
+// Um aluno "cobra" no mês-alvo se: está ativo, e (a) é avulso e o mês-alvo é
+// o mês em que ele começou, ou (b) é recorrente, já começou e (se tiver data
+// de término) ainda não passou dela.
+function isStudentBillableForMonth(
+  student: { isActive: boolean; recurrence: FinancialRecurrence; startDate: Date; recurrenceEndDate: Date | null },
+  month: string
+) {
+  if (!student.isActive) return false;
+  const { from, to } = monthBounds(month);
+  if (student.recurrence === FinancialRecurrence.ONE_TIME) {
+    return monthKeyOf(student.startDate) === month;
+  }
+  if (student.startDate > to) return false;
+  if (student.recurrenceEndDate && student.recurrenceEndDate < from) return false;
+  return true;
 }
 
 async function getProviderByUserId(userId: string) {
@@ -40,6 +70,9 @@ type CreateStudentInput = {
   notes?: string;
   location?: string;
   weeklySchedule?: WeeklyScheduleSlot[];
+  recurrence?: FinancialRecurrence;
+  startDate?: string;
+  recurrenceEndDate?: string | null;
 };
 
 type UpdateStudentInput = Partial<CreateStudentInput & { isActive: boolean; paymentDueDay: number | null }>;
@@ -49,6 +82,8 @@ type CreateIncomeInput = {
   amountCents: number;
   studentId?: string;
   paidAt: string;
+  recurrence?: FinancialRecurrence;
+  recurrenceEndDate?: string | null;
 };
 
 type UpdateIncomeInput = {
@@ -56,6 +91,8 @@ type UpdateIncomeInput = {
   amountCents?: number;
   studentId?: string | null;
   paidAt?: string;
+  recurrence?: FinancialRecurrence;
+  recurrenceEndDate?: string | null;
 };
 
 type CreateExpenseInput = {
@@ -63,6 +100,8 @@ type CreateExpenseInput = {
   amountCents: number;
   category?: FinancialExpenseCategory;
   paidAt: string;
+  recurrence?: FinancialRecurrence;
+  recurrenceEndDate?: string | null;
 };
 
 type UpdateExpenseInput = {
@@ -70,6 +109,8 @@ type UpdateExpenseInput = {
   amountCents?: number;
   category?: FinancialExpenseCategory;
   paidAt?: string;
+  recurrence?: FinancialRecurrence;
+  recurrenceEndDate?: string | null;
 };
 
 type UpsertGoalInput = {
@@ -85,6 +126,57 @@ type CreateClassSessionInput = {
   notes?: string;
 };
 
+// Lançamentos "efetivos" de um mês = linhas reais daquele mês + projeções
+// virtuais de lançamentos recorrentes criados em meses anteriores (a linha
+// real original nunca é duplicada — ela só aparece no mês em que foi criada;
+// nos meses seguintes o que aparece é a projeção, com a data ajustada pro
+// mesmo dia dentro do novo mês).
+async function getEffectiveIncomes(providerId: string, month: string) {
+  const { from, to } = monthBounds(month);
+  const [real, templates] = await Promise.all([
+    prisma.financialIncome.findMany({
+      where: { providerId, paidAt: { gte: from, lte: to } },
+      include: { student: { select: { id: true, name: true } } },
+      take: 2000,
+    }),
+    prisma.financialIncome.findMany({
+      where: {
+        providerId,
+        recurrence: FinancialRecurrence.RECURRING,
+        paidAt: { lt: from },
+        OR: [{ recurrenceEndDate: null }, { recurrenceEndDate: { gte: from } }]
+      },
+      include: { student: { select: { id: true, name: true } } },
+      take: 2000,
+    })
+  ]);
+  const virtual = templates.map((t) => ({ ...t, paidAt: clampDayToMonth(t.paidAt, month), isVirtual: true as const }));
+  return [...real.map((r) => ({ ...r, isVirtual: false as const })), ...virtual]
+    .sort((a, b) => b.paidAt.getTime() - a.paidAt.getTime());
+}
+
+async function getEffectiveExpenses(providerId: string, month: string) {
+  const { from, to } = monthBounds(month);
+  const [real, templates] = await Promise.all([
+    prisma.financialExpense.findMany({
+      where: { providerId, paidAt: { gte: from, lte: to } },
+      take: 2000,
+    }),
+    prisma.financialExpense.findMany({
+      where: {
+        providerId,
+        recurrence: FinancialRecurrence.RECURRING,
+        paidAt: { lt: from },
+        OR: [{ recurrenceEndDate: null }, { recurrenceEndDate: { gte: from } }]
+      },
+      take: 2000,
+    })
+  ]);
+  const virtual = templates.map((t) => ({ ...t, paidAt: clampDayToMonth(t.paidAt, month), isVirtual: true as const }));
+  return [...real.map((r) => ({ ...r, isVirtual: false as const })), ...virtual]
+    .sort((a, b) => b.paidAt.getTime() - a.paidAt.getTime());
+}
+
 export class FinancialService {
   // ─── Dashboard ────────────────────────────────────────────────────────────
   async getDashboard(userId: string, month?: string) {
@@ -94,6 +186,8 @@ export class FinancialService {
 
     const lastMonthFrom = (() => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 2, 1); })();
     const lastMonthTo   = (() => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 1, 0, 23, 59, 59); })();
+
+    const lastMonthKey = (() => { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo - 2, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; })();
 
     const [
       incomes,
@@ -106,14 +200,8 @@ export class FinancialService {
       confirmedBookingsAgg,
       lastMonthCompletedBookingsAgg
     ] = await Promise.all([
-      prisma.financialIncome.findMany({
-        where: { providerId: provider.id, paidAt: { gte: from, lte: to } },
-        take: 2000,
-      }),
-      prisma.financialExpense.findMany({
-        where: { providerId: provider.id, paidAt: { gte: from, lte: to } },
-        take: 2000,
-      }),
+      getEffectiveIncomes(provider.id, m),
+      getEffectiveExpenses(provider.id, m),
       prisma.financialClassSession.findMany({
         where: { providerId: provider.id, date: { gte: from, lte: to } },
         take: 2000,
@@ -125,11 +213,8 @@ export class FinancialService {
       prisma.financialGoal.findUnique({
         where: { providerId_month: { providerId: provider.id, month: m } }
       }),
-      // mês anterior: receitas manuais
-      prisma.financialIncome.findMany({
-        where: { providerId: provider.id, paidAt: { gte: lastMonthFrom, lte: lastMonthTo } },
-        take: 2000,
-      }),
+      // mês anterior: receitas manuais (real + projeção de recorrentes)
+      getEffectiveIncomes(provider.id, lastMonthKey),
       // agendamentos COMPLETADOS: receita realizada pelo app (com datas para breakdown diário)
       prisma.booking.findMany({
         where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: from, lte: to } },
@@ -215,11 +300,13 @@ export class FinancialService {
   // ─── Students ─────────────────────────────────────────────────────────────
   async listStudents(userId: string) {
     const provider = await getProviderByUserId(userId);
-    return prisma.financialStudent.findMany({
+    const students = await prisma.financialStudent.findMany({
       where: { providerId: provider.id },
       orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
       take: 500,
     });
+    const month = currentMonth();
+    return students.map((s) => ({ ...s, billableThisMonth: isStudentBillableForMonth(s, month) }));
   }
 
   async createStudent(userId: string, input: CreateStudentInput) {
@@ -234,6 +321,9 @@ export class FinancialService {
           weeklyFrequency: input.weeklyFrequency ?? 3,
           paymentDueDay: input.paymentDueDay ?? null,
           notes: input.notes?.trim() ?? null,
+          recurrence: input.recurrence ?? FinancialRecurrence.RECURRING,
+          startDate: input.startDate ? new Date(input.startDate) : new Date(),
+          recurrenceEndDate: input.recurrenceEndDate ? new Date(input.recurrenceEndDate) : null,
           ...(input.location !== undefined ? { location: input.location?.trim() || null } : {}),
           ...(input.weeklySchedule !== undefined ? { weeklySchedule: input.weeklySchedule as any } : {})
         } as any
@@ -260,6 +350,9 @@ export class FinancialService {
         type: input.type as any,
         weeklyFrequency: input.weeklyFrequency,
         isActive: input.isActive,
+        ...(input.recurrence !== undefined ? { recurrence: input.recurrence } : {}),
+        ...(input.startDate !== undefined ? { startDate: new Date(input.startDate) } : {}),
+        ...(input.recurrenceEndDate !== undefined ? { recurrenceEndDate: input.recurrenceEndDate ? new Date(input.recurrenceEndDate) : null } : {}),
         ...(input.paymentDueDay !== undefined ? { paymentDueDay: input.paymentDueDay } : {}),
         notes: input.notes?.trim() ?? undefined,
         ...(input.location !== undefined ? { location: input.location?.trim() || null } : {}),
@@ -281,12 +374,7 @@ export class FinancialService {
   async listIncomes(userId: string, month?: string) {
     const provider = await getProviderByUserId(userId);
     const m = month ?? currentMonth();
-    const { from, to } = monthBounds(m);
-    return prisma.financialIncome.findMany({
-      where: { providerId: provider.id, paidAt: { gte: from, lte: to } },
-      include: { student: { select: { id: true, name: true } } },
-      orderBy: { paidAt: "desc" }
-    });
+    return getEffectiveIncomes(provider.id, m);
   }
 
   async createIncome(userId: string, input: CreateIncomeInput) {
@@ -302,7 +390,9 @@ export class FinancialService {
         amountCents: input.amountCents,
         studentId: input.studentId ?? null,
         source: "MANUAL",
-        paidAt: new Date(input.paidAt)
+        paidAt: new Date(input.paidAt),
+        recurrence: input.recurrence ?? FinancialRecurrence.ONE_TIME,
+        recurrenceEndDate: input.recurrenceEndDate ? new Date(input.recurrenceEndDate) : null
       },
       include: { student: { select: { id: true, name: true } } }
     });
@@ -323,6 +413,8 @@ export class FinancialService {
         ...(input.amountCents !== undefined ? { amountCents: input.amountCents } : {}),
         ...(input.studentId !== undefined ? { studentId: input.studentId } : {}),
         ...(input.paidAt !== undefined ? { paidAt: new Date(input.paidAt) } : {}),
+        ...(input.recurrence !== undefined ? { recurrence: input.recurrence } : {}),
+        ...(input.recurrenceEndDate !== undefined ? { recurrenceEndDate: input.recurrenceEndDate ? new Date(input.recurrenceEndDate) : null } : {}),
       },
       include: { student: { select: { id: true, name: true } } }
     });
@@ -339,11 +431,7 @@ export class FinancialService {
   async listExpenses(userId: string, month?: string) {
     const provider = await getProviderByUserId(userId);
     const m = month ?? currentMonth();
-    const { from, to } = monthBounds(m);
-    return prisma.financialExpense.findMany({
-      where: { providerId: provider.id, paidAt: { gte: from, lte: to } },
-      orderBy: { paidAt: "desc" }
-    });
+    return getEffectiveExpenses(provider.id, m);
   }
 
   async createExpense(userId: string, input: CreateExpenseInput) {
@@ -354,7 +442,9 @@ export class FinancialService {
         description: input.description.trim(),
         amountCents: input.amountCents,
         category: input.category ?? FinancialExpenseCategory.OTHER,
-        paidAt: new Date(input.paidAt)
+        paidAt: new Date(input.paidAt),
+        recurrence: input.recurrence ?? FinancialRecurrence.ONE_TIME,
+        recurrenceEndDate: input.recurrenceEndDate ? new Date(input.recurrenceEndDate) : null
       }
     });
   }
@@ -370,6 +460,8 @@ export class FinancialService {
         ...(input.amountCents !== undefined ? { amountCents: input.amountCents } : {}),
         ...(input.category !== undefined ? { category: input.category } : {}),
         ...(input.paidAt !== undefined ? { paidAt: new Date(input.paidAt) } : {}),
+        ...(input.recurrence !== undefined ? { recurrence: input.recurrence } : {}),
+        ...(input.recurrenceEndDate !== undefined ? { recurrenceEndDate: input.recurrenceEndDate ? new Date(input.recurrenceEndDate) : null } : {}),
       }
     });
   }
@@ -532,14 +624,8 @@ export class FinancialService {
       const { from, to } = monthBounds(month);
 
       const [incomes, expenses, classes, appBookings] = await Promise.all([
-        prisma.financialIncome.aggregate({
-          where: { providerId: provider.id, paidAt: { gte: from, lte: to } },
-          _sum: { amountCents: true }
-        }),
-        prisma.financialExpense.aggregate({
-          where: { providerId: provider.id, paidAt: { gte: from, lte: to } },
-          _sum: { amountCents: true }
-        }),
+        getEffectiveIncomes(provider.id, month),
+        getEffectiveExpenses(provider.id, month),
         prisma.financialClassSession.count({
           where: { providerId: provider.id, date: { gte: from, lte: to } }
         }),
@@ -549,9 +635,9 @@ export class FinancialService {
         })
       ]);
 
-      const rev    = incomes._sum.amountCents ?? 0;
+      const rev    = incomes.reduce((s, i) => s + i.amountCents, 0);
       const appRev = appBookings._sum.priceCents ?? 0;
-      const exp    = expenses._sum.amountCents ?? 0;
+      const exp    = expenses.reduce((s, e) => s + e.amountCents, 0);
       result.push({ month, revenueCents: rev, appRevenueCents: appRev, expensesCents: exp, netCents: rev + appRev - exp, classes });
     }
 

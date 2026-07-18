@@ -136,6 +136,11 @@ enum FinancialExpenseCategory {
   OTHER
 }
 
+enum FinancialRecurrence {
+  RECURRING
+  ONE_TIME
+}
+
 enum NotificationPreferenceType {
   BOOKINGS
   PAYMENTS
@@ -922,6 +927,9 @@ model FinancialStudent {
   notes             String?
   location          String?
   weeklySchedule    Json?
+  recurrence        FinancialRecurrence  @default(RECURRING)
+  startDate         DateTime             @default(now())
+  recurrenceEndDate DateTime?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   provider          ProviderProfile      @relation(fields: [providerId], references: [id], onDelete: Cascade)
@@ -933,31 +941,35 @@ model FinancialStudent {
 }
 
 model FinancialIncome {
-  id          String           @id @default(uuid())
-  providerId  String
-  studentId   String?
-  description String
-  amountCents Int
-  source      String           @default("MANUAL")
-  paidAt      DateTime
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  provider    ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  student     FinancialStudent? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  id                String           @id @default(uuid())
+  providerId        String
+  studentId         String?
+  description       String
+  amountCents       Int
+  source            String           @default("MANUAL")
+  paidAt            DateTime
+  recurrence        FinancialRecurrence @default(ONE_TIME)
+  recurrenceEndDate DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  provider          ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  student           FinancialStudent? @relation(fields: [studentId], references: [id], onDelete: SetNull)
 
   @@index([providerId, paidAt])
 }
 
 model FinancialExpense {
-  id          String                  @id @default(uuid())
-  providerId  String
-  description String
-  amountCents Int
-  category    FinancialExpenseCategory @default(OTHER)
-  paidAt      DateTime
-  createdAt   DateTime                @default(now())
-  updatedAt   DateTime                @updatedAt
-  provider    ProviderProfile         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  id                String                  @id @default(uuid())
+  providerId        String
+  description       String
+  amountCents       Int
+  category          FinancialExpenseCategory @default(OTHER)
+  paidAt            DateTime
+  recurrence        FinancialRecurrence     @default(ONE_TIME)
+  recurrenceEndDate DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  provider          ProviderProfile         @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
   @@index([providerId, paidAt])
 }

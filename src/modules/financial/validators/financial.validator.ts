@@ -21,6 +21,7 @@ const weeklyScheduleSlotSchema = z.object({
 });
 
 const studentTypeEnum = z.enum(["PRESENTIAL", "ONLINE", "APP", "BOTH"]);
+const recurrenceEnum = z.enum(["RECURRING", "ONE_TIME"]);
 
 export const createStudentSchema = z.object({
   body: z.object({
@@ -31,7 +32,10 @@ export const createStudentSchema = z.object({
     paymentDueDay: z.number().int().min(1).max(31).optional(),
     notes: z.string().trim().max(500).optional(),
     location: z.string().trim().max(300).optional(),
-    weeklySchedule: z.array(weeklyScheduleSlotSchema).optional()
+    weeklySchedule: z.array(weeklyScheduleSlotSchema).optional(),
+    recurrence: recurrenceEnum.optional(),
+    startDate: z.string().datetime({ offset: true }).optional(),
+    recurrenceEndDate: z.string().datetime({ offset: true }).nullable().optional()
   })
 });
 
@@ -46,7 +50,10 @@ export const updateStudentSchema = z.object({
     paymentDueDay: z.number().int().min(1).max(31).nullable().optional(),
     notes: z.string().trim().max(500).optional(),
     location: z.string().trim().max(300).optional(),
-    weeklySchedule: z.array(weeklyScheduleSlotSchema).optional()
+    weeklySchedule: z.array(weeklyScheduleSlotSchema).optional(),
+    recurrence: recurrenceEnum.optional(),
+    startDate: z.string().datetime({ offset: true }).optional(),
+    recurrenceEndDate: z.string().datetime({ offset: true }).nullable().optional()
   }).refine((b) => Object.keys(b).length > 0, { message: "Informe ao menos um campo.", path: ["name"] })
 });
 
@@ -59,7 +66,9 @@ export const createIncomeSchema = z.object({
     description: z.string().trim().min(2).max(200),
     amountCents: z.number().int().min(1).max(2_000_000_000), // max ~R$20M (Int32 safe)
     studentId: z.string().uuid().optional(),
-    paidAt: z.string().datetime({ offset: true })
+    paidAt: z.string().datetime({ offset: true }),
+    recurrence: recurrenceEnum.optional(),
+    recurrenceEndDate: z.string().datetime({ offset: true }).nullable().optional()
   })
 });
 
@@ -74,6 +83,8 @@ export const updateIncomeSchema = z.object({
     amountCents: z.number().int().min(1).max(2_000_000_000).optional(),
     studentId: z.string().uuid().nullable().optional(),
     paidAt: z.string().datetime({ offset: true }).optional(),
+    recurrence: recurrenceEnum.optional(),
+    recurrenceEndDate: z.string().datetime({ offset: true }).nullable().optional()
   }).refine(b => Object.keys(b).length > 0, { message: "Informe ao menos um campo.", path: ["description"] })
 });
 
@@ -82,7 +93,9 @@ export const createExpenseSchema = z.object({
     description: z.string().trim().min(2).max(200),
     amountCents: z.number().int().min(1).max(2_000_000_000), // max ~R$20M (Int32 safe)
     category: z.enum(["GYM", "TRANSPORT", "EQUIPMENT", "MARKETING", "FORMATION", "SOFTWARE", "PROFESSIONAL_SERVICES", "RENT", "UNIFORM", "NUTRITION", "OTHER"]).optional(),
-    paidAt: z.string().datetime({ offset: true })
+    paidAt: z.string().datetime({ offset: true }),
+    recurrence: recurrenceEnum.optional(),
+    recurrenceEndDate: z.string().datetime({ offset: true }).nullable().optional()
   })
 });
 
@@ -97,6 +110,8 @@ export const updateExpenseSchema = z.object({
     amountCents: z.number().int().min(1).max(2_000_000_000).optional(),
     category: z.enum(["GYM", "TRANSPORT", "EQUIPMENT", "MARKETING", "FORMATION", "SOFTWARE", "PROFESSIONAL_SERVICES", "RENT", "UNIFORM", "NUTRITION", "OTHER"]).optional(),
     paidAt: z.string().datetime({ offset: true }).optional(),
+    recurrence: recurrenceEnum.optional(),
+    recurrenceEndDate: z.string().datetime({ offset: true }).nullable().optional()
   }).refine(b => Object.keys(b).length > 0, { message: "Informe ao menos um campo.", path: ["description"] })
 });
 

@@ -260,6 +260,99 @@ describe("financial", () => {
     expect(res.status).toBe(204);
   });
 
+  // ── Recorrência ───────────────────────────────────────────────────────────
+  describe("recurrence", () => {
+    let recStudentId = "";
+    let recIncomeId = "";
+    let currentMonth = "";
+    let nextMonth = "";
+
+    beforeAll(() => {
+      const now = new Date();
+      currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      nextMonth = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+    });
+
+    afterAll(async () => {
+      if (recIncomeId) await prisma.financialIncome.deleteMany({ where: { id: recIncomeId } });
+      if (recStudentId) await prisma.financialStudent.deleteMany({ where: { id: recStudentId } });
+    });
+
+    it("aluno recorrente (padrão) fica billableThisMonth=true; aluno avulso só no próprio mês", async () => {
+      const created = await request(app)
+        .post("/api/financial/students")
+        .set("Authorization", `Bearer ${providerToken}`)
+        .send({ name: `Rec Student ${uid("s")}`, monthlyValueCents: 30000, type: "PRESENTIAL" });
+      expect(created.status).toBe(201);
+      expect(created.body.recurrence).toBe("RECURRING");
+      recStudentId = created.body.id;
+
+      const oneTime = await request(app)
+        .post("/api/financial/students")
+        .set("Authorization", `Bearer ${providerToken}`)
+        .send({ name: `Avulso ${uid("s")}`, monthlyValueCents: 15000, type: "PRESENTIAL", recurrence: "ONE_TIME" });
+      expect(oneTime.status).toBe(201);
+
+      const list = await request(app)
+        .get("/api/financial/students")
+        .set("Authorization", `Bearer ${providerToken}`);
+      expect(list.status).toBe(200);
+      const recurring = list.body.find((s: { id: string }) => s.id === recStudentId);
+      const avulso = list.body.find((s: { id: string }) => s.id === oneTime.body.id);
+      expect(recurring.billableThisMonth).toBe(true);
+      expect(avulso.billableThisMonth).toBe(true); // criado neste mês
+
+      await prisma.financialStudent.deleteMany({ where: { id: oneTime.body.id } });
+    });
+
+    it("receita recorrente criada este mês aparece só como real (não duplica) e projeta no mês seguinte", async () => {
+      const created = await request(app)
+        .post("/api/financial/incomes")
+        .set("Authorization", `Bearer ${providerToken}`)
+        .send({
+          description: "Aluguel de sala",
+          amountCents: 40000,
+          paidAt: new Date().toISOString(),
+          recurrence: "RECURRING"
+        });
+      expect(created.status).toBe(201);
+      expect(created.body.recurrence).toBe("RECURRING");
+      recIncomeId = created.body.id;
+
+      const thisMonthList = await request(app)
+        .get(`/api/financial/incomes?month=${currentMonth}`)
+        .set("Authorization", `Bearer ${providerToken}`);
+      const thisMonthEntry = thisMonthList.body.find((i: { id: string }) => i.id === recIncomeId);
+      expect(thisMonthEntry).toBeTruthy();
+      expect(thisMonthEntry.isVirtual).toBe(false);
+
+      const nextMonthList = await request(app)
+        .get(`/api/financial/incomes?month=${nextMonth}`)
+        .set("Authorization", `Bearer ${providerToken}`);
+      const nextMonthEntry = nextMonthList.body.find((i: { id: string }) => i.id === recIncomeId);
+      expect(nextMonthEntry).toBeTruthy();
+      expect(nextMonthEntry.isVirtual).toBe(true);
+      expect(nextMonthEntry.amountCents).toBe(40000);
+    });
+
+    it("PATCH recurrenceEndDate na receita interrompe a projeção futura", async () => {
+      const { from } = { from: new Date() }; // mês atual, para encerrar antes do próximo mês
+      const endOfThisMonth = new Date(from.getFullYear(), from.getMonth() + 1, 0, 23, 59, 59);
+      const patch = await request(app)
+        .patch(`/api/financial/incomes/${recIncomeId}`)
+        .set("Authorization", `Bearer ${providerToken}`)
+        .send({ recurrenceEndDate: endOfThisMonth.toISOString() });
+      expect(patch.status).toBe(200);
+
+      const nextMonthList = await request(app)
+        .get(`/api/financial/incomes?month=${nextMonth}`)
+        .set("Authorization", `Bearer ${providerToken}`);
+      const stillThere = nextMonthList.body.find((i: { id: string }) => i.id === recIncomeId);
+      expect(stillThere).toBeFalsy();
+    });
+  });
+
   // ── Role guard ────────────────────────────────────────────────────────────
   it("GET /financial/dashboard rejects CLIENT role", async () => {
     const email = `${uid("fin_client")}@test.com`;
