@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import * as Haptics from "expo-haptics";
-import { ScrollView, StatusBar, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
@@ -8,17 +8,18 @@ import { ConsultancyRequest, consultancyApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText } from "../../components/mv";
-import { ConsultancyTabSwitcher } from "../../components/professional/ConsultancyTabSwitcher";
 import { PressableScale } from "../../components/polish/PressableScale";
-import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { formatBRDate, formatCurrencyBRL } from "../../utils/formatters";
-import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
-import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
 import { useConsultancyCenterData, offerEffectivePriceCents } from "../../hooks/useConsultancyCenterData";
 
-type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalConsultancyRequests">;
+type CenterNavigation = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalConsultancyCenter">["navigation"];
+
+// Painel embutido na aba "Pedidos" de ProfessionalConsultancyCenterScreen —
+// não é mais uma tela/rota própria (ver Etapa 7: unificação das 3 abas numa
+// única tela, sem navegação/transição entre elas).
+type Props = { navigation: CenterNavigation; onSwitchToOffers: () => void };
 
 function requestStatusLabel(status: ConsultancyRequest["status"]) {
   const map: Record<string, string> = {
@@ -40,7 +41,7 @@ function requestStatusVariant(status: ConsultancyRequest["status"]): "green" | "
   return "gray";
 }
 
-export function ProfessionalConsultancyRequestsScreen({ navigation }: Props) {
+export function ProfessionalConsultancyRequestsScreen({ navigation, onSwitchToOffers }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
 
@@ -108,18 +109,10 @@ export function ProfessionalConsultancyRequestsScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.consultancy.requests">
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-
-      <ProfessionalScreenHeader
-        title="Pedidos"
-        subtitle="Solicitações de alunos"
-        onBack={() => navigation.replace("ProfessionalConsultancyCenter")}
-      />
-
-      <ScreenEntrance>
       <ScrollView
+        style={{ flex: 1 }}
         automaticallyAdjustKeyboardInsets={true}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 12 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 100, gap: 12 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <MvRefreshControl refreshing={centerQuery.isRefetching} onRefresh={() => void centerQuery.refetch()} />
@@ -133,14 +126,6 @@ export function ProfessionalConsultancyRequestsScreen({ navigation }: Props) {
         ) : (
         <>
         <MvCard style={{ gap: 10 }}>
-          <ConsultancyTabSwitcher
-            active="requests"
-            onNavigate={(key) => {
-              if (key === "dashboard") navigation.replace("ProfessionalConsultancyCenter");
-              else if (key === "offers") navigation.replace("ProfessionalConsultancyOffers");
-            }}
-          />
-
           <View style={{ gap: 8 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
               <MvText variant="semi2">Solicitações ativas</MvText>
@@ -162,7 +147,7 @@ export function ProfessionalConsultancyRequestsScreen({ navigation }: Props) {
                 </MvText>
                 <PressableScale
                   scale={0.96}
-                  onPress={() => navigation.replace("ProfessionalConsultancyOffers")}
+                  onPress={onSwitchToOffers}
                   style={{ backgroundColor: theme.primarySubtle, borderRadius: 99, paddingHorizontal: 20, paddingVertical: 10, borderWidth: 1, borderColor: theme.primarySubtleBorder }}
                 >
                   <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>
@@ -288,18 +273,6 @@ export function ProfessionalConsultancyRequestsScreen({ navigation }: Props) {
         </>
         )}
       </ScrollView>
-      </ScreenEntrance>
-
-      <ProfessionalBottomNav
-        activeKey="consultoria"
-        onPress={(key) => {
-          if (key === "consultoria") { navigation.replace("ProfessionalConsultancyCenter"); return; }
-          if (key === "home") navigation.navigate("ProfessionalTabs", { screen: "ProfessionalHome" } as never);
-          else if (key === "agenda") navigation.navigate("ProfessionalTabs", { screen: "ProfessionalAgenda" } as never);
-          else if (key === "alunos") navigation.navigate("ProfessionalStudents" as never);
-          else if (key === "financeiro") navigation.navigate("ProfessionalTabs", { screen: "PayoutStatus" } as never);
-        }}
-      />
     </View>
   );
 }

@@ -592,7 +592,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
               {!searchTerm.trim() ? (
                 <PressableScale
                   scale={0.96}
-                  onPress={() => navigation.navigate("ProfessionalConsultancyOffers")}
+                  onPress={() => navigation.navigate("ProfessionalConsultancyCenter", { initialTab: "offers" })}
                   style={{
                     flexDirection: "row", alignItems: "center", gap: 6,
                     paddingHorizontal: 20, paddingVertical: 12,

@@ -12,9 +12,8 @@ const TABS: Array<{ key: ConsultancyTabKey; label: string; icon: keyof typeof Io
   { key: "requests", label: "Pedidos", icon: "chatbubbles-outline" },
 ];
 
-// As 3 telas da área de Consultoria (Painel/Vitrine/Pedidos) são destinos de
-// navegação reais — trocar de aba aqui faz um navigation.replace() entre elas
-// (não guarda histórico entre si, como abas de verdade).
+// As 3 áreas de Consultoria (Painel/Vitrine/Pedidos) vivem numa única tela —
+// trocar de aba aqui só troca um estado local, sem navegação nem transição.
 export function ConsultancyTabSwitcher({
   active,
   onNavigate,

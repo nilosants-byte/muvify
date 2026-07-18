@@ -13,15 +13,20 @@ import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
-import { ConsultancyTabSwitcher } from "../../components/professional/ConsultancyTabSwitcher";
+import { ConsultancyTabSwitcher, ConsultancyTabKey } from "../../components/professional/ConsultancyTabSwitcher";
+import { ProfessionalConsultancyOffersScreen } from "./ProfessionalConsultancyOffersScreen";
+import { ProfessionalConsultancyRequestsScreen } from "./ProfessionalConsultancyRequestsScreen";
 import { handleScreenError } from "../shared/api-helpers";
 import { useConsultancyCenterData } from "../../hooks/useConsultancyCenterData";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalConsultancyCenter">;
 
-export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
+// Painel, Vitrine e Pedidos vivem nesta única tela — trocar de aba só troca
+// o estado local `activeTab`, sem navegação nem transição (ver Etapa 7).
+export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props) {
   const { theme } = useMvTheme();
   const iconColor = theme.mode === "dark" ? "#D8E0D8" : "#394239";
+  const [activeTab, setActiveTab] = React.useState<ConsultancyTabKey>(route.params?.initialTab ?? "dashboard");
 
   const {
     centerQuery,
@@ -150,7 +155,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
 
       <ProfessionalScreenHeader
         title="Consultoria"
-        subtitle="Painel geral"
+        subtitle={activeTab === "offers" ? "Suas ofertas de consultoria" : activeTab === "requests" ? "Solicitações de alunos" : "Painel geral"}
         onBack={() => {
           if (navigation.canGoBack()) navigation.goBack();
           else navigation.navigate("ProfessionalTabs", { screen: "ProfessionalHome" } as never);
@@ -159,22 +164,62 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
       />
 
       <ScreenEntrance>
-      <ScrollView
-        automaticallyAdjustKeyboardInsets={true}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 12 }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <MvRefreshControl refreshing={centerQuery.isRefetching} onRefresh={() => void onRefresh()} />
-        }
-      >
+      <View style={{ flex: 1 }}>
         {loading ? (
-          <>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, gap: 12 }} showsVerticalScrollIndicator={false}>
             <SkeletonCard />
             <SkeletonCard />
             <SkeletonCard />
-          </>
+          </ScrollView>
         ) : (
         <>
+        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, gap: 10 }}>
+          <ConsultancyTabSwitcher active={activeTab} onNavigate={setActiveTab} />
+
+          {needsProfileSetup ? (
+            <MvCard>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <Ionicons name="warning-outline" size={16} color={theme.warning} />
+                <MvText variant="semi2">Perfil profissional incompleto</MvText>
+              </View>
+              <MvText variant="body4" color="secondary" style={{ marginBottom: 10 }}>
+                Antes de publicar ofertas e responder alunos, conclua seu perfil profissional.
+              </MvText>
+              <MvButton
+                label="Ir para meu perfil"
+                onPress={() => navigation.navigate("ProfessionalTabs", { screen: "ProfessionalProfileEditor" })}
+              />
+            </MvCard>
+          ) : null}
+
+          {!crefValidated ? (
+            <MvCard>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <Ionicons name="shield-checkmark-outline" size={16} color={theme.warning} />
+                <MvText variant="semi2">CREF pendente de validação</MvText>
+              </View>
+              <MvText variant="body4" color="secondary" style={{ marginBottom: 10 }}>
+                Esta funcionalidade ficará disponível quando seu CREF for aprovado.
+              </MvText>
+              <MvButton
+                variant="outline"
+                label="Ir para CREF e documentos"
+                onPress={() => navigation.navigate("ProfessionalCredentials")}
+              />
+            </MvCard>
+          ) : null}
+        </View>
+
+        <View style={{ flex: 1, display: activeTab === "dashboard" ? "flex" : "none" }}>
+        <ScrollView
+          style={{ flex: 1 }}
+          automaticallyAdjustKeyboardInsets={true}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 12 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <MvRefreshControl refreshing={centerQuery.isRefetching} onRefresh={() => void onRefresh()} />
+          }
+        >
         <MvCard style={{ padding: 0, overflow: "hidden" }}>
           <View
             style={{
@@ -258,61 +303,20 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
                 icon="chatbubble-ellipses-outline"
                 title="Responder agora"
                 subtitle={openRequests.length ? `${openRequests.length} ${openRequests.length === 1 ? "pendente" : "pendentes"}` : "Sem pendências"}
-                onPress={() => navigation.replace("ProfessionalConsultancyRequests")}
+                onPress={() => setActiveTab("requests")}
                 urgent={openRequests.length > 0}
               />
               <QuickAction
                 icon="pricetag-outline"
                 title="Nova oferta"
                 subtitle="Cadastrar e publicar serviço"
-                onPress={() => navigation.replace("ProfessionalConsultancyOffers")}
+                onPress={() => setActiveTab("offers")}
               />
             </View>
           </View>
         </MvCard>
 
-        {needsProfileSetup ? (
-          <MvCard>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <Ionicons name="warning-outline" size={16} color={theme.warning} />
-              <MvText variant="semi2">Perfil profissional incompleto</MvText>
-            </View>
-            <MvText variant="body4" color="secondary" style={{ marginBottom: 10 }}>
-              Antes de publicar ofertas e responder alunos, conclua seu perfil profissional.
-            </MvText>
-            <MvButton
-              label="Ir para meu perfil"
-              onPress={() => navigation.navigate("ProfessionalTabs", { screen: "ProfessionalProfileEditor" })}
-            />
-          </MvCard>
-        ) : null}
-
-        {!crefValidated ? (
-          <MvCard>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <Ionicons name="shield-checkmark-outline" size={16} color={theme.warning} />
-              <MvText variant="semi2">CREF pendente de validação</MvText>
-            </View>
-            <MvText variant="body4" color="secondary" style={{ marginBottom: 10 }}>
-              Esta funcionalidade ficará disponível quando seu CREF for aprovado.
-            </MvText>
-            <MvButton
-              variant="outline"
-              label="Ir para CREF e documentos"
-              onPress={() => navigation.navigate("ProfessionalCredentials")}
-            />
-          </MvCard>
-        ) : null}
-
         <MvCard style={{ gap: 10 }}>
-          <ConsultancyTabSwitcher
-            active="dashboard"
-            onNavigate={(key) => {
-              if (key === "offers") navigation.replace("ProfessionalConsultancyOffers");
-              else if (key === "requests") navigation.replace("ProfessionalConsultancyRequests");
-            }}
-          />
-
           <View style={{ gap: 10 }}>
             {readinessScore >= 1 ? (
               <View
@@ -431,9 +435,19 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
 
           </View>
         </MvCard>
+        </ScrollView>
+        </View>
+
+        <View style={{ flex: 1, display: activeTab === "offers" ? "flex" : "none" }}>
+          <ProfessionalConsultancyOffersScreen navigation={navigation} />
+        </View>
+
+        <View style={{ flex: 1, display: activeTab === "requests" ? "flex" : "none" }}>
+          <ProfessionalConsultancyRequestsScreen navigation={navigation} onSwitchToOffers={() => setActiveTab("offers")} />
+        </View>
         </>
         )}
-      </ScrollView>
+      </View>
       </ScreenEntrance>
 
       <ProfessionalBottomNav

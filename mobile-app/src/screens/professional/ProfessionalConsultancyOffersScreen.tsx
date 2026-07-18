@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import * as Haptics from "expo-haptics";
 import { trackEvent } from "../../services/analytics";
-import { Alert, Modal, ScrollView, StatusBar, View } from "react-native";
+import { Alert, Modal, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -16,17 +16,18 @@ import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText } from "../../components/mv";
 import { StepProgressBar } from "../../components/professional/UXReformComponents";
-import { ConsultancyTabSwitcher } from "../../components/professional/ConsultancyTabSwitcher";
 import { PressableScale } from "../../components/polish/PressableScale";
-import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { formatBRDate, formatCurrencyBRL, maskDateInputBR, maskPriceInput } from "../../utils/formatters";
-import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
-import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
 import { useConsultancyCenterData, offerEffectivePriceCents } from "../../hooks/useConsultancyCenterData";
 
-type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalConsultancyOffers">;
+type CenterNavigation = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalConsultancyCenter">["navigation"];
+
+// Painel embutido na aba "Vitrine" de ProfessionalConsultancyCenterScreen —
+// não é mais uma tela/rota própria (ver Etapa 7: unificação das 3 abas numa
+// única tela, sem navegação/transição entre elas).
+type Props = { navigation: CenterNavigation };
 
 const offerKindOptions: Array<{ label: string; value: ServiceOfferKind }> = [
   { label: "Presencial", value: "PRESENTIAL" },
@@ -321,18 +322,10 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.consultancy.offers">
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-
-      <ProfessionalScreenHeader
-        title="Vitrine"
-        subtitle="Suas ofertas de consultoria"
-        onBack={() => navigation.replace("ProfessionalConsultancyCenter")}
-      />
-
-      <ScreenEntrance>
       <ScrollView
+        style={{ flex: 1 }}
         automaticallyAdjustKeyboardInsets={true}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 12 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 100, gap: 12 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <MvRefreshControl refreshing={centerQuery.isRefetching} onRefresh={() => void centerQuery.refetch()} />
@@ -346,14 +339,6 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
         ) : (
         <>
         <MvCard style={{ gap: 10 }}>
-          <ConsultancyTabSwitcher
-            active="offers"
-            onNavigate={(key) => {
-              if (key === "dashboard") navigation.replace("ProfessionalConsultancyCenter");
-              else if (key === "requests") navigation.replace("ProfessionalConsultancyRequests");
-            }}
-          />
-
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <MvText variant="semi2">Sua vitrine</MvText>
             <MvBadge label={`${offers.length} oferta${offers.length === 1 ? "" : "s"}`} variant={offers.length ? "blue" : "gray"} />
@@ -664,18 +649,6 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
         </>
         )}
       </ScrollView>
-      </ScreenEntrance>
-
-      <ProfessionalBottomNav
-        activeKey="consultoria"
-        onPress={(key) => {
-          if (key === "consultoria") { navigation.replace("ProfessionalConsultancyCenter"); return; }
-          if (key === "home") navigation.navigate("ProfessionalTabs", { screen: "ProfessionalHome" } as never);
-          else if (key === "agenda") navigation.navigate("ProfessionalTabs", { screen: "ProfessionalAgenda" } as never);
-          else if (key === "alunos") navigation.navigate("ProfessionalStudents" as never);
-          else if (key === "financeiro") navigation.navigate("ProfessionalTabs", { screen: "PayoutStatus" } as never);
-        }}
-      />
     </View>
   );
 }
