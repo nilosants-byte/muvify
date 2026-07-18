@@ -6,7 +6,7 @@ import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { consultancyApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvInput, MvProgressBar, MvRefreshControl, MvText } from "../../components/mv";
+import { MvBadge, MvButton, MvCard, MvInput, MvProgressBar, MvRefreshControl, MvText, MvToggle } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
@@ -36,9 +36,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
     openRequests,
     respondedRequests,
     acceptedRequests,
-    promotionCount,
     averageTicket,
-    onlineOffers,
     readinessChecklist,
     readinessScore,
     nextGuidedStep,
@@ -46,6 +44,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
   } = useConsultancyCenterData();
 
   const [savingSettings, setSavingSettings] = React.useState(false);
+  const [slaEditorOpen, setSlaEditorOpen] = React.useState(false);
   const { runWithAuth, showToast } = useAppState();
 
   React.useEffect(() => {
@@ -68,8 +67,6 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
       setSavingSettings(false);
     }
   }
-
-  const firstOpenRequest = openRequests[0];
 
   function StatCard({
     label,
@@ -342,138 +339,114 @@ export function ProfessionalConsultancyCenterScreen({ navigation }: Props) {
           />
 
           <View style={{ gap: 10 }}>
+            {readinessScore >= 1 ? (
+              <View
+                style={{
+                  flexDirection: "row", alignItems: "center", gap: 8,
+                  borderWidth: 1, borderColor: theme.primarySubtleBorder, borderRadius: 12,
+                  padding: 10, backgroundColor: theme.primarySubtle,
+                }}
+              >
+                <Ionicons name="checkmark-circle" size={18} color={theme.textGreen} />
+                <MvText variant="semi3" style={{ color: theme.textGreen }}>Tudo pronto para vender</MvText>
+              </View>
+            ) : (
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 12,
+                  padding: 10,
+                  gap: 10,
+                  backgroundColor: theme.inputBg,
+                }}
+              >
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <MvText variant="semi2">Checklist de prontidão</MvText>
+                  <MvText variant="body4" color="secondary">
+                    {Math.round(readinessScore * 100)}%
+                  </MvText>
+                </View>
+                <MvProgressBar progress={readinessScore} height={5} />
+                <View style={{ gap: 8 }}>
+                  {readinessChecklist.map((item) => (
+                    <View key={item.key} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+                      <Ionicons
+                        name={item.done ? "checkmark-circle" : "ellipse-outline"}
+                        size={16}
+                        color={item.done ? theme.textGreen : theme.text2}
+                        style={{ marginTop: 1 }}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <MvText variant="semi3">{item.title}</MvText>
+                        <MvText variant="caption" color="secondary">
+                          {item.detail}
+                        </MvText>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
             <View
               style={{
                 borderWidth: 1,
                 borderColor: theme.border,
                 borderRadius: 12,
-                padding: 10,
+                padding: 12,
                 gap: 10,
                 backgroundColor: theme.inputBg,
               }}
             >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <MvText variant="semi2">Checklist de prontidão</MvText>
-                <MvText variant="body4" color="secondary">
-                  {Math.round(readinessScore * 100)}%
-                </MvText>
-              </View>
-              <MvProgressBar progress={readinessScore} height={5} />
-              <View style={{ gap: 8 }}>
-                {readinessChecklist.map((item) => (
-                  <View key={item.key} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
-                    <Ionicons
-                      name={item.done ? "checkmark-circle" : "ellipse-outline"}
-                      size={16}
-                      color={item.done ? theme.textGreen : theme.text2}
-                      style={{ marginTop: 1 }}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <MvText variant="semi3">{item.title}</MvText>
-                      <MvText variant="caption" color="secondary">
-                        {item.detail}
-                      </MvText>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            <View
-              style={{
-                borderWidth: 1,
-                borderColor: theme.border,
-                borderRadius: 12,
-                padding: 10,
-                gap: 8,
-                backgroundColor: theme.inputBg,
-              }}
-            >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <MvText variant="semi2">Modo consultoria online</MvText>
-                <MvBadge label={settingsEnabled ? "Habilitada" : "Desabilitada"} variant={settingsEnabled ? "green" : "orange"} />
-              </View>
-              <MvText variant="body4" color="secondary">
-                Defina em quantos dias você entrega um plano após o aceite do aluno.
-              </MvText>
-              <MvInput
-                keyboardType="numeric"
-                placeholder="Prazo máximo de entrega (dias)"
-                value={responseSlaDays}
-                onChangeText={setResponseSlaDays}
-              />
-              <View style={{ flexDirection: "row", gap: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <Ionicons name="radio-outline" size={18} color={settingsEnabled ? theme.textGreen : theme.text3} />
                 <View style={{ flex: 1 }}>
-                  <MvButton label="Habilitar" loading={savingSettings} onPress={() => void toggleOnlineSetting(true)} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <MvButton variant="outline" label="Desabilitar" loading={savingSettings} onPress={() => void toggleOnlineSetting(false)} />
-                </View>
-              </View>
-            </View>
-
-            <View
-              style={{
-                borderWidth: 1,
-                borderColor: theme.border,
-                borderRadius: 12,
-                padding: 10,
-                gap: 8,
-                backgroundColor: theme.inputBg,
-              }}
-            >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <MvText variant="semi2">Treinos pré-prontos</MvText>
-                <MvBadge label={prebuiltPlanCount ? `${prebuiltPlanCount} disponíveis` : "Nenhum"} variant={prebuiltPlanCount ? "green" : "orange"} />
-              </View>
-              <MvText variant="body4" color="secondary">
-                Deixe ao menos um treino base pronto para responder solicitações com agilidade.
-              </MvText>
-              <MvButton label={prebuiltPlanCount ? "Gerenciar treinos" : "Criar primeiro treino"} onPress={() => navigation.navigate("TrainingCreation")} />
-            </View>
-
-            <View
-              style={{
-                borderWidth: 1,
-                borderColor: theme.border,
-                borderRadius: 12,
-                padding: 10,
-                gap: 8,
-                backgroundColor: theme.inputBg,
-              }}
-            >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <MvText variant="semi2">Fila de solicitações</MvText>
-                <MvBadge label={`${openRequests.length} abertas`} variant={openRequests.length ? "orange" : "gray"} />
-              </View>
-              {firstOpenRequest ? (
-                <>
-                  <MvText variant="semi3">{firstOpenRequest.client?.name ?? "Aluno"}</MvText>
-                  <MvText variant="body4" color="secondary">
-                    Necessidade: {firstOpenRequest.trainingNeedText || "Não informado"}
+                  <MvText variant="semi3">Consultoria online</MvText>
+                  <MvText variant="caption" color="secondary">
+                    {settingsEnabled ? `Entrega em até ${responseSlaDays} dia(s)` : "Desligada — você não recebe novas solicitações"}
                   </MvText>
-                  <MvButton variant="outline" label="Ir para responder" onPress={() => navigation.replace("ProfessionalConsultancyRequests")} />
-                </>
-              ) : (
-                <MvText variant="body4" color="secondary">
-                  Sem solicitações abertas agora. Continue promovendo seus serviços.
-                </MvText>
-              )}
+                </View>
+                <MvToggle value={settingsEnabled} onValueChange={(v) => void toggleOnlineSetting(v)} disabled={savingSettings} />
+                <PressableScale onPress={() => setSlaEditorOpen((current) => !current)} style={{ padding: 4 }}>
+                  <Ionicons name={slaEditorOpen ? "chevron-up" : "pencil-outline"} size={16} color={theme.text3} />
+                </PressableScale>
+              </View>
+              {slaEditorOpen ? (
+                <View style={{ gap: 8 }}>
+                  <MvInput
+                    keyboardType="numeric"
+                    placeholder="Prazo máximo de entrega (dias)"
+                    value={responseSlaDays}
+                    onChangeText={setResponseSlaDays}
+                  />
+                  <MvButton
+                    label="Salvar prazo"
+                    loading={savingSettings}
+                    onPress={() => { void toggleOnlineSetting(settingsEnabled); setSlaEditorOpen(false); }}
+                  />
+                </View>
+              ) : null}
             </View>
-          </View>
-        </MvCard>
 
-        <MvCard>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <View style={{ flex: 1 }}>
-              <MvText variant="semi2">Resumo rápido da operação</MvText>
-              <MvText variant="body4" color="secondary">
-                {onlineOffers.length
-                  ? `Você tem ${onlineOffers.length} oferta(s) online ativa(s) e ${promotionCount} promoção(ões) em andamento.`
-                  : "Você ainda não possui ofertas online ativas."}
-              </MvText>
-            </View>
-            <MvBadge label={openRequests.length ? "Prioridade alta" : "Sem pendências"} variant={openRequests.length ? "orange" : "green"} />
+            {prebuiltPlanCount === 0 ? (
+              <PressableScale
+                onPress={() => navigation.navigate("TrainingCreation")}
+                style={{
+                  flexDirection: "row", alignItems: "center", gap: 10,
+                  borderWidth: 1, borderColor: theme.warningSubtleBorder, borderRadius: 12,
+                  padding: 12, backgroundColor: theme.warningSubtle,
+                }}
+              >
+                <Ionicons name="barbell-outline" size={18} color={theme.warning} />
+                <View style={{ flex: 1 }}>
+                  <MvText variant="semi3" style={{ color: theme.warning }}>Cadastre um treino pré-pronto</MvText>
+                  <MvText variant="caption" color="secondary">Agiliza sua resposta às solicitações de alunos</MvText>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={theme.warning} />
+              </PressableScale>
+            ) : null}
+
           </View>
         </MvCard>
         </>
