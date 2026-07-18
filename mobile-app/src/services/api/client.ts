@@ -2190,7 +2190,7 @@ export const financialApi = {
   createIncome(token: string, body: { description: string; amountCents: number; studentId?: string; paidAt: string; recurrence?: FinancialRecurrence; recurrenceEndDate?: string | null }) {
     return apiRequest<FinancialIncome>("/financial/incomes", { method: "POST", token, body });
   },
-  updateIncome(token: string, id: string, body: { description?: string; amountCents?: number; studentId?: string | null; paidAt?: string; recurrence?: FinancialRecurrence; recurrenceEndDate?: string | null }) {
+  updateIncome(token: string, id: string, body: { description?: string; amountCents?: number; studentId?: string | null; paidAt?: string; recurrence?: FinancialRecurrence; recurrenceEndDate?: string | null; occurrenceMonth?: string }) {
     return apiRequest<FinancialIncome>(`/financial/incomes/${id}`, { method: "PATCH", token, body });
   },
   deleteIncome(token: string, id: string) {
@@ -2203,7 +2203,7 @@ export const financialApi = {
   createExpense(token: string, body: { description: string; amountCents: number; category?: FinancialExpenseCategory; paidAt: string; recurrence?: FinancialRecurrence; recurrenceEndDate?: string | null }) {
     return apiRequest<FinancialExpense>("/financial/expenses", { method: "POST", token, body });
   },
-  updateExpense(token: string, id: string, body: { description?: string; amountCents?: number; category?: FinancialExpenseCategory; paidAt?: string; recurrence?: FinancialRecurrence; recurrenceEndDate?: string | null }) {
+  updateExpense(token: string, id: string, body: { description?: string; amountCents?: number; category?: FinancialExpenseCategory; paidAt?: string; recurrence?: FinancialRecurrence; recurrenceEndDate?: string | null; occurrenceMonth?: string }) {
     return apiRequest<FinancialExpense>(`/financial/expenses/${id}`, { method: "PATCH", token, body });
   },
   deleteExpense(token: string, id: string) {

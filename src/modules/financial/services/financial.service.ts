@@ -29,6 +29,13 @@ function clampDayToMonth(date: Date, month: string) {
   return new Date(y, m - 1, day, date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
 }
 
+// Último instante do mês anterior a `month` — usado como corte de uma série
+// recorrente que está sendo "dividida" (ver updateIncome/updateExpense).
+function endOfMonthBefore(month: string) {
+  const { from } = monthBounds(month);
+  return new Date(from.getFullYear(), from.getMonth(), 0, 23, 59, 59, 999);
+}
+
 // Um aluno "cobra" no mês-alvo se: está ativo, e (a) é avulso e o mês-alvo é
 // o mês em que ele começou, ou (b) é recorrente, já começou e (se tiver data
 // de término) ainda não passou dela.
@@ -93,6 +100,10 @@ type UpdateIncomeInput = {
   paidAt?: string;
   recurrence?: FinancialRecurrence;
   recurrenceEndDate?: string | null;
+  /** mês (YYYY-MM) da ocorrência que o usuário está editando na tela — usado
+   *  só para lançamentos recorrentes, pra saber se a edição é na âncora
+   *  (edição normal) ou numa projeção futura (precisa "dividir a série"). */
+  occurrenceMonth?: string;
 };
 
 type CreateExpenseInput = {
@@ -111,6 +122,7 @@ type UpdateExpenseInput = {
   paidAt?: string;
   recurrence?: FinancialRecurrence;
   recurrenceEndDate?: string | null;
+  occurrenceMonth?: string;
 };
 
 type UpsertGoalInput = {
@@ -406,6 +418,38 @@ export class FinancialService {
       const s = await prisma.financialStudent.findUnique({ where: { id: input.studentId } });
       if (!s || s.providerId !== provider.id) throw new AppError("Aluno não encontrado.", StatusCodes.BAD_REQUEST);
     }
+
+    // Editando uma projeção de mês futuro (não a âncora): não dá pra só
+    // sobrescrever a linha real, porque ela também é a base de meses já
+    // passados — isso mudaria o histórico retroativamente. Em vez disso,
+    // "fecha" a série antiga no fim do mês anterior (preserva os valores já
+    // registrados) e nasce uma série nova a partir do mês editado.
+    const anchorMonth = monthKeyOf(income.paidAt);
+    const isSplit = income.recurrence === FinancialRecurrence.RECURRING
+      && input.occurrenceMonth !== undefined
+      && input.occurrenceMonth !== anchorMonth;
+
+    if (isSplit) {
+      const occurrenceMonth = input.occurrenceMonth!;
+      await prisma.financialIncome.update({
+        where: { id: incomeId },
+        data: { recurrenceEndDate: endOfMonthBefore(occurrenceMonth) }
+      });
+      return prisma.financialIncome.create({
+        data: {
+          providerId: provider.id,
+          studentId: input.studentId !== undefined ? input.studentId : income.studentId,
+          description: (input.description ?? income.description).trim(),
+          amountCents: input.amountCents ?? income.amountCents,
+          source: "MANUAL",
+          paidAt: input.paidAt !== undefined ? new Date(input.paidAt) : clampDayToMonth(income.paidAt, occurrenceMonth),
+          recurrence: input.recurrence ?? FinancialRecurrence.RECURRING,
+          recurrenceEndDate: input.recurrenceEndDate !== undefined ? (input.recurrenceEndDate ? new Date(input.recurrenceEndDate) : null) : income.recurrenceEndDate
+        },
+        include: { student: { select: { id: true, name: true } } }
+      });
+    }
+
     return prisma.financialIncome.update({
       where: { id: incomeId },
       data: {
@@ -453,6 +497,31 @@ export class FinancialService {
     const provider = await getProviderByUserId(userId);
     const expense = await prisma.financialExpense.findUnique({ where: { id: expenseId } });
     if (!expense || expense.providerId !== provider.id) throw new AppError("Despesa não encontrada.", StatusCodes.NOT_FOUND);
+
+    const anchorMonth = monthKeyOf(expense.paidAt);
+    const isSplit = expense.recurrence === FinancialRecurrence.RECURRING
+      && input.occurrenceMonth !== undefined
+      && input.occurrenceMonth !== anchorMonth;
+
+    if (isSplit) {
+      const occurrenceMonth = input.occurrenceMonth!;
+      await prisma.financialExpense.update({
+        where: { id: expenseId },
+        data: { recurrenceEndDate: endOfMonthBefore(occurrenceMonth) }
+      });
+      return prisma.financialExpense.create({
+        data: {
+          providerId: provider.id,
+          description: (input.description ?? expense.description).trim(),
+          amountCents: input.amountCents ?? expense.amountCents,
+          category: input.category ?? expense.category,
+          paidAt: input.paidAt !== undefined ? new Date(input.paidAt) : clampDayToMonth(expense.paidAt, occurrenceMonth),
+          recurrence: input.recurrence ?? FinancialRecurrence.RECURRING,
+          recurrenceEndDate: input.recurrenceEndDate !== undefined ? (input.recurrenceEndDate ? new Date(input.recurrenceEndDate) : null) : expense.recurrenceEndDate
+        }
+      });
+    }
+
     return prisma.financialExpense.update({
       where: { id: expenseId },
       data: {

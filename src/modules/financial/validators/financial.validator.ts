@@ -84,7 +84,8 @@ export const updateIncomeSchema = z.object({
     studentId: z.string().uuid().nullable().optional(),
     paidAt: z.string().datetime({ offset: true }).optional(),
     recurrence: recurrenceEnum.optional(),
-    recurrenceEndDate: z.string().datetime({ offset: true }).nullable().optional()
+    recurrenceEndDate: z.string().datetime({ offset: true }).nullable().optional(),
+    occurrenceMonth: monthSchema.optional()
   }).refine(b => Object.keys(b).length > 0, { message: "Informe ao menos um campo.", path: ["description"] })
 });
 
@@ -111,7 +112,8 @@ export const updateExpenseSchema = z.object({
     category: z.enum(["GYM", "TRANSPORT", "EQUIPMENT", "MARKETING", "FORMATION", "SOFTWARE", "PROFESSIONAL_SERVICES", "RENT", "UNIFORM", "NUTRITION", "OTHER"]).optional(),
     paidAt: z.string().datetime({ offset: true }).optional(),
     recurrence: recurrenceEnum.optional(),
-    recurrenceEndDate: z.string().datetime({ offset: true }).nullable().optional()
+    recurrenceEndDate: z.string().datetime({ offset: true }).nullable().optional(),
+    occurrenceMonth: monthSchema.optional()
   }).refine(b => Object.keys(b).length > 0, { message: "Informe ao menos um campo.", path: ["description"] })
 });
 

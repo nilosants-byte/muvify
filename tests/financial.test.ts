@@ -336,6 +336,46 @@ describe("financial", () => {
       expect(nextMonthEntry.amountCents).toBe(40000);
     });
 
+    it("editar a projeção de um mês futuro não altera o valor já registrado em meses anteriores", async () => {
+      const created = await request(app)
+        .post("/api/financial/incomes")
+        .set("Authorization", `Bearer ${providerToken}`)
+        .send({
+          description: "Aluguel de sala (split)",
+          amountCents: 50000,
+          paidAt: new Date().toISOString(),
+          recurrence: "RECURRING"
+        });
+      expect(created.status).toBe(201);
+      const seriesId = created.body.id;
+
+      // Edita a projeção do mês seguinte, dizendo ao backend qual mês está
+      // sendo editado (occurrenceMonth) — isso deve "dividir a série".
+      const patch = await request(app)
+        .patch(`/api/financial/incomes/${seriesId}`)
+        .set("Authorization", `Bearer ${providerToken}`)
+        .send({ amountCents: 90000, occurrenceMonth: nextMonth });
+      expect(patch.status).toBe(200);
+      const newSeriesId = patch.body.id;
+      expect(newSeriesId).not.toBe(seriesId); // criou uma nova linha, não sobrescreveu a original
+
+      const thisMonthList = await request(app)
+        .get(`/api/financial/incomes?month=${currentMonth}`)
+        .set("Authorization", `Bearer ${providerToken}`);
+      const originalStillThere = thisMonthList.body.find((i: { id: string }) => i.id === seriesId);
+      expect(originalStillThere).toBeTruthy();
+      expect(originalStillThere.amountCents).toBe(50000); // valor histórico preservado
+
+      const nextMonthList = await request(app)
+        .get(`/api/financial/incomes?month=${nextMonth}`)
+        .set("Authorization", `Bearer ${providerToken}`);
+      const updatedEntry = nextMonthList.body.find((i: { id: string }) => i.id === newSeriesId);
+      expect(updatedEntry).toBeTruthy();
+      expect(updatedEntry.amountCents).toBe(90000);
+
+      await prisma.financialIncome.deleteMany({ where: { id: { in: [seriesId, newSeriesId] } } });
+    });
+
     it("PATCH recurrenceEndDate na receita interrompe a projeção futura", async () => {
       const { from } = { from: new Date() }; // mês atual, para encerrar antes do próximo mês
       const endOfThisMonth = new Date(from.getFullYear(), from.getMonth() + 1, 0, 23, 59, 59);

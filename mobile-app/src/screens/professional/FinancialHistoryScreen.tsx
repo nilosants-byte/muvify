@@ -356,15 +356,20 @@ export function FinancialHistoryScreen({ navigation }: Props) {
     if (!editingIncome || !iDesc.trim()) return;
     try {
       setSaving(true);
-      const updated = await runWithAuth(t => financialApi.updateIncome(t, editingIncome.id, {
+      const editingId = editingIncome.id;
+      const updated = await runWithAuth(t => financialApi.updateIncome(t, editingId, {
         description: iDesc.trim(),
         amountCents: parseCents(iValue),
         paidAt: new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
         recurrence: (iBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
         recurrenceEndDate: iBilling === "period" ? iRecurrenceEndDate.toISOString() : null,
+        occurrenceMonth: selectedMonth,
       }));
+      // Editar uma projeção de mês futuro "divide a série" no backend (pra não
+      // reescrever o histórico) e devolve uma linha nova, com id diferente —
+      // por isso o match é pelo id que estava sendo editado, não pelo retornado.
       queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
-        old ? { ...old, incomes: old.incomes.map(i => i.id === updated.id ? updated as FinancialIncome : i) } : old
+        old ? { ...old, incomes: old.incomes.map(i => i.id === editingId ? updated as FinancialIncome : i) } : old
       );
       setEditingIncome(null);
       setIDesc(""); setIValue("100,00"); setIDate(new Date()); setIBilling("one_time");
@@ -427,16 +432,18 @@ export function FinancialHistoryScreen({ navigation }: Props) {
     if (!editingExpense || !eDesc.trim()) return;
     try {
       setSaving(true);
-      const updated = await runWithAuth(t => financialApi.updateExpense(t, editingExpense.id, {
+      const editingId = editingExpense.id;
+      const updated = await runWithAuth(t => financialApi.updateExpense(t, editingId, {
         description: eDesc.trim(),
         amountCents: parseCents(eValue),
         category: eCat,
         paidAt: new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
         recurrence: (eBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
         recurrenceEndDate: eBilling === "period" ? eRecurrenceEndDate.toISOString() : null,
+        occurrenceMonth: selectedMonth,
       }));
       queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
-        old ? { ...old, expenses: old.expenses.map(e => e.id === updated.id ? updated as FinancialExpense : e) } : old
+        old ? { ...old, expenses: old.expenses.map(e => e.id === editingId ? updated as FinancialExpense : e) } : old
       );
       setEditingExpense(null);
       setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); setEBilling("one_time");
@@ -708,6 +715,11 @@ export function FinancialHistoryScreen({ navigation }: Props) {
             </View>
             {iBilling === "period" ? <MvDatePicker value={iRecurrenceEndDate} onChange={setIRecurrenceEndDate} /> : null}
           </View>
+          {editingIncome?.isVirtual ? (
+            <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>
+              Isso vale a partir de {monthLabel(selectedMonth)} — os meses anteriores mantêm os valores já registrados.
+            </MvText>
+          ) : null}
           <MvButton label={editingIncome ? "Salvar alterações" : "Salvar receita"} loading={saving} onPress={() => editingIncome ? void handleEditIncome() : void handleAddIncome()} />
         </View>
       </MvModalSheet>
@@ -741,6 +753,11 @@ export function FinancialHistoryScreen({ navigation }: Props) {
             </View>
             {eBilling === "period" ? <MvDatePicker value={eRecurrenceEndDate} onChange={setERecurrenceEndDate} /> : null}
           </View>
+          {editingExpense?.isVirtual ? (
+            <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>
+              Isso vale a partir de {monthLabel(selectedMonth)} — os meses anteriores mantêm os valores já registrados.
+            </MvText>
+          ) : null}
           <MvButton label={editingExpense ? "Salvar alterações" : "Salvar despesa"} loading={saving} onPress={() => editingExpense ? void handleEditExpense() : void handleAddExpense()} />
         </View>
       </MvModalSheet>
