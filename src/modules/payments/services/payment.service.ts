@@ -17,6 +17,7 @@ import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { encryptSensitiveText, decryptSensitiveText } from "../../../shared/utils/encryption";
+import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { NotificationService } from "../../notifications/services/notification.service";
 
 type Tx = Prisma.TransactionClient | typeof prisma;
@@ -594,12 +595,7 @@ export class PaymentService {
   }
 
   private async resolveProviderAccessToken(providerId: string): Promise<string | null> {
-    const provider = await prisma.providerProfile.findUnique({
-      where: { id: providerId },
-      select: { mpAccessToken: true, mpAccountId: true }
-    });
-    if (!provider?.mpAccessToken || !provider.mpAccountId) return null;
-    return decryptSensitiveText(provider.mpAccessToken);
+    return resolveProviderMpAccessToken(providerId);
   }
 
   async createProviderOnboardingLink(userId: string, returnUrl?: string, refreshUrl?: string) {

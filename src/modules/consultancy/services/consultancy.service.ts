@@ -16,6 +16,7 @@ import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
+import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
 
@@ -246,6 +247,7 @@ export class ConsultancyService {
   private async createConsultancyMpPayment(input: {
     requestId: string;
     contractId: string;
+    providerId: string;
     clientId: string;
     paymentMethod: ConsultancyPaymentMethod;
     amountCents: number;
@@ -253,6 +255,19 @@ export class ConsultancyService {
   }) {
     const paymentData = await this.resolveClientPaymentData(input.clientId, input.paymentMethod);
     const nameParts = paymentData.clientName.split(" ");
+
+    const provider = await prisma.providerProfile.findUnique({
+      where: { id: input.providerId },
+      select: { mpAccountId: true }
+    });
+    const providerAccessToken = await resolveProviderMpAccessToken(input.providerId);
+    const split =
+      providerAccessToken && provider?.mpAccountId
+        ? {
+            collector: { id: Number(provider.mpAccountId) },
+            marketplace_fee: platformFeeAmount(input.amountCents) / 100
+          }
+        : {};
 
     const metadata = {
       domain: "CONSULTANCY",
@@ -276,9 +291,13 @@ export class ConsultancyService {
             last_name: nameParts.slice(1).join(" ") || undefined
           },
           description: `Consultoria #${input.requestId}`,
-          metadata
+          metadata,
+          ...split
         },
-        requestOptions: { idempotencyKey: `consultancy:${input.requestId}:pix` }
+        requestOptions: {
+          idempotencyKey: `consultancy:${input.requestId}:pix`,
+          ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+        }
       });
     }
 
@@ -302,9 +321,13 @@ export class ConsultancyService {
           email: paymentData.clientEmail
         },
         description: `Consultoria #${input.requestId}`,
-        metadata
+        metadata,
+        ...split
       },
-      requestOptions: { idempotencyKey: `consultancy:${input.requestId}:card` }
+      requestOptions: {
+        idempotencyKey: `consultancy:${input.requestId}:card`,
+        ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+      }
     });
   }
 
@@ -1750,6 +1773,7 @@ export class ConsultancyService {
       mpPay = await this.createConsultancyMpPayment({
         requestId: request.id,
         contractId: contract.id,
+        providerId: request.providerId,
         clientId,
         paymentMethod: selectedMethod,
         amountCents: paymentAmountCents,
