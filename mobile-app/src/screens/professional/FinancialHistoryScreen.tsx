@@ -249,7 +249,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
     const all = txQuery.data?.payouts?.payments ?? [];
     return all.filter((p) => {
       if (p.status !== "CAPTURED") return false;
-      const d = new Date(p.capturedAt ?? p.scheduledAt);
+      const d = new Date(p.capturedAt ?? p.scheduledAt ?? Date.now());
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       return key === selectedMonth;
     });
@@ -320,7 +320,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   const allTx: TxItem[] = [
     ...incomes.map(i => ({ type: "income" as const, item: i, date: new Date(i.paidAt) })),
     ...expenses.map(e => ({ type: "expense" as const, item: e, date: new Date(e.paidAt) })),
-    ...appPayments.map(p => ({ type: "app_payment" as const, item: p, date: new Date(p.capturedAt ?? p.scheduledAt) })),
+    ...appPayments.map(p => ({ type: "app_payment" as const, item: p, date: new Date(p.capturedAt ?? p.scheduledAt ?? Date.now()) })),
   ].sort((a, b) => b.date.getTime() - a.date.getTime());
 
   const filteredTx = txFilter === "income"
@@ -635,12 +635,12 @@ export function FinancialHistoryScreen({ navigation }: Props) {
             {filteredTx.map(tx => {
               const isInc = tx.type === "income";
               const isAppPayment = tx.type === "app_payment";
-              const id = tx.type === "app_payment" ? tx.item.bookingId : tx.item.id;
+              const id = tx.item.id;
               const desc = tx.type === "income"
                 ? tx.item.description
                 : tx.type === "expense"
                 ? tx.item.description
-                : `Sessão via app · ${methodLabel(tx.item.method)}`;
+                : `${tx.item.type === "CONSULTANCY" ? "Consultoria" : "Sessão"} via app · ${methodLabel(tx.item.method)}`;
               const amount = tx.type === "income"
                 ? tx.item.amountCents
                 : tx.type === "expense"

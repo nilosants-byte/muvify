@@ -793,47 +793,89 @@ export class FinancialService {
   async getPayouts(userId: string) {
     const provider = await getProviderByUserId(userId);
 
-    const payments = await prisma.payment.findMany({
-      where: {
-        booking: { providerId: provider.id },
-        status: { in: [PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED] }
-      },
-      select: {
-        id: true,
-        bookingId: true,
-        amountCents: true,
-        providerAmountCents: true,
-        platformFeeCents: true,
-        method: true,
-        status: true,
-        capturedAt: true,
-        booking: { select: { scheduledAt: true } }
-      },
-      orderBy: { capturedAt: "desc" },
-      take: 50
-    });
+    const [payments, contracts] = await Promise.all([
+      prisma.payment.findMany({
+        where: {
+          booking: { providerId: provider.id },
+          status: { in: [PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED] }
+        },
+        select: {
+          id: true,
+          bookingId: true,
+          amountCents: true,
+          providerAmountCents: true,
+          platformFeeCents: true,
+          method: true,
+          status: true,
+          capturedAt: true,
+          booking: { select: { scheduledAt: true } }
+        },
+        orderBy: { capturedAt: "desc" },
+        take: 50
+      }),
+      // consultoria nao tem etapa de pre-autorizacao separada: so entra aqui quando ja capturada
+      prisma.consultancyContract.findMany({
+        where: {
+          providerId: provider.id,
+          paymentStatus: ConsultancyPaymentStatus.CAPTURED
+        },
+        select: {
+          id: true,
+          paymentAmountCents: true,
+          providerAmountCents: true,
+          platformAmountCents: true,
+          paymentMethod: true,
+          paymentCapturedAt: true,
+          createdAt: true
+        },
+        orderBy: { paymentCapturedAt: "desc" },
+        take: 50
+      })
+    ]);
 
-    const netFor = (p: typeof payments[number]) =>
+    const netFor = (p: (typeof payments)[number]) =>
       p.providerAmountCents ?? providerSplitAmount(p.amountCents);
-    const feeFor = (p: typeof payments[number]) =>
+    const feeFor = (p: (typeof payments)[number]) =>
       p.platformFeeCents ?? platformFeeAmount(p.amountCents);
 
     const pending  = payments.filter(p => p.status === PaymentStatus.AUTHORIZED);
     const captured = payments.filter(p => p.status === PaymentStatus.CAPTURED);
 
+    const bookingTransactions = payments.map(p => ({
+      id:                  p.id,
+      type:                "PRESENTIAL" as const,
+      bookingId:           p.bookingId as string | null,
+      amountCents:         p.amountCents,
+      providerAmountCents: netFor(p),
+      platformFeeCents:    feeFor(p),
+      method:              p.method as string,
+      status:              p.status as string,
+      capturedAt:          p.capturedAt?.toISOString() ?? null,
+      scheduledAt:         p.booking.scheduledAt.toISOString() as string | null
+    }));
+
+    const contractTransactions = contracts.map(c => ({
+      id:                  c.id,
+      type:                "CONSULTANCY" as const,
+      bookingId:           null as string | null,
+      amountCents:         c.paymentAmountCents,
+      providerAmountCents: c.providerAmountCents,
+      platformFeeCents:    c.platformAmountCents,
+      method:              (c.paymentMethod ?? "CREDIT_CARD") as string,
+      status:              "CAPTURED" as string,
+      capturedAt:          (c.paymentCapturedAt ?? c.createdAt).toISOString(),
+      scheduledAt:         null as string | null
+    }));
+
+    const transactions = [...bookingTransactions, ...contractTransactions]
+      .sort((a, b) => (b.capturedAt ?? "").localeCompare(a.capturedAt ?? ""))
+      .slice(0, 50);
+
     return {
       pendingCents:   pending.reduce((s, p)  => s + netFor(p), 0),
-      availableCents: captured.reduce((s, p) => s + netFor(p), 0),
-      payments: payments.map(p => ({
-        bookingId:           p.bookingId,
-        amountCents:         p.amountCents,
-        providerAmountCents: netFor(p),
-        platformFeeCents:    feeFor(p),
-        method:              p.method,
-        status:              p.status,
-        capturedAt:          p.capturedAt?.toISOString() ?? null,
-        scheduledAt:         p.booking.scheduledAt.toISOString()
-      }))
+      availableCents: captured.reduce((s, p) => s + netFor(p), 0)
+        + contracts.reduce((s, c) => s + c.providerAmountCents, 0),
+      payments: transactions
     };
   }
 }

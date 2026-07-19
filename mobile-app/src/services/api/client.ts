@@ -2182,14 +2182,16 @@ export type FinancialAppClient = {
 };
 
 export type FinancialPayoutItem = {
-  bookingId: string;
+  id: string;
+  type: "PRESENTIAL" | "CONSULTANCY";
+  bookingId: string | null;
   amountCents: number;
   providerAmountCents: number;
   platformFeeCents: number;
   method: string;
   status: string;
   capturedAt: string | null;
-  scheduledAt: string;
+  scheduledAt: string | null;
 };
 
 export type FinancialPayouts = {
