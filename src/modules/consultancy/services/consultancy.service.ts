@@ -1155,7 +1155,8 @@ export class ConsultancyService {
       select: {
         id: true,
         providerId: true,
-        contractId: true
+        contractId: true,
+        contract: { select: { clientId: true } }
       }
     });
 
@@ -1163,14 +1164,7 @@ export class ConsultancyService {
       throw new AppError("Treino não encontrado.", StatusCodes.NOT_FOUND);
     }
 
-    if (existing.contractId) {
-      throw new AppError(
-        "Não é possível editar treino vinculado a contrato.",
-        StatusCodes.BAD_REQUEST
-      );
-    }
-
-    return prisma.$transaction(async (tx) => {
+    const updated = await prisma.$transaction(async (tx) => {
       const normalizedExercises = input.exercises
         ? await this.normalizePlanExercises(provider.id, input.exercises, tx)
         : null;
@@ -1207,6 +1201,20 @@ export class ConsultancyService {
         }
       });
     });
+
+    if (existing.contract) {
+      void notificationService.sendToUsers([existing.contract.clientId], {
+        preferenceType: "CONSULTANCY",
+        title: "Seu treino foi atualizado",
+        body: "Seu profissional fez alterações no treino. Confira as novidades.",
+        data: {
+          type: "CONSULTANCY_TRAINING_UPDATED",
+          trainingPlanId: existing.id
+        }
+      });
+    }
+
+    return updated;
   }
 
   async deleteTrainingPlan(userId: string, planId: string) {
@@ -1924,11 +1932,11 @@ export class ConsultancyService {
       throw new AppError("Contrato não encontrado.", StatusCodes.NOT_FOUND);
     }
 
-    if (contract.status === ConsultancyContractStatus.DELIVERED) {
-      throw new AppError("Treino já entregue para este contrato.", StatusCodes.BAD_REQUEST);
-    }
-
-    if (contract.status !== ConsultancyContractStatus.ACTIVE) {
+    // Um contrato pode receber mais de um treino ao longo do tempo (o profissional
+    // pode entregar quantos julgar necessário) — só a PRIMEIRA entrega transiciona
+    // o contrato de ACTIVE pra DELIVERED; entregas seguintes só adicionam o treino.
+    const isFirstDelivery = contract.status !== ConsultancyContractStatus.DELIVERED;
+    if (contract.status !== ConsultancyContractStatus.ACTIVE && contract.status !== ConsultancyContractStatus.DELIVERED) {
       throw new AppError(
         "Contrato deve estar ativo (pagamento confirmado) para entregar o treino.",
         StatusCodes.BAD_REQUEST
@@ -1937,6 +1945,8 @@ export class ConsultancyService {
 
     const now = new Date();
     const result = await prisma.$transaction(async (tx) => {
+      const normalizedExercises = await this.normalizePlanExercises(provider.id, input.exercises, tx);
+
       const plan = await tx.trainingPlan.create({
         data: {
           providerId: provider.id,
@@ -1946,39 +1956,30 @@ export class ConsultancyService {
           isPrebuilt: false,
           isActive: true,
           exercises: {
-            create: input.exercises.map((exercise, index) => {
-              if (!exercise.name?.trim()) {
-                throw new AppError("Nome do exercicio nao pode estar vazio.", StatusCodes.BAD_REQUEST);
-              }
-              return {
-                sortOrder: exercise.sortOrder ?? index,
-                name: exercise.name.trim(),
-                repetitionsSets: exercise.repetitionsSets?.trim() ?? null,
-                load: exercise.load?.trim() ?? null,
-                restSeconds: exercise.restSeconds,
-                restLabel: exercise.restLabel?.trim() ?? null,
-                demoVideoUrl: exercise.demoVideoUrl?.trim() ?? null
-              };
-            })
+            create: normalizedExercises
           }
         },
         include: {
           exercises: {
-            orderBy: { sortOrder: "asc" }
+            orderBy: { sortOrder: "asc" },
+            include: { exercise: true }
           }
         }
       });
 
-      const updatedContract = await tx.consultancyContract.update({
-        where: { id: contract.id },
-        data: {
-          status: ConsultancyContractStatus.DELIVERED,
-          deliveredAt: now
-        },
-        include: {
-          offer: true
-        }
-      });
+      const updatedContract = isFirstDelivery
+        ? await tx.consultancyContract.update({
+            where: { id: contract.id },
+            data: {
+              status: ConsultancyContractStatus.DELIVERED,
+              deliveredAt: now
+            },
+            include: { offer: true }
+          })
+        : await tx.consultancyContract.findUniqueOrThrow({
+            where: { id: contract.id },
+            include: { offer: true }
+          });
 
       return {
         plan,
@@ -1987,9 +1988,11 @@ export class ConsultancyService {
     });
 
     await notificationService.sendToUsers([contract.client.id], {
-        preferenceType: "CONSULTANCY",
-      title: "Treino personalizado disponivel",
-      body: "Seu treino foi entregue e já esta liberado em Seu Treino.",
+      preferenceType: "CONSULTANCY",
+      title: isFirstDelivery ? "Treino personalizado disponivel" : "Novo treino disponivel",
+      body: isFirstDelivery
+        ? "Seu treino foi entregue e já esta liberado em Seu Treino."
+        : "Seu profissional liberou mais um treino. Confira em Seu Treino.",
       data: {
         type: "CONSULTANCY_TRAINING_DELIVERED",
         contractId: contract.id
