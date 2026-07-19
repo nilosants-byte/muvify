@@ -239,19 +239,19 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
       >
         {/* ── Métricas ── */}
         <View style={{ flexDirection: "row", gap: 10 }}>
-          <View style={{ flex: 1, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 10, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border }}>
-            <AnimatedNumber value={activeStudentsCount} style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 22, fontWeight: "800", letterSpacing: -0.2, lineHeight: 28, color: theme.textGreen }} />
-            <MvText variant="body4" color="secondary" numberOfLines={1} style={{ marginTop: 2, fontSize: 11 }}>Alunos ativos</MvText>
+          <View style={{ flex: 1, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 10, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border, alignItems: "center" }}>
+            <AnimatedNumber value={activeStudentsCount} style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 22, fontWeight: "800", letterSpacing: -0.2, lineHeight: 28, color: theme.textGreen, textAlign: "center" }} />
+            <MvText variant="body4" color="secondary" numberOfLines={1} style={{ marginTop: 2, fontSize: 11, textAlign: "center" }}>Alunos ativos</MvText>
           </View>
-          <View style={{ flex: 1, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 10, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border }}>
-            <AnimatedNumber value={activeServiceKindsCount} style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 22, fontWeight: "800", letterSpacing: -0.2, lineHeight: 28, color: theme.text1 }} />
-            <MvText variant="body4" color="secondary" numberOfLines={1} style={{ marginTop: 2, fontSize: 11 }}>Serviços ativos</MvText>
+          <View style={{ flex: 1, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 10, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border, alignItems: "center" }}>
+            <AnimatedNumber value={activeServiceKindsCount} style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 22, fontWeight: "800", letterSpacing: -0.2, lineHeight: 28, color: theme.text1, textAlign: "center" }} />
+            <MvText variant="body4" color="secondary" numberOfLines={1} style={{ marginTop: 2, fontSize: 11, textAlign: "center" }}>Serviços ativos</MvText>
           </View>
-          <View style={{ flex: 1, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 10, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border }}>
-            <MvText variant="semi2" style={{ color: theme.textGreen, fontSize: 14 }} numberOfLines={1}>
+          <View style={{ flex: 1, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 10, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border, alignItems: "center" }}>
+            <MvText variant="semi2" style={{ color: theme.textGreen, fontSize: 14, textAlign: "center" }} numberOfLines={1}>
               {averageValueCents ? formatCurrencyBRL(averageValueCents / 100) : "—"}
             </MvText>
-            <MvText variant="body4" color="secondary" numberOfLines={1} style={{ marginTop: 2, fontSize: 11 }}>Ticket médio</MvText>
+            <MvText variant="body4" color="secondary" numberOfLines={1} style={{ marginTop: 2, fontSize: 11, textAlign: "center" }}>Ticket médio</MvText>
           </View>
         </View>
 
