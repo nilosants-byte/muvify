@@ -424,10 +424,57 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                           <MvText variant="caption" style={{ color: "#F59E0B" }}>
                             Nenhuma ficha de treino liberada ainda
                           </MvText>
-                        ) : contract.trainingPlans.length > 0 ? (
-                          <MvText variant="caption" color="secondary">
-                            {contract.trainingPlans.length} ficha(s) de treino liberada(s)
-                          </MvText>
+                        ) : null}
+
+                        {contract.trainingPlans.length > 0 ? (
+                          <View style={{ gap: 6, marginTop: 2 }}>
+                            {contract.trainingPlans.map((plan) => (
+                              <View
+                                key={plan.id}
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  borderTopWidth: 1,
+                                  borderTopColor: theme.border,
+                                  paddingTop: 6,
+                                }}
+                              >
+                                <MvText variant="body4" style={{ flex: 1 }} numberOfLines={1}>
+                                  {plan.title}
+                                </MvText>
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    navigation.navigate("TrainingCreation", {
+                                      contractId: contract.id,
+                                      clientId: detail.student.id,
+                                      editPlanId: plan.id,
+                                    })
+                                  }
+                                >
+                                  <MvText variant="body4" style={{ color: theme.textGreen }}>
+                                    Editar
+                                  </MvText>
+                                </TouchableOpacity>
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
+
+                        {contract.isVigente ? (
+                          <TouchableOpacity
+                            onPress={() =>
+                              navigation.navigate("TrainingCreation", {
+                                contractId: contract.id,
+                                clientId: detail.student.id,
+                              })
+                            }
+                            style={{ marginTop: 4 }}
+                          >
+                            <MvText variant="body4" style={{ color: theme.textGreen }}>
+                              + Criar novo treino
+                            </MvText>
+                          </TouchableOpacity>
                         ) : null}
                       </View>
                     );

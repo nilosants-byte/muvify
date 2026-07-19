@@ -394,6 +394,14 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     [studentsQuery.data]
   );
 
+  // Contratos de consultoria/combo vigentes sem nenhuma ficha de treino entregue
+  // ainda — perder o prazo estorna a venda automaticamente, entao vale um aviso
+  // visivel (recalculado a cada carregamento, nao "esquece" que foi dispensado).
+  const pendingTrainingPlansCount = useMemo(
+    () => studentsQuery.data?.students.filter((s) => s.trainingPlanPending).length ?? 0,
+    [studentsQuery.data]
+  );
+
   const weeklyRevenue = useMemo(() => {
     const cents = bookings
       .filter((b) => b.status === "COMPLETED" && isCurrentWeek(b.completedAt ?? b.scheduledAt))
@@ -746,6 +754,18 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
               title="Conecte sua conta Mercado Pago — sem isso você não aparece para alunos"
               cta="Conectar"
               onPress={() => { setShowPayoutBanner(false); goToStack("ConnectPayoutAccount"); }}
+            />
+          ) : null}
+
+          {/* ── BANNER: FICHAS DE TREINO PENDENTES DE ENTREGA ── */}
+          {pendingTrainingPlansCount > 0 ? (
+            <UrgencyCard
+              icon="barbell-outline"
+              tone="amber"
+              subtitle="ficha de treino pendente"
+              title={`${pendingTrainingPlansCount} aluno${pendingTrainingPlansCount > 1 ? "s" : ""} aguardando ficha de treino`}
+              cta="Ver alunos"
+              onPress={() => goToStack("ProfessionalStudents")}
             />
           ) : null}
 

@@ -95,7 +95,7 @@ export type ProfessionalStackParamList = {
   ProfessionalStudentDetail: { clientId: string };
   ProfessionalStudentAnamnesis: { clientId: string; clientName: string };
   Notifications: undefined;
-  TrainingCreation: { contractId?: string; clientId?: string } | undefined;
+  TrainingCreation: { contractId?: string; clientId?: string; editPlanId?: string } | undefined;
   Support: undefined;
   Privacy: undefined;
   Security: undefined;

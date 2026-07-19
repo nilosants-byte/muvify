@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -325,13 +325,15 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         }),
         providersApi.myCredentials(token).catch(() => null),
       ]);
+      const allPlans = (plans as TrainingPlan[] | null) ?? [];
       const filteredPlans = plans
-        ? (plans as TrainingPlan[]).filter((plan) => plan.isPrebuilt && !plan.contractId && plan.isActive !== false)
+        ? allPlans.filter((plan) => plan.isPrebuilt && !plan.contractId && plan.isActive !== false)
         : null;
       return {
         mineExercises: mine,
         prebuiltExercises: prebuilt as Exercise[],
         providerPlans: filteredPlans ?? [],
+        allProviderPlans: allPlans,
         needsProfileSetup: plans === null,
         crefApproved: (credentials as any)?.crefValidationStatus === "APPROVED",
       };
@@ -341,6 +343,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
   const loading = trainingQuery.isLoading;
   const needsProfileSetup = trainingQuery.data?.needsProfileSetup ?? false;
   const crefApproved = trainingQuery.data?.crefApproved ?? false;
+  const editPlanId = route.params?.editPlanId;
 
   useEffect(() => {
     const data = trainingQuery.data;
@@ -349,6 +352,21 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
     setPrebuiltExercises(data.prebuiltExercises);
     setProviderPlans(data.providerPlans);
   }, [trainingQuery.data]);
+
+  // Chegando com "editar este treino" (vindo do perfil do aluno) — pre-carrega
+  // o construtor de treino ja preenchido em vez de exigir que o profissional
+  // comece do zero.
+  const hydratedEditRef = useRef(false);
+  useEffect(() => {
+    if (!editPlanId || hydratedEditRef.current) return;
+    const target = trainingQuery.data?.allProviderPlans.find((plan) => plan.id === editPlanId);
+    if (!target) return;
+    hydratedEditRef.current = true;
+    setNewPlanTitle(target.title);
+    setNewPlanDescription(target.description ?? "");
+    setNewPlanExercises(target.exercises.map((item, index) => toDraftExerciseFromPlanItem(item, index)));
+    setShowNewPlanBuilder(true);
+  }, [editPlanId, trainingQuery.data]);
 
   useEffect(() => {
     if (trainingQuery.error) {
@@ -686,7 +704,18 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         demoVideoUrl: exercise.demoVideoUrl?.trim() || undefined,
       }));
 
-      if (targetContractId) {
+      if (editPlanId) {
+        await runWithAuth((token) =>
+          consultancyApi.updateProviderPlan(token, editPlanId, {
+            title: newPlanTitle.trim(),
+            description: newPlanDescription.trim() || undefined,
+            exercises: exercisesPayload,
+          })
+        );
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast("Treino atualizado com sucesso.", "success");
+        navigation.goBack();
+      } else if (targetContractId) {
         await runWithAuth((token) =>
           consultancyApi.deliverContract(token, targetContractId, {
             title: newPlanTitle.trim(),
@@ -836,9 +865,11 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         </TouchableOpacity>
 
         <View style={{ flex: 1 }}>
-          <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, letterSpacing: -0.3 }}>{targetContractId ? "Criar Treino" : "Banco de Exercícios"}</MvText>
+          <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, letterSpacing: -0.3 }}>
+            {editPlanId ? "Editar Treino" : targetContractId ? "Criar Treino" : "Banco de Exercícios"}
+          </MvText>
           <MvText variant="body4" color="secondary">
-            {targetContractId ? "Montagem e entrega de treino" : "Meus exercícios, Treinos Muvify e Criar Treinos"}
+            {editPlanId ? "Alterações ficam visíveis pro aluno" : targetContractId ? "Montagem e entrega de treino" : "Meus exercícios, Treinos Muvify e Criar Treinos"}
           </MvText>
         </View>
 
@@ -948,10 +979,12 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-              {targetContractId ? (
+              {editPlanId || targetContractId ? (
                 <View style={{ marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: "rgba(33,150,243,0.08)", borderWidth: 1, borderColor: "rgba(33,150,243,0.25)" }}>
                   <MvText variant="body4" style={{ color: "#2196F3" }}>
-                    Este treino será entregue para a consultoria contratada.
+                    {editPlanId
+                      ? "O aluno será avisado que este treino foi atualizado."
+                      : "Este treino será entregue para a consultoria contratada."}
                   </MvText>
                 </View>
               ) : null}
@@ -1720,7 +1753,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         ) : (
           <View style={{ flex: 1 }}>
             <MvButton
-              label={targetContractId ? "Entregar treino" : "Salvar treino"}
+              label={editPlanId ? "Salvar alterações" : targetContractId ? "Entregar treino" : "Salvar treino"}
               loading={savingNewPlan}
               disabled={!crefApproved}
               onPress={() => void saveNewPlan()}
