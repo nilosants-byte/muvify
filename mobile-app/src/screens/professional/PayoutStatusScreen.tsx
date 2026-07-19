@@ -152,7 +152,7 @@ function QuickChip({
 }
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
-export function PayoutStatusScreen({ navigation }: Props) {
+export function PayoutStatusScreen({ navigation, route }: Props) {
   const { showToast, user, runWithAuth } = useAppState();
   const { theme } = useMvTheme();
   const isLight = theme.mode === "light";
@@ -320,6 +320,17 @@ export function PayoutStatusScreen({ navigation }: Props) {
   const [eValue, setEValue] = React.useState("50,00");
   const [eCat, setECat] = React.useState<FinancialExpenseCategory>("OTHER");
   const [eDate, setEDate] = React.useState<Date>(new Date());
+
+  // Atalho da Home ("Nova receita") pode pedir pra abrir a tela já com o
+  // formulário de lançamento pronto — evita que o atalho seja só um link
+  // pra aba, que a barra inferior já oferece.
+  useEffect(() => {
+    const openModal = route.params?.openModal;
+    if (openModal === "income") setAddIncomeModal(true);
+    else if (openModal === "expense") setAddExpenseModal(true);
+    if (openModal) navigation.setParams({ openModal: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [eBilling, setEBilling] = React.useState<BillingOption>("one_time");
   const [eRecurrenceEndDate, setERecurrenceEndDate] = React.useState<Date>(() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d; });
 

@@ -24,7 +24,7 @@ export type ProfessionalTabParamList = {
   ProfessionalHome: undefined;
   ProfessionalAgenda: undefined;
   ProfessionalConsultancyCenter: undefined;
-  PayoutStatus: undefined;
+  PayoutStatus: { openModal?: "income" | "expense" } | undefined;
   Notifications: undefined;
   ProfessionalProfileEditor: undefined;
 };
@@ -75,7 +75,7 @@ export type ClientStackParamList = {
 };
 export type ProfessionalStackParamList = {
   ProfessionalTabs: NavigatorScreenParams<ProfessionalTabParamList>;
-  PayoutStatus: undefined;
+  PayoutStatus: { openModal?: "income" | "expense" } | undefined;
   AnnualReport: undefined;
   ProfessionalCredentials: undefined;
   ProfessionalReviews: undefined;

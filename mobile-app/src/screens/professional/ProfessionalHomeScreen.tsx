@@ -39,18 +39,16 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar, MvBadge, MvCard, MvRefreshControl, MvText, MvToggle } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
-import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { SkeletonHomeScreen } from "../../components/polish/SkeletonCard";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
-import { ActivityItem, WeeklyBarChart } from "../../components/professional/HomeWidgets";
+import { ActivityItem } from "../../components/professional/HomeWidgets";
 import { AppLogoText } from "../../components/ui/AppLogoText";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { resolveMediaUrl } from "../../utils/media";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
-import { MetricPill, UrgencyCard } from "../../components/professional/UXReformComponents";
+import { UrgencyCard } from "../../components/professional/UXReformComponents";
 import { ProfessionalNotificationsDrawer } from "./components/ProfessionalNotificationsDrawer";
 import { ProfessionalOnboardingWizard } from "./components/ProfessionalOnboardingWizard";
 import {
@@ -135,11 +133,28 @@ function bookingStatusBadge(status: Booking["status"]) {
   return { label: "Pendente", variant: "orange" as const };
 }
 
-type ShortcutKey = "newTraining" | "newConsultancy" | "addSlot" | "addFinancial";
+type ShortcutKey = "newTraining" | "newOffer" | "addSlot" | "newIncome";
 
+// Faixa compacta de uma linha só (mesmo padrão usado na tela de Consultoria)
+// — substitui 3 cartões empilhados por 3 células dentro de um único bloco.
+function StatStrip({ items }: { items: { label: string; value: string | number; tone?: "green" | "amber" | "sky" }[] }) {
+  const { theme } = useMvTheme();
+  const toneColor = (tone?: "green" | "amber" | "sky") =>
+    tone === "amber" ? "#F5A623" : tone === "sky" ? "#38BDF8" : theme.textGreen;
+  return (
+    <View style={{ flexDirection: "row", borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, borderRadius: 14, paddingVertical: 12 }}>
+      {items.map((it, idx) => (
+        <View key={it.label} style={{ flex: 1, alignItems: "center", gap: 3, borderRightWidth: idx < items.length - 1 ? 1 : 0, borderRightColor: theme.border }}>
+          <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontWeight: "800", fontSize: 17, letterSpacing: -0.2, color: toneColor(it.tone) }}>
+            {String(it.value)}
+          </MvText>
+          <MvText variant="caption" color="secondary" style={{ fontSize: 10 }} numberOfLines={1}>{it.label}</MvText>
+        </View>
+      ))}
+    </View>
+  );
+}
 
-const DAY_LABELS = ["D", "S", "T", "Q", "Q", "S", "S"];
-const MONTHLY_GOAL_KEY = "@muvify:provider_monthly_goal";
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
 export function ProfessionalHomeScreen({ navigation }: Props) {
@@ -162,7 +177,6 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const [notificationsDrawerOpen, setNotificationsDrawerOpen] = useState(false);
   const [sideDrawerOpen, setSideDrawerOpen] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(true);
-  const [monthlyGoal, setMonthlyGoal] = useState(0);
   const [weatherIcon, setWeatherIcon] = useState<WeatherIconData>(timeBasedWeatherIcon);
   const [locationCity, setLocationCity] = useState<string | null>(null);
   const drawerAnim = useRef(new Animated.Value(-DRAWER_W)).current;
@@ -185,6 +199,15 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
       ]);
       return { bookings: bookingResponse, me, credentials, timeline: timelineResponse, availabilities: availabilitiesResponse };
     },
+  );
+
+  // "Sua performance" — nota média e total de avaliações não vêm do /users/me,
+  // só do detalhe público do provider (mesmo endpoint que a vitrine do app usa).
+  const ownProviderId = user?.providerProfile?.id;
+  const ratingQuery = useAuthQuery(
+    queryKeys.providers.detail(ownProviderId ?? "none"),
+    () => providersApi.detail(ownProviderId!),
+    { enabled: Boolean(ownProviderId) },
   );
 
   const bookings = useMemo(() => {
@@ -278,13 +301,6 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   );
 
   useEffect(() => {
-    AsyncStorage.getItem(MONTHLY_GOAL_KEY).then((v) => {
-      const n = parseFloat(v ?? "0");
-      if (!isNaN(n) && n > 0) setMonthlyGoal(n);
-    }).catch(() => {});
-  }, []);
-
-  useEffect(() => {
     const interval = setInterval(() => setNowMs(Date.now()), 60_000);
     return () => clearInterval(interval);
   }, []);
@@ -368,11 +384,6 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     [bookings]
   );
 
-  const completedToday = useMemo(
-    () => bookings.filter((b) => b.status === "COMPLETED" && isToday(b.completedAt ?? b.scheduledAt)).length,
-    [bookings]
-  );
-
   const activeStudents = useMemo(
     () =>
       new Set(
@@ -399,60 +410,8 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     return cents / 100;
   }, [bookings]);
 
-  const lastWeekRevenue = useMemo(() => {
-    const now = new Date();
-    const startOfThisWeek = new Date(now);
-    startOfThisWeek.setHours(0, 0, 0, 0);
-    startOfThisWeek.setDate(now.getDate() - now.getDay());
-    const startOfLastWeek = new Date(startOfThisWeek);
-    startOfLastWeek.setDate(startOfThisWeek.getDate() - 7);
-    const cents = bookings
-      .filter((b) => {
-        if (b.status !== "COMPLETED") return false;
-        const d = new Date(b.completedAt ?? b.scheduledAt);
-        return d >= startOfLastWeek && d < startOfThisWeek;
-      })
-      .reduce((s, b) => s + (b.priceCents ?? 0), 0);
-    return cents / 100;
-  }, [bookings]);
-
-  const weeklyRevenueChange = useMemo(() => {
-    if (lastWeekRevenue === 0) return null;
-    return ((weeklyRevenue - lastWeekRevenue) / lastWeekRevenue) * 100;
-  }, [weeklyRevenue, lastWeekRevenue]);
-
-  const currentMonthGross = useMemo(() => {
-    const now = new Date();
-    return bookings
-      .filter((b) => {
-        if (b.status !== "COMPLETED") return false;
-        const d = new Date(b.completedAt ?? b.scheduledAt);
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-      })
-      .reduce((s, b) => s + (b.priceCents ?? 0), 0) / 100;
-  }, [bookings]);
-
-  const weeklyChartData = useMemo(() => {
-    const now = new Date();
-    const startOfWeek = new Date(now);
-    startOfWeek.setHours(0, 0, 0, 0);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    return DAY_LABELS.map((label, i) => {
-      const dayStart = new Date(startOfWeek);
-      dayStart.setDate(startOfWeek.getDate() + i);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayStart.getDate() + 1);
-      const revenue =
-        bookings
-          .filter((b) => {
-            if (b.status !== "COMPLETED") return false;
-            const d = new Date(b.completedAt ?? b.scheduledAt);
-            return d >= dayStart && d < dayEnd;
-          })
-          .reduce((s, b) => s + (b.priceCents ?? 0), 0) / 100;
-      return { label, revenue, isToday: i === now.getDay() };
-    });
-  }, [bookings]);
+  const averageRating = ratingQuery.data?.averageRating ?? 0;
+  const totalReviews = ratingQuery.data?.totalReviews ?? 0;
 
   const todayFreeSlots = useMemo(() => {
     const now = new Date();
@@ -478,9 +437,9 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
 
   const handleShortcut = (key: ShortcutKey) => {
     if (key === "newTraining") goToStack("TrainingCreation");
-    else if (key === "newConsultancy") goToStack("ProfessionalConsultancyCenter");
+    else if (key === "newOffer") goToStack("ProfessionalConsultancyCenter", { initialTab: "offers" });
     else if (key === "addSlot") goToStack("AvailabilityManager");
-    else if (key === "addFinancial") goToStack("PayoutStatus");
+    else if (key === "newIncome") goToStack("PayoutStatus", { openModal: "income" });
   };
 
   // ── Colors ───────────────────────────────────────────────────────────────────
@@ -541,7 +500,6 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const text2 = theme.text2;
   const text3 = theme.text3;
   const inputBg = theme.inputBg;
-  const barBg = isLight ? "rgba(15,23,42,0.06)" : "rgba(255,255,255,0.06)";
   const heroBg = isLight ? "rgba(34,197,94,0.05)" : "#0F1A12";
   const heroBorder = isLight ? "rgba(34,197,94,0.18)" : "rgba(34,197,94,0.18)";
 
@@ -800,6 +758,38 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
             />
           ) : null}
 
+          {/* ── SUA PERFORMANCE ── */}
+          <View style={{ borderRadius: 16, padding: 14, borderWidth: 1, backgroundColor: heroBg, borderColor: heroBorder }}>
+            <MvText variant="caption" color="secondary" style={{ textTransform: "uppercase", letterSpacing: 0.4 }}>
+              Sua performance
+            </MvText>
+            <View style={{ flexDirection: "row", marginTop: 10 }}>
+              <View style={{ flex: 1 }}>
+                <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontWeight: "800", fontSize: 16, letterSpacing: -0.2, color: text1 }}>
+                  {totalReviews > 0 ? `★ ${averageRating.toFixed(1)}` : "—"}
+                </MvText>
+                <MvText variant="body4" color="secondary" style={{ marginTop: 1, fontSize: 10 }}>
+                  {totalReviews > 0 ? `${totalReviews} avaliaç${totalReviews === 1 ? "ão" : "ões"}` : "Sem avaliações"}
+                </MvText>
+              </View>
+              <View style={{ flex: 1 }}>
+                <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontWeight: "800", fontSize: 16, letterSpacing: -0.2, color: text1 }}>
+                  {formatCurrencyBRL(weeklyRevenue)}
+                </MvText>
+                <MvText variant="body4" color="secondary" style={{ marginTop: 1, fontSize: 10 }}>
+                  Esta semana
+                </MvText>
+              </View>
+              <View style={{ flex: 1 }}>
+                <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontWeight: "800", fontSize: 16, letterSpacing: -0.2, color: text1 }}>
+                  {activeStudents}
+                </MvText>
+                <MvText variant="body4" color="secondary" style={{ marginTop: 1, fontSize: 10 }}>
+                  Alunos ativos
+                </MvText>
+              </View>
+            </View>
+          </View>
 
           {/* ── DIA LIVRE ── */}
           {!nextBooking && todayBookings.length === 0 ? (
@@ -889,11 +879,13 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
           ) : null}
 
           {/* ── MÉTRICAS DO DIA ── */}
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <MetricPill label="Confirmados hoje" value={confirmedToday} tone={confirmedToday > 0 ? "green" : "sky"} />
-            <MetricPill label="Solicitações" value={pendingCount} tone={pendingCount > 0 ? "amber" : "green"} />
-            <MetricPill label="Horários livres" value={todayFreeSlots.length} tone="sky" />
-          </View>
+          <StatStrip
+            items={[
+              { label: "Confirmados hoje", value: confirmedToday, tone: confirmedToday > 0 ? "green" : "sky" },
+              { label: "Solicitações", value: pendingCount, tone: pendingCount > 0 ? "amber" : "green" },
+              { label: "Horários livres", value: todayFreeSlots.length, tone: "sky" },
+            ]}
+          />
 
           {/* ── AGENDA DE HOJE ── */}
           {todayBookings.length > 1 ? (
@@ -982,10 +974,10 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
             <MvText variant="semi2">Atalhos rápidos</MvText>
             <View style={{ flexDirection: "row", gap: 8 }}>
               {([
-                { key: "newTraining" as const,    icon: "barbell-outline" as const,   label: "Treinos" },
-                { key: "newConsultancy" as const, icon: "flash-outline" as const,     label: "Consultoria" },
-                { key: "addSlot" as const,        icon: "time-outline" as const,      label: "Horários e\nLocais" },
-                { key: "addFinancial" as const,   icon: "stats-chart-outline" as const, label: "Controle\nFinanceiro" },
+                { key: "newTraining" as const, icon: "barbell-outline" as const,     label: "Novo\ntreino" },
+                { key: "newOffer" as const,     icon: "pricetag-outline" as const,    label: "Nova\noferta" },
+                { key: "addSlot" as const,      icon: "time-outline" as const,        label: "Horários e\nlocais" },
+                { key: "newIncome" as const,    icon: "add-circle-outline" as const,  label: "Nova\nreceita" },
               ] as const).map((s) => (
                 <TouchableOpacity
                   key={s.key}
@@ -1002,11 +994,11 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
             </View>
           </View>
 
-          {/* ── ATIVIDADES RECENTES ── */}
+          {/* ── PRECISA DE ATENÇÃO ── */}
           {timeline && (
             <View style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <MvText variant="semi2">Atividades recentes</MvText>
+                <MvText variant="semi2">Precisa de atenção</MvText>
                 <TouchableOpacity onPress={() => setNotificationsDrawerOpen(true)}>
                   <MvText variant="body4" style={{ color: green }}>
                     Ver todas
@@ -1186,79 +1178,23 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
             )}
           </View>
 
-          {/* ── RECEITA DO MÊS ── */}
+          {/* ── HOJE (chip pro Financeiro) ── */}
           <PressableScale
             onPress={() => goToStack("PayoutStatus")}
-            scale={0.97}
-            style={{ borderRadius: 16, padding: 20, borderWidth: 1, backgroundColor: heroBg, borderColor: heroBorder }}
+            scale={0.98}
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 14, padding: 14, borderWidth: 1, backgroundColor: cardBg, borderColor: border }}
           >
-            <MvText variant="caption" color="secondary">RECEITA DO MÊS</MvText>
-            <MvText variant="hero" style={{ color: green, marginTop: 4, letterSpacing: -0.5 }}>
-              {formatCurrencyBRL(currentMonthGross)}
-            </MvText>
-            <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>
-              {formatCurrencyBRL(todayRevenue)} hoje
-            </MvText>
-
-            {monthlyGoal > 0 && (
-              <View style={{ marginTop: 14, gap: 6 }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <MvText variant="body4" color="secondary">Meta do mês</MvText>
-                  <MvText variant="semi3" style={{ color: green }}>
-                    {Math.min(Math.round((currentMonthGross / monthlyGoal) * 100), 100)}%
-                  </MvText>
-                </View>
-                <View style={{ height: 4, borderRadius: 99, backgroundColor: barBg, overflow: "hidden" }}>
-                  <View style={{
-                    height: 4, borderRadius: 99, backgroundColor: green,
-                    width: `${Math.min((currentMonthGross / monthlyGoal) * 100, 100)}%` as any,
-                  }} />
-                </View>
-                <MvText variant="body4" color="secondary">{formatCurrencyBRL(monthlyGoal)} definida</MvText>
-              </View>
-            )}
-
-            <WeeklyBarChart data={weeklyChartData} primaryColor={green} barBg={barBg} />
+            <View>
+              <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Hoje</MvText>
+              <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontWeight: "800", fontSize: 18, letterSpacing: -0.2, color: green, marginTop: 2 }}>
+                {formatCurrencyBRL(todayRevenue)}
+              </MvText>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <MvText variant="body4" style={{ color: text3, fontSize: 12 }}>Ver Financeiro</MvText>
+              <Ionicons name="chevron-forward" size={14} color={text3} />
+            </View>
           </PressableScale>
-
-          {/* ── GRID DE MÉTRICAS ── */}
-          <View style={{ flexDirection: "row", gap: 12 }}>
-            <View
-              style={{
-                flex: 1,
-                borderRadius: 16,
-                padding: 16,
-                borderWidth: 1,
-                backgroundColor: cardBg,
-                borderColor: border,
-              }}
-            >
-              <AnimatedNumber
-                value={activeStudents}
-                style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, fontWeight: "800", letterSpacing: -0.3, lineHeight: 30, color: text1 }}
-              />
-              <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>
-                Alunos ativos
-              </MvText>
-            </View>
-            <View
-              style={{
-                flex: 1,
-                borderRadius: 16,
-                padding: 16,
-                borderWidth: 1,
-                backgroundColor: cardBg,
-                borderColor: border,
-              }}
-            >
-              <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 22, fontWeight: "800", letterSpacing: -0.2, lineHeight: 28, color: text1 }}>
-                {completedToday}/{confirmedToday + completedToday}
-              </MvText>
-              <MvText variant="body4" color="secondary" style={{ marginTop: 2 }}>
-                Feitas hoje
-              </MvText>
-            </View>
-          </View>
 
         </View>
       </ScrollView>
