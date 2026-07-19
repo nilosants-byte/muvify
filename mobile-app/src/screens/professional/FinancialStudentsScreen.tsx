@@ -315,9 +315,12 @@ export function FinancialStudentsScreen({ navigation }: Props) {
     const slots = (s.weeklySchedule ?? []) as WeeklyScheduleSlot[];
     const dayLabels = sortSchedule(slots).map(sl => DAY_LABELS[sl.dayOfWeek]).join(" · ");
     const timeStr   = slots.length > 0 ? `${slots[0].startTime}–${slots[0].endTime}` : null;
+    // "APP" é um tipo legado que não existe mais no seletor manual (alunos pelo
+    // app são só os da seção automática acima) — rótulo neutro pra não colidir
+    // com "Pelo App" caso algum cadastro antigo ainda tenha esse tipo.
     const typeLabel = s.type === "BOTH" ? "Consultoria e presencial"
       : s.type === "ONLINE" ? "Consultoria"
-      : s.type === "PRESENTIAL" ? "Presencial" : "Pelo app";
+      : s.type === "PRESENTIAL" ? "Presencial" : "Cadastro manual";
     const billing = billingOptionOf(s);
     const billingLabel = billing === "one_time" ? "Avulso"
       : billing === "period" && s.recurrenceEndDate ? `Até ${new Date(s.recurrenceEndDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}`
