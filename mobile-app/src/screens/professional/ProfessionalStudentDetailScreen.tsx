@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
@@ -8,19 +8,92 @@ import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { Booking, bookingsApi, ProviderStudentManagementDetail, providersApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvBadge, MvButton, MvCard, MvRefreshControl, MvText } from "../../components/mv";
+import { MvAvatar, MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
+import { formatCurrencyBRL } from "../../utils/formatters";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalStudentDetail">;
+
+type AssessmentForm = {
+  weight: string;
+  height: string;
+  imc: string;
+  bodyFatPercent: string;
+  muscleMass: string;
+  circumferences: string;
+  waist: string;
+  hip: string;
+  chest: string;
+  arm: string;
+  thigh: string;
+};
+
+const emptyAssessment: AssessmentForm = {
+  weight: "",
+  height: "",
+  imc: "",
+  bodyFatPercent: "",
+  muscleMass: "",
+  circumferences: "",
+  waist: "",
+  hip: "",
+  chest: "",
+  arm: "",
+  thigh: "",
+};
+
+const assessmentFields: Array<{ key: keyof AssessmentForm; label: string; unit: string }> = [
+  { key: "weight", label: "Peso", unit: "kg" },
+  { key: "height", label: "Altura", unit: "cm" },
+  { key: "imc", label: "IMC", unit: "kg/m2" },
+  { key: "bodyFatPercent", label: "% de gordura", unit: "%" },
+  { key: "muscleMass", label: "Massa muscular", unit: "kg" },
+  { key: "waist", label: "Cintura", unit: "cm" },
+  { key: "hip", label: "Quadril", unit: "cm" },
+  { key: "chest", label: "Peito", unit: "cm" },
+  { key: "arm", label: "Braço", unit: "cm" },
+  { key: "thigh", label: "Coxa", unit: "cm" },
+  { key: "circumferences", label: "Circunferência geral", unit: "cm" },
+];
+
+function toAssessmentForm(input: Record<string, unknown> | null | undefined): AssessmentForm {
+  return {
+    weight: String(input?.weight ?? ""),
+    height: String(input?.height ?? ""),
+    imc: String(input?.imc ?? ""),
+    bodyFatPercent: String(input?.bodyFatPercent ?? ""),
+    muscleMass: String(input?.muscleMass ?? ""),
+    circumferences: String(input?.circumferences ?? ""),
+    waist: String(input?.waist ?? ""),
+    hip: String(input?.hip ?? ""),
+    chest: String(input?.chest ?? ""),
+    arm: String(input?.arm ?? ""),
+    thigh: String(input?.thigh ?? ""),
+  };
+}
 
 function bookingBadge(status: Booking["status"]): { label: string; variant: "green" | "orange" | "red" | "gray" } {
   if (status === "COMPLETED") return { label: "Concluído", variant: "green" };
   if (status === "CANCELLED") return { label: "Cancelado", variant: "red" };
   if (status === "CONFIRMED") return { label: "Confirmado", variant: "green" };
   return { label: "Pendente", variant: "orange" };
+}
+
+function contractStatusBadge(
+  contract: ProviderStudentManagementDetail["consultancyContracts"][number]
+): { label: string; variant: "green" | "orange" | "red" | "gray" } {
+  if (contract.status === "REFUNDED_EXPIRED") return { label: "Reembolsado", variant: "red" };
+  if (contract.status === "ARCHIVED") return { label: "Arquivado", variant: "gray" };
+  if (contract.status === "PENDING_PAYMENT") return { label: "Aguardando pagamento", variant: "orange" };
+  return contract.isVigente ? { label: "Vigente", variant: "green" } : { label: "Vencido", variant: "gray" };
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 }
 
 function renderValue(value: unknown): string {
@@ -65,12 +138,17 @@ function AssessmentRow({
 }
 
 export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
-  const { showToast } = useAppState();
+  const { showToast, runWithAuth } = useAppState();
   const { theme } = useMvTheme();
 
   const iconColor = theme.mode === "dark" ? "#D8E0D8" : "#394239";
 
   const { clientId } = route.params;
+
+  const [assessmentForm, setAssessmentForm] = useState<AssessmentForm>(emptyAssessment);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const hydratedRef = useRef(false);
+  const changeCounterRef = useRef(0);
 
   const studentDetailQuery = useAuthQuery(
     queryKeys.providers.dashboardStudentDetail(clientId),
@@ -108,6 +186,34 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
   const isAnamnesisComplete = detail?.anamnesis?.status === "COMPLETED";
   const physicalAssessment = detail?.physicalAssessment;
   const summary = detail?.serviceSummary;
+
+  useEffect(() => {
+    if (!physicalAssessment || hydratedRef.current) return;
+    setAssessmentForm(toAssessmentForm(physicalAssessment as unknown as Record<string, unknown>));
+    hydratedRef.current = true;
+  }, [physicalAssessment]);
+
+  const saveAssessment = useCallback(async (form: AssessmentForm) => {
+    try {
+      setAutoSaving(true);
+      await runWithAuth((token) => providersApi.upsertStudentPhysicalAssessment(token, clientId, form));
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar avaliação física.", navigation });
+    } finally {
+      setAutoSaving(false);
+    }
+  }, [clientId, navigation, runWithAuth, showToast]);
+
+  useEffect(() => {
+    if (!hydratedRef.current || changeCounterRef.current === 0) return;
+    const timer = setTimeout(() => { void saveAssessment(assessmentForm); }, 600);
+    return () => clearTimeout(timer);
+  }, [assessmentForm, saveAssessment]);
+
+  const updateAssessmentField = (key: keyof AssessmentForm, value: string) => {
+    changeCounterRef.current += 1;
+    setAssessmentForm((current) => ({ ...current, [key]: value.slice(0, 6) }));
+  };
 
   const parqFlags = useMemo(() => {
     const parq = answers?.parq;
@@ -244,20 +350,29 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
               <AssessmentRow label="Autoriza uso de imagem" value={answers?.imageAuthorization?.allowImageUse} />
             </MvCard>
 
-            <MvCard>
-              <MvText variant="semi2" style={{ marginBottom: 8 }}>
-                Avaliação física atual
-              </MvText>
-              <AssessmentRow label="Peso" value={physicalAssessment?.weight} unit="kg" />
-              <AssessmentRow label="Altura" value={physicalAssessment?.height} unit="cm" />
-              <AssessmentRow label="IMC" value={physicalAssessment?.imc} unit="kg/m2" />
-              <AssessmentRow label="% Gordura" value={physicalAssessment?.bodyFatPercent} unit="%" />
-              <AssessmentRow label="Massa muscular" value={physicalAssessment?.muscleMass} unit="kg" />
-              <AssessmentRow label="Cintura" value={physicalAssessment?.waist} unit="cm" />
-              <AssessmentRow label="Quadril" value={physicalAssessment?.hip} unit="cm" />
-              <AssessmentRow label="Peito" value={physicalAssessment?.chest} unit="cm" />
-              <AssessmentRow label="Braço" value={physicalAssessment?.arm} unit="cm" />
-              <AssessmentRow label="Coxa" value={physicalAssessment?.thigh} unit="cm" />
+            <MvCard style={{ gap: 4 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                <MvText variant="semi2">Avaliação física</MvText>
+                <MvText variant="caption" color="secondary">
+                  {autoSaving ? "Salvando..." : "Salvamento automático"}
+                </MvText>
+              </View>
+              {assessmentFields.map((field) => (
+                <View key={field.key} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, paddingVertical: 4 }}>
+                  <MvText variant="body4" color="secondary" style={{ flex: 1 }}>
+                    {field.label} <MvText variant="body4" color="tertiary">({field.unit})</MvText>
+                  </MvText>
+                  <MvInput
+                    keyboardType="number-pad"
+                    placeholder="0"
+                    maxLength={6}
+                    textAlign="right"
+                    value={assessmentForm[field.key]}
+                    onChangeText={(value) => updateAssessmentField(field.key, value)}
+                    style={{ width: 96 }}
+                  />
+                </View>
+              ))}
             </MvCard>
 
             <MvCard>
@@ -269,6 +384,57 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
               <AssessmentRow label="Dor no peito em exercicio" value={answers?.parq?.chestPainDuringExercise} />
               <AssessmentRow label="Dor no peito em repouso (ultimo mes)" value={answers?.parq?.chestPainAtRestLastMonth} />
             </MvCard>
+
+            {detail.consultancyContracts.length > 0 ? (
+              <MvCard>
+                <MvText variant="semi2" style={{ marginBottom: 8 }}>
+                  Histórico de serviços comprados
+                </MvText>
+                <View style={{ gap: 8 }}>
+                  {detail.consultancyContracts.map((contract) => {
+                    const badge = contractStatusBadge(contract);
+                    return (
+                      <View
+                        key={contract.id}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: theme.border,
+                          borderRadius: 10,
+                          padding: 10,
+                          backgroundColor: theme.inputBg,
+                          gap: 4,
+                        }}
+                      >
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                          <MvText variant="body4" style={{ flex: 1 }} numberOfLines={1}>
+                            {contract.offer.title}
+                          </MvText>
+                          <MvBadge label={badge.label} variant={badge.variant} />
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                          <MvText variant="caption" color="secondary">
+                            Contratado em {formatDate(contract.createdAt)}
+                            {contract.validUntil ? ` · válido até ${formatDate(contract.validUntil)}` : ""}
+                          </MvText>
+                          <MvText variant="body4" style={{ color: theme.textGreen }}>
+                            {formatCurrencyBRL(contract.paymentAmountCents / 100)}
+                          </MvText>
+                        </View>
+                        {contract.trainingPlans.length === 0 && contract.isVigente ? (
+                          <MvText variant="caption" style={{ color: "#F59E0B" }}>
+                            Nenhuma ficha de treino liberada ainda
+                          </MvText>
+                        ) : contract.trainingPlans.length > 0 ? (
+                          <MvText variant="caption" color="secondary">
+                            {contract.trainingPlans.length} ficha(s) de treino liberada(s)
+                          </MvText>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </View>
+              </MvCard>
+            ) : null}
 
             {studentBookings.length > 0 ? (
               <MvCard>
