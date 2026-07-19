@@ -1030,14 +1030,17 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
             );
           }}
           ListEmptyComponent={
-            loading ? (
+            // No modo "Dia", o cabeçalho da lista já cobre sozinho todo estado
+            // vazio/cheio do dia (card "Dia livre" etc.) — mostrar isso de novo
+            // aqui embaixo duplicava o mesmo aviso duas vezes na tela.
+            activeTab === "day" ? null : loading ? (
               <SkeletonAgendaList />
             ) : (
               <View style={{ paddingVertical: 32, alignItems: "center", gap: 10 }}>
                 <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: theme.chipBg, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="calendar-outline" size={26} color={theme.textGreen} />
                 </View>
-                <MvText variant="semi3" color="secondary">Nenhum compromisso para este dia</MvText>
+                <MvText variant="semi3" color="secondary">Nenhum compromisso neste mês</MvText>
                 <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>
                   Adicione horários disponíveis para receber agendamentos.
                 </MvText>
