@@ -744,6 +744,21 @@ export type SecurityRecoveryEmailResponse = {
   custom: boolean;
 };
 
+export type ProviderStudentServiceKind =
+  | "PRESENTIAL"
+  | "ONLINE_CONSULTANCY"
+  | "ONLINE_CONSULTANCY_SPECIALIZED"
+  | "COMBO";
+
+export type ProviderStudentServiceEntry = {
+  serviceKind: ProviderStudentServiceKind;
+  serviceLabel: string;
+  valueCents: number;
+  active: boolean;
+  nextSessionAt: string | null;
+  validUntil: string | null;
+};
+
 export type ProviderStudent = {
   clientId: string;
   name: string;
@@ -751,7 +766,11 @@ export type ProviderStudent = {
   phone: string | null;
   profilePhotoUrl: string | null;
   age?: number | null;
-  contractedValueCents?: number | null;
+  anamnesisPending: boolean;
+  trainingPlanPending: boolean;
+  active: boolean;
+  totalValueCents: number;
+  services: ProviderStudentServiceEntry[];
   totalBookings: number;
   totalContracts: number;
   lastActivityAt: string;
@@ -759,16 +778,9 @@ export type ProviderStudent = {
 
 export type ProviderDashboardStudentsResponse = {
   providerId: string;
-  services: Array<{
-    serviceKind:
-      | "PRESENTIAL"
-      | "ONLINE_CONSULTANCY"
-      | "ONLINE_CONSULTANCY_SPECIALIZED"
-      | "COMBO";
-    serviceLabel: string;
-    totalStudents: number;
-    students: ProviderStudent[];
-  }>;
+  totalStudents: number;
+  serviceCounts: Record<"ALL" | ProviderStudentServiceKind, number>;
+  students: ProviderStudent[];
 };
 
 export type ProviderStudentPhysicalAssessment = {
@@ -811,6 +823,34 @@ export type ProviderStudentManagementDetail = {
     onlineConsultancyContracts: number;
     specializedConsultancyContracts: number;
     comboContracts: number;
+  };
+  presentialHistory: unknown[];
+  consultancyContracts: Array<{
+    id: string;
+    status: string;
+    paymentAmountCents: number;
+    paymentInstallments: number;
+    createdAt: string;
+    deliveredAt: string | null;
+    validUntil: string | null;
+    isVigente: boolean;
+    offer: {
+      id: string;
+      kind: ProviderStudentServiceKind;
+      title: string;
+      billingCycle: string;
+      priceCents: number;
+    };
+    trainingPlans: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      createdAt: string;
+    }>;
+  }>;
+  trainingCompliance: {
+    completionCount: number;
+    latestCompletions: unknown[];
   };
 };
 
