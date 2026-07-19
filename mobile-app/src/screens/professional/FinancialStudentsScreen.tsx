@@ -430,6 +430,13 @@ export function FinancialStudentsScreen({ navigation }: Props) {
               </MvText>
               {appClients.map(c => {
                 const initials = c.name.split(" ").slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase();
+                const sessionLabel = c.sessionCount > 0
+                  ? `${c.sessionCount} sessão${c.sessionCount !== 1 ? "ões" : ""} concluída${c.sessionCount !== 1 ? "s" : ""}`
+                  : null;
+                const contractLabel = c.contractCount > 0
+                  ? `${c.contractCount} consultoria${c.contractCount !== 1 ? "s" : ""}`
+                  : null;
+                const activityLabel = [sessionLabel, contractLabel].filter(Boolean).join(" · ") || "—";
                 return (
                   <MvCard key={c.clientId}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -443,7 +450,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
                           <MvText variant="semi2" style={{ color: green, fontSize: 14, letterSpacing: -0.5 }}>{fmtCents(c.completedCents)}</MvText>
                         </View>
                         <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>
-                          {c.sessionCount} sessão{c.sessionCount !== 1 ? "ões" : ""} concluída{c.sessionCount !== 1 ? "s" : ""}
+                          {activityLabel}
                         </MvText>
                       </View>
                     </View>

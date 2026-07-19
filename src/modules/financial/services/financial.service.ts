@@ -1,4 +1,13 @@
-import { BookingStatus, FinancialExpenseCategory, FinancialRecurrence, FinancialStudentType, PaymentStatus, Prisma } from "@prisma/client";
+import {
+  BookingStatus,
+  ConsultancyPaymentStatus,
+  FinancialExpenseCategory,
+  FinancialRecurrence,
+  FinancialStudentType,
+  PaymentStatus,
+  Prisma,
+  ServiceOfferKind
+} from "@prisma/client";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
@@ -14,6 +23,13 @@ function monthBounds(month: string) {
   const from = new Date(y, m - 1, 1);
   const to = new Date(y, m, 0, 23, 59, 59, 999);
   return { from, to };
+}
+
+function consultancyKindLabel(kind: ServiceOfferKind): string {
+  if (kind === ServiceOfferKind.ONLINE_CONSULTANCY) return "Consultoria online";
+  if (kind === ServiceOfferKind.ONLINE_CONSULTANCY_SPECIALIZED) return "Consultoria personalizada";
+  if (kind === ServiceOfferKind.COMBO) return "Combo (presencial + consultoria)";
+  return "Consultoria online";
 }
 
 function monthKeyOf(date: Date) {
@@ -210,7 +226,9 @@ export class FinancialService {
       lastMonthIncomes,
       completedBookings,
       confirmedBookingsAgg,
-      lastMonthCompletedBookingsAgg
+      lastMonthCompletedBookingsAgg,
+      capturedContracts,
+      lastMonthCapturedContractsAgg
     ] = await Promise.all([
       getEffectiveIncomes(provider.id, m),
       getEffectiveExpenses(provider.id, m),
@@ -242,10 +260,23 @@ export class FinancialService {
       prisma.booking.aggregate({
         where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: lastMonthFrom, lte: lastMonthTo } },
         _sum: { priceCents: true }
+      }),
+      // consultorias com pagamento capturado (receita realizada pelo app, com data para breakdown diário)
+      prisma.consultancyContract.findMany({
+        where: { providerId: provider.id, paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: { gte: from, lte: to } },
+        select: { paymentAmountCents: true, paymentCapturedAt: true },
+        take: 2000,
+      }),
+      // mês anterior: consultorias com pagamento capturado
+      prisma.consultancyContract.aggregate({
+        where: { providerId: provider.id, paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: { gte: lastMonthFrom, lte: lastMonthTo } },
+        _sum: { paymentAmountCents: true }
       })
     ]);
 
-    const appRevenueCents            = completedBookings.reduce((s, b) => s + b.priceCents, 0);
+    const appBookingRevenueCents     = completedBookings.reduce((s, b) => s + b.priceCents, 0);
+    const appConsultancyRevenueCents = capturedContracts.reduce((s, c) => s + c.paymentAmountCents, 0);
+    const appRevenueCents            = appBookingRevenueCents + appConsultancyRevenueCents;
     const confirmedRevenueCents      = confirmedBookingsAgg._sum.priceCents ?? 0;
     const manualRevenueCents         = incomes.reduce((s, i) => s + i.amountCents, 0);
     const totalRevenueCents          = manualRevenueCents + appRevenueCents;
@@ -253,7 +284,8 @@ export class FinancialService {
     const netProfitCents             = totalRevenueCents - totalExpensesCents;
 
     const lastMonthManualRevenue     = lastMonthIncomes.reduce((s, i) => s + i.amountCents, 0);
-    const lastMonthAppRevenue        = lastMonthCompletedBookingsAgg._sum.priceCents ?? 0;
+    const lastMonthAppRevenue        =
+      (lastMonthCompletedBookingsAgg._sum.priceCents ?? 0) + (lastMonthCapturedContractsAgg._sum.paymentAmountCents ?? 0);
     const lastMonthTotalRevenueCents = lastMonthManualRevenue + lastMonthAppRevenue;
     const growthPct =
       lastMonthTotalRevenueCents === 0
@@ -280,7 +312,7 @@ export class FinancialService {
       (s) => s.date >= weekStart && s.date <= weekEnd
     ).length;
 
-    // Breakdown diário: receitas manuais + agendamentos completados
+    // Breakdown diário: receitas manuais + agendamentos completados + consultorias capturadas
     const dailyMap: Record<string, number> = {};
     for (const inc of incomes) {
       const day = inc.paidAt.toISOString().slice(0, 10);
@@ -289,6 +321,10 @@ export class FinancialService {
     for (const b of completedBookings) {
       const day = b.scheduledAt.toISOString().slice(0, 10);
       dailyMap[day] = (dailyMap[day] ?? 0) + b.priceCents;
+    }
+    for (const c of capturedContracts) {
+      const day = (c.paymentCapturedAt ?? new Date()).toISOString().slice(0, 10);
+      dailyMap[day] = (dailyMap[day] ?? 0) + c.paymentAmountCents;
     }
 
     return {
@@ -606,26 +642,40 @@ export class FinancialService {
     await prisma.financialClassSession.delete({ where: { id: sessionId } });
   }
 
-  // ─── App Clients (agendamentos completados + confirmados, agrupados por cliente) ─
+  // ─── App Clients (agendamentos + consultorias pagas, agrupados por cliente) ─
   async listAppClients(userId: string, month?: string) {
     const provider = await getProviderByUserId(userId);
     const m = month ?? currentMonth();
     const { from, to } = monthBounds(m);
 
-    const bookings = await prisma.booking.findMany({
-      where: {
-        providerId: provider.id,
-        status: { in: [BookingStatus.COMPLETED, BookingStatus.CONFIRMED] },
-        scheduledAt: { gte: from, lte: to }
-      },
-      include: {
-        client:   { select: { id: true, name: true } },
-        category: { select: { name: true } }
-      },
-      orderBy: { scheduledAt: "desc" }
-    });
+    const [bookings, contracts] = await Promise.all([
+      prisma.booking.findMany({
+        where: {
+          providerId: provider.id,
+          status: { in: [BookingStatus.COMPLETED, BookingStatus.CONFIRMED] },
+          scheduledAt: { gte: from, lte: to }
+        },
+        include: {
+          client:   { select: { id: true, name: true } },
+          category: { select: { name: true } }
+        },
+        orderBy: { scheduledAt: "desc" }
+      }),
+      prisma.consultancyContract.findMany({
+        where: {
+          providerId: provider.id,
+          paymentStatus: ConsultancyPaymentStatus.CAPTURED,
+          paymentCapturedAt: { gte: from, lte: to }
+        },
+        include: {
+          client: { select: { id: true, name: true } },
+          offer:  { select: { kind: true } }
+        },
+        orderBy: { paymentCapturedAt: "desc" }
+      })
+    ]);
 
-    // Agrupa por clientId — distingue receita realizada (COMPLETED) de prevista (CONFIRMED)
+    // Agrupa por clientId — distingue receita realizada (COMPLETED/consultoria capturada) de prevista (CONFIRMED)
     const grouped = new Map<string, {
       clientId: string;
       name: string;
@@ -633,25 +683,32 @@ export class FinancialService {
       confirmedCents: number;
       sessionCount: number;
       confirmedSessionCount: number;
+      contractCount: number;
       services: string[];
       latestAt: string;
     }>();
 
-    for (const b of bookings) {
-      const key = b.clientId;
-      if (!grouped.has(key)) {
-        grouped.set(key, {
-          clientId: key,
-          name: b.client.name,
+    const getEntry = (clientId: string, name: string, atIso: string) => {
+      if (!grouped.has(clientId)) {
+        grouped.set(clientId, {
+          clientId,
+          name,
           completedCents: 0,
           confirmedCents: 0,
           sessionCount: 0,
           confirmedSessionCount: 0,
+          contractCount: 0,
           services: [],
-          latestAt: b.scheduledAt.toISOString()
+          latestAt: atIso
         });
       }
-      const entry = grouped.get(key)!;
+      const entry = grouped.get(clientId)!;
+      if (atIso > entry.latestAt) entry.latestAt = atIso;
+      return entry;
+    };
+
+    for (const b of bookings) {
+      const entry = getEntry(b.clientId, b.client.name, b.scheduledAt.toISOString());
       if (b.status === BookingStatus.COMPLETED) {
         entry.completedCents  += b.priceCents;
         entry.sessionCount    += 1;
@@ -661,13 +718,23 @@ export class FinancialService {
       }
       const svcName = b.category?.name ?? "Serviço";
       if (!entry.services.includes(svcName)) entry.services.push(svcName);
-      if (b.scheduledAt.toISOString() > entry.latestAt) entry.latestAt = b.scheduledAt.toISOString();
+    }
+
+    for (const c of contracts) {
+      const capturedAtIso = (c.paymentCapturedAt ?? c.createdAt).toISOString();
+      const entry = getEntry(c.clientId, c.client.name, capturedAtIso);
+      entry.completedCents += c.paymentAmountCents;
+      entry.contractCount  += 1;
+      const svcName = consultancyKindLabel(c.offer.kind);
+      if (!entry.services.includes(svcName)) entry.services.push(svcName);
     }
 
     return Array.from(grouped.values()).sort((a, b) => {
-      // clientes com sessões concluídas primeiro, depois por nome
-      if (a.sessionCount > 0 && b.sessionCount === 0) return -1;
-      if (a.sessionCount === 0 && b.sessionCount > 0) return 1;
+      // clientes com receita realizada primeiro, depois por nome
+      const aRealized = a.sessionCount > 0 || a.contractCount > 0;
+      const bRealized = b.sessionCount > 0 || b.contractCount > 0;
+      if (aRealized && !bRealized) return -1;
+      if (!aRealized && bRealized) return 1;
       return a.name.localeCompare(b.name);
     });
   }
@@ -692,7 +759,7 @@ export class FinancialService {
       const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const { from, to } = monthBounds(month);
 
-      const [incomes, expenses, classes, appBookings] = await Promise.all([
+      const [incomes, expenses, classes, appBookings, appContracts] = await Promise.all([
         getEffectiveIncomes(provider.id, month),
         getEffectiveExpenses(provider.id, month),
         prisma.financialClassSession.count({
@@ -701,11 +768,15 @@ export class FinancialService {
         prisma.booking.aggregate({
           where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: from, lte: to } },
           _sum: { priceCents: true }
+        }),
+        prisma.consultancyContract.aggregate({
+          where: { providerId: provider.id, paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: { gte: from, lte: to } },
+          _sum: { paymentAmountCents: true }
         })
       ]);
 
       const rev    = incomes.reduce((s, i) => s + i.amountCents, 0);
-      const appRev = appBookings._sum.priceCents ?? 0;
+      const appRev = (appBookings._sum.priceCents ?? 0) + (appContracts._sum.paymentAmountCents ?? 0);
       const exp    = expenses.reduce((s, e) => s + e.amountCents, 0);
       result.push({ month, revenueCents: rev, appRevenueCents: appRev, expensesCents: exp, netCents: rev + appRev - exp, classes });
     }

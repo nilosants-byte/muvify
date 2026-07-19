@@ -2169,12 +2169,14 @@ export type FinancialReport = {
 export type FinancialAppClient = {
   clientId: string;
   name: string;
-  /** sessoes concluidas - receita realizada */
+  /** sessoes concluidas + consultorias pagas - receita realizada */
   completedCents: number;
   /** sessoes agendadas (CONFIRMED) - receita prevista */
   confirmedCents: number;
   sessionCount: number;
   confirmedSessionCount: number;
+  /** consultorias com pagamento capturado neste periodo */
+  contractCount: number;
   services: string[];
   latestAt: string;
 };
