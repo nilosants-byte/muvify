@@ -1,9 +1,11 @@
 ﻿import { randomUUID } from "node:crypto";
 import {
+  AnamnesisStatus,
   BookingStatus,
   CrefValidationStatus,
   ConsultancyContractStatus,
   ConsultancyPaymentStatus,
+  OfferBillingCycle,
   Prisma,
   ProviderServiceMode,
   ServiceOfferKind,
@@ -231,6 +233,25 @@ function serviceKindLabel(kind: ServiceOfferKind | "PRESENTIAL") {
   if (kind === ServiceOfferKind.ONLINE_CONSULTANCY_SPECIALIZED)
     return "Consultoria on-line personalizada";
   return "Combo (Presencial + Consultoria on-line)";
+}
+
+function billingCycleDurationDays(cycle: OfferBillingCycle): number {
+  if (cycle === OfferBillingCycle.DAILY) return 1;
+  if (cycle === OfferBillingCycle.WEEKLY) return 7;
+  if (cycle === OfferBillingCycle.MONTHLY) return 30;
+  if (cycle === OfferBillingCycle.QUARTERLY) return 90;
+  if (cycle === OfferBillingCycle.SEMIANNUAL) return 180;
+  return 365;
+}
+
+function consultancyValidUntil(
+  contract: { paymentCapturedAt: Date | null; createdAt: Date },
+  cycle: OfferBillingCycle
+): Date {
+  const start = contract.paymentCapturedAt ?? contract.createdAt;
+  const validUntil = new Date(start);
+  validUntil.setDate(validUntil.getDate() + billingCycleDurationDays(cycle));
+  return validUntil;
 }
 
 function parseStudentAgeFromAnamnesis(answers: unknown) {
@@ -1541,6 +1562,22 @@ export class ProviderService {
 
   async listStudentsByService(userId: string) {
     const provider = await this.getProviderByUserId(userId);
+    const now = new Date();
+
+    const clientSelect = {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      photoUrl: true,
+      updatedAt: true,
+      anamnesisProfile: {
+        select: {
+          status: true,
+          answers: true
+        }
+      }
+    } as const;
 
     const [bookings, contracts] = await Promise.all([
       prisma.booking.findMany({
@@ -1551,21 +1588,7 @@ export class ProviderService {
           }
         },
         include: {
-          client: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phone: true,
-              photoUrl: true,
-              updatedAt: true,
-              anamnesisProfile: {
-                select: {
-                  answers: true
-                }
-              }
-            }
-          }
+          client: { select: clientSelect }
         },
         orderBy: { scheduledAt: "desc" },
         take: 1000,
@@ -1579,26 +1602,16 @@ export class ProviderService {
           }
         },
         include: {
-          client: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phone: true,
-              photoUrl: true,
-              updatedAt: true,
-              anamnesisProfile: {
-                select: {
-                  answers: true
-                }
-              }
-            }
-          },
+          client: { select: clientSelect },
           offer: {
             select: {
               kind: true,
-              title: true
+              title: true,
+              billingCycle: true
             }
+          },
+          _count: {
+            select: { trainingPlans: true }
           }
         },
         orderBy: { createdAt: "desc" },
@@ -1606,155 +1619,182 @@ export class ProviderService {
       })
     ]);
 
-    const groups = {
-      PRESENTIAL: new Map<string, {
-        clientId: string;
-        name: string;
-        email: string;
-        phone: string | null;
-        profilePhotoUrl: string | null;
-        age: number | null;
-        contractedValueCents: number | null;
-        totalBookings: number;
-        totalContracts: number;
-        lastActivityAt: Date;
-      }>(),
-      ONLINE_CONSULTANCY: new Map<string, {
-        clientId: string;
-        name: string;
-        email: string;
-        phone: string | null;
-        profilePhotoUrl: string | null;
-        age: number | null;
-        contractedValueCents: number | null;
-        totalBookings: number;
-        totalContracts: number;
-        lastActivityAt: Date;
-      }>(),
-      ONLINE_CONSULTANCY_SPECIALIZED: new Map<string, {
-        clientId: string;
-        name: string;
-        email: string;
-        phone: string | null;
-        profilePhotoUrl: string | null;
-        age: number | null;
-        contractedValueCents: number | null;
-        totalBookings: number;
-        totalContracts: number;
-        lastActivityAt: Date;
-      }>(),
-      COMBO: new Map<string, {
-        clientId: string;
-        name: string;
-        email: string;
-        phone: string | null;
-        profilePhotoUrl: string | null;
-        age: number | null;
-        contractedValueCents: number | null;
-        totalBookings: number;
-        totalContracts: number;
-        lastActivityAt: Date;
-      }>()
+    type ClientRow = (typeof bookings)[number]["client"];
+
+    type ServiceEntry = {
+      serviceKind: ServiceOfferKind | "PRESENTIAL";
+      serviceLabel: string;
+      valueCents: number;
+      active: boolean;
+      nextSessionAt: Date | null;
+      validUntil: Date | null;
     };
 
-    for (const booking of bookings) {
-      const key = booking.client.id;
-      const bookingAge = parseStudentAgeFromAnamnesis(booking.client.anamnesisProfile?.answers);
-      const bookingPrice = Number.isFinite(booking.priceCents) ? booking.priceCents : null;
-      const existing = groups.PRESENTIAL.get(key);
-      if (existing) {
-        existing.totalBookings += 1;
-        if (existing.age == null && bookingAge != null) {
-          existing.age = bookingAge;
-        }
-        if (booking.scheduledAt > existing.lastActivityAt) {
-          existing.lastActivityAt = booking.scheduledAt;
-          existing.contractedValueCents = bookingPrice ?? existing.contractedValueCents;
-        }
-      } else {
-        groups.PRESENTIAL.set(key, {
-          clientId: booking.client.id,
-          name: booking.client.name,
-          email: booking.client.email,
-          phone: booking.client.phone,
-          profilePhotoUrl: toUserPhotoUrl(
-            booking.client.id,
-            booking.client.photoUrl,
-            booking.client.updatedAt
-          ),
-          age: bookingAge,
-          contractedValueCents: bookingPrice,
-          totalBookings: 1,
+    type StudentAggregate = {
+      clientId: string;
+      name: string;
+      email: string;
+      phone: string | null;
+      profilePhotoUrl: string | null;
+      age: number | null;
+      anamnesisPending: boolean;
+      trainingPlanPending: boolean;
+      services: Map<string, ServiceEntry>;
+      totalBookings: number;
+      totalContracts: number;
+      lastActivityAt: Date;
+    };
+
+    const students = new Map<string, StudentAggregate>();
+
+    const getStudent = (client: ClientRow, activityAt: Date) => {
+      let student = students.get(client.id);
+      if (!student) {
+        student = {
+          clientId: client.id,
+          name: client.name,
+          email: client.email,
+          phone: client.phone,
+          profilePhotoUrl: toUserPhotoUrl(client.id, client.photoUrl, client.updatedAt),
+          age: parseStudentAgeFromAnamnesis(client.anamnesisProfile?.answers),
+          anamnesisPending: client.anamnesisProfile?.status !== AnamnesisStatus.COMPLETED,
+          trainingPlanPending: false,
+          services: new Map(),
+          totalBookings: 0,
           totalContracts: 0,
-          lastActivityAt: booking.scheduledAt
-        });
+          lastActivityAt: activityAt
+        };
+        students.set(client.id, student);
+      } else if (student.age == null) {
+        const age = parseStudentAgeFromAnamnesis(client.anamnesisProfile?.answers);
+        if (age != null) student.age = age;
       }
+      if (activityAt > student.lastActivityAt) {
+        student.lastActivityAt = activityAt;
+      }
+      return student;
+    };
+
+    const presentialLatest = new Map<string, { priceCents: number; at: Date }>();
+    const presentialNextSession = new Map<string, Date>();
+
+    for (const booking of bookings) {
+      const student = getStudent(booking.client, booking.scheduledAt);
+      student.totalBookings += 1;
+
+      const price = Number.isFinite(booking.priceCents) ? booking.priceCents : null;
+      if (price != null) {
+        const latest = presentialLatest.get(booking.client.id);
+        if (!latest || booking.scheduledAt > latest.at) {
+          presentialLatest.set(booking.client.id, { priceCents: price, at: booking.scheduledAt });
+        }
+      }
+
+      if (
+        booking.scheduledAt > now &&
+        (booking.status === BookingStatus.PENDING || booking.status === BookingStatus.CONFIRMED)
+      ) {
+        const existingNext = presentialNextSession.get(booking.client.id);
+        if (!existingNext || booking.scheduledAt < existingNext) {
+          presentialNextSession.set(booking.client.id, booking.scheduledAt);
+        }
+      }
+    }
+
+    for (const [clientId, latest] of presentialLatest) {
+      const student = students.get(clientId);
+      if (!student) continue;
+      const recentMs = now.getTime() - student.lastActivityAt.getTime();
+      student.services.set("PRESENTIAL", {
+        serviceKind: "PRESENTIAL",
+        serviceLabel: serviceKindLabel("PRESENTIAL"),
+        valueCents: latest.priceCents,
+        active: recentMs < 60 * 24 * 60 * 60 * 1000,
+        nextSessionAt: presentialNextSession.get(clientId) ?? null,
+        validUntil: null
+      });
     }
 
     for (const contract of contracts) {
+      const student = getStudent(contract.client, contract.createdAt);
+      student.totalContracts += 1;
+
       const kind = contract.offer.kind;
-      const target = groups[kind];
-      const key = contract.client.id;
-      const contractAge = parseStudentAgeFromAnamnesis(contract.client.anamnesisProfile?.answers);
-      const contractPrice = Number.isFinite(contract.paymentAmountCents) ? contract.paymentAmountCents : null;
-      const existing = target.get(key);
-      if (existing) {
-        existing.totalContracts += 1;
-        if (existing.age == null && contractAge != null) {
-          existing.age = contractAge;
-        }
-        if (contract.createdAt > existing.lastActivityAt) {
-          existing.lastActivityAt = contract.createdAt;
-          existing.contractedValueCents = contractPrice ?? existing.contractedValueCents;
-        }
-      } else {
-        target.set(key, {
-          clientId: contract.client.id,
-          name: contract.client.name,
-          email: contract.client.email,
-          phone: contract.client.phone,
-          profilePhotoUrl: toUserPhotoUrl(
-            contract.client.id,
-            contract.client.photoUrl,
-            contract.client.updatedAt
-          ),
-          age: contractAge,
-          contractedValueCents: contractPrice,
-          totalBookings: 0,
-          totalContracts: 1,
-          lastActivityAt: contract.createdAt
+      const validUntil = consultancyValidUntil(contract, contract.offer.billingCycle);
+      const isVigente = validUntil >= now;
+      const price = Number.isFinite(contract.paymentAmountCents) ? contract.paymentAmountCents : 0;
+
+      const existing = student.services.get(kind);
+      if (!existing) {
+        student.services.set(kind, {
+          serviceKind: kind,
+          serviceLabel: serviceKindLabel(kind),
+          valueCents: isVigente ? price : 0,
+          active: isVigente,
+          nextSessionAt: null,
+          validUntil
         });
+      } else {
+        if (isVigente) {
+          existing.valueCents += price;
+          existing.active = true;
+        }
+        if (!existing.validUntil || validUntil > existing.validUntil) {
+          existing.validUntil = validUntil;
+        }
+      }
+
+      if (
+        isVigente &&
+        contract.status === ConsultancyContractStatus.ACTIVE &&
+        contract._count.trainingPlans === 0 &&
+        kind !== ServiceOfferKind.PRESENTIAL
+      ) {
+        student.trainingPlanPending = true;
       }
     }
 
+    const result = Array.from(students.values())
+      .map((student) => {
+        const services = Array.from(student.services.values());
+        const totalValueCents = services.reduce(
+          (sum, service) =>
+            sum + (service.serviceKind === "PRESENTIAL" ? service.valueCents : service.active ? service.valueCents : 0),
+          0
+        );
+        return {
+          clientId: student.clientId,
+          name: student.name,
+          email: student.email,
+          phone: student.phone,
+          profilePhotoUrl: student.profilePhotoUrl,
+          age: student.age,
+          anamnesisPending: student.anamnesisPending,
+          trainingPlanPending: student.trainingPlanPending,
+          active: services.some((service) => service.active),
+          totalValueCents,
+          services,
+          totalBookings: student.totalBookings,
+          totalContracts: student.totalContracts,
+          lastActivityAt: student.lastActivityAt
+        };
+      })
+      .sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
+
+    const hasKind = (kind: ServiceOfferKind | "PRESENTIAL") =>
+      result.filter((student) => student.services.some((service) => service.serviceKind === kind)).length;
+
     return {
       providerId: provider.id,
-      services: [
-        {
-          serviceKind: "PRESENTIAL",
-          serviceLabel: serviceKindLabel("PRESENTIAL"),
-          totalStudents: groups.PRESENTIAL.size,
-          students: Array.from(groups.PRESENTIAL.values())
-        },
-        {
-          serviceKind: "ONLINE_CONSULTANCY",
-          serviceLabel: serviceKindLabel(ServiceOfferKind.ONLINE_CONSULTANCY),
-          totalStudents: groups.ONLINE_CONSULTANCY.size,
-          students: Array.from(groups.ONLINE_CONSULTANCY.values())
-        },
-        {
-          serviceKind: "ONLINE_CONSULTANCY_SPECIALIZED",
-          serviceLabel: serviceKindLabel(ServiceOfferKind.ONLINE_CONSULTANCY_SPECIALIZED),
-          totalStudents: groups.ONLINE_CONSULTANCY_SPECIALIZED.size,
-          students: Array.from(groups.ONLINE_CONSULTANCY_SPECIALIZED.values())
-        },
-        {
-          serviceKind: "COMBO",
-          serviceLabel: serviceKindLabel(ServiceOfferKind.COMBO),
-          totalStudents: groups.COMBO.size,
-          students: Array.from(groups.COMBO.values())
-        }
-      ]
+      totalStudents: result.length,
+      serviceCounts: {
+        ALL: result.length,
+        PRESENTIAL: hasKind("PRESENTIAL"),
+        ONLINE_CONSULTANCY: hasKind(ServiceOfferKind.ONLINE_CONSULTANCY),
+        ONLINE_CONSULTANCY_SPECIALIZED: hasKind(ServiceOfferKind.ONLINE_CONSULTANCY_SPECIALIZED),
+        COMBO: hasKind(ServiceOfferKind.COMBO)
+      },
+      students: result
     };
   }
 
@@ -1896,6 +1936,19 @@ export class ProviderService {
       COMBO: contracts.filter((item) => item.offer.kind === ServiceOfferKind.COMBO).length
     };
 
+    const now = new Date();
+    const contractsWithValidity = contracts.map((contract) => {
+      const isCaptured =
+        contract.paymentStatus === ConsultancyPaymentStatus.CAPTURED &&
+        (contract.status === ConsultancyContractStatus.ACTIVE || contract.status === ConsultancyContractStatus.DELIVERED);
+      const validUntil = isCaptured ? consultancyValidUntil(contract, contract.offer.billingCycle) : null;
+      return {
+        ...contract,
+        validUntil,
+        isVigente: Boolean(validUntil && validUntil >= now)
+      };
+    });
+
     return {
       student: {
         id: client.id,
@@ -1937,7 +1990,7 @@ export class ProviderService {
         comboContracts: serviceCounters.COMBO
       },
       presentialHistory: bookings,
-      consultancyContracts: contracts,
+      consultancyContracts: contractsWithValidity,
       trainingCompliance: {
         completionCount: trainingCompletions.length,
         latestCompletions: trainingCompletions
