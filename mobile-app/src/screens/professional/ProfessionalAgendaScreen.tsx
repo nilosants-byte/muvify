@@ -3,7 +3,6 @@ import * as Haptics from "expo-haptics";
 import { trackEvent } from "../../services/analytics";
 import {
   Alert,
-  FlatList,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -11,6 +10,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  SectionList,
   StatusBar,
   Text,
   TouchableOpacity,
@@ -229,6 +229,30 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
       return d.getFullYear() === selectedDate.getFullYear() && d.getMonth() === selectedDate.getMonth();
     });
   }, [activeTab, bookings, selectedDate]);
+
+  // Modo "Mês": agrupa os compromissos por data (em vez de uma lista corrida
+  // só com horário) — sem isso, um mês cheio vira uma sequência de horários
+  // sem nenhuma pista de qual dia é qual.
+  const monthSections = useMemo(() => {
+    if (activeTab !== "month") return [];
+    const groups = new Map<string, Booking[]>();
+    visibleBookings.forEach((item) => {
+      const key = toDateKey(new Date(item.scheduledAt));
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(item);
+    });
+    return Array.from(groups.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([dateKey, items]) => {
+        const [y, m, d] = dateKey.split("-").map(Number);
+        const date = new Date(y, m - 1, d);
+        return {
+          title: `${WEEKDAY_FULL_PT[date.getDay()]}, ${d} de ${MONTHS_FULL_PT[date.getMonth()].toLowerCase()}`,
+          dateKey,
+          data: items,
+        };
+      });
+  }, [activeTab, visibleBookings]);
 
   // Slots do dia selecionado
   const allDaySlots = useMemo(
@@ -568,14 +592,23 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
 
         {/* Lista de agendamentos */}
         <ScreenEntrance>
-        <FlatList
+        <SectionList
           contentContainerStyle={{
             paddingHorizontal: 16,
             paddingBottom: 90,
             gap: 8,
           }}
-          data={activeTab === "day" ? [] : visibleBookings}
+          sections={activeTab === "day" ? [] : monthSections}
           keyExtractor={(item) => item.id}
+          stickySectionHeadersEnabled
+          renderSectionHeader={({ section }) => (
+            <View style={{ paddingTop: 14, paddingBottom: 6, backgroundColor: theme.bg }}>
+              <MvText variant="semi2" style={{ fontSize: 14 }}>{section.title}</MvText>
+              <MvText variant="body4" color="secondary" style={{ fontSize: 11, marginTop: 1 }}>
+                {section.data.length} sessão{section.data.length > 1 ? "ões" : ""}
+              </MvText>
+            </View>
+          )}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
