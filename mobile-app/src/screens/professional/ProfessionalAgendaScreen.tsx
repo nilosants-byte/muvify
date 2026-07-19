@@ -407,10 +407,13 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
   const selectedWeekday = useMemo(() => selectedDate.getDay(), [selectedDate]);
 
   // ── Timeline unificada do dia: bookings + slots livres + bloqueios em ordem cronológica ──
+  type OffAppClass = { studentName: string; startTime: string; endTime: string; location?: string };
+
   type TimelineItem =
     | { kind: "booking"; time: string; booking: Booking }
     | { kind: "free"; time: string }
-    | { kind: "blocked"; time: string; block: ManualBlock };
+    | { kind: "blocked"; time: string; block: ManualBlock }
+    | { kind: "external"; time: string; cls: OffAppClass };
 
   const dayTimeline = useMemo<TimelineItem[]>(() => {
     if (activeTab !== "day") return [];
@@ -434,8 +437,11 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
         items.push({ kind: "free", time: slot });
       }
     });
+    offAppClassesForDay.forEach((cls) => {
+      items.push({ kind: "external", time: cls.startTime, cls });
+    });
     return items.sort((a, b) => a.time.localeCompare(b.time));
-  }, [activeTab, allDaySlots, occupiedSlotKeys, todayBlockedKeys, visibleBookings, todayManualBlocks]);
+  }, [activeTab, allDaySlots, occupiedSlotKeys, todayBlockedKeys, visibleBookings, todayManualBlocks, offAppClassesForDay]);
 
   const dayAvailabilities = useMemo(
     () => availabilities
@@ -486,28 +492,34 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     }
   }
 
-  async function removeAvailSlot(id: string) {
-    Alert.alert("Remover horário", "Deseja remover este horário disponível?", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Remover", style: "destructive",
-        onPress: async () => {
-          try {
-            setDeletingAvailId(id);
-            await runWithAuth((token) => availabilityApi.delete(token, id));
-            queryClient.setQueryData<typeof agendaQuery.data>(queryKeys.agenda.professional(), (old) => ({
-              ...old!,
-              availabilities: (old?.availabilities ?? []).filter((a) => a.id !== id),
-            }));
-            showToast("Horário removido.", "success");
-          } catch (error) {
-            handleScreenError({ error, showToast, fallbackMessage: "Falha ao remover horário.", navigation });
-          } finally {
-            setDeletingAvailId(null);
-          }
-        },
-      },
-    ]);
+  async function doRemoveAvailSlot(id: string) {
+    try {
+      setDeletingAvailId(id);
+      await runWithAuth((token) => availabilityApi.delete(token, id));
+      queryClient.setQueryData<typeof agendaQuery.data>(queryKeys.agenda.professional(), (old) => ({
+        ...old!,
+        availabilities: (old?.availabilities ?? []).filter((a) => a.id !== id),
+      }));
+      showToast("Horário removido.", "success");
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao remover horário.", navigation });
+    } finally {
+      setDeletingAvailId(null);
+    }
+  }
+
+  // Remove uma faixa de disponibilidade recorrente. Como a faixa se repete
+  // toda semana (não é só "esse horário hoje"), o aviso deixa isso explícito
+  // pra não surpreender quem tocar num horário livre específico na timeline.
+  function removeAvailSlot(range: Availability) {
+    Alert.alert(
+      "Remover disponibilidade",
+      `Isso remove o horário ${range.startTime}–${range.endTime} de todas as ${WEEKDAY_FULL_PT[range.weekday]}s — não só hoje.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Remover", style: "destructive", onPress: () => void doRemoveAvailSlot(range.id) },
+      ]
+    );
   }
 
   const selectedDayLabel = useMemo(() => {
@@ -780,7 +792,21 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                 <View style={{ gap: 10, marginBottom: 4 }}>
                 {/* ── Resumo do dia: header + métricas ── */}
                 <View>
-                  <MvText variant="semi1" style={{ marginBottom: 10 }}>{selectedDayLabel}</MvText>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <MvText variant="semi1">{selectedDayLabel}</MvText>
+                    <TouchableOpacity
+                      onPress={() => setBlockModalVisible(true)}
+                      style={{
+                        flexDirection: "row", alignItems: "center", gap: 5,
+                        paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99,
+                        borderWidth: 1, borderColor: "rgba(245,158,11,0.28)",
+                        backgroundColor: "rgba(245,158,11,0.10)",
+                      }}
+                    >
+                      <Ionicons name="lock-closed-outline" size={12} color="#F59E0B" />
+                      <MvText variant="badge" style={{ color: "#F59E0B", fontSize: 11 }}>Bloquear</MvText>
+                    </TouchableOpacity>
+                  </View>
                   <View style={{ flexDirection: "row", gap: 10, marginBottom: 2 }}>
                     <MetricPill label="Compromissos" value={visibleBookings.length} tone={visibleBookings.length > 0 ? "green" : "sky"} />
                     <MetricPill label="Horários livres" value={freeSlots.length} tone="sky" />
@@ -868,10 +894,36 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                               ) : null}
                             </View>
                             <MvBadge label="Bloqueado" variant="orange" />
+                            <TouchableOpacity onPress={() => void removeManualBlock(item.block.id)} hitSlop={8}>
+                              <Ionicons name="trash-outline" size={16} color="#f44336" />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      }
+                      if (item.kind === "external") {
+                        return (
+                          <View key={`ext-${item.cls.studentName}-${item.time}`} style={{
+                            flexDirection: "row", alignItems: "center", gap: 12,
+                            borderRadius: 16, borderWidth: 1, borderColor: "rgba(59,130,246,0.25)",
+                            backgroundColor: "rgba(59,130,246,0.05)",
+                            paddingHorizontal: 14, paddingVertical: 13,
+                          }}>
+                            <MvText variant="semi2" style={{ color: "#3B82F6", minWidth: 44, fontSize: 16 }}>{item.time}</MvText>
+                            <View style={{ flex: 1, gap: 2 }}>
+                              <MvText variant="semi3">{item.cls.studentName}</MvText>
+                              {item.cls.location ? (
+                                <MvText variant="body4" color="secondary" numberOfLines={1}>{item.cls.location}</MvText>
+                              ) : null}
+                            </View>
+                            <MvBadge label="Externa" variant="blue" />
                           </View>
                         );
                       }
                       // free slot
+                      const containingRange = dayAvailabilities.find((a) => {
+                        const slotMin = parseMinutes(item.time);
+                        return slotMin >= parseMinutes(a.startTime) && slotMin < parseMinutes(a.endTime);
+                      });
                       return (
                         <View key={`fr-${item.time}`} style={{
                           flexDirection: "row", alignItems: "center", gap: 12,
@@ -880,13 +932,24 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                           paddingHorizontal: 14, paddingVertical: 13,
                         }}>
                           <MvText variant="semi2" style={{ color: theme.textGreen, minWidth: 44, fontSize: 16 }}>{item.time}</MvText>
-                          <View style={{
-                            flexDirection: "row", alignItems: "center", gap: 5,
-                            backgroundColor: "rgba(34,197,94,0.12)",
-                            borderRadius: 99, paddingHorizontal: 10, paddingVertical: 3,
-                          }}>
-                            <MvText variant="body4" style={{ color: theme.textGreen, fontSize: 11 }}>Horário livre</MvText>
+                          <View style={{ flex: 1 }}>
+                            <View style={{
+                              flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start",
+                              backgroundColor: "rgba(34,197,94,0.12)",
+                              borderRadius: 99, paddingHorizontal: 10, paddingVertical: 3,
+                            }}>
+                              <MvText variant="body4" style={{ color: theme.textGreen, fontSize: 11 }}>Horário livre</MvText>
+                            </View>
                           </View>
+                          {containingRange ? (
+                            <TouchableOpacity
+                              onPress={() => removeAvailSlot(containingRange)}
+                              disabled={deletingAvailId === containingRange.id}
+                              hitSlop={8}
+                            >
+                              <Ionicons name="trash-outline" size={16} color={deletingAvailId === containingRange.id ? theme.text3 : "#f44336"} />
+                            </TouchableOpacity>
+                          ) : null}
                         </View>
                       );
                     })}
@@ -916,160 +979,6 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                   </View>
                 ) : null}
 
-                {/* Gerenciamento de disponibilidade para o dia da semana */}
-                <MvCard>
-                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: dayAvailabilities.length > 0 ? 10 : 0 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Ionicons name="time-outline" size={15} color={theme.textGreen} />
-                      <MvText variant="semi3">Horários disponíveis — {WEEKDAY_FULL_PT[selectedWeekday]}</MvText>
-                    </View>
-                  </View>
-
-                  {dayAvailabilities.length === 0 ? (
-                    <MvText variant="body4" color="secondary">
-                      Nenhum horário configurado para este dia. Toque em + para adicionar.
-                    </MvText>
-                  ) : null}
-
-                  {dayAvailabilities.map((slot) => (
-                    <View
-                      key={slot.id}
-                      style={{
-                        flexDirection: "row", alignItems: "center",
-                        paddingVertical: 10, paddingHorizontal: 12,
-                        borderRadius: 12, marginBottom: 6,
-                        borderWidth: 1, borderColor: "rgba(34,197,94,0.22)",
-                        backgroundColor: "rgba(34,197,94,0.06)",
-                      }}
-                    >
-                      <View style={{ width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: theme.primary, marginRight: 10 }} />
-                      <Ionicons name="time-outline" size={14} color={theme.textGreen} />
-                      <MvText variant="semi3" style={{ flex: 1, marginLeft: 6 }}>
-                        {slot.startTime} – {slot.endTime}
-                      </MvText>
-                      <TouchableOpacity
-                        onPress={() => void removeAvailSlot(slot.id)}
-                        disabled={deletingAvailId === slot.id}
-                        hitSlop={8}
-                      >
-                        <Ionicons name="trash-outline" size={15} color={deletingAvailId === slot.id ? theme.text3 : "#f44336"} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </MvCard>
-
-                {/* Bloqueios manuais do dia */}
-                {todayManualBlocks.length > 0 ? (
-                  <MvCard>
-                    <MvText variant="semi3" style={{ marginBottom: 8 }}>Compromissos bloqueados</MvText>
-                    <View style={{ gap: 8 }}>
-                      {todayManualBlocks.map((block) => (
-                        <View key={block.id} style={{
-                          flexDirection: "row",
-                          alignItems: "flex-start",
-                          gap: 10,
-                          paddingVertical: 10,
-                          paddingHorizontal: 12,
-                          borderRadius: 10,
-                          borderWidth: 1,
-                          borderColor: "rgba(255,152,0,0.30)",
-                          backgroundColor: "rgba(255,152,0,0.06)",
-                        }}>
-                          {/* Faixa de cor lateral indicando bloqueio */}
-                          <View style={{ width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: "#FF9800", marginRight: 2 }} />
-                          <Ionicons name="lock-closed-outline" size={16} color="#FF9800" style={{ marginTop: 2 }} />
-                          <View style={{ flex: 1, gap: 2 }}>
-                            <MvText variant="semi3">{block.label}</MvText>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                              <Ionicons name="time-outline" size={12} color={theme.text3} />
-                              <MvText variant="body4" color="secondary">{block.startTime} – {block.endTime}</MvText>
-                            </View>
-                            {block.location ? (
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                                <Ionicons name="location-outline" size={12} color={theme.text3} />
-                                <MvText variant="body4" color="secondary">{block.location}</MvText>
-                              </View>
-                            ) : null}
-                            <MvText variant="body4" style={{ color: "#FF9800", fontSize: 10, marginTop: 2 }}>
-                              Horário indisponível para novos agendamentos
-                            </MvText>
-                          </View>
-                          <TouchableOpacity onPress={() => void removeManualBlock(block.id)} hitSlop={8}>
-                            <Ionicons name="trash-outline" size={16} color="#f44336" />
-                          </TouchableOpacity>
-                        </View>
-                      ))}
-                    </View>
-                  </MvCard>
-                ) : null}
-
-                {/* Aulas de alunos externos (fora do app) */}
-                {offAppClassesForDay.length > 0 ? (
-                  <MvCard>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                      <Ionicons name="people-outline" size={16} color="#3B82F6" />
-                      <MvText variant="semi3">Aulas externas (fora do app)</MvText>
-                    </View>
-                    <View style={{ gap: 8 }}>
-                      {offAppClassesForDay.map((cls, idx) => (
-                        <View
-                          key={`offapp-${idx}`}
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "flex-start",
-                            gap: 10,
-                            paddingVertical: 10,
-                            paddingHorizontal: 12,
-                            borderRadius: 10,
-                            borderWidth: 1,
-                            borderColor: "rgba(59,130,246,0.25)",
-                            backgroundColor: "rgba(59,130,246,0.06)",
-                          }}
-                        >
-                          <View style={{ width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: "#3B82F6", marginRight: 2 }} />
-                          <Ionicons name="person-outline" size={16} color="#3B82F6" style={{ marginTop: 2 }} />
-                          <View style={{ flex: 1, gap: 2 }}>
-                            <MvText variant="semi3">{cls.studentName}</MvText>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                              <Ionicons name="time-outline" size={12} color={theme.text3} />
-                              <MvText variant="body4" color="secondary">{cls.startTime} – {cls.endTime}</MvText>
-                            </View>
-                            {cls.location ? (
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                                <Ionicons name="location-outline" size={12} color={theme.text3} />
-                                <MvText variant="body4" color="secondary" numberOfLines={1}>{cls.location}</MvText>
-                              </View>
-                            ) : null}
-                            <MvText variant="body4" style={{ color: "#3B82F6", fontSize: 10, marginTop: 2 }}>
-                              Aluno externo — cadastrado no Controle Financeiro
-                            </MvText>
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  </MvCard>
-                ) : null}
-
-                {/* Botão bloquear horário */}
-                <TouchableOpacity
-                  onPress={() => setBlockModalVisible(true)}
-                  style={{
-                    paddingVertical: 13,
-                    borderRadius: 16,
-                    borderWidth: 1,
-                    borderColor: theme.border,
-                    backgroundColor: "transparent",
-                    alignItems: "center",
-                    flexDirection: "row",
-                    justifyContent: "center",
-                    gap: 8,
-                  }}
-                >
-                  <Ionicons name="lock-closed-outline" size={16} color={theme.text2} />
-                  <MvText variant="semi3" color="secondary">Bloquear horário neste dia</MvText>
-                </TouchableOpacity>
-
-{/* bookings já exibidos na timeline acima no modo dia */}
               </View>
               ) : null}
             </View>
