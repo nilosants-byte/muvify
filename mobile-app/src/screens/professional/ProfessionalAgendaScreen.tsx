@@ -156,6 +156,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() };
   });
+  const [calendarExpanded, setCalendarExpanded] = useState(false);
   const [blockModalVisible, setBlockModalVisible] = useState(false);
   const [blockStart, setBlockStart] = useState("08:00");
   const [blockEnd, setBlockEnd] = useState("09:00");
@@ -306,6 +307,31 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     () => buildMonthGrid(calendarCursor.year, calendarCursor.month),
     [calendarCursor]
   );
+
+  // ── Faixa de dias (semana do dia selecionado) — substitui o mês fixo por
+  // padrão; o mês completo só aparece quando o usuário pede (calendarExpanded).
+  const weekDays = useMemo(() => {
+    const start = new Date(selectedDate);
+    start.setDate(selectedDate.getDate() - selectedDate.getDay());
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      return d;
+    });
+  }, [selectedDate]);
+
+  const isCurrentWeek = useMemo(() => {
+    const today = startOfDay(new Date());
+    return weekDays.some((d) => isSameDay(d, today));
+  }, [weekDays]);
+
+  function jumpToToday() {
+    const today = startOfDay(new Date());
+    setSelectedDate(today);
+    setCalendarCursor({ year: today.getFullYear(), month: today.getMonth() });
+    setActiveTab("day");
+    setCalendarExpanded(false);
+  }
 
   const goToStack = (screen: string, params?: object) => {
     const parent = navigation.getParent<any>();
@@ -516,15 +542,14 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
             <MvText variant="body4" color="secondary">Atualizando...</MvText>
           ) : (
             <TouchableOpacity
-              onPress={() => {
-                const today = startOfDay(new Date());
-                setSelectedDate(today);
-                setCalendarCursor({ year: today.getFullYear(), month: today.getMonth() });
-                setActiveTab("day");
+              onPress={() => setCalendarExpanded((v) => !v)}
+              style={{
+                width: 36, height: 36, borderRadius: 18,
+                backgroundColor: calendarExpanded ? "rgba(34,197,94,0.14)" : theme.backBtn,
+                alignItems: "center", justifyContent: "center",
               }}
-              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
             >
-              <Ionicons name="calendar-outline" size={20} color={theme.text2} />
+              <Ionicons name="calendar-outline" size={20} color={calendarExpanded ? theme.textGreen : theme.text2} />
             </TouchableOpacity>
           )}
         </View>
@@ -547,138 +572,188 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
           }
           ListHeaderComponent={
             <View>
-              {/* Calendário embutido */}
-              <View style={{ marginBottom: 6 }}>
-                <MvCard style={{ padding: 12 }}>
-                  {/* Navegação de mês */}
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                    <TouchableOpacity
-                      onPress={() => setCalendarCursor((c) => {
-                        const prev = new Date(c.year, c.month - 1, 1);
-                        return { year: prev.getFullYear(), month: prev.getMonth() };
-                      })}
-                      hitSlop={8}
-                      style={{ padding: 4 }}
-                    >
-                      <MvText variant="semi2">‹</MvText>
-                    </TouchableOpacity>
-                    <MvText variant="semi2">
-                      {`${MONTHS_FULL_PT[calendarCursor.month]} ${calendarCursor.year}`}
-                    </MvText>
-                    <TouchableOpacity
-                      onPress={() => setCalendarCursor((c) => {
-                        const next = new Date(c.year, c.month + 1, 1);
-                        return { year: next.getFullYear(), month: next.getMonth() };
-                      })}
-                      hitSlop={8}
-                      style={{ padding: 4 }}
-                    >
-                      <MvText variant="semi2">›</MvText>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Cabeçalho dos dias da semana */}
-                  <View style={{ flexDirection: "row", marginBottom: 2 }}>
-                    {WEEKDAY_SHORT_PT.map((label, index) => (
-                      <View key={`wh-${index}`} style={{ width: "14.285%", alignItems: "center", paddingVertical: 2 }}>
-                        <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>{label}</MvText>
-                      </View>
-                    ))}
-                  </View>
-
-                  {/* Grid de dias */}
-                  <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                    {calendarCells.map((dateCell, index) => {
-                      if (!dateCell) {
-                        return <View key={`blank-${index}`} style={{ width: "14.285%", paddingVertical: 2 }} />;
-                      }
-                      const isSelected = isSameDay(dateCell, selectedDate);
-                      const isToday = isSameDay(dateCell, new Date());
-                      const cellKey = toDateKey(dateCell);
-                      const hasBooking = daysWithBookings.has(cellKey);
-                      const hasBlock = daysWithBlocks.has(cellKey);
-                      const isCurrentMonth = dateCell.getMonth() === calendarCursor.month;
-                      return (
-                        <TouchableOpacity
-                          key={`${toDateKey(dateCell)}-${index}`}
-                          onPress={() => {
-                            setSelectedDate(startOfDay(dateCell));
-                            setActiveTab("day");
+              {/* Faixa de dias — leve, sempre visível; o mês completo só aparece sob demanda (ícone de calendário no cabeçalho) */}
+              <View style={{ marginBottom: 10 }}>
+                <View style={{ flexDirection: "row", gap: 6 }}>
+                  {weekDays.map((dateCell) => {
+                    const isSelected = isSameDay(dateCell, selectedDate);
+                    const isToday = isSameDay(dateCell, new Date());
+                    const cellKey = toDateKey(dateCell);
+                    const hasBooking = daysWithBookings.has(cellKey);
+                    const hasBlock = daysWithBlocks.has(cellKey);
+                    return (
+                      <TouchableOpacity
+                        key={cellKey}
+                        onPress={() => setSelectedDate(startOfDay(dateCell))}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 8,
+                          borderRadius: 12,
+                          alignItems: "center",
+                          borderWidth: 1,
+                          borderColor: isSelected ? "rgba(34,197,94,0.30)" : theme.border,
+                          backgroundColor: isSelected ? "rgba(34,197,94,0.12)" : theme.cardBg,
+                        }}
+                      >
+                        <MvText variant="body4" color="secondary" style={{ fontSize: 9, textTransform: "uppercase" }}>
+                          {WEEKDAY_SHORT_PT[dateCell.getDay()]}
+                        </MvText>
+                        <MvText
+                          variant="semi2"
+                          style={{
+                            fontSize: 14, marginTop: 2,
+                            color: isSelected ? theme.textGreen : isToday ? theme.textGreen : theme.text1,
                           }}
-                          style={{ width: "14.285%", alignItems: "center", paddingVertical: 2 }}
                         >
-                          <View style={{
-                            width: 24,
-                            height: 24,
-                            borderRadius: 12,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: isSelected ? theme.primary : "transparent",
-                            borderWidth: isToday && !isSelected ? 1.5 : 0,
-                            borderColor: theme.primary,
-                          }}>
-                            <MvText
-                              variant="body4"
-                              style={{
-                                fontSize: 11,
-                                fontWeight: isSelected ? "700" : "400",
-                                color: !isCurrentMonth
-                                  ? theme.text3
-                                  : isSelected
-                                  ? theme.textOnPrimary
-                                  : isToday
-                                  ? theme.textGreen
-                                  : theme.text1,
-                              }}
-                            >
-                              {dateCell.getDate()}
-                            </MvText>
+                          {dateCell.getDate()}
+                        </MvText>
+                        {(hasBooking || hasBlock) ? (
+                          <View style={{ flexDirection: "row", gap: 2, marginTop: 3 }}>
+                            {hasBooking ? <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: theme.textGreen }} /> : null}
+                            {hasBlock ? <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: "#FF9800" }} /> : null}
                           </View>
-                          {/* Indicadores: verde=agendamento, laranja=bloqueio manual */}
-                          {(hasBooking || hasBlock) ? (
-                            <View style={{ flexDirection: "row", gap: 2, marginTop: 1 }}>
-                              {hasBooking ? (
-                                <View style={{
-                                  width: 4, height: 4, borderRadius: 2,
-                                  backgroundColor: isSelected ? theme.primary : "rgba(34,197,94,0.50)",
-                                }} />
-                              ) : null}
-                              {hasBlock ? (
-                                <View style={{
-                                  width: 4, height: 4, borderRadius: 2,
-                                  backgroundColor: "#FF9800",
-                                }} />
-                              ) : null}
-                            </View>
-                          ) : <View style={{ height: 5 }} />}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  {/* Botão Hoje */}
-                  <TouchableOpacity
-                    onPress={() => {
-                      const today = startOfDay(new Date());
-                      setSelectedDate(today);
-                      setCalendarCursor({ year: today.getFullYear(), month: today.getMonth() });
-                      setActiveTab("day");
-                    }}
-                    style={{
-                      alignSelf: "flex-end",
-                      marginTop: 8,
-                      paddingHorizontal: 14,
-                      paddingVertical: 6,
-                      borderRadius: 20,
-                      borderWidth: 1,
-                      borderColor: "rgba(34,197,94,0.30)",
-                      backgroundColor: "rgba(34,197,94,0.08)",
-                    }}
-                  >
-                    <MvText variant="semi3" style={{ color: theme.textGreen, fontSize: 12 }}>Hoje</MvText>
+                        ) : <View style={{ height: 7 }} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {!isCurrentWeek ? (
+                  <TouchableOpacity onPress={jumpToToday} style={{ alignSelf: "flex-end", marginTop: 8 }}>
+                    <MvText variant="semi3" style={{ color: theme.textGreen, fontSize: 12 }}>Voltar para hoje</MvText>
                   </TouchableOpacity>
-                </MvCard>
+                ) : null}
               </View>
+
+              {/* Mês completo — só aparece quando o ícone de calendário no cabeçalho é tocado */}
+              {calendarExpanded ? (
+                <View style={{ marginBottom: 10 }}>
+                  <MvCard style={{ padding: 12 }}>
+                    {/* Navegação de mês */}
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => setCalendarCursor((c) => {
+                          const prev = new Date(c.year, c.month - 1, 1);
+                          return { year: prev.getFullYear(), month: prev.getMonth() };
+                        })}
+                        hitSlop={8}
+                        style={{ padding: 4 }}
+                      >
+                        <MvText variant="semi2">‹</MvText>
+                      </TouchableOpacity>
+                      <MvText variant="semi2">
+                        {`${MONTHS_FULL_PT[calendarCursor.month]} ${calendarCursor.year}`}
+                      </MvText>
+                      <TouchableOpacity
+                        onPress={() => setCalendarCursor((c) => {
+                          const next = new Date(c.year, c.month + 1, 1);
+                          return { year: next.getFullYear(), month: next.getMonth() };
+                        })}
+                        hitSlop={8}
+                        style={{ padding: 4 }}
+                      >
+                        <MvText variant="semi2">›</MvText>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Cabeçalho dos dias da semana */}
+                    <View style={{ flexDirection: "row", marginBottom: 2 }}>
+                      {WEEKDAY_SHORT_PT.map((label, index) => (
+                        <View key={`wh-${index}`} style={{ width: "14.285%", alignItems: "center", paddingVertical: 2 }}>
+                          <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>{label}</MvText>
+                        </View>
+                      ))}
+                    </View>
+
+                    {/* Grid de dias */}
+                    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                      {calendarCells.map((dateCell, index) => {
+                        if (!dateCell) {
+                          return <View key={`blank-${index}`} style={{ width: "14.285%", paddingVertical: 2 }} />;
+                        }
+                        const isSelected = isSameDay(dateCell, selectedDate);
+                        const isToday = isSameDay(dateCell, new Date());
+                        const cellKey = toDateKey(dateCell);
+                        const hasBooking = daysWithBookings.has(cellKey);
+                        const hasBlock = daysWithBlocks.has(cellKey);
+                        const isCurrentMonth = dateCell.getMonth() === calendarCursor.month;
+                        return (
+                          <TouchableOpacity
+                            key={`${toDateKey(dateCell)}-${index}`}
+                            onPress={() => {
+                              setSelectedDate(startOfDay(dateCell));
+                              setActiveTab("day");
+                              setCalendarExpanded(false);
+                            }}
+                            style={{ width: "14.285%", alignItems: "center", paddingVertical: 2 }}
+                          >
+                            <View style={{
+                              width: 24,
+                              height: 24,
+                              borderRadius: 12,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              backgroundColor: isSelected ? theme.primary : "transparent",
+                              borderWidth: isToday && !isSelected ? 1.5 : 0,
+                              borderColor: theme.primary,
+                            }}>
+                              <MvText
+                                variant="body4"
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: isSelected ? "700" : "400",
+                                  color: !isCurrentMonth
+                                    ? theme.text3
+                                    : isSelected
+                                    ? theme.textOnPrimary
+                                    : isToday
+                                    ? theme.textGreen
+                                    : theme.text1,
+                                }}
+                              >
+                                {dateCell.getDate()}
+                              </MvText>
+                            </View>
+                            {/* Indicadores: verde=agendamento, laranja=bloqueio manual */}
+                            {(hasBooking || hasBlock) ? (
+                              <View style={{ flexDirection: "row", gap: 2, marginTop: 1 }}>
+                                {hasBooking ? (
+                                  <View style={{
+                                    width: 4, height: 4, borderRadius: 2,
+                                    backgroundColor: isSelected ? theme.primary : "rgba(34,197,94,0.50)",
+                                  }} />
+                                ) : null}
+                                {hasBlock ? (
+                                  <View style={{
+                                    width: 4, height: 4, borderRadius: 2,
+                                    backgroundColor: "#FF9800",
+                                  }} />
+                                ) : null}
+                              </View>
+                            ) : <View style={{ height: 5 }} />}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    {/* Botão Hoje */}
+                    <TouchableOpacity
+                      onPress={jumpToToday}
+                      style={{
+                        alignSelf: "flex-end",
+                        marginTop: 8,
+                        paddingHorizontal: 14,
+                        paddingVertical: 6,
+                        borderRadius: 20,
+                        borderWidth: 1,
+                        borderColor: "rgba(34,197,94,0.30)",
+                        backgroundColor: "rgba(34,197,94,0.08)",
+                      }}
+                    >
+                      <MvText variant="semi3" style={{ color: theme.textGreen, fontSize: 12 }}>Hoje</MvText>
+                    </TouchableOpacity>
+                  </MvCard>
+                </View>
+              ) : null}
 
               <View style={{ flexDirection: "row", marginBottom: 10, borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, overflow: "hidden" }}>
                 {tabs.map((tab, i) => (
