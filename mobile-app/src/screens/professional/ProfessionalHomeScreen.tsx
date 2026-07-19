@@ -208,6 +208,14 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     { enabled: Boolean(ownProviderId) },
   );
 
+  // "Alunos ativos" usa a mesma fonte de verdade da tela de Gestão de Alunos
+  // (considera presencial + consultoria, não só agendamentos recentes).
+  const studentsQuery = useAuthQuery(
+    queryKeys.providers.dashboardStudents(),
+    (token) => providersApi.dashboardStudents(token),
+    { retry: false },
+  );
+
   const bookings = useMemo(() => {
     const all = homeQuery.data?.bookings ?? [];
     return all.filter((item) => item.provider?.user?.id === user?.id);
@@ -382,14 +390,8 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   );
 
   const activeStudents = useMemo(
-    () =>
-      new Set(
-        bookings
-          .filter((b) => b.status === "CONFIRMED" || b.status === "COMPLETED")
-          .map((b) => b.client?.id)
-          .filter(Boolean)
-      ).size,
-    [bookings]
+    () => studentsQuery.data?.students.filter((s) => s.active).length ?? 0,
+    [studentsQuery.data]
   );
 
   const weeklyRevenue = useMemo(() => {
