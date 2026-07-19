@@ -41,7 +41,6 @@ import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonHomeScreen } from "../../components/polish/SkeletonCard";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
-import { ActivityItem } from "../../components/professional/HomeWidgets";
 import { AppLogoText } from "../../components/ui/AppLogoText";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { resolveMediaUrl } from "../../utils/media";
@@ -187,17 +186,16 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const homeQuery = useAuthQuery(
     queryKeys.providers.home(),
     async (token) => {
-      const [bookingResponse, me, credentials, timelineResponse, availabilitiesResponse] = await Promise.all([
+      const [bookingResponse, me, credentials, availabilitiesResponse] = await Promise.all([
         bookingsApi.me(token).catch(() => [] as Booking[]),
         userApi.me(token).catch(() => null),
         providersApi.myCredentials(token).catch((error) => {
           if (error instanceof ApiError && error.status === 404) return null;
           throw error;
         }),
-        providersApi.getTimeline(token).catch(() => null),
         availabilityApi.me(token).catch(() => [] as Availability[]),
       ]);
-      return { bookings: bookingResponse, me, credentials, timeline: timelineResponse, availabilities: availabilitiesResponse };
+      return { bookings: bookingResponse, me, credentials, availabilities: availabilitiesResponse };
     },
   );
 
@@ -214,7 +212,6 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     const all = homeQuery.data?.bookings ?? [];
     return all.filter((item) => item.provider?.user?.id === user?.id);
   }, [homeQuery.data?.bookings, user?.id]);
-  const timeline = homeQuery.data?.timeline ?? null;
   const availabilities = homeQuery.data?.availabilities ?? ([] as Availability[]);
   const loading = homeQuery.isLoading;
   const loadError = homeQuery.isError;
@@ -392,14 +389,6 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
           .map((b) => b.client?.id)
           .filter(Boolean)
       ).size,
-    [bookings]
-  );
-
-  const todayRevenue = useMemo(
-    () =>
-      bookings
-        .filter((b) => b.status === "COMPLETED" && isToday(b.completedAt ?? b.scheduledAt))
-        .reduce((s, b) => s + (b.priceCents ?? 0), 0) / 100,
     [bookings]
   );
 
@@ -994,100 +983,8 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
             </View>
           </View>
 
-          {/* ── PRECISA DE ATENÇÃO ── */}
-          {timeline && (
-            <View style={{ gap: 10 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <MvText variant="semi2">Precisa de atenção</MvText>
-                <TouchableOpacity onPress={() => setNotificationsDrawerOpen(true)}>
-                  <MvText variant="body4" style={{ color: green }}>
-                    Ver todas
-                  </MvText>
-                </TouchableOpacity>
-              </View>
-
-              {timeline.upcomingNow.map((b) => (
-                <ActivityItem
-                  key={b.id}
-                  iconName="alarm-outline"
-                  iconColor={theme.danger}
-                  iconBg={isLight ? "rgba(239,68,68,0.04)" : "rgba(239,68,68,0.06)"}
-                  borderColor="rgba(239,68,68,0.18)"
-                  title={b.client?.name ?? "Cliente"}
-                  subtitle="Agora · próximas horas"
-                  timeLabel={new Date(b.scheduledAt).toLocaleTimeString("pt-BR", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    timeZone: "America/Sao_Paulo",
-                  })}
-                  onPress={() => goToStack("BookingDetailProfessional", { bookingId: b.id })}
-                />
-              ))}
-
-              {timeline.recentNew.slice(0, 3).map((b) => (
-                <ActivityItem
-                  key={b.id}
-                  iconName="calendar-outline"
-                  iconColor={green}
-                  iconBg={isLight ? "rgba(34,197,94,0.04)" : "rgba(34,197,94,0.06)"}
-                  borderColor="rgba(34,197,94,0.18)"
-                  title={b.client?.name ?? "Cliente"}
-                  subtitle="Novo agendamento"
-                  timeLabel={new Date(b.scheduledAt).toLocaleString("pt-BR", {
-                    day: "2-digit",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    timeZone: "America/Sao_Paulo",
-                  })}
-                  onPress={() => goToStack("BookingDetailProfessional", { bookingId: b.id })}
-                />
-              ))}
-
-              {timeline.studentsWithIncompleteAnamnesis.slice(0, 3).map((s) => (
-                <ActivityItem
-                  key={s.id}
-                  iconName="document-text-outline"
-                  iconColor="#F59E0B"
-                  iconBg={isLight ? "rgba(245,158,11,0.04)" : "rgba(245,158,11,0.06)"}
-                  borderColor="rgba(245,158,11,0.18)"
-                  title={s.name}
-                  subtitle="Ficha de anamnese pendente"
-                  timeLabel="Pendente"
-                  onPress={() =>
-                    goToStack("ProfessionalStudentAnamnesis", {
-                      clientId: s.id,
-                      clientName: s.name,
-                    })
-                  }
-                />
-              ))}
-
-              {timeline.upcomingNow.length === 0 &&
-                timeline.recentNew.length === 0 &&
-                timeline.studentsWithIncompleteAnamnesis.length === 0 && (
-                  <View
-                    style={{
-                      borderRadius: 16,
-                      padding: 14,
-                      borderWidth: 1,
-                      backgroundColor: cardBg,
-                      borderColor: border,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 10,
-                    }}
-                  >
-                    <Ionicons name="checkmark-circle-outline" size={20} color={green} />
-                    <MvText variant="body4" color="secondary">
-                      Tudo em dia! Sem alertas no momento.
-                    </MvText>
-                  </View>
-                )}
-            </View>
-          )}
-
-          {/* ── HORÁRIOS LIVRES HOJE ── */}
+          {/* ── HORÁRIOS LIVRES HOJE (só quando o dia não está totalmente livre — nesse caso o card "Dia livre" acima já cobre isso) ── */}
+          {nextBooking || todayBookings.length > 0 ? (
           <View
             style={{
               borderRadius: 16,
@@ -1177,24 +1074,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
               </TouchableOpacity>
             )}
           </View>
-
-          {/* ── HOJE (chip pro Financeiro) ── */}
-          <PressableScale
-            onPress={() => goToStack("PayoutStatus")}
-            scale={0.98}
-            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 14, padding: 14, borderWidth: 1, backgroundColor: cardBg, borderColor: border }}
-          >
-            <View>
-              <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>Hoje</MvText>
-              <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontWeight: "800", fontSize: 18, letterSpacing: -0.2, color: green, marginTop: 2 }}>
-                {formatCurrencyBRL(todayRevenue)}
-              </MvText>
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-              <MvText variant="body4" style={{ color: text3, fontSize: 12 }}>Ver Financeiro</MvText>
-              <Ionicons name="chevron-forward" size={14} color={text3} />
-            </View>
-          </PressableScale>
+          ) : null}
 
         </View>
       </ScrollView>
