@@ -163,6 +163,18 @@ export class BookingService {
         throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
       }
 
+      // Piso minimo do proprio app (o profissional so pode aumentar, nunca
+      // diminuir) — evita agendamento em cima da hora sem o profissional ter
+      // tempo de ver, se programar e se deslocar ate o local.
+      const minNoticeHours = Math.max(24, provider.minBookingNoticeHours);
+      const minNoticeMs = minNoticeHours * 60 * 60 * 1000;
+      if (scheduleDate.getTime() - Date.now() < minNoticeMs) {
+        throw new AppError(
+          `Este profissional exige pelo menos ${minNoticeHours}h de antecedência para novos agendamentos.`,
+          StatusCodes.BAD_REQUEST
+        );
+      }
+
       if (provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
         throw new AppError(
           "Este profissional ainda não está habilitado para novos agendamentos.",

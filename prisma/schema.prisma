@@ -321,6 +321,7 @@ model ProviderProfile {
   latitude         Float?
   longitude        Float?
   serviceMode      ProviderServiceMode @default(BOTH)
+  minBookingNoticeHours Int @default(24)
   fixedLocations   Json?
   excludedLocations Json?
   averageRating    Float              @default(0)

@@ -48,7 +48,9 @@ export const updateProviderProfileSchema = z.object({
     fixedLocations: z.array(fixedLocationSchema).max(20).optional(),
     excludedLocations: z.array(z.string().trim().min(1).max(120)).max(20).optional(),
     categoryIds: z.array(z.string().uuid()).optional(),
-    specialties: z.array(z.string().trim().min(1).max(80)).max(30).optional()
+    specialties: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
+    // Piso minimo do proprio app e 24h — profissional so pode aumentar (ate 1 semana).
+    minBookingNoticeHours: z.number().int().min(24).max(168).optional()
   }).refine((b) => Object.keys(b).length > 0, { message: "Informe ao menos um campo.", path: ["displayName"] })
 });
 

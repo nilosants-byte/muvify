@@ -53,6 +53,7 @@ type CreateProviderInput = {
   excludedLocations?: string[];
   categoryIds?: string[];
   specialties?: string[];
+  minBookingNoticeHours?: number;
 };
 
 type UpdateProviderInput = Partial<Omit<CreateProviderInput, "userId">>;
@@ -838,6 +839,7 @@ export class ProviderService {
         ...(fixedLocs !== undefined && { fixedLocations: fixedLocs }),
         ...(input.excludedLocations !== undefined && { excludedLocations: input.excludedLocations }),
         ...(input.specialties !== undefined && { specialties: nextSpecialties }),
+        ...(input.minBookingNoticeHours !== undefined && { minBookingNoticeHours: input.minBookingNoticeHours }),
       },
       include: {
         user: { select: { id: true, name: true, email: true, phone: true } },
@@ -1253,6 +1255,7 @@ export class ProviderService {
       select: {
         id: true,
         crefValidationStatus: true,
+        minBookingNoticeHours: true,
         availabilities: {
           where: { isActive: true },
           select: {
@@ -1270,6 +1273,13 @@ export class ProviderService {
     }
 
     const timezone = env.APP_TIMEZONE;
+    // Mesmo piso de 24h (ou mais, se o profissional configurar) aplicado na
+    // criação do agendamento — aqui só pra não exibir como "livre" um horário
+    // que a criação real vai recusar por falta de antecedência.
+    const minNoticeHours = Math.max(24, provider.minBookingNoticeHours);
+    const noticeCutoff = new Date(Date.now() + minNoticeHours * 60 * 60 * 1000);
+    const noticeCutoffDateKey = formatDateKeyInTimezone(noticeCutoff, timezone);
+    const noticeCutoffTime = formatTimeInTimezone(noticeCutoff, timezone);
 
     const dayRefs = Array.from({ length: days }, (_, index) => {
       const ref = new Date(base);
@@ -1389,7 +1399,10 @@ export class ProviderService {
         .filter((slot) => {
           if (occupiedSet.has(slot)) return false;
           if (blockRanges.some((b) => slot >= b.startTime && slot < b.endTime)) return false;
-          return !offAppRanges.some((b) => slot >= b.startTime && slot < b.endTime);
+          if (offAppRanges.some((b) => slot >= b.startTime && slot < b.endTime)) return false;
+          if (date < noticeCutoffDateKey) return false;
+          if (date === noticeCutoffDateKey && slot < noticeCutoffTime) return false;
+          return true;
         })
         .sort((a, b) => a.localeCompare(b));
 

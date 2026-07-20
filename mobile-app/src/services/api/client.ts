@@ -90,6 +90,7 @@ export type ProviderSummary = {
   serviceMode?: ProviderServiceMode | null;
   fixedLocations?: ProviderFixedLocation[] | null;
   excludedLocations?: string[] | null;
+  minBookingNoticeHours?: number;
   distanceKm?: number;
 };
 
@@ -1656,6 +1657,7 @@ export const providersApi = {
       excludedLocations: string[];
       categoryIds: string[];
       specialties: string[];
+      minBookingNoticeHours: number;
     }>
   ) {
     return apiRequest<unknown>("/providers/profile", { method: "PUT", token, body });
