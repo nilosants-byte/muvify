@@ -103,7 +103,8 @@ export const updateTrainingPlanSchema = z.object({
       title: z.string().trim().min(2).max(120).optional(),
       description: z.string().trim().max(1000).optional(),
       isActive: z.boolean().optional(),
-      exercises: z.array(exerciseInputSchema).min(1).max(120).optional()
+      exercises: z.array(exerciseInputSchema).min(1).max(120).optional(),
+      validUntil: z.string().datetime().optional()
     })
     .refine((body) => Object.keys(body).length > 0, {
       message: "Informe ao menos um campo para atualizar.",
@@ -192,7 +193,8 @@ export const deliverContractSchema = z.object({
   body: z.object({
     title: z.string().trim().min(2).max(120),
     description: z.string().trim().max(1000).optional(),
-    exercises: z.array(exerciseInputSchema).min(1).max(120)
+    exercises: z.array(exerciseInputSchema).min(1).max(120),
+    validUntil: z.string().datetime().optional()
   })
 });
 

@@ -108,7 +108,8 @@ export class ConsultancyController {
         title: request.body.title,
         description: request.body.description,
         isActive: request.body.isActive,
-        exercises: request.body.exercises
+        exercises: request.body.exercises,
+        validUntil: request.body.validUntil
       }
     );
 
@@ -186,7 +187,8 @@ export class ConsultancyController {
       {
         title: request.body.title,
         description: request.body.description,
-        exercises: request.body.exercises
+        exercises: request.body.exercises,
+        validUntil: request.body.validUntil
       }
     );
     return response.json(delivered);

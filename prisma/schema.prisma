@@ -743,6 +743,7 @@ model TrainingPlan {
   description   String?
   isPrebuilt    Boolean          @default(true)
   isActive      Boolean          @default(true)
+  validUntil    DateTime?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   provider      ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)

@@ -5,7 +5,6 @@ import {
   CrefValidationStatus,
   ConsultancyContractStatus,
   ConsultancyPaymentStatus,
-  OfferBillingCycle,
   Prisma,
   ProviderServiceMode,
   ServiceOfferKind,
@@ -19,6 +18,7 @@ import { EmailService } from "../../../shared/services/email.service";
 import { isAdminEmail } from "../../../shared/utils/admin-access";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { deleteByPattern, getCache, setCache } from "../../../shared/utils/cache";
+import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
 import { haversineKm } from "../../../shared/utils/geo";
 import {
   toProviderPhotoUrl,
@@ -235,24 +235,6 @@ function serviceKindLabel(kind: ServiceOfferKind | "PRESENTIAL") {
   return "Combo (Presencial + Consultoria on-line)";
 }
 
-function billingCycleDurationDays(cycle: OfferBillingCycle): number {
-  if (cycle === OfferBillingCycle.DAILY) return 1;
-  if (cycle === OfferBillingCycle.WEEKLY) return 7;
-  if (cycle === OfferBillingCycle.MONTHLY) return 30;
-  if (cycle === OfferBillingCycle.QUARTERLY) return 90;
-  if (cycle === OfferBillingCycle.SEMIANNUAL) return 180;
-  return 365;
-}
-
-function consultancyValidUntil(
-  contract: { paymentCapturedAt: Date | null; createdAt: Date },
-  cycle: OfferBillingCycle
-): Date {
-  const start = contract.paymentCapturedAt ?? contract.createdAt;
-  const validUntil = new Date(start);
-  validUntil.setDate(validUntil.getDate() + billingCycleDurationDays(cycle));
-  return validUntil;
-}
 
 function parseStudentAgeFromAnamnesis(answers: unknown) {
   if (!answers || typeof answers !== "object") return null;
@@ -1889,10 +1871,12 @@ export class ProviderService {
             }
           },
           trainingPlans: {
+            where: { isActive: true },
             select: {
               id: true,
               title: true,
               description: true,
+              validUntil: true,
               createdAt: true,
               _count: {
                 select: {
@@ -1945,7 +1929,15 @@ export class ProviderService {
       return {
         ...contract,
         validUntil,
-        isVigente: Boolean(validUntil && validUntil >= now)
+        isVigente: Boolean(validUntil && validUntil >= now),
+        trainingPlans: contract.trainingPlans.map((plan) => {
+          const planValidUntil = plan.validUntil ?? validUntil;
+          return {
+            ...plan,
+            validUntil: planValidUntil,
+            isVigente: Boolean(planValidUntil && planValidUntil >= now)
+          };
+        })
       };
     });
 

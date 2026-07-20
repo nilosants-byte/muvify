@@ -17,6 +17,7 @@ import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
 import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
 
@@ -1147,6 +1148,7 @@ export class ConsultancyService {
       description?: string;
       isActive?: boolean;
       exercises?: ExerciseInput[];
+      validUntil?: string;
     }
   ) {
     const provider = await this.providerProfileByUserId(userId);
@@ -1156,12 +1158,45 @@ export class ConsultancyService {
         id: true,
         providerId: true,
         contractId: true,
-        contract: { select: { clientId: true } }
+        contract: {
+          select: {
+            clientId: true,
+            paymentCapturedAt: true,
+            createdAt: true,
+            offer: { select: { billingCycle: true } }
+          }
+        }
       }
     });
 
     if (!existing || existing.providerId !== provider.id) {
       throw new AppError("Treino não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    let planValidUntil: Date | undefined;
+    if (typeof input.validUntil !== "undefined") {
+      if (!existing.contract) {
+        throw new AppError(
+          "Vigência só se aplica a treinos vinculados a um contrato de consultoria.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+      const parsed = new Date(input.validUntil);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new AppError("Data de vigência do treino inválida.", StatusCodes.BAD_REQUEST);
+      }
+      const now = new Date();
+      const contractValidUntil = consultancyValidUntil(existing.contract, existing.contract.offer.billingCycle);
+      if (parsed <= now) {
+        throw new AppError("A vigência do treino deve ser uma data futura.", StatusCodes.BAD_REQUEST);
+      }
+      if (parsed > contractValidUntil) {
+        throw new AppError(
+          "A vigência do treino não pode ultrapassar a vigência da consultoria contratada.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+      planValidUntil = parsed;
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -1185,6 +1220,7 @@ export class ConsultancyService {
           ...(typeof input.isActive !== "undefined"
             ? { isActive: input.isActive }
             : {}),
+          ...(planValidUntil ? { validUntil: planValidUntil } : {}),
           ...(normalizedExercises
             ? {
                 exercises: {
@@ -1910,6 +1946,7 @@ export class ConsultancyService {
       title: string;
       description?: string;
       exercises: ExerciseInput[];
+      validUntil?: string;
     }
   ) {
     const provider = await this.providerProfileByUserId(userId);
@@ -1923,6 +1960,11 @@ export class ConsultancyService {
         client: {
           select: {
             id: true
+          }
+        },
+        offer: {
+          select: {
+            billingCycle: true
           }
         }
       }
@@ -1944,6 +1986,29 @@ export class ConsultancyService {
     }
 
     const now = new Date();
+    // A vigencia do treino nunca pode passar da vigencia da propria consultoria
+    // contratada. Se o profissional nao informar uma data, o treino herda a
+    // vigencia inteira da consultoria (ele pode escalonar vigencias diferentes
+    // pra treinos diferentes conforme o aluno evolui, mas nunca alem do contrato).
+    const contractValidUntil = consultancyValidUntil(contract, contract.offer.billingCycle);
+    let planValidUntil = contractValidUntil;
+    if (input.validUntil) {
+      const parsed = new Date(input.validUntil);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new AppError("Data de vigência do treino inválida.", StatusCodes.BAD_REQUEST);
+      }
+      if (parsed <= now) {
+        throw new AppError("A vigência do treino deve ser uma data futura.", StatusCodes.BAD_REQUEST);
+      }
+      if (parsed > contractValidUntil) {
+        throw new AppError(
+          "A vigência do treino não pode ultrapassar a vigência da consultoria contratada.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+      planValidUntil = parsed;
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const normalizedExercises = await this.normalizePlanExercises(provider.id, input.exercises, tx);
 
@@ -1955,6 +2020,7 @@ export class ConsultancyService {
           description: input.description,
           isPrebuilt: false,
           isActive: true,
+          validUntil: planValidUntil,
           exercises: {
             create: normalizedExercises
           }
@@ -2037,11 +2103,30 @@ export class ConsultancyService {
       orderBy: { createdAt: "desc" }
     });
 
-    const unlockedContracts = contracts.filter((contract) => contract.trainingPlans.length > 0);
+    const now = new Date();
+    // Um treino vencido nunca some da lista (o aluno mantem o historico do que ja
+    // contratou), mas os exercicios somem da resposta — so titulo/vigencia ficam
+    // visiveis, o conteudo em si so e acessivel enquanto o treino estiver vigente.
+    const contractsWithPlanValidity = contracts.map((contract) => ({
+      ...contract,
+      trainingPlans: contract.trainingPlans.map((plan) => {
+        const effectiveValidUntil =
+          plan.validUntil ?? consultancyValidUntil(contract, contract.offer.billingCycle);
+        const isVigente = effectiveValidUntil >= now;
+        return {
+          ...plan,
+          validUntil: effectiveValidUntil,
+          isVigente,
+          exercises: isVigente ? plan.exercises : []
+        };
+      })
+    }));
+
+    const unlockedContracts = contractsWithPlanValidity.filter((contract) => contract.trainingPlans.length > 0);
 
     return {
       locked: unlockedContracts.length === 0,
-      waitingDelivery: contracts
+      waitingDelivery: contractsWithPlanValidity
         .filter((contract) => contract.trainingPlans.length === 0)
         .map((contract) => ({
           contractId: contract.id,
@@ -2063,7 +2148,10 @@ export class ConsultancyService {
             clientId: true,
             providerId: true,
             paymentStatus: true,
-            status: true
+            status: true,
+            paymentCapturedAt: true,
+            createdAt: true,
+            offer: { select: { billingCycle: true } }
           }
         },
         provider: {
@@ -2076,6 +2164,13 @@ export class ConsultancyService {
 
     if (!trainingPlan || !trainingPlan.isActive) {
       throw new AppError("Treino não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    const effectiveValidUntil = trainingPlan.contract
+      ? trainingPlan.validUntil ?? consultancyValidUntil(trainingPlan.contract, trainingPlan.contract.offer.billingCycle)
+      : trainingPlan.validUntil;
+    if (effectiveValidUntil && effectiveValidUntil < new Date()) {
+      throw new AppError("Este treino não está mais vigente.", StatusCodes.BAD_REQUEST);
     }
 
     let contractId: string | null = trainingPlan.contractId;
