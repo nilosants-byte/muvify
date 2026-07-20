@@ -291,11 +291,6 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     return blocked;
   }, [manualBlocks, selectedDateKey, allDaySlots]);
 
-  const freeSlots = useMemo(
-    () => allDaySlots.filter((s) => !occupiedSlotKeys.has(s) && !todayBlockedKeys.has(s)),
-    [allDaySlots, occupiedSlotKeys, todayBlockedKeys]
-  );
-
   // Dias com agendamentos para o calendário
   const daysWithBookings = useMemo(() => {
     const keys = new Set<string>();
@@ -313,10 +308,19 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
   }, [manualBlocks]);
 
   // Aulas de alunos fora do app no dia selecionado (por horário recorrente semanal)
+  // — só conta se a data selecionada estiver dentro do período em que esse aluno
+  // está de fato ativo (startDate/recurrenceEndDate cadastrados no Financeiro).
   const offAppClassesForDay = useMemo(() => {
     const dayOfWeek = selectedDate.getDay();
+    const selectedKey = toDateKey(selectedDate);
     const classes: Array<{ studentName: string; startTime: string; endTime: string; location?: string }> = [];
     offAppStudents.forEach((student) => {
+      const startKey = toDateKey(new Date(student.startDate));
+      if (selectedKey < startKey) return;
+      if (student.recurrenceEndDate) {
+        const endKey = toDateKey(new Date(student.recurrenceEndDate));
+        if (selectedKey > endKey) return;
+      }
       const schedule = (student.weeklySchedule ?? []) as WeeklyScheduleSlot[];
       schedule.forEach((slot) => {
         if (slot.dayOfWeek === dayOfWeek) {
@@ -326,6 +330,25 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     });
     return classes.sort((a, b) => a.startTime.localeCompare(b.startTime));
   }, [offAppStudents, selectedDate]);
+
+  // Horarios ocupados por aluno fora do app — usados pra excluir de "livre" na
+  // agenda, evitando o profissional ter que bloquear o mesmo horario duas vezes.
+  const offAppOccupiedKeys = useMemo(() => {
+    if (offAppClassesForDay.length === 0) return new Set<string>();
+    const occupied = new Set<string>();
+    allDaySlots.forEach((slot) => {
+      const slotMin = parseMinutes(slot);
+      if (offAppClassesForDay.some((cls) => slotMin >= parseMinutes(cls.startTime) && slotMin < parseMinutes(cls.endTime))) {
+        occupied.add(slot);
+      }
+    });
+    return occupied;
+  }, [offAppClassesForDay, allDaySlots]);
+
+  const freeSlots = useMemo(
+    () => allDaySlots.filter((s) => !occupiedSlotKeys.has(s) && !todayBlockedKeys.has(s) && !offAppOccupiedKeys.has(s)),
+    [allDaySlots, occupiedSlotKeys, todayBlockedKeys, offAppOccupiedKeys]
+  );
 
   const calendarCells = useMemo(
     () => buildMonthGrid(calendarCursor.year, calendarCursor.month),
@@ -445,6 +468,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     allDaySlots.forEach((slot) => {
       const isOccupied = occupiedSlotKeys.has(slot);
       const isBlocked = todayBlockedKeys.has(slot);
+      const isOffApp = offAppOccupiedKeys.has(slot);
       if (isOccupied) {
         const booking = visibleBookings.find((b) => {
           const d = new Date(b.scheduledAt);
@@ -457,7 +481,9 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
           return slotMin >= parseMinutes(b.startTime) && slotMin < parseMinutes(b.endTime);
         });
         if (block) items.push({ kind: "blocked", time: slot, block });
-      } else {
+      } else if (!isOffApp) {
+        // Slots ocupados por aluno fora do app nao viram "free" aqui — o item
+        // "external" correspondente ja e adicionado abaixo, uma vez por aula.
         items.push({ kind: "free", time: slot });
       }
     });
@@ -465,7 +491,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
       items.push({ kind: "external", time: cls.startTime, cls });
     });
     return items.sort((a, b) => a.time.localeCompare(b.time));
-  }, [activeTab, allDaySlots, occupiedSlotKeys, todayBlockedKeys, visibleBookings, todayManualBlocks, offAppClassesForDay]);
+  }, [activeTab, allDaySlots, occupiedSlotKeys, todayBlockedKeys, offAppOccupiedKeys, visibleBookings, todayManualBlocks, offAppClassesForDay]);
 
   const dayAvailabilities = useMemo(
     () => availabilities
