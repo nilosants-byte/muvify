@@ -1330,11 +1330,46 @@ export class ProviderService {
       blockedByDay.set(block.date, existing);
     }
 
+    // Alunos presenciais cadastrados fora do app (Financeiro) com horario fixo
+    // semanal tambem ocupam a agenda publica — sem isso, um cliente do app
+    // poderia agendar exatamente no horario de um aluno que so o profissional
+    // enxerga no proprio controle financeiro.
+    const offAppStudents = await prisma.financialStudent.findMany({
+      where: {
+        providerId,
+        isActive: true,
+        type: { in: ["PRESENTIAL", "BOTH"] }
+      },
+      select: { weeklySchedule: true, startDate: true, recurrenceEndDate: true }
+    });
+    const offAppByDay = new Map<string, Array<{ startTime: string; endTime: string }>>();
+    for (const student of offAppStudents) {
+      const schedule = Array.isArray(student.weeklySchedule)
+        ? (student.weeklySchedule as unknown as Array<{ dayOfWeek: number; startTime: string; endTime: string }>)
+        : [];
+      if (schedule.length === 0) continue;
+      const startKey = formatDateKeyInTimezone(student.startDate, timezone);
+      const endKey = student.recurrenceEndDate ? formatDateKeyInTimezone(student.recurrenceEndDate, timezone) : null;
+      for (const dayKey of validDayKeys) {
+        if (dayKey < startKey) continue;
+        if (endKey && dayKey > endKey) continue;
+        const [y, m, d] = dayKey.split("-").map(Number);
+        const dayWeekday = new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay();
+        for (const slot of schedule) {
+          if (slot.dayOfWeek !== dayWeekday) continue;
+          const existing = offAppByDay.get(dayKey) ?? [];
+          existing.push({ startTime: slot.startTime, endTime: slot.endTime });
+          offAppByDay.set(dayKey, existing);
+        }
+      }
+    }
+
     const payload = dayRefs.map((ref, index) => {
       const date = dayKeys[index];
       const weekday = weekdayInTimezone(ref, timezone);
       const occupiedSet = occupiedByDay.get(date) ?? new Set<string>();
       const blockRanges = blockedByDay.get(date) ?? [];
+      const offAppRanges = offAppByDay.get(date) ?? [];
       const windows = provider.availabilities
         .filter((slot) => slot.weekday === weekday && slot.isActive)
         .map((slot) => ({ startTime: slot.startTime, endTime: slot.endTime }));
@@ -1353,7 +1388,8 @@ export class ProviderService {
       const availableSlots = Array.from(availableGenerated)
         .filter((slot) => {
           if (occupiedSet.has(slot)) return false;
-          return !blockRanges.some((b) => slot >= b.startTime && slot < b.endTime);
+          if (blockRanges.some((b) => slot >= b.startTime && slot < b.endTime)) return false;
+          return !offAppRanges.some((b) => slot >= b.startTime && slot < b.endTime);
         })
         .sort((a, b) => a.localeCompare(b));
 
