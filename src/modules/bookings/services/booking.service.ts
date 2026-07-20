@@ -993,7 +993,18 @@ export class BookingService {
     });
 
     if (status === BookingStatus.CANCELLED) {
-      await paymentService.cancelPaymentForBooking(bookingId);
+      // Cancelamento deixou de ser tudo-ou-nada: o profissional que cancela
+      // sempre reembolsa o cliente (nao e culpa dele); o cliente que cancela
+      // com pelo menos 2h de antecedencia tambem e reembolsado; cancelando
+      // depois disso, o profissional fica com o valor (ja reservou o horario
+      // e pode nao conseguir preenche-lo a tempo).
+      const isProviderCancelling = booking.provider.userId === userId;
+      const hoursUntilSession = (booking.scheduledAt.getTime() - Date.now()) / (60 * 60 * 1000);
+      if (isProviderCancelling || hoursUntilSession >= 2) {
+        await paymentService.cancelPaymentForBooking(bookingId);
+      } else {
+        await paymentService.captureIfAuthorizedForBooking(bookingId).catch(() => null);
+      }
     }
 
     await this.notifyBookingStatusChange(updated, status, userId);
