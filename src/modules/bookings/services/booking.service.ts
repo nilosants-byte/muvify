@@ -95,6 +95,7 @@ const paymentService = new PaymentService();
 const notificationService = new NotificationService();
 
 const attendanceCodeReleaseMs = env.BOOKING_ATTENDANCE_CODE_RELEASE_MINUTES * 60 * 1000;
+const NO_SHOW_CONTEST_WINDOW_MS = 48 * 60 * 60 * 1000;
 const attendanceQrTokenPrefix = "muvify-attendance";
 const attendanceQrTokenVersion = "v1";
 
@@ -1208,7 +1209,11 @@ export class BookingService {
     }
 
     const reportedUserId = isClient ? booking.provider.userId : booking.clientId;
+    const contestDeadlineAt = new Date(Date.now() + NO_SHOW_CONTEST_WINDOW_MS);
 
+    // O booking fecha na hora (a sessao nao vai mais acontecer), mas quem
+    // esta certo so e decidido depois da janela de contestacao — nao mexe em
+    // strike nem em dinheiro ainda (ver resolveExpiredNoShowReports).
     const { updated, alreadyReported } = await prisma.$transaction(async (tx) => {
       const existing = await tx.noShowReport.findUnique({ where: { bookingId } });
       if (existing) {
@@ -1216,11 +1221,7 @@ export class BookingService {
       }
 
       await tx.noShowReport.create({
-        data: { bookingId, reportedUserId, reportedByUserId: reporterId }
-      });
-      await tx.user.update({
-        where: { id: reportedUserId },
-        data: { noShowStrikes: { increment: 1 } }
+        data: { bookingId, reportedUserId, reportedByUserId: reporterId, contestDeadlineAt }
       });
       const updatedBooking = await tx.booking.update({
         where: { id: bookingId },
@@ -1238,13 +1239,11 @@ export class BookingService {
       throw new AppError("Este agendamento já foi reportado.", StatusCodes.CONFLICT);
     }
 
-    await paymentService.cancelPaymentForBooking(bookingId);
-
     void notificationService
       .sendToUsers([booking.clientId, booking.provider.userId], {
         preferenceType: "BOOKINGS",
         title: "Agendamento encerrado por falta",
-        body: `O agendamento de ${formatPtBrDate(booking.scheduledAt)} foi encerrado por falta de comparecimento.`,
+        body: `O agendamento de ${formatPtBrDate(booking.scheduledAt)} foi encerrado por falta de comparecimento. A parte reportada tem até 48h para contestar.`,
         data: { type: "BOOKING_NO_SHOW", bookingId }
       })
       .catch((error) => {
@@ -1252,6 +1251,94 @@ export class BookingService {
       });
 
     return updated;
+  }
+
+  // A parte acusada tem ate contestDeadlineAt pra contestar o relato — depois
+  // disso, so um admin resolve manualmente (fila de disputa, ainda nao
+  // construida). Contestar so pausa a resolucao automatica, nao decide nada
+  // sozinho.
+  async contestNoShowReport(userId: string, bookingId: string) {
+    const report = await prisma.noShowReport.findUnique({
+      where: { bookingId },
+      include: { booking: { select: { clientId: true, provider: { select: { userId: true } } } } }
+    });
+
+    if (!report) {
+      throw new AppError("Nenhum relato de falta encontrado para este agendamento.", StatusCodes.NOT_FOUND);
+    }
+    if (report.reportedUserId !== userId) {
+      throw new AppError("Apenas a parte reportada pode contestar.", StatusCodes.FORBIDDEN);
+    }
+    if (report.status !== "PENDING") {
+      throw new AppError("Este relato não está mais aberto para contestação.", StatusCodes.BAD_REQUEST);
+    }
+    if (report.contestDeadlineAt < new Date()) {
+      throw new AppError("O prazo para contestar este relato já passou.", StatusCodes.BAD_REQUEST);
+    }
+
+    const updated = await prisma.noShowReport.update({
+      where: { bookingId },
+      data: { status: "CONTESTED", contestedAt: new Date() }
+    });
+
+    void notificationService
+      .sendToUsers([report.reportedByUserId, report.reportedUserId], {
+        preferenceType: "BOOKINGS",
+        title: "Relato de falta contestado",
+        body: "A parte reportada contestou o relato. O caso vai para análise.",
+        data: { type: "BOOKING_NO_SHOW_CONTESTED", bookingId }
+      })
+      .catch((error) => {
+        console.error("No-show contest notification failed:", error);
+      });
+
+    return updated;
+  }
+
+  // Roda periodicamente (ver payment-jobs.ts) — resolve relatos cujo prazo de
+  // contestacao venceu sem contestacao: aplica o strike e move o dinheiro na
+  // direcao certa (quem faltou nao fica com o beneficio da duvida).
+  async resolveExpiredNoShowReports(referenceDate = new Date()) {
+    const dueReports = await prisma.noShowReport.findMany({
+      where: { status: "PENDING", contestDeadlineAt: { lte: referenceDate } },
+      include: { booking: { select: { clientId: true, provider: { select: { userId: true } } } } },
+      take: 200
+    });
+
+    for (const report of dueReports) {
+      const clientAtFault = report.reportedUserId === report.booking.clientId;
+      try {
+        if (clientAtFault) {
+          await paymentService.captureIfAuthorizedForBooking(report.bookingId).catch(() => null);
+        } else {
+          await paymentService.cancelPaymentForBooking(report.bookingId);
+        }
+        await prisma.$transaction([
+          prisma.user.update({
+            where: { id: report.reportedUserId },
+            data: { noShowStrikes: { increment: 1 } }
+          }),
+          prisma.noShowReport.update({
+            where: { id: report.id },
+            data: { status: "RESOLVED", resolvedAt: referenceDate }
+          })
+        ]);
+        void notificationService
+          .sendToUsers([report.booking.clientId, report.booking.provider.userId], {
+            preferenceType: "BOOKINGS",
+            title: "Relato de falta resolvido",
+            body: clientAtFault
+              ? "O relato de falta não foi contestado. O valor da sessão foi mantido com o profissional."
+              : "O relato de falta não foi contestado. O valor da sessão foi devolvido ao cliente.",
+            data: { type: "BOOKING_NO_SHOW_RESOLVED", bookingId: report.bookingId }
+          })
+          .catch((error) => {
+            console.error("No-show resolution notification failed:", error);
+          });
+      } catch (error) {
+        console.error(`Failed to resolve no-show report ${report.id}:`, error);
+      }
+    }
   }
 
   private validateCompletionProof(completionProof?: CompletionProofInput) {

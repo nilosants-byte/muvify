@@ -49,6 +49,13 @@ bookingRoutes.post(
   validate(bookingIdParamSchema),
   bookingController.reportNoShow
 );
+bookingRoutes.post(
+  "/:bookingId/contest-no-show",
+  clientOrProvider,
+  uploadRateLimiter,
+  validate(bookingIdParamSchema),
+  bookingController.contestNoShowReport
+);
 bookingRoutes.get(
   "/:bookingId/completion-proof/:evidenceUserId",
   clientOrProvider,

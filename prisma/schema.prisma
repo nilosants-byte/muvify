@@ -434,16 +434,27 @@ model Booking {
   @@index([clientId, status])
   @@index([status, scheduledAt])
 }
+enum NoShowReportStatus {
+  PENDING
+  CONTESTED
+  RESOLVED
+}
+
 model NoShowReport {
   id               String   @id @default(uuid())
   bookingId        String   @unique
   reportedUserId   String
   reportedByUserId String
+  status           NoShowReportStatus @default(PENDING)
+  contestDeadlineAt DateTime @default(now())
+  contestedAt      DateTime?
+  resolvedAt       DateTime?
   createdAt        DateTime @default(now())
   booking          Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   reportedUser     User     @relation("NoShowReported", fields: [reportedUserId], references: [id], onDelete: Cascade)
   reportedByUser   User     @relation("NoShowReportedBy", fields: [reportedByUserId], references: [id], onDelete: Cascade)
   @@index([reportedUserId])
+  @@index([status, contestDeadlineAt])
 }
 model Review {
   id          String           @id @default(uuid())

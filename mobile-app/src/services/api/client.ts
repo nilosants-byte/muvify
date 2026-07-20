@@ -1846,6 +1846,21 @@ export const bookingsApi = {
       method: "POST",
       token
     });
+  },
+  contestNoShow(token: string, bookingId: string) {
+    return apiRequest<{
+      id: string;
+      bookingId: string;
+      reportedUserId: string;
+      reportedByUserId: string;
+      status: "PENDING" | "CONTESTED" | "RESOLVED";
+      contestDeadlineAt: string;
+      contestedAt: string | null;
+      resolvedAt: string | null;
+    }>(`/bookings/${bookingId}/contest-no-show`, {
+      method: "POST",
+      token
+    });
   }
 };
 

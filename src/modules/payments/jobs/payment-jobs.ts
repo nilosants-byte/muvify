@@ -60,6 +60,7 @@ export function startPaymentJobs() {
       await runWithTimeout(() => paymentService.autoRefundExpiredBookings(), "autoRefundExpiredBookings");
       await runWithTimeout(() => paymentService.authorizeDuePayments(), "authorizeDuePayments");
       await runWithTimeout(() => paymentService.autoCaptureSingleConfirmation(), "autoCaptureSingleConfirmation");
+      await runWithTimeout(() => bookingService.resolveExpiredNoShowReports(), "resolveExpiredNoShowReports");
       await runWithTimeout(() => consultancyService.autoRefundExpiredContracts(), "autoRefundExpiredContracts");
       await runWithTimeout(() => paymentService.refreshProviderMpTokens(), "refreshProviderMpTokens");
       consecutiveDatabaseFailures = 0;

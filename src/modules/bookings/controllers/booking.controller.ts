@@ -66,6 +66,11 @@ export class BookingController {
     return response.json(booking);
   }
 
+  async contestNoShowReport(request: Request, response: Response) {
+    const report = await bookingService.contestNoShowReport(request.user!.id, request.params.bookingId);
+    return response.json(report);
+  }
+
   async getCompletionProofImage(request: Request, response: Response) {
     const { buffer, mimeType } = await bookingService.getCompletionProofImage(
       request.user!.id,
