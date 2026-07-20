@@ -1,11 +1,13 @@
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
+
 enum UserRole {
   CLIENT
   PROVIDER
@@ -18,12 +20,14 @@ enum CrefValidationStatus {
   APPROVED
   REJECTED
 }
+
 enum BookingStatus {
   PENDING
   CONFIRMED
   CANCELLED
   COMPLETED
 }
+
 enum PaymentStatus {
   PENDING_AUTH
   AUTHORIZING
@@ -231,65 +235,67 @@ enum RankingPeriodType {
   MONTHLY
   ALLTIME
 }
+
 model User {
-  id              String            @id @default(uuid())
-  name            String
-  apelido         String?           @unique
-  email           String            @unique
-  password        String
-  phone           String?
-  photoUrl        String?
-  recoveryEmailEncrypted String?
-  role            UserRole          @default(CLIENT)
-  emailVerifiedAt DateTime?
-  mpCustomerId                String?
-  mpDefaultCardId             String?
-  termsAcceptedAt             DateTime?
-  privacyPolicyAcceptedAt     DateTime?
-  termsVersion                String?
-  twoFactorSecret             String?
-  twoFactorEnabled            Boolean   @default(false)
-  twoFactorEnabledAt          DateTime?
-  document                    String?
-  documentHash                String?
-  trainingDaysPerWeek         Int       @default(3)
-  noShowStrikes               Int       @default(0)
-  customerPaymentMethods CustomerPaymentMethod[]
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  providerProfile ProviderProfile?
-  bookings        Booking[]         @relation("ClientBookings")
-  reviews         Review[]
-  favorites       Favorite[]
-  completionEvidences CompletionEvidence[]
-  consultancyRequestsSent ConsultancyRequest[] @relation("ClientConsultancyRequests")
-  consultancyContracts ConsultancyContract[] @relation("ClientConsultancyContracts")
-  sessions        Session[]
-  pushDevices     PushDevice[]
-  notifications   UserNotification[]
-  passwordResetTokens PasswordResetToken[]
-  emailVerificationTokens EmailVerificationToken[]
+  id                       String                      @id @default(uuid())
+  name                     String
+  apelido                  String?                     @unique
+  email                    String                      @unique
+  password                 String
+  phone                    String?
+  photoUrl                 String?
+  recoveryEmailEncrypted   String?
+  role                     UserRole                    @default(CLIENT)
+  emailVerifiedAt          DateTime?
+  mpCustomerId             String?
+  mpDefaultCardId          String?
+  termsAcceptedAt          DateTime?
+  privacyPolicyAcceptedAt  DateTime?
+  termsVersion             String?
+  twoFactorSecret          String?
+  twoFactorEnabled         Boolean                     @default(false)
+  twoFactorEnabledAt       DateTime?
+  document                 String?
+  documentHash             String?
+  trainingDaysPerWeek      Int                         @default(3)
+  noShowStrikes            Int                         @default(0)
+  customerPaymentMethods   CustomerPaymentMethod[]
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime                    @updatedAt
+  providerProfile          ProviderProfile?
+  bookings                 Booking[]                   @relation("ClientBookings")
+  reviews                  Review[]
+  favorites                Favorite[]
+  completionEvidences      CompletionEvidence[]
+  consultancyRequestsSent  ConsultancyRequest[]        @relation("ClientConsultancyRequests")
+  consultancyContracts     ConsultancyContract[]       @relation("ClientConsultancyContracts")
+  sessions                 Session[]
+  pushDevices              PushDevice[]
+  notifications            UserNotification[]
+  passwordResetTokens      PasswordResetToken[]
+  emailVerificationTokens  EmailVerificationToken[]
   twoFactorLoginChallenges TwoFactorLoginChallenge[]
   twoFactorBackupCodes     TwoFactorBackupCode[]
-  anamnesisProfile ClientAnamnesis?
-  physicalAssessments ProviderStudentAssessment[] @relation("AssessmentClient")
-  trainingPlanCompletions TrainingPlanCompletion[]
-  chatMessages        BookingMessage[]
-  notificationPreferences NotificationPreference[]
-  supportTicketsSubmitted SupportTicket[] @relation("SupportTicketRequester")
-  supportTicketsResponded SupportTicket[] @relation("SupportTicketResponder")
-  xpTransactions          UserXpTransaction[]
-  streak                  UserStreak?
-  unlockedAchievements    UserAchievement[]
-  following               Follow[]        @relation("Follower")
-  followers               Follow[]        @relation("Following")
-  feedPosts               FeedPost[]
-  feedPostLikes           FeedPostLike[]
-  feedPostComments        FeedPostComment[]
-  rankingSnapshots        RankingSnapshot[]
-  adminAuditLogs          AdminAuditLog[]
-  noShowReportsReceived   NoShowReport[] @relation("NoShowReported")
-  noShowReportsFiled      NoShowReport[] @relation("NoShowReportedBy")
+  anamnesisProfile         ClientAnamnesis?
+  physicalAssessments      ProviderStudentAssessment[] @relation("AssessmentClient")
+  trainingPlanCompletions  TrainingPlanCompletion[]
+  presentialPackages       PresentialPackage[]         @relation("ClientPresentialPackages")
+  chatMessages             BookingMessage[]
+  notificationPreferences  NotificationPreference[]
+  supportTicketsSubmitted  SupportTicket[]             @relation("SupportTicketRequester")
+  supportTicketsResponded  SupportTicket[]             @relation("SupportTicketResponder")
+  xpTransactions           UserXpTransaction[]
+  streak                   UserStreak?
+  unlockedAchievements     UserAchievement[]
+  following                Follow[]                    @relation("Follower")
+  followers                Follow[]                    @relation("Following")
+  feedPosts                FeedPost[]
+  feedPostLikes            FeedPostLike[]
+  feedPostComments         FeedPostComment[]
+  rankingSnapshots         RankingSnapshot[]
+  adminAuditLogs           AdminAuditLog[]
+  noShowReportsReceived    NoShowReport[]              @relation("NoShowReported")
+  noShowReportsFiled       NoShowReport[]              @relation("NoShowReportedBy")
 
   @@index([createdAt])
   @@index([documentHash])
@@ -304,72 +310,76 @@ model AdminAuditLog {
   metadata   Json?
   createdAt  DateTime @default(now())
 
-  admin      User     @relation(fields: [adminId], references: [id])
+  admin User @relation(fields: [adminId], references: [id])
 
   @@index([adminId])
   @@index([createdAt])
   @@index([action])
 }
+
 model ProviderProfile {
-  id               String             @id @default(uuid())
-  userId           String             @unique
-  displayName      String
-  bio              String
-  experienceYears  Int
-  priceCents       Int
-  serviceRadiusKm  Int?
-  latitude         Float?
-  longitude        Float?
-  serviceMode      ProviderServiceMode @default(BOTH)
-  minBookingNoticeHours Int @default(24)
-  fixedLocations   Json?
-  excludedLocations Json?
-  averageRating    Float              @default(0)
-  totalReviews     Int                @default(0)
-  photoUrl         String?
-  presentationVideoUrl String?
-  mpAccountId      String?
-  mpAccessToken    String?
-  mpRefreshToken   String?
-  mpTokenExpiresAt DateTime?
-  crefNumber       String?
-  crefDocumentUrl  String?
-  credentialDocuments Json?
-  crefValidatedAt  DateTime?
-  crefValidationStatus CrefValidationStatus @default(PENDING)
-  crefRejectionReason String? @db.VarChar(300)
-  crefReviewedAt DateTime?
-  crefReviewedByUserId String?
-  specialties      Json?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  categoryLinks    ProviderCategory[]
-  availabilities   Availability[]
-  bookings         Booking[]          @relation("ProviderBookings")
-  reviews          Review[]
-  favoritedBy      Favorite[]
-  serviceOffers    ProviderServiceOffer[]
-  onlineConsultancySetting OnlineConsultancySetting?
-  trainingPlans    TrainingPlan[]
-  exercises        Exercise[]
-  consultancyRequestsReceived ConsultancyRequest[] @relation("ProviderConsultancyRequests")
-  consultancyContracts ConsultancyContract[] @relation("ProviderConsultancyContracts")
-  bankAccount ProviderBankAccount?
-  calendarEvents ProviderCalendarEvent[]
-  studentAssessments ProviderStudentAssessment[]
-  trainingPlanCompletions TrainingPlanCompletion[]
-  financialStudents   FinancialStudent[]
-  financialIncomes    FinancialIncome[]
-  financialExpenses   FinancialExpense[]
-  financialGoals      FinancialGoal[]
-  financialClassSessions FinancialClassSession[]
-  manualBlocks        ProviderManualBlock[]
+  id                          String                      @id @default(uuid())
+  userId                      String                      @unique
+  displayName                 String
+  bio                         String
+  experienceYears             Int
+  priceCents                  Int
+  serviceRadiusKm             Int?
+  latitude                    Float?
+  longitude                   Float?
+  serviceMode                 ProviderServiceMode         @default(BOTH)
+  minBookingNoticeHours       Int                         @default(24)
+  fixedLocations              Json?
+  excludedLocations           Json?
+  averageRating               Float                       @default(0)
+  totalReviews                Int                         @default(0)
+  photoUrl                    String?
+  presentationVideoUrl        String?
+  mpAccountId                 String?
+  mpAccessToken               String?
+  mpRefreshToken              String?
+  mpTokenExpiresAt            DateTime?
+  crefNumber                  String?
+  crefDocumentUrl             String?
+  credentialDocuments         Json?
+  crefValidatedAt             DateTime?
+  crefValidationStatus        CrefValidationStatus        @default(PENDING)
+  crefRejectionReason         String?                     @db.VarChar(300)
+  crefReviewedAt              DateTime?
+  crefReviewedByUserId        String?
+  specialties                 Json?
+  createdAt                   DateTime                    @default(now())
+  updatedAt                   DateTime                    @updatedAt
+  user                        User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryLinks               ProviderCategory[]
+  availabilities              Availability[]
+  bookings                    Booking[]                   @relation("ProviderBookings")
+  reviews                     Review[]
+  favoritedBy                 Favorite[]
+  serviceOffers               ProviderServiceOffer[]
+  onlineConsultancySetting    OnlineConsultancySetting?
+  trainingPlans               TrainingPlan[]
+  exercises                   Exercise[]
+  consultancyRequestsReceived ConsultancyRequest[]        @relation("ProviderConsultancyRequests")
+  consultancyContracts        ConsultancyContract[]       @relation("ProviderConsultancyContracts")
+  presentialPackages          PresentialPackage[]
+  bankAccount                 ProviderBankAccount?
+  calendarEvents              ProviderCalendarEvent[]
+  studentAssessments          ProviderStudentAssessment[]
+  trainingPlanCompletions     TrainingPlanCompletion[]
+  financialStudents           FinancialStudent[]
+  financialIncomes            FinancialIncome[]
+  financialExpenses           FinancialExpense[]
+  financialGoals              FinancialGoal[]
+  financialClassSessions      FinancialClassSession[]
+  manualBlocks                ProviderManualBlock[]
+
   @@index([displayName])
   @@index([serviceMode, averageRating])
   @@index([latitude, longitude])
   @@index([crefValidatedAt, averageRating, totalReviews])
 }
+
 model ServiceCategory {
   id          String             @id @default(uuid())
   name        String             @unique
@@ -379,61 +389,71 @@ model ServiceCategory {
   providers   ProviderCategory[]
   bookings    Booking[]
 }
+
 model ProviderCategory {
   providerId String
   categoryId String
-  provider   ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  category   ServiceCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  provider   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  category   ServiceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
   @@id([providerId, categoryId])
 }
+
 model Availability {
-  id         String           @id @default(uuid())
+  id         String          @id @default(uuid())
   providerId String
   weekday    Int
   startTime  String
   endTime    String
-  isActive   Boolean          @default(true)
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
-  provider   ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  isActive   Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  provider   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
   @@index([providerId, weekday])
 }
+
 model Booking {
-  id            String           @id @default(uuid())
-  clientId      String
-  providerId    String
-  categoryId    String
-  scheduledAt   DateTime
-  priceCents    Int
-  currency      String           @default("BRL")
-  notes           String?
-  sessionLocation String?
-  status        BookingStatus    @default(PENDING)
+  id                        String               @id @default(uuid())
+  clientId                  String
+  providerId                String
+  categoryId                String
+  packageId                 String?
+  scheduledAt               DateTime
+  priceCents                Int
+  currency                  String               @default("BRL")
+  notes                     String?
+  sessionLocation           String?
+  status                    BookingStatus        @default(PENDING)
   attendanceCode            String?
   attendanceCodeGeneratedAt DateTime?
   attendanceCodeExpiresAt   DateTime?
   attendanceCodeValidatedAt DateTime?
-  clientConfirmedAt   DateTime?
-  providerConfirmedAt DateTime?
-  completedAt         DateTime?
-  reminder60SentAt    DateTime?
-  reminder30SentAt    DateTime?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  client        User             @relation("ClientBookings", fields: [clientId], references: [id], onDelete: Cascade)
-  provider      ProviderProfile  @relation("ProviderBookings", fields: [providerId], references: [id], onDelete: Cascade)
-  category      ServiceCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  review        Review?
-  payment       Payment?
-  completionEvidences CompletionEvidence[]
-  chatMessages        BookingMessage[]
-  noShowReport        NoShowReport?
+  clientConfirmedAt         DateTime?
+  providerConfirmedAt       DateTime?
+  completedAt               DateTime?
+  reminder60SentAt          DateTime?
+  reminder30SentAt          DateTime?
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+  client                    User                 @relation("ClientBookings", fields: [clientId], references: [id], onDelete: Cascade)
+  provider                  ProviderProfile      @relation("ProviderBookings", fields: [providerId], references: [id], onDelete: Cascade)
+  category                  ServiceCategory      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  package                   PresentialPackage?   @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  review                    Review?
+  payment                   Payment?
+  completionEvidences       CompletionEvidence[]
+  chatMessages              BookingMessage[]
+  noShowReport              NoShowReport?
+
   @@index([providerId, scheduledAt])
   @@index([clientId, scheduledAt])
   @@index([providerId, status])
   @@index([clientId, status])
   @@index([status, scheduledAt])
+  @@index([packageId])
 }
+
 enum NoShowReportStatus {
   PENDING
   CONTESTED
@@ -441,71 +461,76 @@ enum NoShowReportStatus {
 }
 
 model NoShowReport {
-  id               String   @id @default(uuid())
-  bookingId        String   @unique
-  reportedUserId   String
-  reportedByUserId String
-  status           NoShowReportStatus @default(PENDING)
-  contestDeadlineAt DateTime @default(now())
-  contestedAt      DateTime?
-  resolvedAt       DateTime?
-  createdAt        DateTime @default(now())
-  booking          Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  reportedUser     User     @relation("NoShowReported", fields: [reportedUserId], references: [id], onDelete: Cascade)
-  reportedByUser   User     @relation("NoShowReportedBy", fields: [reportedByUserId], references: [id], onDelete: Cascade)
+  id                String             @id @default(uuid())
+  bookingId         String             @unique
+  reportedUserId    String
+  reportedByUserId  String
+  status            NoShowReportStatus @default(PENDING)
+  contestDeadlineAt DateTime           @default(now())
+  contestedAt       DateTime?
+  resolvedAt        DateTime?
+  createdAt         DateTime           @default(now())
+  booking           Booking            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  reportedUser      User               @relation("NoShowReported", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  reportedByUser    User               @relation("NoShowReportedBy", fields: [reportedByUserId], references: [id], onDelete: Cascade)
+
   @@index([reportedUserId])
   @@index([status, contestDeadlineAt])
 }
-model Review {
-  id          String           @id @default(uuid())
-  bookingId   String           @unique
-  userId      String
 
-  providerId  String
-  rating      Int
-  comment     String?
-  providerResponse     String?   @db.VarChar(500)
-  providerRespondedAt  DateTime?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  booking     Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider    ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+model Review {
+  id        String @id @default(uuid())
+  bookingId String @unique
+  userId    String
+
+  providerId          String
+  rating              Int
+  comment             String?
+  providerResponse    String?         @db.VarChar(500)
+  providerRespondedAt DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  booking             Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider            ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
   @@index([providerId, rating])
   @@index([userId, createdAt])
 }
 
 model Favorite {
-  id          String           @id @default(uuid())
-  userId      String
-  providerId  String
-  createdAt   DateTime         @default(now())
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider    ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  id         String          @id @default(uuid())
+  userId     String
+  providerId String
+  createdAt  DateTime        @default(now())
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
   @@unique([userId, providerId])
   @@index([providerId])
 }
 
 model Session {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   userId           String
-  refreshTokenHash String   @unique
-  createdAt        DateTime @default(now())
+  refreshTokenHash String    @unique
+  createdAt        DateTime  @default(now())
   expiresAt        DateTime
   revokedAt        DateTime?
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([userId, revokedAt, expiresAt])
 }
 
 model TwoFactorLoginChallenge {
-  id                 String   @id @default(uuid())
+  id                 String    @id @default(uuid())
   userId             String
-  challengeTokenHash String   @unique
+  challengeTokenHash String    @unique
   expiresAt          DateTime
   consumedAt         DateTime?
-  createdAt          DateTime @default(now())
-  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime  @default(now())
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
   @@index([expiresAt, consumedAt])
@@ -523,70 +548,73 @@ model TwoFactorBackupCode {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([expiresAt])
 }
 
 model EmailVerificationToken {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([expiresAt])
 }
 
 model Payment {
-  id                    String        @id @default(uuid())
-  bookingId             String        @unique
-  amountCents           Int
-  currency              String        @default("BRL")
-  method                PaymentMethod @default(CARD)
-  status                PaymentStatus @default(PENDING_AUTH)
-  mpPaymentId           String?       @unique
-  mpCardToken           String?
-  mpChargeId            String?
-  providerAmountCents   Int?
-  platformFeeCents      Int?
-  authorizedAt          DateTime?
-  capturedAt            DateTime?
-  canceledAt            DateTime?
-  refundedAt            DateTime?
-  failureReason         String?
-  attempts              Int           @default(0)
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
-  booking               Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  id                  String        @id @default(uuid())
+  bookingId           String        @unique
+  amountCents         Int
+  currency            String        @default("BRL")
+  method              PaymentMethod @default(CARD)
+  status              PaymentStatus @default(PENDING_AUTH)
+  mpPaymentId         String?       @unique
+  mpCardToken         String?
+  mpChargeId          String?
+  providerAmountCents Int?
+  platformFeeCents    Int?
+  authorizedAt        DateTime?
+  capturedAt          DateTime?
+  canceledAt          DateTime?
+  refundedAt          DateTime?
+  failureReason       String?
+  attempts            Int           @default(0)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  booking             Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
   @@index([status, authorizedAt])
   @@index([mpCardToken])
 }
 
 model CustomerPaymentMethod {
-  id                    String   @id @default(uuid())
-  userId                String
-  mpCustomerId          String
-  mpCardId              String   @unique
-  nickname              String
-  brand                 String
-  last4                 String
-  funding               String?
-  expMonth              Int?
-  expYear               Int?
-  isDefault             Boolean  @default(false)
-  isActive              Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(uuid())
+  userId       String
+  mpCustomerId String
+  mpCardId     String   @unique
+  nickname     String
+  brand        String
+  last4        String
+  funding      String?
+  expMonth     Int?
+  expYear      Int?
+  isDefault    Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isActive])
   @@index([userId, isDefault])
@@ -624,37 +652,38 @@ model PushDevice {
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
   user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, isActive])
 }
 
 model UserNotification {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
   title     String
   body      String
   data      Json?
   readAt    DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([userId, readAt])
 }
 
 model SupportTicket {
-  id               String             @id @default(uuid())
-  userId           String
-  subject          String?
-  message          String
-  status           SupportTicketStatus @default(OPEN)
-  adminResponse    String?            @db.VarChar(300)
-  respondedAt      DateTime?
+  id                String              @id @default(uuid())
+  userId            String
+  subject           String?
+  message           String
+  status            SupportTicketStatus @default(OPEN)
+  adminResponse     String?             @db.VarChar(300)
+  respondedAt       DateTime?
   respondedByUserId String?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  user             User               @relation("SupportTicketRequester", fields: [userId], references: [id], onDelete: Cascade)
-  respondedBy      User?              @relation("SupportTicketResponder", fields: [respondedByUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  user              User                @relation("SupportTicketRequester", fields: [userId], references: [id], onDelete: Cascade)
+  respondedBy       User?               @relation("SupportTicketResponder", fields: [respondedByUserId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
   @@index([userId, createdAt])
@@ -708,78 +737,157 @@ model ProviderBankAccount {
 }
 
 model OnlineConsultancySetting {
-  id                  String          @id @default(uuid())
-  providerId          String          @unique
-  enabled             Boolean         @default(false)
-  responseSlaDays     Int             @default(7)
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
-  provider            ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  id              String          @id @default(uuid())
+  providerId      String          @unique
+  enabled         Boolean         @default(false)
+  responseSlaDays Int             @default(7)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  provider        ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
 }
 
 model ProviderServiceOffer {
-  id              String           @id @default(uuid())
-  providerId      String
-  kind            ServiceOfferKind
-  title           String
-  billingCycle    OfferBillingCycle
-  daysPerWeek     Int?
+  id                         String                 @id @default(uuid())
+  providerId                 String
+  kind                       ServiceOfferKind
+  title                      String
+  billingCycle               OfferBillingCycle
+  daysPerWeek                Int?
   comboPresentialDaysPerWeek Int?
-  comboOnlineDaysPerWeek Int?
-  priceCents      Int
-  basePriceUpdatedAt DateTime      @default(now())
-  isPromotion     Boolean          @default(false)
-  promotionPriceCents Int?
-  promotionEndsAt DateTime?
-  promotionLabel  String?
-  acceptsPix      Boolean          @default(true)
-  acceptsDebitCard Boolean         @default(true)
-  acceptsCreditCard Boolean        @default(true)
-  maxCreditInstallments Int        @default(1)
-  isActive        Boolean          @default(true)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  provider        ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  quotedRequests  ConsultancyRequest[] @relation("QuotedConsultancyOffer")
-  contracts       ConsultancyContract[]
+  comboOnlineDaysPerWeek     Int?
+  priceCents                 Int
+  basePriceUpdatedAt         DateTime               @default(now())
+  isPromotion                Boolean                @default(false)
+  promotionPriceCents        Int?
+  promotionEndsAt            DateTime?
+  promotionLabel             String?
+  acceptsPix                 Boolean                @default(true)
+  acceptsDebitCard           Boolean                @default(true)
+  acceptsCreditCard          Boolean                @default(true)
+  maxCreditInstallments      Int                    @default(1)
+  isActive                   Boolean                @default(true)
+  // Pacote presencial (PRESENTIAL/COMBO) — vendido por assinatura, nao pagamento unico.
+  presentialPackageMode      PresentialPackageMode?
+  presentialHasFixedTerm     Boolean                @default(false)
+  presentialTotalCycles      Int?
+  presentialSessionsPerCycle Int?
+  // Combo: quanto de priceCents corresponde a cada lado, pra reembolso parcial sem ambiguidade.
+  comboPresentialShareCents  Int?
+  comboConsultancyShareCents Int?
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
+  provider                   ProviderProfile        @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  quotedRequests             ConsultancyRequest[]   @relation("QuotedConsultancyOffer")
+  contracts                  ConsultancyContract[]
+  presentialPackages         PresentialPackage[]
 
   @@index([providerId, isActive])
   @@index([isPromotion, isActive])
 }
 
+enum PresentialPackageMode {
+  FIXED_RECURRING
+  FLEXIBLE_CREDITS
+}
+
+enum PresentialPackageStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+// Pacote presencial vendido por assinatura (ver artifact do desenho). Cada
+// cobranca periodica e um PresentialPackageCycle; sessoes viram Booking de
+// verdade (packageId), entao Agenda/Financeiro/Gestao de Alunos ja enxergam
+// tudo sem sincronizacao nova.
+model PresentialPackage {
+  id                    String                    @id @default(uuid())
+  providerId            String
+  clientId              String
+  offerId               String
+  consultancyContractId String?                   @unique
+  mode                  PresentialPackageMode
+  status                PresentialPackageStatus   @default(PENDING_PAYMENT)
+  paymentMethod         ConsultancyPaymentMethod?
+  mpSubscriptionId      String?                   @unique
+  cycleAmountCents      Int
+  billingCycle          OfferBillingCycle
+  sessionsPerCycle      Int
+  weeklySchedule        Json?
+  hasFixedTerm          Boolean                   @default(false)
+  totalCycles           Int?
+  validFrom             DateTime?
+  validUntil            DateTime?
+  cancelledAt           DateTime?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  provider            ProviderProfile          @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  client              User                     @relation("ClientPresentialPackages", fields: [clientId], references: [id], onDelete: Cascade)
+  offer               ProviderServiceOffer     @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  consultancyContract ConsultancyContract?     @relation(fields: [consultancyContractId], references: [id], onDelete: SetNull)
+  bookings            Booking[]
+  cycles              PresentialPackageCycle[]
+
+  @@index([providerId, status])
+  @@index([clientId, status])
+}
+
+// Um registro por cobranca periodica capturada — fonte de receita real
+// (Financeiro soma por aqui, nao inventa valor a partir do pacote inteiro).
+model PresentialPackageCycle {
+  id                  String   @id @default(uuid())
+  packageId           String
+  cycleIndex          Int
+  amountCents         Int
+  providerAmountCents Int
+  platformAmountCents Int
+  sessionsGranted     Int
+  mpPaymentId         String?
+  capturedAt          DateTime @default(now())
+  periodStart         DateTime
+  periodEnd           DateTime
+
+  package PresentialPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, cycleIndex])
+  @@index([packageId])
+}
+
 model TrainingPlan {
-  id            String           @id @default(uuid())
-  providerId    String
-  contractId    String?
-  title         String
-  description   String?
-  isPrebuilt    Boolean          @default(true)
-  isActive      Boolean          @default(true)
-  validUntil    DateTime?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  provider      ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  contract      ConsultancyContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
-  exercises     TrainingPlanExercise[]
-  completions   TrainingPlanCompletion[]
+  id          String                   @id @default(uuid())
+  providerId  String
+  contractId  String?
+  title       String
+  description String?
+  isPrebuilt  Boolean                  @default(true)
+  isActive    Boolean                  @default(true)
+  validUntil  DateTime?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  provider    ProviderProfile          @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  contract    ConsultancyContract?     @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  exercises   TrainingPlanExercise[]
+  completions TrainingPlanCompletion[]
 
   @@index([providerId, isPrebuilt, isActive])
   @@index([contractId])
 }
 
 model TrainingPlanExercise {
-  id              String    @id @default(uuid())
+  id              String       @id @default(uuid())
   trainingPlanId  String
   exerciseId      String?
-  sortOrder       Int       @default(0)
+  sortOrder       Int          @default(0)
   name            String
   repetitionsSets String
   load            String
   restSeconds     Int?
   restLabel       String?
   demoVideoUrl    String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
   trainingPlan    TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
   exercise        Exercise?    @relation(fields: [exerciseId], references: [id], onDelete: SetNull)
 
@@ -794,20 +902,20 @@ enum ExerciseMediaType {
 }
 
 model Exercise {
-  id          String             @id @default(uuid())
-  providerId  String?
-  name        String
-  category    String
-  description String?
+  id                     String                 @id @default(uuid())
+  providerId             String?
+  name                   String
+  category               String
+  description            String?
   defaultRepetitionsSets String?
-  defaultRestLabel String?
-  mediaUrl    String?
-  mediaType   ExerciseMediaType?
-  isPrebuilt  Boolean            @default(false)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  provider    ProviderProfile?   @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  trainingPlanExercises TrainingPlanExercise[]
+  defaultRestLabel       String?
+  mediaUrl               String?
+  mediaType              ExerciseMediaType?
+  isPrebuilt             Boolean                @default(false)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  provider               ProviderProfile?       @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  trainingPlanExercises  TrainingPlanExercise[]
 
   @@index([providerId, category])
   @@index([isPrebuilt, category])
@@ -815,59 +923,60 @@ model Exercise {
 }
 
 model ConsultancyRequest {
-  id                 String                   @id @default(uuid())
-  providerId         String
-  clientId           String
-  trainingNeedText   String?
-  limitationText     String?
-  extraInfoText      String?
+  id                   String                   @id @default(uuid())
+  providerId           String
+  clientId             String
+  trainingNeedText     String?
+  limitationText       String?
+  extraInfoText        String?
   providerResponseText String?
-  status             ConsultancyRequestStatus @default(OPEN)
-  quotedOfferId      String?
-  respondedAt        DateTime?
-  clientDecisionAt   DateTime?
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
-  provider           ProviderProfile          @relation("ProviderConsultancyRequests", fields: [providerId], references: [id], onDelete: Cascade)
-  client             User                     @relation("ClientConsultancyRequests", fields: [clientId], references: [id], onDelete: Cascade)
-  quotedOffer        ProviderServiceOffer?    @relation("QuotedConsultancyOffer", fields: [quotedOfferId], references: [id], onDelete: SetNull)
-  contract           ConsultancyContract?
+  status               ConsultancyRequestStatus @default(OPEN)
+  quotedOfferId        String?
+  respondedAt          DateTime?
+  clientDecisionAt     DateTime?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  provider             ProviderProfile          @relation("ProviderConsultancyRequests", fields: [providerId], references: [id], onDelete: Cascade)
+  client               User                     @relation("ClientConsultancyRequests", fields: [clientId], references: [id], onDelete: Cascade)
+  quotedOffer          ProviderServiceOffer?    @relation("QuotedConsultancyOffer", fields: [quotedOfferId], references: [id], onDelete: SetNull)
+  contract             ConsultancyContract?
 
   @@index([providerId, status, createdAt])
   @@index([clientId, status, createdAt])
 }
 
 model ConsultancyContract {
-  id                String                   @id @default(uuid())
-  requestId         String                   @unique
-  providerId        String
-  clientId          String
-  offerId           String
-  status            ConsultancyContractStatus @default(PENDING_PAYMENT)
-  paymentMethod     ConsultancyPaymentMethod?
-  paymentInstallments Int                  @default(1)
-  paymentStatus     ConsultancyPaymentStatus @default(PENDING)
-  mpPaymentId           String?             @unique
-  mpRefundId            String?
-  paymentAmountCents Int
-  providerAmountCents Int
-  platformAmountCents Int
-  paymentCapturedAt DateTime?
-  deliveryDeadlineAt DateTime
-  deliveredAt       DateTime?
-  refundedAt        DateTime?
-  refundReason      String?
-  expiry7dSentAt    DateTime?
-  expiry1dSentAt    DateTime?
-  expiryNoticeSentAt DateTime?
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
-  request           ConsultancyRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  provider          ProviderProfile          @relation("ProviderConsultancyContracts", fields: [providerId], references: [id], onDelete: Cascade)
-  client            User                     @relation("ClientConsultancyContracts", fields: [clientId], references: [id], onDelete: Cascade)
-  offer             ProviderServiceOffer     @relation(fields: [offerId], references: [id], onDelete: Restrict)
-  trainingPlans     TrainingPlan[]
+  id                      String                    @id @default(uuid())
+  requestId               String                    @unique
+  providerId              String
+  clientId                String
+  offerId                 String
+  status                  ConsultancyContractStatus @default(PENDING_PAYMENT)
+  paymentMethod           ConsultancyPaymentMethod?
+  paymentInstallments     Int                       @default(1)
+  paymentStatus           ConsultancyPaymentStatus  @default(PENDING)
+  mpPaymentId             String?                   @unique
+  mpRefundId              String?
+  paymentAmountCents      Int
+  providerAmountCents     Int
+  platformAmountCents     Int
+  paymentCapturedAt       DateTime?
+  deliveryDeadlineAt      DateTime
+  deliveredAt             DateTime?
+  refundedAt              DateTime?
+  refundReason            String?
+  expiry7dSentAt          DateTime?
+  expiry1dSentAt          DateTime?
+  expiryNoticeSentAt      DateTime?
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  request                 ConsultancyRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  provider                ProviderProfile           @relation("ProviderConsultancyContracts", fields: [providerId], references: [id], onDelete: Cascade)
+  client                  User                      @relation("ClientConsultancyContracts", fields: [clientId], references: [id], onDelete: Cascade)
+  offer                   ProviderServiceOffer      @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  trainingPlans           TrainingPlan[]
   trainingPlanCompletions TrainingPlanCompletion[]
+  presentialPackage       PresentialPackage?
 
   @@index([providerId, status, deliveryDeadlineAt])
   @@index([clientId, status, createdAt])
@@ -890,14 +999,14 @@ model ProviderCalendarEvent {
 }
 
 model ClientAnamnesis {
-  id          String         @id @default(uuid())
-  clientId    String         @unique
+  id          String          @id @default(uuid())
+  clientId    String          @unique
   status      AnamnesisStatus @default(DRAFT)
   answers     Json?
   completedAt DateTime?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  client      User           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  client      User            @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([clientId, updatedAt])
@@ -929,60 +1038,60 @@ model ProviderStudentAssessment {
 }
 
 model FinancialStudent {
-  id                String               @id @default(uuid())
+  id                String                  @id @default(uuid())
   providerId        String
   name              String
   monthlyValueCents Int
   type              FinancialStudentType
-  weeklyFrequency   Int                  @default(3)
-  isActive          Boolean              @default(true)
+  weeklyFrequency   Int                     @default(3)
+  isActive          Boolean                 @default(true)
   paymentDueDay     Int?
   notes             String?
   location          String?
   weeklySchedule    Json?
-  recurrence        FinancialRecurrence  @default(RECURRING)
-  startDate         DateTime             @default(now())
+  recurrence        FinancialRecurrence     @default(RECURRING)
+  startDate         DateTime                @default(now())
   recurrenceEndDate DateTime?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  provider          ProviderProfile      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  provider          ProviderProfile         @relation(fields: [providerId], references: [id], onDelete: Cascade)
   incomes           FinancialIncome[]
   classSessions     FinancialClassSession[]
 
-  @@index([providerId, isActive])
   @@unique([providerId, name])
+  @@index([providerId, isActive])
 }
 
 model FinancialIncome {
-  id                String           @id @default(uuid())
+  id                String              @id @default(uuid())
   providerId        String
   studentId         String?
   description       String
   amountCents       Int
-  source            String           @default("MANUAL")
+  source            String              @default("MANUAL")
   paidAt            DateTime
   recurrence        FinancialRecurrence @default(ONE_TIME)
   recurrenceEndDate DateTime?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  provider          ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  student           FinancialStudent? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  provider          ProviderProfile     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  student           FinancialStudent?   @relation(fields: [studentId], references: [id], onDelete: SetNull)
 
   @@index([providerId, paidAt])
 }
 
 model FinancialExpense {
-  id                String                  @id @default(uuid())
+  id                String                   @id @default(uuid())
   providerId        String
   description       String
   amountCents       Int
   category          FinancialExpenseCategory @default(OTHER)
   paidAt            DateTime
-  recurrence        FinancialRecurrence     @default(ONE_TIME)
+  recurrence        FinancialRecurrence      @default(ONE_TIME)
   recurrenceEndDate DateTime?
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
-  provider          ProviderProfile         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  provider          ProviderProfile          @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
   @@index([providerId, paidAt])
 }
@@ -1003,13 +1112,13 @@ model FinancialGoal {
 }
 
 model FinancialClassSession {
-  id         String           @id @default(uuid())
+  id         String            @id @default(uuid())
   providerId String
   studentId  String?
   date       DateTime
   notes      String?
-  createdAt  DateTime         @default(now())
-  provider   ProviderProfile  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  createdAt  DateTime          @default(now())
+  provider   ProviderProfile   @relation(fields: [providerId], references: [id], onDelete: Cascade)
   student    FinancialStudent? @relation(fields: [studentId], references: [id], onDelete: SetNull)
 
   @@index([providerId, date])
@@ -1031,25 +1140,24 @@ model ProviderManualBlock {
 }
 
 model TrainingPlanCompletion {
-  id             String              @id @default(uuid())
+  id             String               @id @default(uuid())
   clientId       String
   providerId     String
   trainingPlanId String
   contractId     String?
   notes          String?
-  completedAt    DateTime            @default(now())
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  client         User                @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  provider       ProviderProfile     @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  trainingPlan   TrainingPlan        @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+  completedAt    DateTime             @default(now())
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  client         User                 @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  provider       ProviderProfile      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  trainingPlan   TrainingPlan         @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
   contract       ConsultancyContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
 
   @@index([providerId, completedAt])
   @@index([clientId, completedAt])
   @@index([trainingPlanId, completedAt])
 }
-
 
 model BookingMessage {
   id        String    @id @default(uuid())
@@ -1060,8 +1168,8 @@ model BookingMessage {
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
-  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  sender    User?    @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  sender  User?   @relation(fields: [senderId], references: [id], onDelete: SetNull)
 
   @@index([bookingId, createdAt])
   @@index([senderId, createdAt])
@@ -1081,16 +1189,16 @@ model NotificationPreference {
 }
 
 model DataRetentionExecutionLog {
-  id           String   @id @default(uuid())
-  dryRun       Boolean  @default(true)
+  id           String    @id @default(uuid())
+  dryRun       Boolean   @default(true)
   status       String
-  triggeredBy  String   @default("SYSTEM")
+  triggeredBy  String    @default("SYSTEM")
   startedAt    DateTime
   finishedAt   DateTime?
   durationMs   Int?
   summary      Json?
   errorMessage String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
   @@index([createdAt])
   @@index([status, createdAt])
@@ -1114,13 +1222,13 @@ model PaymentAuditLog {
 // ─── Gamification ────────────────────────────────────────────────────────────
 
 model UserXpTransaction {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   userId      String
   amount      Int
   reason      XpReason
   referenceId String?
-  createdAt   DateTime  @default(now())
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, reason, referenceId])
   @@index([userId, createdAt])
@@ -1139,16 +1247,16 @@ model UserStreak {
 }
 
 model Achievement {
-  id             String                   @id @default(uuid())
-  key            String                   @unique
-  name           String
-  description    String
-  category       AchievementCategory
-  medalType      MedalType
-  xpReward       Int
-  conditionType  AchievementConditionType
-  conditionValue Int
-  sortOrder      Int                      @default(0)
+  id               String                   @id @default(uuid())
+  key              String                   @unique
+  name             String
+  description      String
+  category         AchievementCategory
+  medalType        MedalType
+  xpReward         Int
+  conditionType    AchievementConditionType
+  conditionValue   Int
+  sortOrder        Int                      @default(0)
   userAchievements UserAchievement[]
 }
 
@@ -1180,16 +1288,16 @@ model Follow {
 }
 
 model FeedPost {
-  id          String       @id @default(uuid())
+  id          String            @id @default(uuid())
   userId      String
   type        FeedPostType
   referenceId String?
   imageUrl    String?
   caption     String?
   metadata    Json?
-  isAutomatic Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isAutomatic Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   likes       FeedPostLike[]
   comments    FeedPostComment[]
 
