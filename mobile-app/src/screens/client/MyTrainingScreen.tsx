@@ -66,6 +66,14 @@ function contractStatusStyle(status: string, theme: MvTheme) {
   return { label: "Arquivado", color: theme.text3, bg: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)", border: theme.border };
 }
 
+// O que decide se um treino pode ser aberto/executado e a vigencia DELE mesmo, nao
+// o status do contrato (um contrato "Entregue" pode continuar tendo treinos vigentes).
+function planValidityStyle(isVigente: boolean, theme: MvTheme) {
+  const isDark = theme.mode === "dark";
+  if (isVigente) return { label: "Vigente", color: theme.primary, bg: theme.primarySubtle, border: theme.primarySubtleBorder };
+  return { label: "Vencido", color: theme.text3, bg: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)", border: theme.border };
+}
+
 // ── Flat plan list helper ──────────────────────────────────────────────────────
 type FlatPlan = TrainingPlan & { contractStatus: string; providerName: string; contractId: string };
 
@@ -474,10 +482,13 @@ export function MyTrainingScreen({ navigation }: Props) {
   const respondedRequests = useMemo(() => requests.filter((r) => r.status === "RESPONDED"), [requests]);
   const waitingDelivery = data?.waitingDelivery ?? [];
 
-  // Planos por tab
-  const activePlans = useMemo(() => flatPlans(contracts.filter((c) => c.status === "ACTIVE")), [contracts]);
+  // Planos por tab — separados pela vigencia de CADA treino, nao pelo status do
+  // contrato (um contrato "Entregue" continua podendo ter treinos vigentes e
+  // vencidos ao mesmo tempo, ja que agora um contrato pode receber varios treinos).
+  const allPlans = useMemo(() => flatPlans(contracts), [contracts]);
+  const activePlans = useMemo(() => allPlans.filter((p) => p.isVigente), [allPlans]);
   const pendingPlans = useMemo(() => flatPlans(contracts.filter((c) => c.status === "PENDING_PAYMENT")), [contracts]);
-  const historyPlans = useMemo(() => flatPlans(contracts.filter((c) => c.status === "DELIVERED")), [contracts]);
+  const historyPlans = useMemo(() => allPlans.filter((p) => !p.isVigente), [allPlans]);
 
   const tabs: Array<{ key: TrainingTab; label: string; count: number }> = useMemo(() => [
     { key: "active", label: "Ativos", count: activePlans.length },
@@ -502,18 +513,22 @@ export function MyTrainingScreen({ navigation }: Props) {
   }
 
   function renderPlanCard(item: FlatPlan) {
-    const bs = contractStatusStyle(item.contractStatus, theme);
-    const isActive = item.contractStatus === "ACTIVE";
+    const isVigente = Boolean(item.isVigente);
+    const bs = planValidityStyle(isVigente, theme);
     const hasExercises = (item.exercises?.length ?? 0) > 0;
+    const canOpen = isVigente && hasExercises;
+    const validUntilLabel = item.validUntil
+      ? new Date(item.validUntil).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" })
+      : null;
     return (
       <PressableScale
         key={item.id}
-        disabled={!isActive || !hasExercises}
-        onPress={() => isActive && hasExercises && setSelectedPlan(item)}
+        disabled={!canOpen}
+        onPress={() => canOpen && setSelectedPlan(item)}
         style={{
           borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border,
           backgroundColor: theme.cardBg, padding: S.cardPad,
-          opacity: item.contractStatus === "DELIVERED" ? 0.65 : 1,
+          opacity: isVigente ? 1 : 0.65,
         }}
       >
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -527,9 +542,16 @@ export function MyTrainingScreen({ navigation }: Props) {
         <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 6 }}>
           {item.description ? item.description : "Plano personalizado"}
         </Text>
-        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: isActive ? theme.primary : theme.text3, marginTop: 10 }}>
-          {item.providerName} · {hasExercises ? `${item.exercises!.length} exercício${item.exercises!.length !== 1 ? "s" : ""}` : "Sem exercícios cadastrados"}
+        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: isVigente ? theme.primary : theme.text3, marginTop: 10 }}>
+          {item.providerName} · {isVigente
+            ? hasExercises ? `${item.exercises!.length} exercício${item.exercises!.length !== 1 ? "s" : ""}` : "Sem exercícios cadastrados"
+            : "Sem acesso — vigência encerrada"}
         </Text>
+        {validUntilLabel ? (
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, marginTop: 2 }}>
+            {isVigente ? `Válido até ${validUntilLabel}` : `Venceu em ${validUntilLabel}`}
+          </Text>
+        ) : null}
       </PressableScale>
     );
   }
@@ -651,9 +673,9 @@ export function MyTrainingScreen({ navigation }: Props) {
                 <Ionicons name="barbell-outline" size={28} color={theme.primary} />
               </View>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, textAlign: "center" }}>
-                {activeTab === "active" ? "Nenhum plano ativo. Solicite uma consultoria para começar." :
+                {activeTab === "active" ? "Nenhum plano vigente. Solicite uma consultoria para começar." :
                  activeTab === "pending" ? "Nenhum item pendente." :
-                 "Nenhum treino finalizado ainda."}
+                 "Nenhum treino vencido ainda."}
               </Text>
             </View>
           ) : null

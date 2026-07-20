@@ -359,6 +359,8 @@ export type TrainingPlan = {
   description?: string | null;
   isPrebuilt: boolean;
   isActive: boolean;
+  validUntil?: string | null;
+  isVigente?: boolean;
   exercises: TrainingPlanExercise[];
 };
 
@@ -845,6 +847,8 @@ export type ProviderStudentManagementDetail = {
       id: string;
       title: string;
       description: string | null;
+      validUntil: string | null;
+      isVigente: boolean;
       createdAt: string;
     }>;
   }>;
@@ -2509,6 +2513,7 @@ export const consultancyApi = {
       title: string;
       description?: string;
       isActive: boolean;
+      validUntil: string;
       exercises: Array<{
         sortOrder?: number;
         exerciseId?: string;
@@ -2539,6 +2544,7 @@ export const consultancyApi = {
     body: {
       title: string;
       description?: string;
+      validUntil?: string;
       exercises: Array<{
         sortOrder?: number;
         exerciseId?: string;

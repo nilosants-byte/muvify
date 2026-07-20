@@ -29,7 +29,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvCard, MvInput, MvMediaViewer, MvText } from "../../components/mv";
+import { MvButton, MvCard, MvDatePicker, MvInput, MvMediaViewer, MvText } from "../../components/mv";
 import { handleScreenError } from "../shared/api-helpers";
 import { StepProgressBar } from "../../components/professional/UXReformComponents";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
@@ -298,6 +298,8 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewState>(null);
   const [step, setStep] = useState(0);
   const targetContractId = route.params?.contractId;
+  const contractValidUntil = route.params?.contractValidUntil ? new Date(route.params.contractValidUntil) : null;
+  const [newPlanValidUntil, setNewPlanValidUntil] = useState<Date | null>(contractValidUntil);
 
   const listIndicatorProps = useMemo(
     () => ({
@@ -365,6 +367,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
     setNewPlanTitle(target.title);
     setNewPlanDescription(target.description ?? "");
     setNewPlanExercises(target.exercises.map((item, index) => toDraftExerciseFromPlanItem(item, index)));
+    setNewPlanValidUntil(target.validUntil ? new Date(target.validUntil) : contractValidUntil);
     setShowNewPlanBuilder(true);
   }, [editPlanId, trainingQuery.data]);
 
@@ -710,6 +713,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
             title: newPlanTitle.trim(),
             description: newPlanDescription.trim() || undefined,
             exercises: exercisesPayload,
+            ...(newPlanValidUntil ? { validUntil: newPlanValidUntil.toISOString() } : {}),
           })
         );
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -721,6 +725,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
             title: newPlanTitle.trim(),
             description: newPlanDescription.trim() || undefined,
             exercises: exercisesPayload,
+            validUntil: newPlanValidUntil ? newPlanValidUntil.toISOString() : undefined,
           })
         );
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -986,6 +991,23 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                       ? "O aluno será avisado que este treino foi atualizado."
                       : "Este treino será entregue para a consultoria contratada."}
                   </MvText>
+                </View>
+              ) : null}
+
+              {editPlanId || targetContractId ? (
+                <View style={{ marginTop: 10 }}>
+                  <MvText variant="body4" color="secondary" style={{ marginBottom: 6 }}>
+                    Vigência do treino
+                  </MvText>
+                  <MvDatePicker
+                    value={newPlanValidUntil ?? contractValidUntil ?? new Date()}
+                    onChange={setNewPlanValidUntil}
+                  />
+                  {contractValidUntil ? (
+                    <MvText variant="caption" color="secondary" style={{ marginTop: 4 }}>
+                      Não pode passar de {contractValidUntil.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" })}, quando a consultoria contratada vence.
+                    </MvText>
+                  ) : null}
                 </View>
               ) : null}
             </MvCard>

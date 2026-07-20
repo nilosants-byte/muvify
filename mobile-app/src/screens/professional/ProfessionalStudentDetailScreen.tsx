@@ -440,15 +440,25 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                                   paddingTop: 6,
                                 }}
                               >
-                                <MvText variant="body4" style={{ flex: 1 }} numberOfLines={1}>
-                                  {plan.title}
-                                </MvText>
+                                <View style={{ flex: 1 }}>
+                                  <MvText variant="body4" numberOfLines={1} style={{ opacity: plan.isVigente ? 1 : 0.5 }}>
+                                    {plan.title}
+                                  </MvText>
+                                  <MvText variant="caption" color="secondary">
+                                    {plan.isVigente
+                                      ? plan.validUntil
+                                        ? `Válido até ${formatDate(plan.validUntil)}`
+                                        : "Vigente"
+                                      : "Vencido"}
+                                  </MvText>
+                                </View>
                                 <TouchableOpacity
                                   onPress={() =>
                                     navigation.navigate("TrainingCreation", {
                                       contractId: contract.id,
                                       clientId: detail.student.id,
                                       editPlanId: plan.id,
+                                      contractValidUntil: contract.validUntil ?? undefined,
                                     })
                                   }
                                 >
@@ -467,6 +477,7 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                               navigation.navigate("TrainingCreation", {
                                 contractId: contract.id,
                                 clientId: detail.student.id,
+                                contractValidUntil: contract.validUntil ?? undefined,
                               })
                             }
                             style={{ marginTop: 4 }}
