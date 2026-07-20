@@ -29,7 +29,11 @@ import {
   Booking,
   bookingsApi,
   chatApi,
+  financialApi,
+  FinancialStudent,
+  manualBlocksApi,
   notificationsApi,
+  ProviderManualBlock as ManualBlockApi,
   ProviderTimelineResponse,
   providersApi,
   userApi,
@@ -47,6 +51,7 @@ import { resolveMediaUrl } from "../../utils/media";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
+import { computeFreeSlotsForDay } from "../../utils/agendaFreeSlots";
 import { UrgencyCard } from "../../components/professional/UXReformComponents";
 import { ProfessionalNotificationsDrawer } from "./components/ProfessionalNotificationsDrawer";
 import { ProfessionalOnboardingWizard } from "./components/ProfessionalOnboardingWizard";
@@ -186,7 +191,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const homeQuery = useAuthQuery(
     queryKeys.providers.home(),
     async (token) => {
-      const [bookingResponse, me, credentials, availabilitiesResponse] = await Promise.all([
+      const [bookingResponse, me, credentials, availabilitiesResponse, manualBlocksResponse, financialStudentsResponse] = await Promise.all([
         bookingsApi.me(token).catch(() => [] as Booking[]),
         userApi.me(token).catch(() => null),
         providersApi.myCredentials(token).catch((error) => {
@@ -194,8 +199,17 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
           throw error;
         }),
         availabilityApi.me(token).catch(() => [] as Availability[]),
+        manualBlocksApi.list(token).catch(() => [] as ManualBlockApi[]),
+        financialApi.listStudents(token).catch(() => [] as FinancialStudent[]),
       ]);
-      return { bookings: bookingResponse, me, credentials, availabilities: availabilitiesResponse };
+      return {
+        bookings: bookingResponse,
+        me,
+        credentials,
+        availabilities: availabilitiesResponse,
+        manualBlocks: manualBlocksResponse,
+        financialStudents: financialStudentsResponse,
+      };
     },
   );
 
@@ -221,6 +235,8 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     return all.filter((item) => item.provider?.user?.id === user?.id);
   }, [homeQuery.data?.bookings, user?.id]);
   const availabilities = homeQuery.data?.availabilities ?? ([] as Availability[]);
+  const homeManualBlocks = homeQuery.data?.manualBlocks ?? ([] as ManualBlockApi[]);
+  const homeFinancialStudents = homeQuery.data?.financialStudents ?? ([] as FinancialStudent[]);
   const loading = homeQuery.isLoading;
   const loadError = homeQuery.isError;
   const refreshing = homeQuery.isRefetching;
@@ -412,14 +428,22 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const averageRating = ratingQuery.data?.averageRating ?? 0;
   const totalReviews = ratingQuery.data?.totalReviews ?? 0;
 
+  // Mesma logica/fonte da Agenda (ver utils/agendaFreeSlots) — sem isso, Home e
+  // Agenda podiam mostrar numeros diferentes pra mesma pergunta ("quantos
+  // horarios livres eu tenho hoje?"), ja que a Home so olhava disponibilidade
+  // geral, sem descontar agendamentos, bloqueios ou alunos fora do app.
   const todayFreeSlots = useMemo(() => {
     const now = new Date();
-    const todayWeekday = now.getDay();
     const currentHHMM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    return availabilities
-      .filter((a) => a.weekday === todayWeekday && a.isActive && a.startTime > currentHHMM)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }, [availabilities]);
+    const slots = computeFreeSlotsForDay({
+      availabilities,
+      bookings,
+      manualBlocks: homeManualBlocks.map((b) => ({ dateKey: b.date, startTime: b.startTime, endTime: b.endTime })),
+      offAppStudents: homeFinancialStudents,
+      date: now,
+    });
+    return slots.filter((slot) => slot > currentHHMM);
+  }, [availabilities, bookings, homeManualBlocks, homeFinancialStudents]);
 
   const pendingCount = useMemo(
     () => bookings.filter((b) => b.status === "PENDING").length,
@@ -1046,7 +1070,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {todayFreeSlots.slice(0, 6).map((slot) => (
                   <View
-                    key={slot.id}
+                    key={slot}
                     style={{
                       paddingHorizontal: 14,
                       paddingVertical: 8,
@@ -1057,7 +1081,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                     }}
                   >
                     <MvText variant="semi3" style={{ fontSize: 13 }}>
-                      {slot.startTime}
+                      {slot}
                     </MvText>
                   </View>
                 ))}

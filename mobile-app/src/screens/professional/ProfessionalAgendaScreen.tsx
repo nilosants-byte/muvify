@@ -43,6 +43,16 @@ import { handleScreenError } from "../shared/api-helpers";
 import { MetricPill } from "../../components/professional/UXReformComponents";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
+import {
+  computeBlockedByManualBlocks,
+  computeOccupiedByBookings,
+  computeOffAppClassesForDay,
+  computeOffAppOccupiedKeys,
+  formatMinutes,
+  generateDaySlots,
+  parseMinutes,
+  toDateKey,
+} from "../../utils/agendaFreeSlots";
 
 const MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const MONTHS_FULL_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -99,37 +109,6 @@ function buildMonthGrid(year: number, month: number) {
   for (let day = 1; day <= daysInMonth; day++) cells.push(new Date(year, month, day));
   while (cells.length % 7 !== 0) cells.push(null);
   return cells;
-}
-
-function toDateKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function parseMinutes(time: string) {
-  const [h, m] = time.split(":").map(Number);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
-  return h * 60 + m;
-}
-
-function formatMinutes(totalMinutes: number) {
-  const clamped = Math.max(0, Math.min(23 * 60 + 59, totalMinutes));
-  return `${Math.floor(clamped / 60).toString().padStart(2, "0")}:${(clamped % 60).toString().padStart(2, "0")}`;
-}
-
-function generateDaySlots(availabilities: Availability[], weekday: number) {
-  const slotSet = new Set<string>();
-  availabilities
-    .filter((item) => item.isActive && item.weekday === weekday)
-    .forEach((item) => {
-      const start = parseMinutes(item.startTime);
-      const end = parseMinutes(item.endTime);
-      if (end <= start) return;
-      for (let minute = start; minute < end; minute += 30) slotSet.add(formatMinutes(minute));
-    });
-  return Array.from(slotSet).sort((a, b) => a.localeCompare(b));
 }
 
 function validateTime(value: string) {
@@ -260,36 +239,17 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     [availabilities, selectedDate]
   );
 
-  const occupiedSlotKeys = useMemo(() => {
-    const taken = new Set<string>();
-    bookings.forEach((item) => {
-      if (item.status !== "PENDING" && item.status !== "CONFIRMED") return;
-      const d = new Date(item.scheduledAt);
-      if (!isSameDay(d, selectedDate)) return;
-      const hh = String(d.getHours()).padStart(2, "0");
-      const mm = String(d.getMinutes()).padStart(2, "0");
-      taken.add(`${hh}:${mm}`);
-    });
-    return taken;
-  }, [bookings, selectedDate]);
+  const occupiedSlotKeys = useMemo(
+    () => computeOccupiedByBookings(bookings, selectedDate),
+    [bookings, selectedDate]
+  );
 
   const selectedDateKey = useMemo(() => toDateKey(selectedDate), [selectedDate]);
 
-  const todayBlockedKeys = useMemo(() => {
-    const todayBlocks = manualBlocks.filter((b) => b.dateKey === selectedDateKey);
-    if (todayBlocks.length === 0) return new Set<string>();
-    const blocked = new Set<string>();
-    // Check each availability slot: if it falls inside any manual block range, mark as blocked.
-    // This correctly handles blocks at arbitrary times (e.g., 08:20–09:20) even when
-    // availability slots are aligned differently (e.g., 08:00, 08:30, 09:00…).
-    allDaySlots.forEach((slot) => {
-      const slotMin = parseMinutes(slot);
-      if (todayBlocks.some((b) => slotMin >= parseMinutes(b.startTime) && slotMin < parseMinutes(b.endTime))) {
-        blocked.add(slot);
-      }
-    });
-    return blocked;
-  }, [manualBlocks, selectedDateKey, allDaySlots]);
+  const todayBlockedKeys = useMemo(
+    () => computeBlockedByManualBlocks(manualBlocks, selectedDateKey, allDaySlots),
+    [manualBlocks, selectedDateKey, allDaySlots]
+  );
 
   // Dias com agendamentos para o calendário
   const daysWithBookings = useMemo(() => {
@@ -310,40 +270,17 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
   // Aulas de alunos fora do app no dia selecionado (por horário recorrente semanal)
   // — só conta se a data selecionada estiver dentro do período em que esse aluno
   // está de fato ativo (startDate/recurrenceEndDate cadastrados no Financeiro).
-  const offAppClassesForDay = useMemo(() => {
-    const dayOfWeek = selectedDate.getDay();
-    const selectedKey = toDateKey(selectedDate);
-    const classes: Array<{ studentName: string; startTime: string; endTime: string; location?: string }> = [];
-    offAppStudents.forEach((student) => {
-      const startKey = toDateKey(new Date(student.startDate));
-      if (selectedKey < startKey) return;
-      if (student.recurrenceEndDate) {
-        const endKey = toDateKey(new Date(student.recurrenceEndDate));
-        if (selectedKey > endKey) return;
-      }
-      const schedule = (student.weeklySchedule ?? []) as WeeklyScheduleSlot[];
-      schedule.forEach((slot) => {
-        if (slot.dayOfWeek === dayOfWeek) {
-          classes.push({ studentName: student.name, startTime: slot.startTime, endTime: slot.endTime, location: student.location ?? undefined });
-        }
-      });
-    });
-    return classes.sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }, [offAppStudents, selectedDate]);
+  const offAppClassesForDay = useMemo(
+    () => computeOffAppClassesForDay(offAppStudents, selectedDate),
+    [offAppStudents, selectedDate]
+  );
 
   // Horarios ocupados por aluno fora do app — usados pra excluir de "livre" na
   // agenda, evitando o profissional ter que bloquear o mesmo horario duas vezes.
-  const offAppOccupiedKeys = useMemo(() => {
-    if (offAppClassesForDay.length === 0) return new Set<string>();
-    const occupied = new Set<string>();
-    allDaySlots.forEach((slot) => {
-      const slotMin = parseMinutes(slot);
-      if (offAppClassesForDay.some((cls) => slotMin >= parseMinutes(cls.startTime) && slotMin < parseMinutes(cls.endTime))) {
-        occupied.add(slot);
-      }
-    });
-    return occupied;
-  }, [offAppClassesForDay, allDaySlots]);
+  const offAppOccupiedKeys = useMemo(
+    () => computeOffAppOccupiedKeys(offAppClassesForDay, allDaySlots),
+    [offAppClassesForDay, allDaySlots]
+  );
 
   const freeSlots = useMemo(
     () => allDaySlots.filter((s) => !occupiedSlotKeys.has(s) && !todayBlockedKeys.has(s) && !offAppOccupiedKeys.has(s)),
