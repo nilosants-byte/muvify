@@ -58,7 +58,7 @@ function extractQrTokenFromPayload(payload: string) {
 }
 
 export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { runWithAuth, showToast, user } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const bookingId = route.params.bookingId;
@@ -87,6 +87,38 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   const scannerReadLockRef = useRef(false);
   const [validated, setValidated] = useState(() => _validatedCache.get(bookingId) ?? false);
   const [reportingNoShow, setReportingNoShow] = useState(false);
+  const [contestingNoShow, setContestingNoShow] = useState(false);
+
+  const noShowReport = booking?.noShowReport;
+  const wasReportedAsNoShow = Boolean(noShowReport && noShowReport.reportedUserId === user?.id);
+  const canContestNoShow =
+    wasReportedAsNoShow &&
+    noShowReport!.status === "PENDING" &&
+    new Date(noShowReport!.contestDeadlineAt) > new Date();
+
+  function handleContestNoShow() {
+    if (!booking) return;
+    Alert.alert(
+      "Contestar relato de falta",
+      "Você está contestando o relato de que não compareceu. O caso vai para análise antes de qualquer cobrança ou estorno.",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Contestar",
+          onPress: async () => {
+            try {
+              setContestingNoShow(true);
+              await runWithAuth((token) => bookingsApi.contestNoShow(token, booking.id));
+              showToast("Contestação registrada. O caso está em análise.", "success");
+              void bookingDetailQuery.refetch();
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível contestar.", navigation });
+            } finally { setContestingNoShow(false); }
+          },
+        },
+      ]
+    );
+  }
 
   const checkScale = useSharedValue(0);
   const checkOpacity = useSharedValue(0);
@@ -147,7 +179,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   function reportNoShow() {
     Alert.alert(
       "Reportar falta",
-      "O aluno não compareceu no horário marcado? Isso encerra o agendamento agora e o valor é estornado.",
+      "O aluno não compareceu no horário marcado? Isso encerra o agendamento agora. O aluno tem 48h para contestar; se não contestar, você fica com o valor da sessão.",
       [
         { text: "Voltar", style: "cancel" },
         {
@@ -440,6 +472,27 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
               />
             ) : null}
 
+            {wasReportedAsNoShow && noShowReport ? (
+              <MvCard style={{ borderColor: theme.danger, gap: 8 }}>
+                <MvText variant="semi3">Você foi reportado por falta neste agendamento</MvText>
+                <MvText variant="body4" color="secondary">
+                  {noShowReport.status === "PENDING"
+                    ? `Se não for contestado até ${formatBRDateTime(noShowReport.contestDeadlineAt)}, o aluno será reembolsado.`
+                    : noShowReport.status === "CONTESTED"
+                    ? "Sua contestação está em análise."
+                    : "Este relato já foi resolvido."}
+                </MvText>
+                {canContestNoShow ? (
+                  <MvButton
+                    variant="outline"
+                    label={contestingNoShow ? "Enviando..." : "Contestar"}
+                    loading={contestingNoShow}
+                    onPress={handleContestNoShow}
+                  />
+                ) : null}
+              </MvCard>
+            ) : null}
+
             <MvButton variant="outline" label="Atualizar" onPress={() => void bookingDetailQuery.refetch()} />
           </View>
         </ScrollView>
@@ -457,7 +510,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
             onPress={(e) => e.stopPropagation()}
           >
             <MvText variant="semi1">Cancelar agendamento</MvText>
-            <MvText variant="body4" color="secondary">Deseja cancelar este agendamento? Esta ação não pode ser desfeita. Cancelamentos com menos de 24h de antecedência podem não gerar reembolso integral ao aluno.</MvText>
+            <MvText variant="body4" color="secondary">Deseja cancelar este agendamento? Esta ação não pode ser desfeita. O aluno será reembolsado integralmente, já que o cancelamento é seu, não dele.</MvText>
             <View style={{ gap: 8, marginTop: 4 }}>
               <MvButton variant="danger" label="Sim, cancelar" loading={updating} onPress={() => void updateStatus("CANCELLED")} />
               <MvButton variant="outline" label="Não, manter" onPress={() => setCancelModalVisible(false)} />

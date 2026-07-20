@@ -175,6 +175,15 @@ export type Booking = {
     photoUrl?: string | null;
   };
   payment?: PaymentStatusResponse;
+  noShowReport?: {
+    id: string;
+    reportedUserId: string;
+    reportedByUserId: string;
+    status: "PENDING" | "CONTESTED" | "RESOLVED";
+    contestDeadlineAt: string;
+    contestedAt: string | null;
+    resolvedAt: string | null;
+  } | null;
 };
 
 export type CompletionProofInput = {

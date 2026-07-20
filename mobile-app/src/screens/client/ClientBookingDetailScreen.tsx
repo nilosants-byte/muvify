@@ -119,6 +119,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [reportingNoShow, setReportingNoShow] = useState(false);
+  const [contestingNoShow, setContestingNoShow] = useState(false);
 
   useEffect(() => {
     if (detailQuery.data) setAttendance(detailQuery.data.attendance);
@@ -181,6 +182,17 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     [booking?.status, booking?.scheduledAt, isValidated]
   );
 
+  // A tela e sempre do proprio cliente, entao "eu fui reportado" e comparar
+  // com o clientId do booking, sem precisar buscar o usuario logado.
+  const noShowReport = booking?.noShowReport;
+  const wasReportedAsNoShow = Boolean(
+    noShowReport && booking && noShowReport.reportedUserId === booking.clientId
+  );
+  const canContestNoShow =
+    wasReportedAsNoShow &&
+    noShowReport!.status === "PENDING" &&
+    new Date(noShowReport!.contestDeadlineAt) > new Date();
+
   // ── Animação de validação do código (scale bounce + fade) ─────────────────
   const checkScale = useSharedValue(0);
   const checkOpacity = useSharedValue(0);
@@ -200,9 +212,14 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   // ── Actions ────────────────────────────────────────────────────────────────
   function handleCancel() {
     if (!booking) return;
+    const hoursUntilSession = (new Date(booking.scheduledAt).getTime() - Date.now()) / (60 * 60 * 1000);
+    const willRefund = hoursUntilSession >= 2;
+    const message = willRefund
+      ? "Você será reembolsado integralmente. Deseja cancelar mesmo assim?"
+      : "Faltam menos de 2h para o horário marcado — cancelar agora não gera reembolso, o profissional já reservou esse horário. Deseja cancelar mesmo assim?";
     Alert.alert(
       "Cancelar agendamento",
-      "Cancelamentos feitos com menos de 24h de antecedência podem não gerar reembolso integral. Deseja cancelar mesmo assim?",
+      message,
       [
         { text: "Voltar", style: "cancel" },
         {
@@ -227,7 +244,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     if (!booking) return;
     Alert.alert(
       "Reportar falta",
-      "O personal não compareceu no horário marcado? Isso encerra o agendamento agora e devolve o valor pago.",
+      "O personal não compareceu no horário marcado? Isso encerra o agendamento agora. O profissional tem 48h para contestar; se não contestar, você é reembolsado automaticamente.",
       [
         { text: "Voltar", style: "cancel" },
         {
@@ -242,6 +259,30 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             } catch (error) {
               handleScreenError({ error, showToast, fallbackMessage: "Não foi possível reportar a falta.", navigation });
             } finally { setReportingNoShow(false); }
+          },
+        },
+      ]
+    );
+  }
+
+  function handleContestNoShow() {
+    if (!booking) return;
+    Alert.alert(
+      "Contestar relato de falta",
+      "Você está contestando o relato de que não compareceu. O caso vai para análise antes de qualquer cobrança ou estorno.",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Contestar",
+          onPress: async () => {
+            try {
+              setContestingNoShow(true);
+              await runWithAuth((token) => bookingsApi.contestNoShow(token, booking.id));
+              showToast("Contestação registrada. O caso está em análise.", "success");
+              void detailQuery.refetch();
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível contestar.", navigation });
+            } finally { setContestingNoShow(false); }
           },
         },
       ]
@@ -666,6 +707,32 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             ) : null}
           </View>
         )}
+
+        {wasReportedAsNoShow && noShowReport ? (
+          <View style={{ marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.danger, backgroundColor: "rgba(239,68,68,0.08)", padding: 14, gap: 8 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>
+              Você foi reportado por falta neste agendamento
+            </Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
+              {noShowReport.status === "PENDING"
+                ? `Se não for contestado até ${formatBRDateTime(noShowReport.contestDeadlineAt)}, o valor da sessão fica com o profissional.`
+                : noShowReport.status === "CONTESTED"
+                ? "Sua contestação está em análise."
+                : "Este relato já foi resolvido."}
+            </Text>
+            {canContestNoShow ? (
+              <TouchableOpacity
+                disabled={contestingNoShow}
+                onPress={handleContestNoShow}
+                style={{ height: 40, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.danger, alignItems: "center", justifyContent: "center", opacity: contestingNoShow ? 0.6 : 1 }}
+              >
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.danger }}>
+                  {contestingNoShow ? "Enviando..." : "Contestar"}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
       </ScrollView>
       </ScreenEntrance>
     </View>

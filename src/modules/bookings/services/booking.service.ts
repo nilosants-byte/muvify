@@ -497,6 +497,17 @@ export class BookingService {
               }
             }
           }
+        },
+        noShowReport: {
+          select: {
+            id: true,
+            reportedUserId: true,
+            reportedByUserId: true,
+            status: true,
+            contestDeadlineAt: true,
+            contestedAt: true,
+            resolvedAt: true
+          }
         }
       },
       orderBy: { scheduledAt: "asc" }
