@@ -221,6 +221,8 @@ export type OfferBillingCycle =
 
 export type ConsultancyPaymentMethod = "CREDIT_CARD" | "DEBIT_CARD" | "PIX";
 
+export type PresentialPackageMode = "FIXED_RECURRING" | "FLEXIBLE_CREDITS";
+
 export type ProviderServiceOffer = {
   id: string;
   providerId: string;
@@ -243,6 +245,13 @@ export type ProviderServiceOffer = {
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
+  // Pacote presencial (assinatura cobrada em ciclos) - so PRESENTIAL/COMBO
+  presentialPackageMode?: PresentialPackageMode | null;
+  presentialHasFixedTerm?: boolean;
+  presentialTotalCycles?: number | null;
+  presentialSessionsPerCycle?: number | null;
+  comboPresentialShareCents?: number | null;
+  comboConsultancyShareCents?: number | null;
 };
 
 export type PromotionFeedItem = {
@@ -2469,6 +2478,12 @@ export const consultancyApi = {
       promotionEndsAt?: string;
       promotionLabel?: string;
       isActive?: boolean;
+      presentialPackageMode?: PresentialPackageMode;
+      presentialHasFixedTerm?: boolean;
+      presentialTotalCycles?: number;
+      presentialSessionsPerCycle?: number;
+      comboPresentialShareCents?: number;
+      comboConsultancyShareCents?: number;
     }
   ) {
     return apiRequest<ProviderServiceOffer>("/consultancy/provider/offers", {
@@ -2491,6 +2506,12 @@ export const consultancyApi = {
       promotionEndsAt?: string;
       promotionLabel?: string;
       isActive?: boolean;
+      presentialPackageMode?: PresentialPackageMode | null;
+      presentialHasFixedTerm?: boolean;
+      presentialTotalCycles?: number | null;
+      presentialSessionsPerCycle?: number | null;
+      comboPresentialShareCents?: number | null;
+      comboConsultancyShareCents?: number | null;
     }
   ) {
     return apiRequest<ProviderServiceOffer>(`/consultancy/provider/offers/${offerId}`, {
