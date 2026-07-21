@@ -8,7 +8,7 @@ import {
   ServiceOfferKind
 } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
-import { Payment, CardToken } from "mercadopago";
+import { Payment, CardToken, PaymentRefund } from "mercadopago";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { mp } from "../../../config/mercadopago";
@@ -21,6 +21,7 @@ import { NotificationService } from "../../notifications/services/notification.s
 const notificationService = new NotificationService();
 const mpPaymentClient = new Payment(mp);
 const mpCardTokenClient = new CardToken(mp);
+const mpRefundClient = new PaymentRefund(mp);
 
 // Depois de N ciclos seguidos sem conseguir cobrar (cartao recusado, ou Pix
 // de renovacao expirado sem pagamento), o pacote cancela sozinho - ninguem
@@ -653,5 +654,80 @@ export class PresentialPackageService {
       data: { type: "PRESENTIAL_PACKAGE_CYCLE_CAPTURED", packageId: pkg.id }
     });
     return true;
+  }
+
+  // Cancelar a assinatura e 100% local (nunca existe uma cobranca "em
+  // aberto" na MP pra revogar - so paramos de gerar cobrancas futuras).
+  // Sessoes ja geradas no ciclo atual (ja pago) continuam valendo - so o
+  // proximo ciclo nao acontece. Se quem cancela e o profissional, nao e
+  // culpa do cliente: reembolsa o ciclo mais recente (regra do desenho -
+  // "profissional cancela, a qualquer momento -> reembolso total, sempre").
+  async cancelPackage(userId: string, packageId: string) {
+    const pkg = await prisma.presentialPackage.findUnique({
+      where: { id: packageId },
+      include: { client: true, provider: { include: { user: true } } }
+    });
+    if (!pkg) {
+      throw new AppError("Pacote não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    const isClient = pkg.clientId === userId;
+    const isProvider = pkg.provider.userId === userId;
+    if (!isClient && !isProvider) {
+      throw new AppError("Você não tem permissão para cancelar este pacote.", StatusCodes.FORBIDDEN);
+    }
+
+    if (
+      pkg.status === PresentialPackageStatus.CANCELLED ||
+      pkg.status === PresentialPackageStatus.EXPIRED
+    ) {
+      throw new AppError("Este pacote já não está mais ativo.", StatusCodes.BAD_REQUEST);
+    }
+
+    await prisma.presentialPackage.update({
+      where: { id: pkg.id },
+      data: {
+        status: PresentialPackageStatus.CANCELLED,
+        cancelledAt: new Date(),
+        nextBillingAt: null,
+        pendingChargeMpPaymentId: null,
+        pendingChargePixQrCodeUrl: null,
+        pendingChargePixCopyPasteCode: null,
+        pendingChargePixExpiresAt: null
+      }
+    });
+
+    if (isProvider) {
+      const lastCycle = await prisma.presentialPackageCycle.findFirst({
+        where: { packageId: pkg.id },
+        orderBy: { cycleIndex: "desc" }
+      });
+      if (lastCycle?.mpPaymentId) {
+        try {
+          await mpRefundClient.create({ payment_id: lastCycle.mpPaymentId, body: {} });
+        } catch (error) {
+          console.error(`[presential-package] refund do ciclo ${lastCycle.id} falhou:`, error);
+        }
+      }
+    }
+
+    await notificationService.sendToUsers([pkg.clientId], {
+      preferenceType: "PAYMENTS",
+      title: "Pacote presencial cancelado",
+      body: isProvider
+        ? "O profissional cancelou seu pacote presencial. O ciclo mais recente foi reembolsado."
+        : "Seu pacote presencial foi cancelado. As sessões já pagas neste ciclo continuam valendo.",
+      data: { type: "PRESENTIAL_PACKAGE_CANCELLED", packageId: pkg.id }
+    });
+    await notificationService.sendToUsers([pkg.provider.userId], {
+      preferenceType: "PAYMENTS",
+      title: "Pacote presencial cancelado",
+      body: isClient
+        ? `${pkg.client.name} cancelou o pacote presencial.`
+        : "Você cancelou o pacote presencial do aluno.",
+      data: { type: "PRESENTIAL_PACKAGE_CANCELLED", packageId: pkg.id }
+    });
+
+    return prisma.presentialPackage.findUniqueOrThrow({ where: { id: pkg.id } });
   }
 }
