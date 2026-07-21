@@ -1,6 +1,9 @@
 import {
   BookingStatus,
+  ConsultancyContractStatus,
   ConsultancyPaymentMethod,
+  ConsultancyPaymentStatus,
+  ConsultancyRequestStatus,
   CrefValidationStatus,
   OfferBillingCycle,
   PresentialPackageMode,
@@ -774,5 +777,293 @@ export class PresentialPackageService {
       throw new AppError("Você não tem permissão para ver este pacote.", StatusCodes.FORBIDDEN);
     }
     return pkg;
+  }
+
+  // Combo = ConsultancyContract (pagamento unico, mesmo mecanismo de
+  // sempre) + PresentialPackage (cobranca por ciclo, mesmo mecanismo de
+  // sempre) criados juntos e linkados - mas cada lado cancela independente
+  // (ver cancelPackage / ConsultancyService, cada um cuida do seu). O
+  // profissional declara o valor de cada metade na criacao da oferta
+  // (comboPresentialShareCents/comboConsultancyShareCents), entao aqui nao
+  // ha ambiguidade de quanto cobrar de cada lado.
+  //
+  // Nao reaproveita ConsultancyService.decideRequest porque aquele sempre
+  // cobra o preco cheio da oferta - o combo precisa cobrar so a fatia da
+  // consultoria. Em vez disso, cria a ConsultancyRequest/Contract direto
+  // (ja "respondida e aceita" - nao ha negociacao pra combo comprado
+  // direto) e cobra com a mesma logica de split ja usada em todo o resto.
+  async purchaseCombo(clientId: string, input: PurchasePresentialPackageInput) {
+    const offer = await prisma.providerServiceOffer.findFirst({
+      where: { id: input.offerId, isActive: true },
+      include: { provider: true }
+    });
+    if (!offer) {
+      throw new AppError("Oferta não encontrada ou indisponível.", StatusCodes.NOT_FOUND);
+    }
+    if (offer.kind !== ServiceOfferKind.COMBO || !offer.presentialPackageMode) {
+      throw new AppError("Esta oferta não é um combo presencial + consultoria.", StatusCodes.BAD_REQUEST);
+    }
+    if (!offer.comboPresentialShareCents || !offer.comboConsultancyShareCents) {
+      throw new AppError(
+        "Esta oferta combo não tem os valores de cada parte configurados.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+    if (offer.provider.userId === clientId) {
+      throw new AppError("Você não pode comprar seu próprio pacote.", StatusCodes.UNPROCESSABLE_ENTITY);
+    }
+    if (!offer.provider.mpAccountId) {
+      throw new AppError(
+        "Este profissional ainda não configurou o recebimento de pagamentos.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+    if (offer.provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
+      throw new AppError(
+        "Este profissional ainda não está habilitado para novos agendamentos.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+    if (input.paymentMethod === ConsultancyPaymentMethod.DEBIT_CARD) {
+      throw new AppError(
+        "Combo não aceita débito - use cartão de crédito ou Pix.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    const category = await prisma.serviceCategory.findUnique({ where: { id: input.categoryId } });
+    if (!category) {
+      throw new AppError("Categoria inválida.", StatusCodes.BAD_REQUEST);
+    }
+
+    let weeklySchedule: WeeklyScheduleEntry[] | null = null;
+    if (offer.presentialPackageMode === PresentialPackageMode.FIXED_RECURRING) {
+      if (!input.weeklySchedule || input.weeklySchedule.length === 0) {
+        throw new AppError(
+          "Informe o horário semanal fixo para o lado presencial do combo.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+      validateWeeklySchedule(input.weeklySchedule);
+      weeklySchedule = input.weeklySchedule;
+    }
+
+    const sessionsPerCycle = offer.presentialSessionsPerCycle ?? 0;
+    if (sessionsPerCycle <= 0) {
+      throw new AppError("Oferta sem quantidade de sessões por ciclo configurada.", StatusCodes.BAD_REQUEST);
+    }
+
+    const existingActive = await prisma.presentialPackage.findFirst({
+      where: {
+        clientId,
+        offerId: offer.id,
+        status: {
+          in: [
+            PresentialPackageStatus.PENDING_PAYMENT,
+            PresentialPackageStatus.ACTIVE,
+            PresentialPackageStatus.PAST_DUE
+          ]
+        }
+      }
+    });
+    if (existingActive) {
+      throw new AppError(
+        "Você já possui um combo ativo (ou pendente) para esta oferta.",
+        StatusCodes.CONFLICT
+      );
+    }
+
+    const now = new Date();
+    const deliveryDeadlineAt = new Date(
+      now.getTime() + env.CONSULTANCY_DELIVERY_DEADLINE_DAYS * 24 * 60 * 60 * 1000
+    );
+
+    const contract = await prisma.$transaction(async (tx) => {
+      const request = await tx.consultancyRequest.create({
+        data: {
+          providerId: offer.providerId,
+          clientId,
+          status: ConsultancyRequestStatus.RESPONDED,
+          quotedOfferId: offer.id,
+          respondedAt: now
+        }
+      });
+      return tx.consultancyContract.create({
+        data: {
+          requestId: request.id,
+          providerId: offer.providerId,
+          clientId,
+          offerId: offer.id,
+          status: ConsultancyContractStatus.PENDING_PAYMENT,
+          paymentMethod: input.paymentMethod,
+          paymentInstallments: 1,
+          paymentStatus: ConsultancyPaymentStatus.PENDING,
+          paymentAmountCents: offer.comboConsultancyShareCents!,
+          providerAmountCents: providerSplitAmount(offer.comboConsultancyShareCents!),
+          platformAmountCents: platformFeeAmount(offer.comboConsultancyShareCents!),
+          deliveryDeadlineAt
+        }
+      });
+    });
+
+    let consultancyPaymentResult: { status: "CAPTURED" } | { status: "PENDING"; pix: unknown };
+    try {
+      consultancyPaymentResult = await this.chargeComboConsultancy(
+        contract.id,
+        offer.providerId,
+        clientId,
+        input.paymentMethod,
+        offer.comboConsultancyShareCents!
+      );
+    } catch (error) {
+      await prisma.consultancyContract.update({
+        where: { id: contract.id },
+        data: { paymentStatus: ConsultancyPaymentStatus.FAILED }
+      });
+      const message =
+        error instanceof Error ? error.message : "Falha ao processar pagamento da consultoria do combo.";
+      throw new AppError(message, StatusCodes.BAD_REQUEST);
+    }
+
+    // Metade presencial: pacote linkado ao contrato, cobra o primeiro ciclo
+    // com o mesmo mecanismo de sempre (chargeCycle). Se essa parte falhar,
+    // a consultoria (ja cobrada acima) NAO e revertida automaticamente -
+    // devolvemos os dois resultados pro chamador deixar claro pro cliente
+    // exatamente o que foi confirmado e o que precisa ser tentado de novo,
+    // em vez de mascarar um sucesso parcial como falha total.
+    const pkg = await prisma.presentialPackage.create({
+      data: {
+        providerId: offer.providerId,
+        clientId,
+        offerId: offer.id,
+        categoryId: category.id,
+        consultancyContractId: contract.id,
+        mode: offer.presentialPackageMode,
+        status: PresentialPackageStatus.PENDING_PAYMENT,
+        paymentMethod: input.paymentMethod,
+        cycleAmountCents: offer.comboPresentialShareCents!,
+        billingCycle: offer.billingCycle,
+        sessionsPerCycle,
+        weeklySchedule: weeklySchedule ?? undefined,
+        hasFixedTerm: offer.presentialHasFixedTerm,
+        totalCycles: offer.presentialHasFixedTerm ? offer.presentialTotalCycles : null
+      }
+    });
+
+    let presentialPaymentResult: { status: "CAPTURED" | "PENDING" | "FAILED" } = { status: "FAILED" };
+    try {
+      presentialPaymentResult = await this.chargeCycle(pkg.id, { isFirstCycle: true });
+    } catch {
+      presentialPaymentResult = { status: "FAILED" };
+    }
+
+    const updatedContract = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract.id } });
+    const updatedPackage = await prisma.presentialPackage.findUniqueOrThrow({ where: { id: pkg.id } });
+
+    return {
+      contract: updatedContract,
+      package: updatedPackage,
+      consultancyPayment: consultancyPaymentResult,
+      presentialPayment: presentialPaymentResult
+    };
+  }
+
+  private async chargeComboConsultancy(
+    contractId: string,
+    providerId: string,
+    clientId: string,
+    paymentMethod: ConsultancyPaymentMethod,
+    amountCents: number
+  ) {
+    const providerAccessToken = await resolveProviderMpAccessToken(providerId);
+    const provider = await prisma.providerProfile.findUniqueOrThrow({
+      where: { id: providerId },
+      select: { mpAccountId: true }
+    });
+    const split =
+      providerAccessToken && provider.mpAccountId
+        ? {
+            collector: { id: Number(provider.mpAccountId) },
+            marketplace_fee: platformFeeAmount(amountCents) / 100
+          }
+        : {};
+    const metadata = { domain: "COMBO_CONSULTANCY", contractId };
+
+    let mpPay: Awaited<ReturnType<Payment["create"]>>;
+
+    if (paymentMethod === ConsultancyPaymentMethod.PIX) {
+      const client = await prisma.user.findUniqueOrThrow({
+        where: { id: clientId },
+        select: { email: true, name: true }
+      });
+      const nameParts = client.name.split(" ");
+      const pixExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      mpPay = await mpPaymentClient.create({
+        body: {
+          transaction_amount: amountCents / 100,
+          payment_method_id: "pix",
+          date_of_expiration: pixExpiresAt,
+          payer: {
+            email: client.email,
+            first_name: nameParts[0],
+            last_name: nameParts.slice(1).join(" ") || undefined
+          },
+          description: "Combo - consultoria online",
+          metadata,
+          ...split
+        },
+        requestOptions: {
+          idempotencyKey: `combo:${contractId}:consultancy:pix`,
+          ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+        }
+      });
+    } else {
+      const cardData = await resolveClientCardForBilling(clientId);
+      const tokenResult = await mpCardTokenClient.create({
+        body: { customer_id: cardData.mpCustomerId, card_id: cardData.mpCardId }
+      });
+      mpPay = await mpPaymentClient.create({
+        body: {
+          transaction_amount: amountCents / 100,
+          token: String(tokenResult.id),
+          installments: 1,
+          payer: { type: "customer", id: cardData.mpCustomerId, email: cardData.clientEmail },
+          description: "Combo - consultoria online",
+          metadata,
+          ...split
+        },
+        requestOptions: {
+          idempotencyKey: `combo:${contractId}:consultancy:card`,
+          ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+        }
+      });
+    }
+
+    const mpStatus = mpPay.status;
+    const mpPayId = String(mpPay.id);
+
+    if (mpStatus === "approved") {
+      await prisma.consultancyContract.update({
+        where: { id: contractId },
+        data: {
+          mpPaymentId: mpPayId,
+          paymentStatus: ConsultancyPaymentStatus.CAPTURED,
+          paymentCapturedAt: new Date(),
+          status: ConsultancyContractStatus.ACTIVE
+        }
+      });
+      return { status: "CAPTURED" as const };
+    }
+
+    if (paymentMethod === ConsultancyPaymentMethod.PIX && (mpStatus === "pending" || mpStatus === "in_process")) {
+      const pixPayload = extractMpPixData(mpPay);
+      await prisma.consultancyContract.update({
+        where: { id: contractId },
+        data: { mpPaymentId: mpPayId, paymentStatus: ConsultancyPaymentStatus.PENDING }
+      });
+      return { status: "PENDING" as const, pix: pixPayload };
+    }
+
+    throw new AppError("Pagamento da consultoria (combo) não foi aprovado.", StatusCodes.BAD_REQUEST);
   }
 }

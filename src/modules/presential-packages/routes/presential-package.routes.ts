@@ -21,6 +21,12 @@ presentialPackageRoutes.post(
   validate(purchasePresentialPackageSchema),
   presentialPackageController.purchase
 );
+presentialPackageRoutes.post(
+  "/combo",
+  ensureRole(UserRole.CLIENT),
+  validate(purchasePresentialPackageSchema),
+  presentialPackageController.purchaseCombo
+);
 presentialPackageRoutes.get("/my", ensureRole(UserRole.CLIENT), presentialPackageController.listMine);
 presentialPackageRoutes.get(
   "/provider/my",

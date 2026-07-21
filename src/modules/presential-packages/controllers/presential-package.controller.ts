@@ -16,6 +16,16 @@ export class PresentialPackageController {
     return response.status(StatusCodes.CREATED).json(result);
   }
 
+  async purchaseCombo(request: Request, response: Response) {
+    const result = await presentialPackageService.purchaseCombo(request.user!.id, {
+      offerId: request.body.offerId,
+      categoryId: request.body.categoryId,
+      paymentMethod: request.body.paymentMethod as ConsultancyPaymentMethod,
+      weeklySchedule: request.body.weeklySchedule
+    });
+    return response.status(StatusCodes.CREATED).json(result);
+  }
+
   async cancel(request: Request, response: Response) {
     const result = await presentialPackageService.cancelPackage(
       request.user!.id,
