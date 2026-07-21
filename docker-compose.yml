@@ -13,6 +13,21 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Arquivo continuo de WAL - junto com um base backup periodico
+      # (scripts/db-basebackup.ts), permite restaurar para qualquer
+      # segundo antes de um incidente, nao so o ultimo snapshot diario.
+      - ./backups/wal:/wal_archive
+    # WAL archiving: cada segmento fechado (ou a cada 60s, o que vier
+    # primeiro) e copiado pra /wal_archive - perda maxima de dados em
+    # caso de incidente cai de "desde o ultimo backup" pra "~60s".
+    command:
+      - "postgres"
+      - "-c"
+      - "archive_mode=on"
+      - "-c"
+      - "archive_command=test ! -f /wal_archive/%f && cp %p /wal_archive/%f"
+      - "-c"
+      - "archive_timeout=60"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-marketplace}"]
       interval: 10s

@@ -3,9 +3,12 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  directUrl         = env("DIRECT_URL")
+  // Banco descartavel dedicado — "migrate dev"/"migrate diff" sempre usam
+  // este banco como rascunho (reset a cada rodada), nunca o banco real.
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 enum UserRole {
@@ -793,14 +796,20 @@ enum PresentialPackageMode {
 enum PresentialPackageStatus {
   PENDING_PAYMENT
   ACTIVE
+  PAST_DUE
   CANCELLED
   EXPIRED
 }
 
-// Pacote presencial vendido por assinatura (ver artifact do desenho). Cada
-// cobranca periodica e um PresentialPackageCycle; sessoes viram Booking de
-// verdade (packageId), entao Agenda/Financeiro/Gestao de Alunos ja enxergam
-// tudo sem sincronizacao nova.
+// Pacote presencial cobrado em ciclos por chamadas normais de pagamento (nao
+// pelo produto "Assinaturas" da MP - aquele nao suporta split nem Pix no
+// corpo da requisicao, confirmado pelos tipos da propria SDK). Cada ciclo e
+// uma cobranca nova gerada pelo cron (cartao salvo) ou manual (Pix), usando
+// o mesmo mecanismo de split ja comprovado em booking/consultoria. Cancelar
+// e so parar de gerar cobrancas futuras - nunca existe autorizacao "em
+// aberto" na MP pra revogar. Sessoes viram Booking de verdade (packageId),
+// entao Agenda/Financeiro/Gestao de Alunos ja enxergam tudo sem
+// sincronizacao nova.
 model PresentialPackage {
   id                    String                    @id @default(uuid())
   providerId            String
@@ -810,7 +819,6 @@ model PresentialPackage {
   mode                  PresentialPackageMode
   status                PresentialPackageStatus   @default(PENDING_PAYMENT)
   paymentMethod         ConsultancyPaymentMethod?
-  mpSubscriptionId      String?                   @unique
   cycleAmountCents      Int
   billingCycle          OfferBillingCycle
   sessionsPerCycle      Int
@@ -820,8 +828,23 @@ model PresentialPackage {
   validFrom             DateTime?
   validUntil            DateTime?
   cancelledAt           DateTime?
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
+
+  // Controle de cobranca recorrente
+  nextCycleIndex            Int       @default(1)
+  nextBillingAt             DateTime?
+  consecutiveFailedCycles   Int       @default(0)
+  billingCardId             String?
+  creditsRemainingThisCycle Int       @default(0)
+  lastBillingFailureReason  String?
+
+  // Cobranca do ciclo atual ainda nao confirmada (cartao em processamento ou Pix aguardando pagamento manual)
+  pendingChargeMpPaymentId      String?   @unique
+  pendingChargePixQrCodeUrl     String?
+  pendingChargePixCopyPasteCode String?
+  pendingChargePixExpiresAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   provider            ProviderProfile          @relation(fields: [providerId], references: [id], onDelete: Cascade)
   client              User                     @relation("ClientPresentialPackages", fields: [clientId], references: [id], onDelete: Cascade)
@@ -832,6 +855,7 @@ model PresentialPackage {
 
   @@index([providerId, status])
   @@index([clientId, status])
+  @@index([status, nextBillingAt])
 }
 
 // Um registro por cobranca periodica capturada — fonte de receita real

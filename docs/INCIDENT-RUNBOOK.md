@@ -72,6 +72,41 @@ npm run release:preflight -- --target=production
 2. `SELECT 1` via preflight como `OK`.
 3. Fluxos de login/cadastro executados com sucesso.
 
+## Incidente 4: Perda de dados no banco (reset acidental de schema)
+### O que aconteceu (2026-07-20)
+Um comando `prisma migrate diff` foi executado com `--shadow-database-url` apontando por engano para o mesmo banco de `DATABASE_URL` (banco real de desenvolvimento). O Prisma usa esse parametro como rascunho descartavel — ele deu `DROP SCHEMA public CASCADE` seguido de recriacao a partir das migrations em disco, apagando todos os dados (a estrutura das tabelas sobreviveu, os dados nao). O agendador de backup diario estava falhando silenciosamente havia semanas (dependia do Docker Desktop estar aberto no momento exato da rodada), entao o backup utilizavel mais recente tinha mais de um mes.
+
+### Sintomas
+- `SELECT count(*)` em qualquer tabela retorna 0 inesperadamente.
+- `_prisma_migrations` ausente ou com historico incompleto.
+
+### Acao imediata (restauracao rapida - perde no maximo 2h de dados)
+1. Confirmar zero conexoes ativas: `docker exec marketplace_postgres psql -U postgres -d postgres -c "SELECT count(*) FROM pg_stat_activity WHERE datname='personal_app';"`
+2. Restaurar o backup logico mais recente: `npm run db:restore` (usa o `.sql.enc` mais novo de `backups/`; para escolher outro, `npx tsx scripts/db-restore.ts --file <nome>`).
+3. Se o backup restaurado for de uma migration antiga, trazer o schema atual por cima sem perder os dados: `npx prisma migrate deploy` (nunca `migrate dev`/`migrate reset` aqui — esses recriam do zero).
+4. `npx prisma generate` e validar com `npm test`.
+
+### Acao imediata (restauracao precisa - PITR, perde no maximo ~60s de dados)
+Disponivel desde 2026-07-20: WAL continuo (`backups/wal/`, arquivado a cada 60s via `archive_command` no `docker-compose.yml`) + base backup fisico semanal (`backups/base/`, `npm run db:basebackup`, Tarefa Agendada `MuvifyDbBaseBackup`).
+1. Parar o container: `docker compose stop postgres`.
+2. Descriptografar e extrair o base backup mais recente (anterior ao base backup, mesmo header/AES-256-GCM dos backups logicos) para um diretorio de dados novo.
+3. Criar `recovery.signal` no diretorio de dados e configurar `restore_command` apontando para `backups/wal/` e `recovery_target_time` para o instante desejado (logo antes do incidente).
+4. Subir o Postgres apontando pro diretorio restaurado — ele reproduz o WAL ate o instante escolhido e para exatamente ali.
+5. Validar dados, so entao promover (`pg_ctl promote` / remover `recovery.signal`) e trocar o volume em uso.
+
+Esse procedimento e manual de proposito (a escolha do instante exato depende de julgamento humano sobre "ate onde restaurar"), mas os artefatos (WAL + base backup) ja existem e sao testados regularmente pela Tarefa Agendada.
+
+### Prevencao estrutural (ja aplicada)
+1. `schema.prisma` ganhou `shadowDatabaseUrl` dedicado (`SHADOW_DATABASE_URL`, banco `personal_app_shadow`) — `migrate dev`/`migrate diff` nunca mais precisam de `--shadow-database-url` manual, entao esse erro especifico nao se repete.
+2. Backup deixou de depender de um processo `node` deixado aberto para sempre: Tarefa Agendada do Windows `MuvifyDbBackup` roda `npm run db:backup` a cada 2h independente de terminal aberto ou logon.
+3. `npm run db:backup:healthcheck` roda apos cada backup e falha ruidosamente (log + toast do Windows + exit code != 0, visivel no historico da Tarefa Agendada) se o backup mais recente tiver mais de 26h.
+4. WAL continuo + base backup semanal (`MuvifyDbBaseBackup`) habilitam a restauracao precisa acima.
+
+### Validacao de saida
+1. Contagem de linhas nas tabelas principais bate com o esperado.
+2. `npx prisma migrate status` mostra "Database schema is up to date!".
+3. `npm test` passa sem regressao.
+
 ## Pos-incidente (obrigatorio)
 1. Registrar causa raiz.
 2. Definir acao preventiva (alerta, ajuste de infra, automacao).

@@ -19,6 +19,8 @@
     "db:backup:upload": "tsx scripts/db-backup-upload.ts",
     "db:backup:verify": "tsx scripts/db-backup-verify.ts",
     "db:backup:schedule": "tsx scripts/db-backup-schedule.ts",
+    "db:backup:healthcheck": "tsx scripts/db-backup-healthcheck.ts",
+    "db:basebackup": "tsx scripts/db-basebackup.ts",
     "data-retention:dry-run": "tsx scripts/data-retention-run.ts",
     "data-retention:apply": "tsx scripts/data-retention-run.ts --apply",
     "backfill:completion-evidence:dry-run": "tsx scripts/backfill-completion-evidence-r2.ts",
