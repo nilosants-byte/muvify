@@ -299,6 +299,8 @@ model User {
   adminAuditLogs           AdminAuditLog[]
   noShowReportsReceived    NoShowReport[]              @relation("NoShowReported")
   noShowReportsFiled       NoShowReport[]              @relation("NoShowReportedBy")
+  disputeCasesAsClient     DisputeCase[]               @relation("DisputeCaseClient")
+  disputeCasesResolved     DisputeCase[]               @relation("DisputeCaseResolvedBy")
 
   @@index([createdAt])
   @@index([documentHash])
@@ -366,6 +368,7 @@ model ProviderProfile {
   consultancyRequestsReceived ConsultancyRequest[]        @relation("ProviderConsultancyRequests")
   consultancyContracts        ConsultancyContract[]       @relation("ProviderConsultancyContracts")
   presentialPackages          PresentialPackage[]
+  disputeCases                DisputeCase[]               @relation("DisputeCaseProvider")
   bankAccount                 ProviderBankAccount?
   calendarEvents              ProviderCalendarEvent[]
   studentAssessments          ProviderStudentAssessment[]
@@ -449,6 +452,7 @@ model Booking {
   completionEvidences       CompletionEvidence[]
   chatMessages              BookingMessage[]
   noShowReport              NoShowReport?
+  disputeCases              DisputeCase[]
 
   @@index([providerId, scheduledAt])
   @@index([clientId, scheduledAt])
@@ -470,6 +474,8 @@ model NoShowReport {
   reportedUserId    String
   reportedByUserId  String
   status            NoShowReportStatus @default(PENDING)
+  reportReason      String?
+  contestReason     String?
   contestDeadlineAt DateTime           @default(now())
   contestedAt       DateTime?
   resolvedAt        DateTime?
@@ -477,9 +483,67 @@ model NoShowReport {
   booking           Booking            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   reportedUser      User               @relation("NoShowReported", fields: [reportedUserId], references: [id], onDelete: Cascade)
   reportedByUser    User               @relation("NoShowReportedBy", fields: [reportedByUserId], references: [id], onDelete: Cascade)
+  disputeCase       DisputeCase?
 
   @@index([reportedUserId])
   @@index([status, contestDeadlineAt])
+}
+
+enum DisputeCaseType {
+  NO_SHOW_CONTESTED
+  CHARGEBACK
+  REFUND_FAILED
+}
+
+enum DisputeCaseStatus {
+  OPEN
+  RESOLVED
+}
+
+enum DisputeCaseResolution {
+  REFUNDED
+  DENIED
+}
+
+// Fila unica de casos que precisam de julgamento humano (nao dava pra
+// automatizar "quem tem razao") - alimentada por 3 fontes: falta
+// contestada, contestacao de pagamento pelo banco (chargeback), e
+// reembolso automatico que falhou. O admin resolve com um motivo
+// obrigatorio, que viaja junto na notificacao pras partes.
+model DisputeCase {
+  id                       String                 @id @default(uuid())
+  type                     DisputeCaseType
+  status                   DisputeCaseStatus      @default(OPEN)
+  clientId                 String
+  providerId               String
+  amountCents              Int
+  mpPaymentId              String?
+  contextNote              String?
+  bookingId                String?
+  consultancyContractId    String?
+  presentialPackageId      String?
+  presentialPackageCycleId String?
+  noShowReportId           String?                @unique
+  resolution               DisputeCaseResolution?
+  resolvedAmountCents      Int?
+  resolutionNote           String?
+  resolvedByAdminId        String?
+  resolvedAt               DateTime?
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+
+  client                 User                    @relation("DisputeCaseClient", fields: [clientId], references: [id], onDelete: Cascade)
+  provider               ProviderProfile         @relation("DisputeCaseProvider", fields: [providerId], references: [id], onDelete: Cascade)
+  booking                Booking?                @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  consultancyContract    ConsultancyContract?    @relation(fields: [consultancyContractId], references: [id], onDelete: SetNull)
+  presentialPackage      PresentialPackage?      @relation(fields: [presentialPackageId], references: [id], onDelete: SetNull)
+  presentialPackageCycle PresentialPackageCycle? @relation(fields: [presentialPackageCycleId], references: [id], onDelete: SetNull)
+  noShowReport           NoShowReport?           @relation(fields: [noShowReportId], references: [id], onDelete: SetNull)
+  resolvedByAdmin        User?                   @relation("DisputeCaseResolvedBy", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([clientId])
+  @@index([providerId])
 }
 
 model Review {
@@ -855,6 +919,7 @@ model PresentialPackage {
   consultancyContract ConsultancyContract?     @relation(fields: [consultancyContractId], references: [id], onDelete: SetNull)
   bookings            Booking[]
   cycles              PresentialPackageCycle[]
+  disputeCases        DisputeCase[]
 
   @@index([providerId, status])
   @@index([clientId, status])
@@ -876,7 +941,8 @@ model PresentialPackageCycle {
   periodStart         DateTime
   periodEnd           DateTime
 
-  package PresentialPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  package      PresentialPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  disputeCases DisputeCase[]
 
   @@unique([packageId, cycleIndex])
   @@index([packageId])
@@ -1004,6 +1070,7 @@ model ConsultancyContract {
   trainingPlans           TrainingPlan[]
   trainingPlanCompletions TrainingPlanCompletion[]
   presentialPackage       PresentialPackage?
+  disputeCases            DisputeCase[]
 
   @@index([providerId, status, deliveryDeadlineAt])
   @@index([clientId, status, createdAt])
