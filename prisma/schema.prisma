@@ -384,13 +384,14 @@ model ProviderProfile {
 }
 
 model ServiceCategory {
-  id          String             @id @default(uuid())
-  name        String             @unique
-  description String?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  providers   ProviderCategory[]
-  bookings    Booking[]
+  id                 String              @id @default(uuid())
+  name               String              @unique
+  description        String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  providers          ProviderCategory[]
+  bookings           Booking[]
+  presentialPackages PresentialPackage[]
 }
 
 model ProviderCategory {
@@ -815,6 +816,7 @@ model PresentialPackage {
   providerId            String
   clientId              String
   offerId               String
+  categoryId            String
   consultancyContractId String?                   @unique
   mode                  PresentialPackageMode
   status                PresentialPackageStatus   @default(PENDING_PAYMENT)
@@ -849,6 +851,7 @@ model PresentialPackage {
   provider            ProviderProfile          @relation(fields: [providerId], references: [id], onDelete: Cascade)
   client              User                     @relation("ClientPresentialPackages", fields: [clientId], references: [id], onDelete: Cascade)
   offer               ProviderServiceOffer     @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  category            ServiceCategory          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   consultancyContract ConsultancyContract?     @relation(fields: [consultancyContractId], references: [id], onDelete: SetNull)
   bookings            Booking[]
   cycles              PresentialPackageCycle[]
