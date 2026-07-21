@@ -9,12 +9,13 @@ import { ProfessionalStackParamList } from "../../navigation/route-types";
 import {
   consultancyApi,
   OfferBillingCycle,
+  PresentialPackageMode,
   ProviderServiceOffer,
   ServiceOfferKind,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText } from "../../components/mv";
+import { MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText, MvToggle } from "../../components/mv";
 import { StepProgressBar } from "../../components/professional/UXReformComponents";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
@@ -76,15 +77,24 @@ function cycleLabel(cycle: OfferBillingCycle) {
   return cycleOptions.find((item) => item.value === cycle)?.label ?? cycle;
 }
 
+function packageModeLabel(mode?: PresentialPackageMode | null): string | null {
+  if (mode === "FIXED_RECURRING") return "Pacote · horário fixo";
+  if (mode === "FLEXIBLE_CREDITS") return "Pacote · créditos flexíveis";
+  return null;
+}
+
 function offerDescription(offer: ProviderServiceOffer): string {
   const cycle = cycleLabel(offer.billingCycle);
+  const packageLabel = packageModeLabel(offer.presentialPackageMode);
 
   if (offer.kind === "PRESENTIAL") {
+    if (packageLabel) return `${packageLabel} · ${cycle}`;
     const days = offer.daysPerWeek ? `${offer.daysPerWeek}x na semana` : "";
     return [days, cycle].filter(Boolean).join(" · ");
   }
 
   if (offer.kind === "COMBO") {
+    if (packageLabel) return `${packageLabel} · ${cycle}`;
     const p = offer.comboPresentialDaysPerWeek ?? 0;
     const o = offer.comboOnlineDaysPerWeek ?? 0;
     return `${p} dia${p !== 1 ? "s" : ""} presencial + ${o} online/sem · ${cycle}`;
@@ -121,6 +131,12 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
   const [markAsPromotion, setMarkAsPromotion] = useState(false);
   const [promotionPrice, setPromotionPrice] = useState("0,00");
   const [promotionEndsAt, setPromotionEndsAt] = useState("");
+  const [presentialPackageMode, setPresentialPackageMode] = useState<PresentialPackageMode | null>(null);
+  const [presentialHasFixedTerm, setPresentialHasFixedTerm] = useState(false);
+  const [presentialTotalCycles, setPresentialTotalCycles] = useState("3");
+  const [presentialSessionsPerCycle, setPresentialSessionsPerCycle] = useState("8");
+  const [comboPresentialShare, setComboPresentialShare] = useState("0,00");
+  const [comboConsultancyShare, setComboConsultancyShare] = useState("0,00");
 
   useEffect(() => {
     if (centerQuery.error) {
@@ -157,6 +173,39 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     return undefined;
   }, [comboOnlineDaysPerWeek, comboPresentialDaysPerWeek, offerKind]);
 
+  const comboPresentialShareCents = useMemo(() => toCents(comboPresentialShare), [comboPresentialShare]);
+  const comboConsultancyShareCents = useMemo(() => toCents(comboConsultancyShare), [comboConsultancyShare]);
+
+  // Combo sempre precisa de um modelo de pacote (presencial + consultoria
+  // sao 2 cobrancas independentes) - presencial avulso pode ou nao virar
+  // pacote, por isso so valida sessoes/vigencia quando um modo foi escolhido.
+  const presentialPackageError = useMemo(() => {
+    if (offerKind === "COMBO" && !presentialPackageMode) {
+      return "Escolha o modelo do pacote presencial do combo.";
+    }
+    if (!presentialPackageMode) return undefined;
+    const sessions = Number(presentialSessionsPerCycle);
+    if (!sessions || sessions < 1) {
+      return "Informe quantas sessões (ou créditos) o pacote libera por ciclo.";
+    }
+    if (presentialHasFixedTerm) {
+      const cycles = Number(presentialTotalCycles);
+      if (!cycles || cycles < 1) return "Informe o número total de ciclos.";
+    }
+    return undefined;
+  }, [offerKind, presentialPackageMode, presentialSessionsPerCycle, presentialHasFixedTerm, presentialTotalCycles]);
+
+  const comboShareError = useMemo(() => {
+    if (offerKind !== "COMBO" || !presentialPackageMode) return undefined;
+    if (comboPresentialShareCents <= 0 || comboConsultancyShareCents <= 0) {
+      return "Informe o valor de cada metade do combo.";
+    }
+    if (comboPresentialShareCents + comboConsultancyShareCents !== basePriceCents) {
+      return "A soma das duas metades deve ser igual ao valor total da oferta.";
+    }
+    return undefined;
+  }, [offerKind, presentialPackageMode, comboPresentialShareCents, comboConsultancyShareCents, basePriceCents]);
+
   useEffect(() => {
     if (offerKind === "COMBO") setOfferTitle("Combo");
     else if (offerTitle === "Combo") setOfferTitle("");
@@ -165,6 +214,13 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
   useEffect(() => {
     if (editingOfferId) return;
     setOfferCycle(offerKind === "PRESENTIAL" ? "DAILY" : "MONTHLY");
+  }, [offerKind, editingOfferId]);
+
+  useEffect(() => {
+    if (editingOfferId) return;
+    if (offerKind !== "PRESENTIAL" && offerKind !== "COMBO") {
+      setPresentialPackageMode(null);
+    }
   }, [offerKind, editingOfferId]);
 
   function resetOfferForm() {
@@ -180,6 +236,12 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     setPromotionPrice("0,00");
     setPromotionEndsAt("");
     setPromotionLabel("");
+    setPresentialPackageMode(null);
+    setPresentialHasFixedTerm(false);
+    setPresentialTotalCycles("3");
+    setPresentialSessionsPerCycle("8");
+    setComboPresentialShare("0,00");
+    setComboConsultancyShare("0,00");
     setOfferWizardStep(0);
   }
 
@@ -193,6 +255,16 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     setPromotionPrice(offer.promotionPriceCents ? (offer.promotionPriceCents / 100).toFixed(2).replace(".", ",") : "0,00");
     setPromotionEndsAt(offer.promotionEndsAt ? new Date(offer.promotionEndsAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "");
     setPromotionLabel(offer.promotionLabel ?? "");
+    setPresentialPackageMode(offer.presentialPackageMode ?? null);
+    setPresentialHasFixedTerm(Boolean(offer.presentialHasFixedTerm));
+    setPresentialTotalCycles(offer.presentialTotalCycles ? String(offer.presentialTotalCycles) : "3");
+    setPresentialSessionsPerCycle(offer.presentialSessionsPerCycle ? String(offer.presentialSessionsPerCycle) : "8");
+    setComboPresentialShare(
+      offer.comboPresentialShareCents ? (offer.comboPresentialShareCents / 100).toFixed(2).replace(".", ",") : "0,00"
+    );
+    setComboConsultancyShare(
+      offer.comboConsultancyShareCents ? (offer.comboConsultancyShareCents / 100).toFixed(2).replace(".", ",") : "0,00"
+    );
     setOfferFormVisible(true);
   }
 
@@ -239,6 +311,14 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
       showToast(comboDaysError, "error");
       return;
     }
+    if (presentialPackageError) {
+      showToast(presentialPackageError, "error");
+      return;
+    }
+    if (comboShareError) {
+      showToast(comboShareError, "error");
+      return;
+    }
     if (markAsPromotion && (promotionValueError || promotionDateError)) {
       showToast(promotionValueError ?? promotionDateError ?? "Promoção inválida.", "error");
       return;
@@ -259,6 +339,16 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
             promotionPriceCents: markAsPromotion ? promotionPriceCents : undefined,
             promotionEndsAt: markAsPromotion && parsedPromotionEndsAt ? parsedPromotionEndsAt.toISOString() : undefined,
             promotionLabel: markAsPromotion ? promotionLabel.trim() || undefined : undefined,
+            presentialPackageMode,
+            presentialHasFixedTerm: presentialPackageMode ? presentialHasFixedTerm : false,
+            presentialTotalCycles:
+              presentialPackageMode && presentialHasFixedTerm ? Math.max(1, Number(presentialTotalCycles) || 1) : null,
+            presentialSessionsPerCycle:
+              presentialPackageMode ? Math.max(1, Number(presentialSessionsPerCycle) || 1) : null,
+            comboPresentialShareCents:
+              offerKind === "COMBO" && presentialPackageMode ? comboPresentialShareCents : null,
+            comboConsultancyShareCents:
+              offerKind === "COMBO" && presentialPackageMode ? comboConsultancyShareCents : null,
           })
         );
         setOffers((prev) =>
@@ -282,6 +372,19 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
             promotionPriceCents: markAsPromotion ? promotionPriceCents : undefined,
             promotionEndsAt: markAsPromotion && parsedPromotionEndsAt ? parsedPromotionEndsAt.toISOString() : undefined,
             promotionLabel: markAsPromotion ? promotionLabel.trim() || undefined : undefined,
+            presentialPackageMode: presentialPackageMode ?? undefined,
+            presentialHasFixedTerm: presentialPackageMode ? presentialHasFixedTerm : undefined,
+            presentialTotalCycles:
+              presentialPackageMode && presentialHasFixedTerm
+                ? Math.max(1, Number(presentialTotalCycles) || 1)
+                : undefined,
+            presentialSessionsPerCycle: presentialPackageMode
+              ? Math.max(1, Number(presentialSessionsPerCycle) || 1)
+              : undefined,
+            comboPresentialShareCents:
+              offerKind === "COMBO" && presentialPackageMode ? comboPresentialShareCents : undefined,
+            comboConsultancyShareCents:
+              offerKind === "COMBO" && presentialPackageMode ? comboConsultancyShareCents : undefined,
           })
         );
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -483,6 +586,61 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     {comboDaysError ? <MvText variant="body4" color="danger">{comboDaysError}</MvText> : null}
                   </>
                 ) : null}
+                {offerKind === "PRESENTIAL" ? (
+                  <Chip
+                    label={presentialPackageMode ? "Vendido como pacote (cobrança em ciclos)" : "Vender como pacote (cobrança em ciclos)"}
+                    selected={Boolean(presentialPackageMode)}
+                    onPress={() => setPresentialPackageMode((current) => (current ? null : "FIXED_RECURRING"))}
+                  />
+                ) : null}
+                {offerKind === "COMBO" || (offerKind === "PRESENTIAL" && presentialPackageMode) ? (
+                  <View style={{ gap: 8 }}>
+                    <MvText variant="body4" color="secondary">Modelo do pacote</MvText>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {([
+                        { value: "FIXED_RECURRING" as const, label: "Horário fixo", desc: "Mesmo dia/horário toda semana" },
+                        { value: "FLEXIBLE_CREDITS" as const, label: "Créditos flexíveis", desc: "Aluno agenda quando quiser" },
+                      ]).map((opt) => {
+                        const sel = presentialPackageMode === opt.value;
+                        return (
+                          <PressableScale
+                            key={opt.value}
+                            scale={0.97}
+                            onPress={() => setPresentialPackageMode(opt.value)}
+                            style={{ flex: 1, borderRadius: 10, borderWidth: 1, borderColor: sel ? theme.primarySubtleBorder : theme.border, backgroundColor: sel ? theme.primarySubtle : theme.cardBg, padding: 10 }}
+                          >
+                            <MvText variant="body4" style={{ color: sel ? theme.textGreen : theme.text1, fontWeight: sel ? "700" : "400" }}>{opt.label}</MvText>
+                            <MvText variant="caption" color="secondary">{opt.desc}</MvText>
+                          </PressableScale>
+                        );
+                      })}
+                    </View>
+                    <MvInput
+                      keyboardType="numeric"
+                      label={presentialPackageMode === "FLEXIBLE_CREDITS" ? "Créditos por ciclo" : "Sessões por ciclo"}
+                      placeholder="Ex: 8"
+                      value={presentialSessionsPerCycle}
+                      onChangeText={setPresentialSessionsPerCycle}
+                    />
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <MvText variant="body4">Vigência com prazo determinado</MvText>
+                      <MvToggle value={presentialHasFixedTerm} onValueChange={setPresentialHasFixedTerm} />
+                    </View>
+                    {presentialHasFixedTerm ? (
+                      <MvInput keyboardType="numeric" label="Total de ciclos" placeholder="Ex: 3" value={presentialTotalCycles} onChangeText={setPresentialTotalCycles} />
+                    ) : (
+                      <MvText variant="caption" color="secondary">Sem prazo definido — renova sozinho até o aluno ou você cancelar.</MvText>
+                    )}
+                    {presentialPackageError ? <MvText variant="body4" color="danger">{presentialPackageError}</MvText> : null}
+                    {offerKind === "COMBO" ? (
+                      <>
+                        <MvInput keyboardType="numeric" label="Valor da metade presencial (R$)" placeholder="Ex: 600,00" value={comboPresentialShare} onChangeText={(value) => setComboPresentialShare(maskPriceInput(value))} />
+                        <MvInput keyboardType="numeric" label="Valor da metade consultoria (R$)" placeholder="Ex: 400,00" value={comboConsultancyShare} onChangeText={(value) => setComboConsultancyShare(maskPriceInput(value))} />
+                        {comboShareError ? <MvText variant="body4" color="danger">{comboShareError}</MvText> : null}
+                      </>
+                    ) : null}
+                  </View>
+                ) : null}
                 <MvInput keyboardType="numeric" placeholder="Valor base (R$)" value={offerPrice} onChangeText={(value) => setOfferPrice(maskPriceInput(value))} />
                 <MvText variant="caption" color="secondary">O valor base pode ser alterado apenas 1 vez a cada 30 dias.</MvText>
                 <Chip label={markAsPromotion ? "Promoção ativa no cadastro" : "Marcar como promoção"} selected={markAsPromotion} onPress={() => setMarkAsPromotion((current) => !current)} />
@@ -500,7 +658,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                 ) : null}
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <MvButton label="Salvar alterações" loading={creatingOffer} disabled={!crefValidated || Boolean(promotionValueError || promotionDateError || comboDaysError)} onPress={() => void handleCreateOffer()} />
+                    <MvButton label="Salvar alterações" loading={creatingOffer} disabled={!crefValidated || Boolean(promotionValueError || promotionDateError || comboDaysError || presentialPackageError || comboShareError)} onPress={() => void handleCreateOffer()} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <MvButton variant="outline" label="Cancelar" onPress={closeOfferForm} />
@@ -581,6 +739,61 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                         {comboDaysError ? <MvText variant="body4" color="danger">{comboDaysError}</MvText> : null}
                       </>
                     ) : null}
+                    {offerKind === "PRESENTIAL" ? (
+                      <Chip
+                        label={presentialPackageMode ? "Vendido como pacote (cobrança em ciclos)" : "Vender como pacote (cobrança em ciclos)"}
+                        selected={Boolean(presentialPackageMode)}
+                        onPress={() => setPresentialPackageMode((current) => (current ? null : "FIXED_RECURRING"))}
+                      />
+                    ) : null}
+                    {offerKind === "COMBO" || (offerKind === "PRESENTIAL" && presentialPackageMode) ? (
+                      <View style={{ gap: 8 }}>
+                        <MvText variant="body4" color="secondary">Modelo do pacote</MvText>
+                        <View style={{ flexDirection: "row", gap: 8 }}>
+                          {([
+                            { value: "FIXED_RECURRING" as const, label: "Horário fixo", desc: "Mesmo dia/horário toda semana" },
+                            { value: "FLEXIBLE_CREDITS" as const, label: "Créditos flexíveis", desc: "Aluno agenda quando quiser" },
+                          ]).map((opt) => {
+                            const sel = presentialPackageMode === opt.value;
+                            return (
+                              <PressableScale
+                                key={opt.value}
+                                scale={0.97}
+                                onPress={() => setPresentialPackageMode(opt.value)}
+                                style={{ flex: 1, borderRadius: 10, borderWidth: 1, borderColor: sel ? theme.primarySubtleBorder : theme.border, backgroundColor: sel ? theme.primarySubtle : theme.cardBg, padding: 10 }}
+                              >
+                                <MvText variant="body4" style={{ color: sel ? theme.textGreen : theme.text1, fontWeight: sel ? "700" : "400" }}>{opt.label}</MvText>
+                                <MvText variant="caption" color="secondary">{opt.desc}</MvText>
+                              </PressableScale>
+                            );
+                          })}
+                        </View>
+                        <MvInput
+                          keyboardType="numeric"
+                          label={presentialPackageMode === "FLEXIBLE_CREDITS" ? "Créditos por ciclo" : "Sessões por ciclo"}
+                          placeholder="Ex: 8"
+                          value={presentialSessionsPerCycle}
+                          onChangeText={setPresentialSessionsPerCycle}
+                        />
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                          <MvText variant="body4">Vigência com prazo determinado</MvText>
+                          <MvToggle value={presentialHasFixedTerm} onValueChange={setPresentialHasFixedTerm} />
+                        </View>
+                        {presentialHasFixedTerm ? (
+                          <MvInput keyboardType="numeric" label="Total de ciclos" placeholder="Ex: 3" value={presentialTotalCycles} onChangeText={setPresentialTotalCycles} />
+                        ) : (
+                          <MvText variant="caption" color="secondary">Sem prazo definido — renova sozinho até o aluno ou você cancelar.</MvText>
+                        )}
+                        {presentialPackageError ? <MvText variant="body4" color="danger">{presentialPackageError}</MvText> : null}
+                        {offerKind === "COMBO" ? (
+                          <>
+                            <MvInput keyboardType="numeric" label="Valor da metade presencial (R$)" placeholder="Ex: 600,00" value={comboPresentialShare} onChangeText={(value) => setComboPresentialShare(maskPriceInput(value))} />
+                            <MvInput keyboardType="numeric" label="Valor da metade consultoria (R$)" placeholder="Ex: 400,00" value={comboConsultancyShare} onChangeText={(value) => setComboConsultancyShare(maskPriceInput(value))} />
+                            {comboShareError ? <MvText variant="body4" color="danger">{comboShareError}</MvText> : null}
+                          </>
+                        ) : null}
+                      </View>
+                    ) : null}
                     <Chip label={markAsPromotion ? "Promoção ativa no cadastro" : "Marcar como promoção"} selected={markAsPromotion} onPress={() => setMarkAsPromotion((current) => !current)} />
                     {markAsPromotion ? (
                       <>
@@ -598,7 +811,10 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                       <View style={{ flex: 1 }}>
                         <MvButton
                           label="Revisar →"
-                          disabled={offerKind !== "COMBO" && !offerTitle.trim()}
+                          disabled={
+                            (offerKind !== "COMBO" && !offerTitle.trim()) ||
+                            Boolean(presentialPackageError || comboShareError)
+                          }
                           onPress={() => setOfferWizardStep(3)}
                         />
                       </View>
@@ -622,6 +838,15 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                           Promoção: {formatCurrencyBRL(promotionPriceCents / 100)}{promotionEndsAt ? ` até ${promotionEndsAt}` : ""}
                         </MvText>
                       ) : null}
+                      {presentialPackageMode ? (
+                        <MvText variant="caption" color="secondary">
+                          {packageModeLabel(presentialPackageMode)} · {presentialSessionsPerCycle} por ciclo
+                          {presentialHasFixedTerm ? ` · ${presentialTotalCycles} ciclos` : " · sem prazo"}
+                          {offerKind === "COMBO"
+                            ? ` (${formatCurrencyBRL(comboPresentialShareCents / 100)} presencial + ${formatCurrencyBRL(comboConsultancyShareCents / 100)} consultoria)`
+                            : ""}
+                        </MvText>
+                      ) : null}
                     </View>
                     {!crefValidated ? (
                       <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Publicar ofertas fica disponível quando seu CREF for aprovado.</MvText>
@@ -634,7 +859,10 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                         <MvButton
                           label="Criar oferta"
                           loading={creatingOffer}
-                          disabled={!crefValidated || Boolean(promotionValueError || promotionDateError || comboDaysError)}
+                          disabled={
+                            !crefValidated ||
+                            Boolean(promotionValueError || promotionDateError || comboDaysError || presentialPackageError || comboShareError)
+                          }
                           onPress={() => void handleCreateOffer()}
                         />
                       </View>
