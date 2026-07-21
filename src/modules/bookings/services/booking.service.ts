@@ -1,5 +1,12 @@
 ﻿import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
-import { BookingStatus, CrefValidationStatus, PaymentMethod, PaymentStatus } from "@prisma/client";
+import {
+  BookingStatus,
+  CrefValidationStatus,
+  PaymentMethod,
+  PaymentStatus,
+  PresentialPackageMode,
+  PresentialPackageStatus
+} from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
@@ -128,7 +135,8 @@ export class BookingService {
     notes?: string,
     sessionLocation?: string,
     clientLatitude?: number,
-    clientLongitude?: number
+    clientLongitude?: number,
+    packageId?: string
   ) {
     const scheduleDate = new Date(scheduledAt);
     if (Number.isNaN(scheduleDate.getTime()) || scheduleDate <= new Date()) {
@@ -197,14 +205,55 @@ export class BookingService {
         );
       }
 
-      const hasLinkedCategory = provider.categoryLinks.some((item) => item.categoryId === categoryId);
+      // Agendamento pago com credito de um pacote presencial (modo
+      // FLEXIBLE_CREDITS) - o dinheiro ja foi cobrado no ciclo, aqui so
+      // consome 1 credito. A categoria usada e sempre a do pacote (definida
+      // na compra), nao a que o cliente passar.
+      let presentialPackage: { id: string; categoryId: string } | null = null;
+      if (packageId) {
+        const pkg = await tx.presentialPackage.findUnique({
+          where: { id: packageId },
+          select: {
+            id: true,
+            clientId: true,
+            providerId: true,
+            categoryId: true,
+            mode: true,
+            status: true,
+            creditsRemainingThisCycle: true
+          }
+        });
+        if (!pkg || pkg.clientId !== clientId || pkg.providerId !== providerId) {
+          throw new AppError("Pacote presencial não encontrado.", StatusCodes.NOT_FOUND);
+        }
+        if (pkg.mode !== PresentialPackageMode.FLEXIBLE_CREDITS) {
+          throw new AppError(
+            "Este pacote não usa agendamento avulso por crédito.",
+            StatusCodes.BAD_REQUEST
+          );
+        }
+        if (pkg.status !== PresentialPackageStatus.ACTIVE) {
+          throw new AppError(
+            "Este pacote não está ativo no momento - verifique se há alguma cobrança pendente.",
+            StatusCodes.BAD_REQUEST
+          );
+        }
+        if (pkg.creditsRemainingThisCycle <= 0) {
+          throw new AppError("Você não tem créditos disponíveis neste ciclo.", StatusCodes.BAD_REQUEST);
+        }
+        presentialPackage = { id: pkg.id, categoryId: pkg.categoryId };
+      }
+
+      const effectiveCategoryId = presentialPackage ? presentialPackage.categoryId : categoryId;
+
+      const hasLinkedCategory = provider.categoryLinks.some((item) => item.categoryId === effectiveCategoryId);
       if (!hasLinkedCategory) {
         if (provider.categoryLinks.length > 0) {
           throw new AppError("Categoria não atendida por este profissional.");
         }
 
         const category = await tx.serviceCategory.findUnique({
-          where: { id: categoryId },
+          where: { id: effectiveCategoryId },
           select: { id: true, name: true }
         });
         if (!category) {
@@ -296,7 +345,11 @@ export class BookingService {
 
       let bookingPriceCents = provider.priceCents;
 
-      if (offerId) {
+      if (presentialPackage) {
+        // Ja foi pago no ciclo do pacote - esta sessao especifica so
+        // consome 1 credito, nao gera cobranca propria.
+        bookingPriceCents = 0;
+      } else if (offerId) {
         const offer = await tx.providerServiceOffer.findFirst({
           where: {
             id: offerId,
@@ -327,7 +380,8 @@ export class BookingService {
         data: {
           clientId,
           providerId,
-          categoryId,
+          categoryId: effectiveCategoryId,
+          packageId: presentialPackage?.id ?? null,
           scheduledAt: scheduleDate,
           priceCents: bookingPriceCents,
           notes,
@@ -357,13 +411,20 @@ export class BookingService {
         }
       });
 
-      await paymentService.createPendingForBooking(
-        tx,
-        booking.id,
-        booking.priceCents,
-        booking.currency,
-        paymentMethod
-      );
+      if (presentialPackage) {
+        await tx.presentialPackage.update({
+          where: { id: presentialPackage.id },
+          data: { creditsRemainingThisCycle: { decrement: 1 } }
+        });
+      } else {
+        await paymentService.createPendingForBooking(
+          tx,
+          booking.id,
+          booking.priceCents,
+          booking.currency,
+          paymentMethod
+        );
+      }
       return booking;
     });
 

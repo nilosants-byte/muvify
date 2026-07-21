@@ -29,7 +29,10 @@ export const createBookingSchema = z.object({
     notes: z.string().trim().max(500).optional(),
     sessionLocation: z.string().trim().max(300).optional(),
     clientLatitude: z.number().min(-90).max(90).optional(),
-    clientLongitude: z.number().min(-180).max(180).optional()
+    clientLongitude: z.number().min(-180).max(180).optional(),
+    // Agendamento pago com credito de um pacote presencial (FLEXIBLE_CREDITS) -
+    // quando presente, o preco e ignorado (ja foi cobrado no ciclo).
+    packageId: z.string().uuid().optional()
   })
 });
 export const updateBookingStatusSchema = z.object({

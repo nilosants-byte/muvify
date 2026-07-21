@@ -15,7 +15,8 @@ export class BookingController {
       request.body.notes,
       request.body.sessionLocation,
       request.body.clientLatitude,
-      request.body.clientLongitude
+      request.body.clientLongitude,
+      request.body.packageId
     );
     return response.status(StatusCodes.CREATED).json(booking);
   }
