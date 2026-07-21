@@ -228,7 +228,9 @@ export class FinancialService {
       confirmedBookingsAgg,
       lastMonthCompletedBookingsAgg,
       capturedContracts,
-      lastMonthCapturedContractsAgg
+      lastMonthCapturedContractsAgg,
+      capturedPackageCycles,
+      lastMonthCapturedPackageCyclesAgg
     ] = await Promise.all([
       getEffectiveIncomes(provider.id, m),
       getEffectiveExpenses(provider.id, m),
@@ -271,12 +273,25 @@ export class FinancialService {
       prisma.consultancyContract.aggregate({
         where: { providerId: provider.id, paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: { gte: lastMonthFrom, lte: lastMonthTo } },
         _sum: { paymentAmountCents: true }
+      }),
+      // ciclos de pacote presencial capturados (receita real - nunca o valor
+      // total do pacote, so o que de fato foi cobrado), com data para breakdown diário
+      prisma.presentialPackageCycle.findMany({
+        where: { package: { providerId: provider.id }, capturedAt: { gte: from, lte: to } },
+        select: { amountCents: true, capturedAt: true },
+        take: 2000,
+      }),
+      // mês anterior: ciclos de pacote presencial capturados
+      prisma.presentialPackageCycle.aggregate({
+        where: { package: { providerId: provider.id }, capturedAt: { gte: lastMonthFrom, lte: lastMonthTo } },
+        _sum: { amountCents: true }
       })
     ]);
 
     const appBookingRevenueCents     = completedBookings.reduce((s, b) => s + b.priceCents, 0);
     const appConsultancyRevenueCents = capturedContracts.reduce((s, c) => s + c.paymentAmountCents, 0);
-    const appRevenueCents            = appBookingRevenueCents + appConsultancyRevenueCents;
+    const appPackageRevenueCents     = capturedPackageCycles.reduce((s, c) => s + c.amountCents, 0);
+    const appRevenueCents            = appBookingRevenueCents + appConsultancyRevenueCents + appPackageRevenueCents;
     const confirmedRevenueCents      = confirmedBookingsAgg._sum.priceCents ?? 0;
     const manualRevenueCents         = incomes.reduce((s, i) => s + i.amountCents, 0);
     const totalRevenueCents          = manualRevenueCents + appRevenueCents;
@@ -285,7 +300,9 @@ export class FinancialService {
 
     const lastMonthManualRevenue     = lastMonthIncomes.reduce((s, i) => s + i.amountCents, 0);
     const lastMonthAppRevenue        =
-      (lastMonthCompletedBookingsAgg._sum.priceCents ?? 0) + (lastMonthCapturedContractsAgg._sum.paymentAmountCents ?? 0);
+      (lastMonthCompletedBookingsAgg._sum.priceCents ?? 0)
+      + (lastMonthCapturedContractsAgg._sum.paymentAmountCents ?? 0)
+      + (lastMonthCapturedPackageCyclesAgg._sum.amountCents ?? 0);
     const lastMonthTotalRevenueCents = lastMonthManualRevenue + lastMonthAppRevenue;
     const growthPct =
       lastMonthTotalRevenueCents === 0
@@ -325,6 +342,10 @@ export class FinancialService {
     for (const c of capturedContracts) {
       const day = (c.paymentCapturedAt ?? new Date()).toISOString().slice(0, 10);
       dailyMap[day] = (dailyMap[day] ?? 0) + c.paymentAmountCents;
+    }
+    for (const cycle of capturedPackageCycles) {
+      const day = cycle.capturedAt.toISOString().slice(0, 10);
+      dailyMap[day] = (dailyMap[day] ?? 0) + cycle.amountCents;
     }
 
     return {
@@ -648,7 +669,7 @@ export class FinancialService {
     const m = month ?? currentMonth();
     const { from, to } = monthBounds(m);
 
-    const [bookings, contracts] = await Promise.all([
+    const [bookings, contracts, packageCycles] = await Promise.all([
       prisma.booking.findMany({
         where: {
           providerId: provider.id,
@@ -672,6 +693,13 @@ export class FinancialService {
           offer:  { select: { kind: true } }
         },
         orderBy: { paymentCapturedAt: "desc" }
+      }),
+      // ciclos de pacote presencial capturados no mes - receita real, nao o
+      // valor total do pacote (ver comentario no schema de PresentialPackageCycle)
+      prisma.presentialPackageCycle.findMany({
+        where: { package: { providerId: provider.id }, capturedAt: { gte: from, lte: to } },
+        include: { package: { select: { clientId: true, client: { select: { name: true } } } } },
+        orderBy: { capturedAt: "desc" }
       })
     ]);
 
@@ -684,6 +712,7 @@ export class FinancialService {
       sessionCount: number;
       confirmedSessionCount: number;
       contractCount: number;
+      packageCycleCount: number;
       services: string[];
       latestAt: string;
     }>();
@@ -698,6 +727,7 @@ export class FinancialService {
           sessionCount: 0,
           confirmedSessionCount: 0,
           contractCount: 0,
+          packageCycleCount: 0,
           services: [],
           latestAt: atIso
         });
@@ -729,10 +759,18 @@ export class FinancialService {
       if (!entry.services.includes(svcName)) entry.services.push(svcName);
     }
 
+    for (const cycle of packageCycles) {
+      const entry = getEntry(cycle.package.clientId, cycle.package.client.name, cycle.capturedAt.toISOString());
+      entry.completedCents   += cycle.amountCents;
+      entry.packageCycleCount += 1;
+      const svcName = "Pacote presencial";
+      if (!entry.services.includes(svcName)) entry.services.push(svcName);
+    }
+
     return Array.from(grouped.values()).sort((a, b) => {
       // clientes com receita realizada primeiro, depois por nome
-      const aRealized = a.sessionCount > 0 || a.contractCount > 0;
-      const bRealized = b.sessionCount > 0 || b.contractCount > 0;
+      const aRealized = a.sessionCount > 0 || a.contractCount > 0 || a.packageCycleCount > 0;
+      const bRealized = b.sessionCount > 0 || b.contractCount > 0 || b.packageCycleCount > 0;
       if (aRealized && !bRealized) return -1;
       if (!aRealized && bRealized) return 1;
       return a.name.localeCompare(b.name);
@@ -759,7 +797,7 @@ export class FinancialService {
       const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const { from, to } = monthBounds(month);
 
-      const [incomes, expenses, classes, appBookings, appContracts] = await Promise.all([
+      const [incomes, expenses, classes, appBookings, appContracts, appPackageCycles] = await Promise.all([
         getEffectiveIncomes(provider.id, month),
         getEffectiveExpenses(provider.id, month),
         prisma.financialClassSession.count({
@@ -772,11 +810,18 @@ export class FinancialService {
         prisma.consultancyContract.aggregate({
           where: { providerId: provider.id, paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: { gte: from, lte: to } },
           _sum: { paymentAmountCents: true }
+        }),
+        prisma.presentialPackageCycle.aggregate({
+          where: { package: { providerId: provider.id }, capturedAt: { gte: from, lte: to } },
+          _sum: { amountCents: true }
         })
       ]);
 
       const rev    = incomes.reduce((s, i) => s + i.amountCents, 0);
-      const appRev = (appBookings._sum.priceCents ?? 0) + (appContracts._sum.paymentAmountCents ?? 0);
+      const appRev =
+        (appBookings._sum.priceCents ?? 0)
+        + (appContracts._sum.paymentAmountCents ?? 0)
+        + (appPackageCycles._sum.amountCents ?? 0);
       const exp    = expenses.reduce((s, e) => s + e.amountCents, 0);
       result.push({ month, revenueCents: rev, appRevenueCents: appRev, expensesCents: exp, netCents: rev + appRev - exp, classes });
     }
@@ -793,7 +838,7 @@ export class FinancialService {
   async getPayouts(userId: string) {
     const provider = await getProviderByUserId(userId);
 
-    const [payments, contracts] = await Promise.all([
+    const [payments, contracts, packageCycles] = await Promise.all([
       prisma.payment.findMany({
         where: {
           booking: { providerId: provider.id },
@@ -829,6 +874,21 @@ export class FinancialService {
           createdAt: true
         },
         orderBy: { paymentCapturedAt: "desc" },
+        take: 50
+      }),
+      // ciclos de pacote presencial ja tem o split pronto (providerAmountCents/
+      // platformAmountCents gravados no instante da captura) - nao recalcula
+      prisma.presentialPackageCycle.findMany({
+        where: { package: { providerId: provider.id } },
+        select: {
+          id: true,
+          amountCents: true,
+          providerAmountCents: true,
+          platformAmountCents: true,
+          capturedAt: true,
+          package: { select: { paymentMethod: true } }
+        },
+        orderBy: { capturedAt: "desc" },
         take: 50
       })
     ]);
@@ -867,14 +927,28 @@ export class FinancialService {
       scheduledAt:         null as string | null
     }));
 
-    const transactions = [...bookingTransactions, ...contractTransactions]
+    const packageCycleTransactions = packageCycles.map(cycle => ({
+      id:                  cycle.id,
+      type:                "PRESENTIAL_PACKAGE" as const,
+      bookingId:           null as string | null,
+      amountCents:         cycle.amountCents,
+      providerAmountCents: cycle.providerAmountCents,
+      platformFeeCents:    cycle.platformAmountCents,
+      method:              (cycle.package.paymentMethod ?? "CREDIT_CARD") as string,
+      status:              "CAPTURED" as string,
+      capturedAt:          cycle.capturedAt.toISOString(),
+      scheduledAt:         null as string | null
+    }));
+
+    const transactions = [...bookingTransactions, ...contractTransactions, ...packageCycleTransactions]
       .sort((a, b) => (b.capturedAt ?? "").localeCompare(a.capturedAt ?? ""))
       .slice(0, 50);
 
     return {
       pendingCents:   pending.reduce((s, p)  => s + netFor(p), 0),
       availableCents: captured.reduce((s, p) => s + netFor(p), 0)
-        + contracts.reduce((s, c) => s + c.providerAmountCents, 0),
+        + contracts.reduce((s, c) => s + c.providerAmountCents, 0)
+        + packageCycles.reduce((s, c) => s + c.providerAmountCents, 0),
       payments: transactions
     };
   }

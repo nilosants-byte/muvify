@@ -6,6 +6,7 @@ import {
   ConsultancyContractStatus,
   ConsultancyPaymentStatus,
   Prisma,
+  PresentialPackageStatus,
   ProviderServiceMode,
   ServiceOfferKind,
   UserRole
@@ -1610,7 +1611,7 @@ export class ProviderService {
       }
     } as const;
 
-    const [bookings, contracts] = await Promise.all([
+    const [bookings, contracts, activePackages] = await Promise.all([
       prisma.booking.findMany({
         where: {
           providerId: provider.id,
@@ -1645,6 +1646,18 @@ export class ProviderService {
             select: { trainingPlans: true }
           }
         },
+        orderBy: { createdAt: "desc" },
+        take: 500,
+      }),
+      // Pacote presencial cobra em ciclos, nao por sessao - o "preco" do
+      // servico presencial pra esses clientes vem daqui (cycleAmountCents),
+      // nunca do priceCents=0 dos bookings gerados pelo pacote.
+      prisma.presentialPackage.findMany({
+        where: {
+          providerId: provider.id,
+          status: { in: [PresentialPackageStatus.ACTIVE, PresentialPackageStatus.PAST_DUE] }
+        },
+        include: { client: { select: clientSelect } },
         orderBy: { createdAt: "desc" },
         take: 500,
       })
@@ -1713,7 +1726,12 @@ export class ProviderService {
       const student = getStudent(booking.client, booking.scheduledAt);
       student.totalBookings += 1;
 
-      const price = Number.isFinite(booking.priceCents) ? booking.priceCents : null;
+      // Sessao gerada por pacote presencial tem priceCents=0 (ja foi paga
+      // no ciclo) - nao usa esse valor como "preco" do servico presencial,
+      // senao o preco mostrado cairia pra 0 sempre que a sessao mais recente
+      // do cliente for uma sessao de pacote. O valor real vem do pacote
+      // (loop de activePackages, abaixo).
+      const price = !booking.packageId && Number.isFinite(booking.priceCents) ? booking.priceCents : null;
       if (price != null) {
         const latest = presentialLatest.get(booking.client.id);
         if (!latest || booking.scheduledAt > latest.at) {
@@ -1743,6 +1761,27 @@ export class ProviderService {
         active: recentMs < 60 * 24 * 60 * 60 * 1000,
         nextSessionAt: presentialNextSession.get(clientId) ?? null,
         validUntil: null
+      });
+    }
+
+    // Pacote presencial ativo sobrescreve o "preco" derivado de sessao
+    // avulsa (acima) - representa melhor a relacao atual com o cliente do
+    // que uma sessao antiga isolada, e cobre o caso de cliente cujo unico
+    // vinculo e um pacote (sem nenhum Booking ainda, ex: creditos nao
+    // usados) que hoje simplesmente nao apareceria na lista.
+    const seenPackageClient = new Set<string>();
+    for (const pkg of activePackages) {
+      if (seenPackageClient.has(pkg.clientId)) continue; // so 1 pacote presencial ativo por vez, por design
+      seenPackageClient.add(pkg.clientId);
+
+      const student = getStudent(pkg.client, pkg.createdAt);
+      student.services.set("PRESENTIAL", {
+        serviceKind: "PRESENTIAL",
+        serviceLabel: serviceKindLabel("PRESENTIAL"),
+        valueCents: pkg.cycleAmountCents,
+        active: pkg.status === PresentialPackageStatus.ACTIVE,
+        nextSessionAt: presentialNextSession.get(pkg.clientId) ?? null,
+        validUntil: pkg.validUntil
       });
     }
 
@@ -1833,7 +1872,7 @@ export class ProviderService {
     const provider = await this.getProviderByUserId(userId);
     await this.assertStudentManagedByProvider(provider.id, clientId);
 
-    const [client, anamnesis, physicalAssessment, bookings, contracts, trainingCompletions] = await Promise.all([
+    const [client, anamnesis, physicalAssessment, bookings, contracts, trainingCompletions, presentialPackages] = await Promise.all([
       prisma.user.findUnique({
         where: { id: clientId },
         select: {
@@ -1955,6 +1994,18 @@ export class ProviderService {
         },
         orderBy: { completedAt: "desc" },
         take: 50
+      }),
+      // Historico de cobranca do pacote presencial - as sessoes (bookings,
+      // acima) tem priceCents=0, entao sem isso o dinheiro que o aluno
+      // efetivamente pagou nao aparece em lugar nenhum desta tela.
+      prisma.presentialPackage.findMany({
+        where: { providerId: provider.id, clientId },
+        include: {
+          offer: { select: { title: true } },
+          cycles: { orderBy: { cycleIndex: "desc" }, take: 24 }
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20
       })
     ]);
 
@@ -2031,6 +2082,7 @@ export class ProviderService {
         comboContracts: serviceCounters.COMBO
       },
       presentialHistory: bookings,
+      presentialPackages,
       consultancyContracts: contractsWithValidity,
       trainingCompliance: {
         completionCount: trainingCompletions.length,
