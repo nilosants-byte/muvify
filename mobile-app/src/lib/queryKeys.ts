@@ -151,6 +151,14 @@ export const queryKeys = {
     providerArchivedRequests: (params?: object) => ["consultancy", "providerArchivedRequests", params] as const,
   },
 
+  // ── Pacote presencial ──────────────────────────────────────────────────────
+  presentialPackages: {
+    all: ["presentialPackages"] as const,
+    myList: () => ["presentialPackages", "myList"] as const,
+    providerList: () => ["presentialPackages", "providerList"] as const,
+    detail: (packageId: string) => ["presentialPackages", "detail", packageId] as const,
+  },
+
   // ── Comunidade ─────────────────────────────────────────────────────────────
   community: {
     all: ["community"] as const,

@@ -2718,6 +2718,129 @@ export type GamificationProfile = {
   }>;
 };
 
+// ── presentialPackagesApi ────────────────────────────────────────────────────
+export type PresentialPackageStatus = "PENDING_PAYMENT" | "ACTIVE" | "PAST_DUE" | "CANCELLED" | "EXPIRED";
+
+export type PresentialPackageWeeklyScheduleSlot = { weekday: number; time: string };
+
+export type PresentialPackageCycle = {
+  id: string;
+  packageId: string;
+  cycleIndex: number;
+  amountCents: number;
+  providerAmountCents: number;
+  platformAmountCents: number;
+  sessionsGranted: number;
+  mpPaymentId?: string | null;
+  capturedAt: string;
+  periodStart: string;
+  periodEnd: string;
+};
+
+export type PresentialPackage = {
+  id: string;
+  providerId: string;
+  clientId: string;
+  offerId: string;
+  categoryId: string;
+  consultancyContractId?: string | null;
+  mode: PresentialPackageMode;
+  status: PresentialPackageStatus;
+  paymentMethod?: ConsultancyPaymentMethod | null;
+  cycleAmountCents: number;
+  billingCycle: OfferBillingCycle;
+  sessionsPerCycle: number;
+  weeklySchedule?: PresentialPackageWeeklyScheduleSlot[] | null;
+  hasFixedTerm: boolean;
+  totalCycles?: number | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  cancelledAt?: string | null;
+  nextCycleIndex: number;
+  nextBillingAt?: string | null;
+  consecutiveFailedCycles: number;
+  creditsRemainingThisCycle: number;
+  lastBillingFailureReason?: string | null;
+  pendingChargePixQrCodeUrl?: string | null;
+  pendingChargePixCopyPasteCode?: string | null;
+  pendingChargePixExpiresAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  offer?: ProviderServiceOffer;
+  provider?: { displayName: string; photoUrl?: string | null };
+  client?: { id: string; name: string; photoUrl?: string | null };
+  cycles?: PresentialPackageCycle[];
+};
+
+export type PresentialPackageChargeResult =
+  | { status: "CAPTURED" }
+  | {
+      status: "PENDING";
+      method?: "PIX";
+      pix: { qrCodeUrl: string | null; copyAndPasteCode: string | null; hostedInstructionsUrl: string | null } | null;
+    }
+  | { status: "FAILED" };
+
+export type PurchasePresentialPackageResponse = {
+  package: PresentialPackage;
+  payment: PresentialPackageChargeResult;
+};
+
+export type PurchaseComboResponse = {
+  contract: unknown;
+  package: PresentialPackage;
+  consultancyPayment: PresentialPackageChargeResult;
+  presentialPayment: PresentialPackageChargeResult;
+};
+
+export const presentialPackagesApi = {
+  purchase(
+    token: string,
+    body: {
+      offerId: string;
+      categoryId: string;
+      paymentMethod: "CREDIT_CARD" | "PIX";
+      weeklySchedule?: PresentialPackageWeeklyScheduleSlot[];
+    }
+  ) {
+    return apiRequest<PurchasePresentialPackageResponse>("/presential-packages", {
+      method: "POST",
+      token,
+      body
+    });
+  },
+  purchaseCombo(
+    token: string,
+    body: {
+      offerId: string;
+      categoryId: string;
+      paymentMethod: "CREDIT_CARD" | "PIX";
+      weeklySchedule?: PresentialPackageWeeklyScheduleSlot[];
+    }
+  ) {
+    return apiRequest<PurchaseComboResponse>("/presential-packages/combo", {
+      method: "POST",
+      token,
+      body
+    });
+  },
+  my(token: string) {
+    return apiRequest<PresentialPackage[]>("/presential-packages/my", { token });
+  },
+  providerList(token: string) {
+    return apiRequest<PresentialPackage[]>("/presential-packages/provider/my", { token });
+  },
+  detail(token: string, packageId: string) {
+    return apiRequest<PresentialPackage>(`/presential-packages/${packageId}`, { token });
+  },
+  cancel(token: string, packageId: string) {
+    return apiRequest<PresentialPackage>(`/presential-packages/${packageId}/cancel`, {
+      method: "POST",
+      token
+    });
+  }
+};
+
 // ── communityApi ───────────────────────────────────────────────────────────────
 export const communityApi = {
   follow(token: string, userId: string) {
