@@ -1820,14 +1820,6 @@ export const providersApi = {
       }
     );
   },
-  dashboardStudentPhysicalAssessment(token: string, clientId: string) {
-    return apiRequest<ProviderStudentPhysicalAssessment>(
-      `/providers/dashboard/students/${clientId}/physical-assessment`,
-      {
-        token
-      }
-    );
-  },
   upsertStudentPhysicalAssessment(
     token: string,
     clientId: string,

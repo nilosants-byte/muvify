@@ -45,7 +45,6 @@ export const queryKeys = {
     myCredentials: () => ["providers", "myCredentials"] as const,
     dashboardStudents: () => ["providers", "dashboardStudents"] as const,
     dashboardStudentDetail: (clientId: string) => ["providers", "dashboardStudentDetail", clientId] as const,
-    physicalAssessment: (clientId: string) => ["providers", "physicalAssessment", clientId] as const,
     studentAnamnesis: (clientId: string) => ["providers", "studentAnamnesis", clientId] as const,
     timeline: () => ["providers", "timeline"] as const,
     profile: () => ["providers", "profile"] as const,

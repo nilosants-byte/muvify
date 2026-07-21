@@ -2091,43 +2091,6 @@ export class ProviderService {
     };
   }
 
-  async getStudentPhysicalAssessment(userId: string, clientId: string) {
-    const provider = await this.getProviderByUserId(userId);
-    await this.assertStudentManagedByProvider(provider.id, clientId);
-
-    const assessment = await prisma.providerStudentAssessment.findUnique({
-      where: {
-        providerId_clientId: {
-          providerId: provider.id,
-          clientId
-        }
-      }
-    });
-
-    if (assessment) {
-      return assessment;
-    }
-
-    return {
-      id: null,
-      providerId: provider.id,
-      clientId,
-      weight: null,
-      height: null,
-      imc: null,
-      bodyFatPercent: null,
-      muscleMass: null,
-      circumferences: null,
-      waist: null,
-      hip: null,
-      chest: null,
-      arm: null,
-      thigh: null,
-      createdAt: null,
-      updatedAt: null
-    };
-  }
-
   async upsertStudentPhysicalAssessment(
     userId: string,
     clientId: string,

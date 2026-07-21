@@ -99,14 +99,6 @@ providerRoutes.get(
   providerController.dashboardStudentDetail
 );
 
-providerRoutes.get(
-  "/dashboard/students/:clientId/physical-assessment",
-  ensureAuthenticated,
-  ensureRole(UserRole.PROVIDER),
-  validate(providerStudentDetailSchema),
-  providerController.getStudentPhysicalAssessment
-);
-
 providerRoutes.put(
   "/dashboard/students/:clientId/physical-assessment",
   ensureAuthenticated,

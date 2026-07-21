@@ -117,14 +117,6 @@ export class ProviderController {
     return response.json(payload);
   }
 
-  async getStudentPhysicalAssessment(request: Request, response: Response) {
-    const payload = await providerService.getStudentPhysicalAssessment(
-      request.user!.id,
-      request.params.clientId
-    );
-    return response.json(payload);
-  }
-
   async upsertStudentPhysicalAssessment(request: Request, response: Response) {
     const payload = await providerService.upsertStudentPhysicalAssessment(
       request.user!.id,
