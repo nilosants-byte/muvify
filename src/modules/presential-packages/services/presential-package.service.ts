@@ -383,6 +383,10 @@ export class PresentialPackageService {
         where: { id: pkg.id },
         data: {
           status: PresentialPackageStatus.PAST_DUE,
+          // nextBillingAt guarda o periodStart deste ciclo pendente (o
+          // cliente pode pagar o Pix horas depois) - o webhook usa esse
+          // valor pra ativar o ciclo na janela certa quando confirmar.
+          nextBillingAt: periodStart,
           pendingChargeMpPaymentId: mpPayId,
           pendingChargePixQrCodeUrl: pixPayload?.qrCodeUrl ?? null,
           pendingChargePixCopyPasteCode: pixPayload?.copyAndPasteCode ?? null,
@@ -610,5 +614,44 @@ export class PresentialPackageService {
         console.error(`[presential-package] expireStalePendingPixCharges falhou para ${pkg.id}:`, error);
       }
     }
+  }
+
+  // Chamado pelo webhook do Mercado Pago quando um Pix pendente (renovacao
+  // ou primeiro ciclo) e confirmado de forma assincrona - cartao nunca
+  // passa por aqui, porque a resposta do cartao ja e sincrona em
+  // chargeCycle. Retorna false se o pagamento nao pertence a nenhum
+  // pacote (o webhook trata isso como "nao e desse dominio").
+  async confirmPendingPixCycle(mpPaymentId: string) {
+    const pkg = await prisma.presentialPackage.findFirst({
+      where: { pendingChargeMpPaymentId: mpPaymentId },
+      select: {
+        id: true,
+        nextCycleIndex: true,
+        nextBillingAt: true,
+        billingCycle: true,
+        cycleAmountCents: true,
+        client: { select: { id: true, name: true } },
+        provider: { select: { userId: true } }
+      }
+    });
+    if (!pkg || !pkg.nextBillingAt) return false;
+
+    const periodStart = pkg.nextBillingAt;
+    const periodEnd = addCycles(periodStart, pkg.billingCycle, 1);
+    await this.activateCycle(pkg.id, pkg.nextCycleIndex, periodStart, periodEnd, mpPaymentId, pkg.cycleAmountCents);
+
+    await notificationService.sendToUsers([pkg.client.id], {
+      preferenceType: "PAYMENTS",
+      title: "Pagamento do pacote confirmado",
+      body: "Seu Pix foi confirmado e as sessões deste ciclo já estão liberadas.",
+      data: { type: "PRESENTIAL_PACKAGE_CYCLE_CAPTURED", packageId: pkg.id }
+    });
+    await notificationService.sendToUsers([pkg.provider.userId], {
+      preferenceType: "PAYMENTS",
+      title: "Pix de aluno confirmado",
+      body: `Pagamento de ${pkg.client.name} confirmado - ciclo liberado.`,
+      data: { type: "PRESENTIAL_PACKAGE_CYCLE_CAPTURED", packageId: pkg.id }
+    });
+    return true;
   }
 }

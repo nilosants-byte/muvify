@@ -19,6 +19,7 @@ import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/pl
 import { encryptSensitiveText, decryptSensitiveText } from "../../../shared/utils/encryption";
 import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { NotificationService } from "../../notifications/services/notification.service";
+import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
 
 type Tx = Prisma.TransactionClient | typeof prisma;
 
@@ -95,6 +96,7 @@ function normalizeNickname(nickname?: string | null) {
 }
 
 const notificationService = new NotificationService();
+const presentialPackageService = new PresentialPackageService();
 const mpPayment = new Payment(mp);
 const mpCustomer = new Customer(mp);
 const mpCustomerCard = new CustomerCard(mp);
@@ -1336,7 +1338,14 @@ export class PaymentService {
       }
     });
 
-    if (!payment && !consultancyContract) {
+    // Pix pendente de um ciclo de pacote presencial (cartao ja resolve
+    // sincrono em chargeCycle - so Pix depende do webhook pra confirmar).
+    const presentialPackagePending = await prisma.presentialPackage.findFirst({
+      where: { pendingChargeMpPaymentId: String(mpPay.id) },
+      select: { id: true }
+    });
+
+    if (!payment && !consultancyContract && !presentialPackagePending) {
       console.warn(`[webhook] mpPaymentId ${mpPaymentId} nao encontrado em payment ou contract. Status: ${mpStatus}`);
       return;
     }
@@ -1403,6 +1412,10 @@ export class PaymentService {
             }
           );
         }
+      }
+
+      if (presentialPackagePending) {
+        await presentialPackageService.confirmPendingPixCycle(String(mpPay.id));
       }
     }
 
