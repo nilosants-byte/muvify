@@ -1543,7 +1543,107 @@ export const adminApi = {
   },
   lookupBookingDetail(token: string, bookingId: string) {
     return apiRequest<AdminLookupBookingDetail>(`/admin/lookup/bookings/${bookingId}`, { token });
+  },
+  listDisputeCases(token: string, params?: { status?: "OPEN" | "RESOLVED" }) {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<AdminDisputeCaseListItem[]>(`/admin/disputes${suffix}`, { token });
+  },
+  getDisputeCaseDetail(token: string, caseId: string) {
+    return apiRequest<AdminDisputeCaseDetail>(`/admin/disputes/${caseId}`, { token });
+  },
+  resolveDisputeCase(
+    token: string,
+    caseId: string,
+    input: { resolution: "REFUNDED" | "DENIED"; amountCents?: number; note: string }
+  ) {
+    return apiRequest<AdminDisputeCaseListItem>(`/admin/disputes/${caseId}/resolve`, {
+      method: "POST",
+      token,
+      body: input
+    });
   }
+};
+
+export type AdminDisputeCaseType = "NO_SHOW_CONTESTED" | "CHARGEBACK" | "REFUND_FAILED";
+export type AdminDisputeCaseStatus = "OPEN" | "RESOLVED";
+export type AdminDisputeCaseResolution = "REFUNDED" | "DENIED";
+
+export type AdminDisputeCaseListItem = {
+  id: string;
+  type: AdminDisputeCaseType;
+  status: AdminDisputeCaseStatus;
+  amountCents: number;
+  resolution: AdminDisputeCaseResolution | null;
+  resolvedAmountCents: number | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  client: { id: string; name: string; email: string };
+  provider: { id: string; displayName: string; user: { email: string } };
+};
+
+export type AdminDisputeCaseDetail = AdminDisputeCaseListItem & {
+  resolutionNote: string | null;
+  resolvedByAdmin: { id: string; name: string } | null;
+  provider: { id: string; displayName: string; user: { id: string; name: string; email: string } };
+  booking: {
+    id: string;
+    scheduledAt: string;
+    sessionLocation: string | null;
+    status: string;
+    priceCents: number;
+    currency: string;
+    attendanceCodeValidatedAt: string | null;
+    category: { name: string } | null;
+    completionEvidences: Array<{
+      id: string;
+      userId: string;
+      mimeType: string;
+      storageKey: string | null;
+      imageBase64: string | null;
+      capturedAt: string;
+    }>;
+    chatMessages: Array<{
+      id: string;
+      senderId: string | null;
+      isSystem: boolean;
+      content: string;
+      createdAt: string;
+    }>;
+  } | null;
+  consultancyContract: {
+    id: string;
+    status: string;
+    paymentAmountCents: number;
+    paymentCapturedAt: string | null;
+    offer: { title: string } | null;
+  } | null;
+  presentialPackage: {
+    id: string;
+    status: string;
+    cycleAmountCents: number;
+    mode: string;
+    offer: { title: string } | null;
+  } | null;
+  presentialPackageCycle: {
+    id: string;
+    cycleIndex: number;
+    amountCents: number;
+    capturedAt: string;
+    periodStart: string;
+    periodEnd: string;
+  } | null;
+  noShowReport: {
+    id: string;
+    status: string;
+    reportReason: string | null;
+    contestReason: string | null;
+    contestDeadlineAt: string;
+    contestedAt: string | null;
+    reportedUserId: string;
+    reportedByUserId: string;
+  } | null;
 };
 
 export const categoriesApi = {
@@ -1859,13 +1959,14 @@ export const bookingsApi = {
       body: { qrToken }
     });
   },
-  reportNoShow(token: string, bookingId: string) {
+  reportNoShow(token: string, bookingId: string, reportReason?: string) {
     return apiRequest<Booking>(`/bookings/${bookingId}/report-no-show`, {
       method: "POST",
-      token
+      token,
+      body: { reportReason }
     });
   },
-  contestNoShow(token: string, bookingId: string) {
+  contestNoShow(token: string, bookingId: string, contestReason?: string) {
     return apiRequest<{
       id: string;
       bookingId: string;
@@ -1877,7 +1978,8 @@ export const bookingsApi = {
       resolvedAt: string | null;
     }>(`/bookings/${bookingId}/contest-no-show`, {
       method: "POST",
-      token
+      token,
+      body: { contestReason }
     });
   }
 };

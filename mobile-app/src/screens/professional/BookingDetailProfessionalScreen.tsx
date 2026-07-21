@@ -88,6 +88,8 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   const [validated, setValidated] = useState(() => _validatedCache.get(bookingId) ?? false);
   const [reportingNoShow, setReportingNoShow] = useState(false);
   const [contestingNoShow, setContestingNoShow] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [contestReason, setContestReason] = useState("");
 
   const noShowReport = booking?.noShowReport;
   const wasReportedAsNoShow = Boolean(noShowReport && noShowReport.reportedUserId === user?.id);
@@ -108,7 +110,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
           onPress: async () => {
             try {
               setContestingNoShow(true);
-              await runWithAuth((token) => bookingsApi.contestNoShow(token, booking.id));
+              await runWithAuth((token) => bookingsApi.contestNoShow(token, booking.id, contestReason.trim() || undefined));
               showToast("Contestação registrada. O caso está em análise.", "success");
               void bookingDetailQuery.refetch();
             } catch (error) {
@@ -188,7 +190,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
           onPress: async () => {
             try {
               setReportingNoShow(true);
-              await runWithAuth((token) => bookingsApi.reportNoShow(token, bookingId));
+              await runWithAuth((token) => bookingsApi.reportNoShow(token, bookingId, reportReason.trim() || undefined));
               showToast("Agendamento encerrado.", "success");
               void bookingDetailQuery.refetch();
             } catch (error) {
@@ -464,12 +466,23 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
             ) : null}
 
             {booking.status === "CONFIRMED" && !validated && new Date(booking.scheduledAt) < new Date() ? (
-              <MvButton
-                variant="danger"
-                label="O aluno não compareceu"
-                loading={reportingNoShow}
-                onPress={reportNoShow}
-              />
+              <View style={{ gap: 6 }}>
+                <MvInput
+                  multiline
+                  numberOfLines={2}
+                  maxLength={500}
+                  placeholder="Conte o que aconteceu (opcional)"
+                  value={reportReason}
+                  onChangeText={setReportReason}
+                  style={{ textAlignVertical: "top" } as any}
+                />
+                <MvButton
+                  variant="danger"
+                  label="O aluno não compareceu"
+                  loading={reportingNoShow}
+                  onPress={reportNoShow}
+                />
+              </View>
             ) : null}
 
             {wasReportedAsNoShow && noShowReport ? (
@@ -483,12 +496,23 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
                     : "Este relato já foi resolvido."}
                 </MvText>
                 {canContestNoShow ? (
-                  <MvButton
-                    variant="outline"
-                    label={contestingNoShow ? "Enviando..." : "Contestar"}
-                    loading={contestingNoShow}
-                    onPress={handleContestNoShow}
-                  />
+                  <View style={{ gap: 6 }}>
+                    <MvInput
+                      multiline
+                      numberOfLines={2}
+                      maxLength={500}
+                      placeholder="Conte sua versão do que aconteceu (opcional)"
+                      value={contestReason}
+                      onChangeText={setContestReason}
+                      style={{ textAlignVertical: "top" } as any}
+                    />
+                    <MvButton
+                      variant="outline"
+                      label={contestingNoShow ? "Enviando..." : "Contestar"}
+                      loading={contestingNoShow}
+                      onPress={handleContestNoShow}
+                    />
+                  </View>
                 ) : null}
               </MvCard>
             ) : null}

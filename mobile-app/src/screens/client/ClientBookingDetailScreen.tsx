@@ -35,7 +35,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { SelfieProofCapture } from "../../components/media/SelfieProofCapture";
-import { MvAvatar } from "../../components/mv";
+import { MvAvatar, MvInput } from "../../components/mv";
 import { formatBRDate, formatBRDateTime, formatCurrencyBRL } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { resolveMediaUrl } from "../../utils/media";
@@ -120,6 +120,8 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   const [cancelling, setCancelling] = useState(false);
   const [reportingNoShow, setReportingNoShow] = useState(false);
   const [contestingNoShow, setContestingNoShow] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [contestReason, setContestReason] = useState("");
 
   useEffect(() => {
     if (detailQuery.data) setAttendance(detailQuery.data.attendance);
@@ -253,7 +255,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
           onPress: async () => {
             try {
               setReportingNoShow(true);
-              await runWithAuth((token) => bookingsApi.reportNoShow(token, booking.id));
+              await runWithAuth((token) => bookingsApi.reportNoShow(token, booking.id, reportReason.trim() || undefined));
               showToast("Agendamento encerrado.", "success");
               navigation.goBack();
             } catch (error) {
@@ -277,7 +279,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
           onPress: async () => {
             try {
               setContestingNoShow(true);
-              await runWithAuth((token) => bookingsApi.contestNoShow(token, booking.id));
+              await runWithAuth((token) => bookingsApi.contestNoShow(token, booking.id, contestReason.trim() || undefined));
               showToast("Contestação registrada. O caso está em análise.", "success");
               void detailQuery.refetch();
             } catch (error) {
@@ -695,15 +697,26 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
               </Text>
             </TouchableOpacity>
             {canReportNoShow ? (
-              <TouchableOpacity
-                disabled={reportingNoShow}
-                onPress={handleReportNoShow}
-                style={{ height: 44, borderRadius: S.btnR, alignItems: "center", justifyContent: "center", opacity: reportingNoShow ? 0.6 : 1 }}
-              >
-                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.danger }}>
-                  {reportingNoShow ? "Reportando..." : "O personal não compareceu"}
-                </Text>
-              </TouchableOpacity>
+              <View style={{ gap: 6 }}>
+                <MvInput
+                  multiline
+                  numberOfLines={2}
+                  maxLength={500}
+                  placeholder="Conte o que aconteceu (opcional)"
+                  value={reportReason}
+                  onChangeText={setReportReason}
+                  style={{ textAlignVertical: "top" } as any}
+                />
+                <TouchableOpacity
+                  disabled={reportingNoShow}
+                  onPress={handleReportNoShow}
+                  style={{ height: 44, borderRadius: S.btnR, alignItems: "center", justifyContent: "center", opacity: reportingNoShow ? 0.6 : 1 }}
+                >
+                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.danger }}>
+                    {reportingNoShow ? "Reportando..." : "O personal não compareceu"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             ) : null}
           </View>
         )}
@@ -721,15 +734,26 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                 : "Este relato já foi resolvido."}
             </Text>
             {canContestNoShow ? (
-              <TouchableOpacity
-                disabled={contestingNoShow}
-                onPress={handleContestNoShow}
-                style={{ height: 40, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.danger, alignItems: "center", justifyContent: "center", opacity: contestingNoShow ? 0.6 : 1 }}
-              >
-                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.danger }}>
-                  {contestingNoShow ? "Enviando..." : "Contestar"}
-                </Text>
-              </TouchableOpacity>
+              <View style={{ gap: 6 }}>
+                <MvInput
+                  multiline
+                  numberOfLines={2}
+                  maxLength={500}
+                  placeholder="Conte sua versão do que aconteceu (opcional)"
+                  value={contestReason}
+                  onChangeText={setContestReason}
+                  style={{ textAlignVertical: "top" } as any}
+                />
+                <TouchableOpacity
+                  disabled={contestingNoShow}
+                  onPress={handleContestNoShow}
+                  style={{ height: 40, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.danger, alignItems: "center", justifyContent: "center", opacity: contestingNoShow ? 0.6 : 1 }}
+                >
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.danger }}>
+                    {contestingNoShow ? "Enviando..." : "Contestar"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             ) : null}
           </View>
         ) : null}

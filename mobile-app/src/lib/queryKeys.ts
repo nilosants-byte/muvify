@@ -127,6 +127,8 @@ export const queryKeys = {
     chatAuditMessages: (bookingId: string, params?: object) => ["admin", "chatAuditMessages", bookingId, params] as const,
     lookupCref: (doc: string) => ["admin", "lookupCref", doc] as const,
     lookupBookingDetail: (id: string) => ["admin", "lookupBookingDetail", id] as const,
+    disputeCases: (params?: object) => ["admin", "disputeCases", params] as const,
+    disputeCaseDetail: (caseId: string) => ["admin", "disputeCaseDetail", caseId] as const,
   },
 
   // ── Exercícios ─────────────────────────────────────────────────────────────

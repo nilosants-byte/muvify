@@ -128,6 +128,8 @@ export type AdminStackParamList = {
   AdminConsultas: undefined;
   AdminConsultasBookingDetail: { bookingId: string };
   AdminExercises: undefined;
+  AdminDisputes: undefined;
+  AdminDisputeDetail: { caseId: string };
 };
 
 export type RootStackParamList = {
