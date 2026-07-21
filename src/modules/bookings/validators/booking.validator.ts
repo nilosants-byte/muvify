@@ -61,6 +61,24 @@ export const bookingIdParamSchema = z.object({
   })
 });
 
+export const reportNoShowSchema = z.object({
+  params: z.object({
+    bookingId: z.string().uuid()
+  }),
+  body: z.object({
+    reportReason: z.string().trim().min(3).max(500).optional()
+  })
+});
+
+export const contestNoShowSchema = z.object({
+  params: z.object({
+    bookingId: z.string().uuid()
+  }),
+  body: z.object({
+    contestReason: z.string().trim().min(3).max(500).optional()
+  })
+});
+
 export const completionProofParamSchema = z.object({
   params: z.object({
     bookingId: z.string().uuid(),

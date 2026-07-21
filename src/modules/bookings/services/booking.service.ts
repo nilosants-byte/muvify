@@ -1246,7 +1246,7 @@ export class BookingService {
   // validated — if it was validated, both people were physically present, so this
   // isn't a no-show situation. The reported party takes a strike, visible to admins
   // via the /admin/no-show-reports lookup; nothing here auto-bans anyone.
-  async reportNoShow(reporterId: string, bookingId: string) {
+  async reportNoShow(reporterId: string, bookingId: string, reportReason?: string) {
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
       include: {
@@ -1293,7 +1293,13 @@ export class BookingService {
       }
 
       await tx.noShowReport.create({
-        data: { bookingId, reportedUserId, reportedByUserId: reporterId, contestDeadlineAt }
+        data: {
+          bookingId,
+          reportedUserId,
+          reportedByUserId: reporterId,
+          contestDeadlineAt,
+          reportReason: reportReason?.trim() || null
+        }
       });
       const updatedBooking = await tx.booking.update({
         where: { id: bookingId },
@@ -1329,10 +1335,20 @@ export class BookingService {
   // disso, so um admin resolve manualmente (fila de disputa, ainda nao
   // construida). Contestar so pausa a resolucao automatica, nao decide nada
   // sozinho.
-  async contestNoShowReport(userId: string, bookingId: string) {
+  async contestNoShowReport(userId: string, bookingId: string, contestReason?: string) {
     const report = await prisma.noShowReport.findUnique({
       where: { bookingId },
-      include: { booking: { select: { clientId: true, provider: { select: { userId: true } } } } }
+      include: {
+        booking: {
+          select: {
+            clientId: true,
+            providerId: true,
+            priceCents: true,
+            provider: { select: { userId: true } },
+            payment: { select: { mpPaymentId: true } }
+          }
+        }
+      }
     });
 
     if (!report) {
@@ -1348,16 +1364,36 @@ export class BookingService {
       throw new AppError("O prazo para contestar este relato já passou.", StatusCodes.BAD_REQUEST);
     }
 
-    const updated = await prisma.noShowReport.update({
-      where: { bookingId },
-      data: { status: "CONTESTED", contestedAt: new Date() }
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedReport = await tx.noShowReport.update({
+        where: { bookingId },
+        data: {
+          status: "CONTESTED",
+          contestedAt: new Date(),
+          contestReason: contestReason?.trim() || null
+        }
+      });
+
+      await tx.disputeCase.create({
+        data: {
+          type: "NO_SHOW_CONTESTED",
+          clientId: report.booking.clientId,
+          providerId: report.booking.providerId,
+          amountCents: report.booking.priceCents,
+          mpPaymentId: report.booking.payment?.mpPaymentId ?? null,
+          bookingId,
+          noShowReportId: report.id
+        }
+      });
+
+      return updatedReport;
     });
 
     void notificationService
       .sendToUsers([report.reportedByUserId, report.reportedUserId], {
         preferenceType: "BOOKINGS",
         title: "Relato de falta contestado",
-        body: "A parte reportada contestou o relato. O caso vai para análise.",
+        body: "A parte reportada contestou o relato. O caso vai para análise de um administrador.",
         data: { type: "BOOKING_NO_SHOW_CONTESTED", bookingId }
       })
       .catch((error) => {

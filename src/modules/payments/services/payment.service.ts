@@ -1326,15 +1326,18 @@ export class PaymentService {
     // Find booking payment
     const payment = await prisma.payment.findFirst({
       where: { mpPaymentId: String(mpPay.id) },
-      select: { id: true, bookingId: true, status: true }
+      select: {
+        id: true, bookingId: true, status: true,
+        booking: { select: { clientId: true, providerId: true, priceCents: true } }
+      }
     });
 
     // Find consultancy contract
     const consultancyContract = await prisma.consultancyContract.findFirst({
       where: { mpPaymentId: String(mpPay.id) },
       select: {
-        id: true, requestId: true, clientId: true, paymentStatus: true,
-        provider: { select: { userId: true } }
+        id: true, requestId: true, clientId: true, paymentStatus: true, paymentAmountCents: true,
+        provider: { select: { id: true, userId: true } }
       }
     });
 
@@ -1484,15 +1487,32 @@ export class PaymentService {
         metadata: { mpPaymentId: String(mpPay.id) }
       });
 
+      // MP pode reenviar o mesmo webhook varias vezes — nao duplicar o caso.
+      const existingDisputeCase = await prisma.disputeCase.findFirst({
+        where: { mpPaymentId: String(mpPay.id), type: "CHARGEBACK" },
+        select: { id: true }
+      });
+
       if (payment) {
         this.notifyBookingUsers(payment.bookingId, {
           title: "Contestação de pagamento aberta",
           body: "Uma contestação foi aberta para um pagamento deste agendamento.",
           data: { type: "PAYMENT_DISPUTED" }
         }).catch((error) => console.error("Dispute notification failed:", error));
-      }
 
-      if (consultancyContract) {
+        if (!existingDisputeCase) {
+          await prisma.disputeCase.create({
+            data: {
+              type: "CHARGEBACK",
+              clientId: payment.booking.clientId,
+              providerId: payment.booking.providerId,
+              amountCents: payment.booking.priceCents,
+              mpPaymentId: String(mpPay.id),
+              bookingId: payment.bookingId
+            }
+          });
+        }
+      } else if (consultancyContract) {
         notificationService
           .sendToUsers(
             [consultancyContract.clientId, consultancyContract.provider.userId],
@@ -1504,6 +1524,54 @@ export class PaymentService {
             }
           )
           .catch((error) => console.error("Dispute notification failed:", error));
+
+        if (!existingDisputeCase) {
+          await prisma.disputeCase.create({
+            data: {
+              type: "CHARGEBACK",
+              clientId: consultancyContract.clientId,
+              providerId: consultancyContract.provider.id,
+              amountCents: consultancyContract.paymentAmountCents,
+              mpPaymentId: String(mpPay.id),
+              consultancyContractId: consultancyContract.id
+            }
+          });
+        }
+      } else {
+        const cycle = await prisma.presentialPackageCycle.findFirst({
+          where: { mpPaymentId: String(mpPay.id) },
+          select: {
+            id: true,
+            amountCents: true,
+            packageId: true,
+            package: { select: { clientId: true, providerId: true, provider: { select: { userId: true } } } }
+          }
+        });
+
+        if (cycle) {
+          notificationService
+            .sendToUsers([cycle.package.clientId, cycle.package.provider.userId], {
+              preferenceType: "PAYMENTS",
+              title: "Contestação de pagamento aberta",
+              body: "Uma contestação foi aberta para uma cobrança de pacote presencial.",
+              data: { type: "PAYMENT_DISPUTED", packageId: cycle.packageId }
+            })
+            .catch((error) => console.error("Dispute notification failed:", error));
+
+          if (!existingDisputeCase) {
+            await prisma.disputeCase.create({
+              data: {
+                type: "CHARGEBACK",
+                clientId: cycle.package.clientId,
+                providerId: cycle.package.providerId,
+                amountCents: cycle.amountCents,
+                mpPaymentId: String(mpPay.id),
+                presentialPackageId: cycle.packageId,
+                presentialPackageCycleId: cycle.id
+              }
+            });
+          }
+        }
       }
     }
   }

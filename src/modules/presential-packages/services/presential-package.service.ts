@@ -700,6 +700,7 @@ export class PresentialPackageService {
       }
     });
 
+    let refundFailed = false;
     if (isProvider) {
       const lastCycle = await prisma.presentialPackageCycle.findFirst({
         where: { packageId: pkg.id },
@@ -710,6 +711,19 @@ export class PresentialPackageService {
           await mpRefundClient.create({ payment_id: lastCycle.mpPaymentId, body: {} });
         } catch (error) {
           console.error(`[presential-package] refund do ciclo ${lastCycle.id} falhou:`, error);
+          refundFailed = true;
+          await prisma.disputeCase.create({
+            data: {
+              type: "REFUND_FAILED",
+              clientId: pkg.clientId,
+              providerId: pkg.providerId,
+              amountCents: lastCycle.amountCents,
+              mpPaymentId: lastCycle.mpPaymentId,
+              presentialPackageId: pkg.id,
+              presentialPackageCycleId: lastCycle.id,
+              contextNote: "Reembolso automático falhou ao cancelar pacote presencial (cancelamento pelo profissional)."
+            }
+          });
         }
       }
     }
@@ -718,7 +732,9 @@ export class PresentialPackageService {
       preferenceType: "PAYMENTS",
       title: "Pacote presencial cancelado",
       body: isProvider
-        ? "O profissional cancelou seu pacote presencial. O ciclo mais recente foi reembolsado."
+        ? refundFailed
+          ? "O profissional cancelou seu pacote presencial. Houve uma falha ao processar o reembolso do ciclo mais recente — nossa equipe já foi avisada e vai resolver manualmente."
+          : "O profissional cancelou seu pacote presencial. O ciclo mais recente foi reembolsado."
         : "Seu pacote presencial foi cancelado. As sessões já pagas neste ciclo continuam valendo.",
       data: { type: "PRESENTIAL_PACKAGE_CANCELLED", packageId: pkg.id }
     });

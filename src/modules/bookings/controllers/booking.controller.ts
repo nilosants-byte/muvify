@@ -63,12 +63,20 @@ export class BookingController {
   }
 
   async reportNoShow(request: Request, response: Response) {
-    const booking = await bookingService.reportNoShow(request.user!.id, request.params.bookingId);
+    const booking = await bookingService.reportNoShow(
+      request.user!.id,
+      request.params.bookingId,
+      request.body.reportReason
+    );
     return response.json(booking);
   }
 
   async contestNoShowReport(request: Request, response: Response) {
-    const report = await bookingService.contestNoShowReport(request.user!.id, request.params.bookingId);
+    const report = await bookingService.contestNoShowReport(
+      request.user!.id,
+      request.params.bookingId,
+      request.body.contestReason
+    );
     return response.json(report);
   }
 

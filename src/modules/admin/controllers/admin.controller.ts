@@ -1,10 +1,13 @@
+import { DisputeCaseStatus } from "@prisma/client";
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { AdminService } from "../services/admin.service";
+import { DisputeCaseService } from "../services/dispute-case.service";
 import { ProviderService } from "../../providers/services/provider.service";
 import { ExerciseService } from "../../exercises/services/exercise.service";
 
 const adminService = new AdminService();
+const disputeCaseService = new DisputeCaseService();
 const providerService = new ProviderService();
 const exerciseService = new ExerciseService();
 
@@ -132,6 +135,24 @@ export class AdminController {
   async listNoShowReports(request: Request, response: Response) {
     const minStrikes = request.query.minStrikes ? Number(request.query.minStrikes) : undefined;
     const payload = await adminService.listNoShowReports(request.user!.id, minStrikes);
+    return response.json(payload);
+  }
+
+  async listDisputeCases(request: Request, response: Response) {
+    const payload = await disputeCaseService.listCases(
+      request.user!.id,
+      request.query.status as DisputeCaseStatus | undefined
+    );
+    return response.json(payload);
+  }
+
+  async getDisputeCaseDetail(request: Request, response: Response) {
+    const payload = await disputeCaseService.getCaseDetail(request.user!.id, request.params.caseId);
+    return response.json(payload);
+  }
+
+  async resolveDisputeCase(request: Request, response: Response) {
+    const payload = await disputeCaseService.resolveCase(request.user!.id, request.params.caseId, request.body);
     return response.json(payload);
   }
 

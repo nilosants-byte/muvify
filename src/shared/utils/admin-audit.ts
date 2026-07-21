@@ -5,7 +5,8 @@ export type AdminAuditAction =
   | "CREF_APPROVED"
   | "CREF_REJECTED"
   | "SUPPORT_TICKET_REPLIED"
-  | "DATA_RETENTION_RUN";
+  | "DATA_RETENTION_RUN"
+  | "DISPUTE_CASE_RESOLVED";
 
 export async function writeAdminAuditLog(params: {
   adminId: string;

@@ -11,10 +11,13 @@ import {
   adminCrefQueueQuerySchema,
   adminDataRetentionRunsQuerySchema,
   adminDashboardOverviewSchema,
+  adminDisputeCaseIdSchema,
+  adminListDisputeCasesQuerySchema,
   adminLookupBookingDetailSchema,
   adminLookupBookingsSchema,
   adminLookupChatsSchema,
   adminLookupCrefSchema,
+  adminResolveDisputeCaseSchema,
   adminRunDataRetentionSchema,
   adminSupportQueueQuerySchema,
   adminSupportReplySchema,
@@ -95,6 +98,23 @@ adminRoutes.get("/lookup/chats", validate(adminLookupChatsSchema), adminControll
 adminRoutes.get("/lookup/bookings", validate(adminLookupBookingsSchema), adminController.lookupBookings);
 adminRoutes.get("/lookup/bookings/:bookingId", validate(adminLookupBookingDetailSchema), adminController.lookupBookingDetail);
 adminRoutes.get("/no-show-reports", adminController.listNoShowReports);
+
+adminRoutes.get(
+  "/disputes",
+  validate(adminListDisputeCasesQuerySchema),
+  adminController.listDisputeCases
+);
+adminRoutes.get(
+  "/disputes/:caseId",
+  validate(adminDisputeCaseIdSchema),
+  adminController.getDisputeCaseDetail
+);
+adminRoutes.post(
+  "/disputes/:caseId/resolve",
+  uploadRateLimiter,
+  validate(adminResolveDisputeCaseSchema),
+  adminController.resolveDisputeCase
+);
 
 adminRoutes.get("/exercises", validate(listExercisesSchema), adminController.listPrebuiltExercises.bind(adminController));
 adminRoutes.post("/exercises", uploadRateLimiter, validate(createPrebuiltExerciseSchema), adminController.createPrebuiltExercise.bind(adminController));

@@ -8,7 +8,9 @@ import { BookingController } from "../controllers/booking.controller";
 import {
   bookingIdParamSchema,
   completionProofParamSchema,
+  contestNoShowSchema,
   createBookingSchema,
+  reportNoShowSchema,
   updateBookingStatusSchema,
   verifyAttendanceCodeSchema,
   verifyAttendanceQrSchema
@@ -46,14 +48,14 @@ bookingRoutes.post(
   "/:bookingId/report-no-show",
   clientOrProvider,
   uploadRateLimiter,
-  validate(bookingIdParamSchema),
+  validate(reportNoShowSchema),
   bookingController.reportNoShow
 );
 bookingRoutes.post(
   "/:bookingId/contest-no-show",
   clientOrProvider,
   uploadRateLimiter,
-  validate(bookingIdParamSchema),
+  validate(contestNoShowSchema),
   bookingController.contestNoShowReport
 );
 bookingRoutes.get(

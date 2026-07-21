@@ -113,3 +113,22 @@ export const adminLookupBookingsSchema = z.object({
 export const adminLookupBookingDetailSchema = z.object({
   params: z.object({ bookingId: z.string().uuid() })
 });
+
+export const adminListDisputeCasesQuerySchema = z.object({
+  query: z.object({
+    status: z.enum(["OPEN", "RESOLVED"]).optional()
+  })
+});
+
+export const adminDisputeCaseIdSchema = z.object({
+  params: z.object({ caseId: z.string().uuid() })
+});
+
+export const adminResolveDisputeCaseSchema = z.object({
+  params: z.object({ caseId: z.string().uuid() }),
+  body: z.object({
+    resolution: z.enum(["REFUNDED", "DENIED"]),
+    amountCents: z.coerce.number().int().positive().optional(),
+    note: z.string().trim().min(5).max(500)
+  })
+});
