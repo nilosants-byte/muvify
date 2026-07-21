@@ -14,6 +14,7 @@ import { gamificationRoutes } from "./modules/gamification/routes/gamification.r
 import { manualBlockRoutes } from "./modules/providers/manual-blocks/routes/manual-block.routes";
 import { notificationRoutes } from "./modules/notifications/routes/notification.routes";
 import { paymentRoutes } from "./modules/payments/routes/payment.routes";
+import { presentialPackageRoutes } from "./modules/presential-packages/routes/presential-package.routes";
 import { providerRoutes } from "./modules/providers/routes/provider.routes";
 import { reviewRoutes } from "./modules/reviews/routes/review.routes";
 import { uploadRoutes } from "./modules/uploads/routes/upload.routes";
@@ -37,5 +38,6 @@ router.use("/reviews", reviewRoutes);
 router.use("/favorites", favoriteRoutes);
 router.use("/notifications", notificationRoutes);
 router.use("/payments", paymentRoutes);
+router.use("/presential-packages", presentialPackageRoutes);
 router.use("/financial", financialRoutes);
 router.use("/uploads", uploadRoutes);

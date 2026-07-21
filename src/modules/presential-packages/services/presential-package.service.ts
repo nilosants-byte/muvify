@@ -730,4 +730,49 @@ export class PresentialPackageService {
 
     return prisma.presentialPackage.findUniqueOrThrow({ where: { id: pkg.id } });
   }
+
+  async listMyPackages(clientId: string) {
+    return prisma.presentialPackage.findMany({
+      where: { clientId },
+      include: {
+        offer: true,
+        provider: { select: { displayName: true, photoUrl: true } }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+  }
+
+  async listProviderPackages(userId: string) {
+    const provider = await prisma.providerProfile.findFirst({ where: { userId } });
+    if (!provider) {
+      throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    return prisma.presentialPackage.findMany({
+      where: { providerId: provider.id },
+      include: {
+        offer: true,
+        client: { select: { name: true, photoUrl: true } }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+  }
+
+  async getPackageById(userId: string, packageId: string) {
+    const pkg = await prisma.presentialPackage.findUnique({
+      where: { id: packageId },
+      include: {
+        offer: true,
+        provider: { include: { user: { select: { id: true } } } },
+        client: { select: { id: true, name: true, photoUrl: true } },
+        cycles: { orderBy: { cycleIndex: "desc" } }
+      }
+    });
+    if (!pkg) {
+      throw new AppError("Pacote não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    if (pkg.clientId !== userId && pkg.provider.user.id !== userId) {
+      throw new AppError("Você não tem permissão para ver este pacote.", StatusCodes.FORBIDDEN);
+    }
+    return pkg;
+  }
 }
