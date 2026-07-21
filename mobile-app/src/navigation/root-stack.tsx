@@ -23,6 +23,7 @@ import { AuthProfileSelectionScreen } from "../screens/auth/AuthProfileSelection
 import { AuthRegisterScreen } from "../screens/auth/AuthRegisterScreen";
 import { ArchivedRequestsScreen } from "../screens/client/ArchivedRequestsScreen";
 import { BookingConfirmationScreen } from "../screens/client/BookingConfirmationScreen";
+import { BuyPresentialPackageScreen } from "../screens/client/BuyPresentialPackageScreen";
 import { ClientAnamnesisScreen } from "../screens/client/ClientAnamnesisScreen";
 import { ClientChatListScreen } from "../screens/client/ClientChatListScreen";
 import { ClientBookingDetailScreen } from "../screens/client/ClientBookingDetailScreen";
@@ -33,6 +34,8 @@ import { ClientSettingsScreen } from "../screens/client/ClientSettingsScreen";
 import { ConsultancyRequestScreen } from "../screens/client/ConsultancyRequestScreen";
 import { CreateBookingScreen } from "../screens/client/CreateBookingScreen";
 import { ForgotPasswordScreen } from "../screens/client/ForgotPasswordScreen";
+import { MyPresentialPackagesScreen } from "../screens/client/MyPresentialPackagesScreen";
+import { PresentialPackageDetailScreen } from "../screens/client/PresentialPackageDetailScreen";
 import { ProfessionalDetailScreen } from "../screens/client/ProfessionalDetailScreen";
 import { ProfessionalsListScreen } from "../screens/client/ProfessionalsListScreen";
 import { ResetPasswordScreen } from "../screens/client/ResetPasswordScreen";
@@ -313,6 +316,18 @@ export function RootNavigator() {
       <ClientStack.Screen
         name="CreateBooking"
         component={CreateBookingScreen as React.ComponentType<any>}
+      />
+      <ClientStack.Screen
+        name="BuyPresentialPackage"
+        component={BuyPresentialPackageScreen as React.ComponentType<any>}
+      />
+      <ClientStack.Screen
+        name="MyPresentialPackages"
+        component={MyPresentialPackagesScreen as React.ComponentType<any>}
+      />
+      <ClientStack.Screen
+        name="PresentialPackageDetail"
+        component={PresentialPackageDetailScreen as React.ComponentType<any>}
       />
       <ClientStack.Screen
         name="BookingConfirmation"

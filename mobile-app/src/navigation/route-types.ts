@@ -53,6 +53,22 @@ export type ClientStackParamList = {
     offerKind?: import("../services/api/client").ServiceOfferKind;
     isPromotionalOffer?: boolean;
   };
+  BuyPresentialPackage: {
+    professionalId: string;
+    offerId: string;
+    offerTitle: string;
+    offerKind: import("../services/api/client").ServiceOfferKind;
+    billingCycle: import("../services/api/client").OfferBillingCycle;
+    cycleAmountCents: number;
+    presentialPackageMode: import("../services/api/client").PresentialPackageMode;
+    presentialSessionsPerCycle: number;
+    presentialHasFixedTerm: boolean;
+    presentialTotalCycles?: number | null;
+    comboPresentialShareCents?: number | null;
+    comboConsultancyShareCents?: number | null;
+  };
+  MyPresentialPackages: undefined;
+  PresentialPackageDetail: { packageId: string };
   BookingConfirmation: {
     bookingId: string;
     bookingCount?: number;

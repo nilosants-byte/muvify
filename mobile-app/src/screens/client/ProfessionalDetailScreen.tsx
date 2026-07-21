@@ -127,6 +127,17 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
     [consultancyCatalog?.offers]
   );
 
+  // Pacotes presenciais (assinatura por ciclo) - promocionais ou nao, ja que
+  // sem essa secao um pacote sem promocao nao apareceria em lugar nenhum.
+  // Exclui as que ja aparecem nas secoes de promocao, pra nao duplicar o card.
+  const presentialPackageOffers = useMemo(
+    () =>
+      (consultancyCatalog?.offers ?? []).filter(
+        (o) => o.isActive && Boolean(o.presentialPackageMode) && !o.isPromotionActive
+      ),
+    [consultancyCatalog?.offers]
+  );
+
   async function toggleFavorite() {
     try {
       setSavingFavorite(true);
@@ -157,7 +168,31 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
     });
   }
 
+  function goToPresentialPackagePurchase(offer: ProviderServiceOffer) {
+    if (!offer.presentialPackageMode) return;
+    navigation.navigate("BuyPresentialPackage", {
+      professionalId: providerId,
+      offerId: offer.id,
+      offerTitle: offer.title,
+      offerKind: offer.kind,
+      billingCycle: offer.billingCycle,
+      cycleAmountCents: offer.effectivePriceCents ?? offer.priceCents,
+      presentialPackageMode: offer.presentialPackageMode,
+      presentialSessionsPerCycle: offer.presentialSessionsPerCycle ?? 0,
+      presentialHasFixedTerm: Boolean(offer.presentialHasFixedTerm),
+      presentialTotalCycles: offer.presentialTotalCycles ?? null,
+      comboPresentialShareCents: offer.comboPresentialShareCents ?? null,
+      comboConsultancyShareCents: offer.comboConsultancyShareCents ?? null,
+    });
+  }
+
   function goToBookingWithOffer(offer: ProviderServiceOffer) {
+    // Oferta presencial vendida como pacote (assinatura por ciclo) - vai
+    // pro fluxo de compra do pacote, nao pro agendamento avulso.
+    if (offer.presentialPackageMode) {
+      goToPresentialPackagePurchase(offer);
+      return;
+    }
     navigation.navigate("CreateBooking", {
       professionalId: providerId,
       offerId: offer.id,
@@ -371,10 +406,16 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
                       )}
                     </View>
                     <TouchableOpacity
-                      onPress={() => navigation.navigate("ConsultancyRequest", { professionalId: providerId })}
+                      onPress={() =>
+                        offer.kind === "COMBO" && offer.presentialPackageMode
+                          ? goToPresentialPackagePurchase(offer)
+                          : navigation.navigate("ConsultancyRequest", { professionalId: providerId })
+                      }
                       style={{ height: S.touchMin, borderRadius: S.btnR, backgroundColor: C.amber, alignItems: "center", justifyContent: "center" }}
                     >
-                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Solicitar consultoria</Text>
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>
+                        {offer.kind === "COMBO" && offer.presentialPackageMode ? "Contratar combo" : "Solicitar consultoria"}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 );
@@ -413,6 +454,40 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
                       style={{ height: S.touchMin, borderRadius: S.btnR, backgroundColor: C.amber, alignItems: "center", justifyContent: "center" }}
                     >
                       <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Escolher dias</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        {/* Pacotes presenciais (assinatura por ciclo) */}
+        {presentialPackageOffers.length > 0 ? (
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, marginBottom: 4 }}>Pacotes presenciais</Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3, marginBottom: 10 }}>
+              Assinaturas cobradas por ciclo - cancele quando quiser, sem afetar o que já foi pago.
+            </Text>
+            <View style={{ gap: 10 }}>
+              {presentialPackageOffers.map((offer) => {
+                const unitLabel = offer.presentialPackageMode === "FLEXIBLE_CREDITS" ? "créditos" : "sessões";
+                return (
+                  <View key={offer.id} style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, padding: 12, gap: 6 }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{offer.title}</Text>
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>
+                      {offer.presentialSessionsPerCycle ?? 0} {unitLabel} por ciclo
+                    </Text>
+                    <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: theme.primary, letterSpacing: -0.013 * 18 }}>
+                      {formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => goToPresentialPackagePurchase(offer)}
+                      style={{ height: S.touchMin, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center" }}
+                    >
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>
+                        {offer.kind === "COMBO" ? "Contratar combo" : "Contratar pacote"}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 );

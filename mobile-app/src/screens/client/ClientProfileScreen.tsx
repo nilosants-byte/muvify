@@ -468,6 +468,7 @@ export function ClientProfileScreen({ navigation }: Props) {
             <MenuRow icon="card-outline" label="Pagamentos e compras" subtitle="Métodos e histórico" onPress={() => goToStack("ClientPaymentMethod")} />
             <MenuRow icon="barbell-outline" label="Treinos contratados" subtitle="Planos e consultorias" onPress={() => navigation.navigate("MyTraining")} />
             <MenuRow icon="calendar-outline" label="Aulas presenciais" subtitle="Meus agendamentos" onPress={() => navigation.navigate("ClientBookings")} />
+            <MenuRow icon="repeat-outline" label="Pacotes presenciais" subtitle="Créditos e assinaturas" onPress={() => goToStack("MyPresentialPackages")} />
             <MenuRow icon="clipboard-outline" label="Ficha de saúde" subtitle={anamnesisNeedsAttention ? "Requer atenção" : "Anamnese e histórico"} badge={anamnesisNeedsAttention ? "!" : undefined} onPress={() => goToStack("ClientAnamnesis")} />
             <MenuRow icon="heart-outline" label="Profissionais favoritos" subtitle="Personais salvos" onPress={() => navigation.navigate("Favorites")} />
             <MenuRow icon="help-circle-outline" label="Ajuda e suporte" subtitle="Fale com a equipe" onPress={() => goToStack("Support")} />
