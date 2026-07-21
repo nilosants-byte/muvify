@@ -3,11 +3,13 @@ import { prisma } from "../../../config/prisma";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { BookingService } from "../../bookings/services/booking.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
+import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
 import { PaymentService } from "../services/payment.service";
 
 const bookingService = new BookingService();
 const paymentService = new PaymentService();
 const consultancyService = new ConsultancyService();
+const presentialPackageService = new PresentialPackageService();
 
 let timer: NodeJS.Timeout | null = null;
 let running = false;
@@ -62,6 +64,11 @@ export function startPaymentJobs() {
       await runWithTimeout(() => paymentService.autoCaptureSingleConfirmation(), "autoCaptureSingleConfirmation");
       await runWithTimeout(() => bookingService.resolveExpiredNoShowReports(), "resolveExpiredNoShowReports");
       await runWithTimeout(() => consultancyService.autoRefundExpiredContracts(), "autoRefundExpiredContracts");
+      await runWithTimeout(() => presentialPackageService.chargeDueCycles(), "presentialPackageChargeDueCycles");
+      await runWithTimeout(
+        () => presentialPackageService.expireStalePendingPixCharges(),
+        "presentialPackageExpireStalePendingPixCharges"
+      );
       await runWithTimeout(() => paymentService.refreshProviderMpTokens(), "refreshProviderMpTokens");
       consecutiveDatabaseFailures = 0;
       nextAllowedRunAt = 0;

@@ -27,6 +27,15 @@ const mpCardTokenClient = new CardToken(mp);
 // fica com uma assinatura fantasma pendurada pra sempre.
 const MAX_CONSECUTIVE_FAILED_CYCLES = 3;
 
+// Depois de uma cobranca de renovacao recusada, so tenta de novo no
+// proximo dia - evita martelar o cartao do cliente a cada rodada do cron
+// e da tempo real pra ele notar o aviso e trocar o cartao.
+const CARD_RETRY_THROTTLE_MS = 24 * 60 * 60 * 1000;
+
+// Cobranca Pix de renovacao expira em 24h sem pagamento manual - o cron
+// (Fase 2.3) fecha esse ciclo como falho e libera uma cobranca nova.
+const PIX_RENEWAL_EXPIRATION_MS = 24 * 60 * 60 * 1000;
+
 export type WeeklyScheduleEntry = { weekday: number; time: string };
 
 export type PurchasePresentialPackageInput = {
@@ -322,7 +331,7 @@ export class PresentialPackageService {
           ...split
         },
         requestOptions: {
-          idempotencyKey: `presential-package:${pkg.id}:cycle:${cycleIndex}`,
+          idempotencyKey: `presential-package:${pkg.id}:cycle:${cycleIndex}:attempt:${pkg.consecutiveFailedCycles}`,
           ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
         }
       });
@@ -342,7 +351,7 @@ export class PresentialPackageService {
           ...split
         },
         requestOptions: {
-          idempotencyKey: `presential-package:${pkg.id}:cycle:${cycleIndex}`,
+          idempotencyKey: `presential-package:${pkg.id}:cycle:${cycleIndex}:attempt:${pkg.consecutiveFailedCycles}`,
           ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
         }
       });
@@ -377,7 +386,7 @@ export class PresentialPackageService {
           pendingChargeMpPaymentId: mpPayId,
           pendingChargePixQrCodeUrl: pixPayload?.qrCodeUrl ?? null,
           pendingChargePixCopyPasteCode: pixPayload?.copyAndPasteCode ?? null,
-          pendingChargePixExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+          pendingChargePixExpiresAt: new Date(Date.now() + PIX_RENEWAL_EXPIRATION_MS)
         }
       });
       if (!opts.isFirstCycle) {
@@ -403,7 +412,8 @@ export class PresentialPackageService {
         status: shouldCancel ? PresentialPackageStatus.CANCELLED : PresentialPackageStatus.PAST_DUE,
         consecutiveFailedCycles: failedCount,
         lastBillingFailureReason: `Pagamento recusado (${mpStatus}).`,
-        cancelledAt: shouldCancel ? new Date() : null
+        cancelledAt: shouldCancel ? new Date() : null,
+        nextBillingAt: shouldCancel ? pkg.nextBillingAt : new Date(Date.now() + CARD_RETRY_THROTTLE_MS)
       }
     });
     await notificationService.sendToUsers([pkg.client.id], {
@@ -515,5 +525,90 @@ export class PresentialPackageService {
         }
       }
     });
+  }
+
+  // Job periodico (payment-jobs.ts): cobra o proximo ciclo de cada pacote
+  // cuja data de cobranca ja chegou. Nao reentra num pacote que ja tem uma
+  // cobranca pendente em aberto (Pix aguardando pagamento) - essa so volta
+  // a ser candidata depois que expireStalePendingPixCharges liberar.
+  async chargeDueCycles() {
+    const now = new Date();
+    const candidates = await prisma.presentialPackage.findMany({
+      where: {
+        status: { in: [PresentialPackageStatus.ACTIVE, PresentialPackageStatus.PAST_DUE] },
+        nextBillingAt: { lte: now },
+        pendingChargeMpPaymentId: null
+      },
+      select: { id: true, hasFixedTerm: true, totalCycles: true, nextCycleIndex: true }
+    });
+
+    for (const candidate of candidates) {
+      try {
+        if (candidate.hasFixedTerm && candidate.totalCycles && candidate.nextCycleIndex > candidate.totalCycles) {
+          await prisma.presentialPackage.update({
+            where: { id: candidate.id },
+            data: { status: PresentialPackageStatus.EXPIRED }
+          });
+          continue;
+        }
+        await this.chargeCycle(candidate.id, { isFirstCycle: false });
+      } catch (error) {
+        console.error(`[presential-package] chargeDueCycles falhou para ${candidate.id}:`, error);
+      }
+    }
+  }
+
+  // Job periodico: fecha cobrancas Pix de renovacao que expiraram sem
+  // pagamento manual (o cliente nao pagou o QR/copia-e-cola a tempo) -
+  // conta como ciclo falho (mesma regra de cancelamento apos N falhas) e
+  // libera o pacote pra uma cobranca Pix nova no proximo tick do cron.
+  async expireStalePendingPixCharges() {
+    const now = new Date();
+    const stale = await prisma.presentialPackage.findMany({
+      where: {
+        status: PresentialPackageStatus.PAST_DUE,
+        pendingChargeMpPaymentId: { not: null },
+        pendingChargePixExpiresAt: { lt: now }
+      },
+      include: { client: true, provider: true }
+    });
+
+    for (const pkg of stale) {
+      try {
+        const failedCount = pkg.consecutiveFailedCycles + 1;
+        const shouldCancel = failedCount >= MAX_CONSECUTIVE_FAILED_CYCLES;
+        await prisma.presentialPackage.update({
+          where: { id: pkg.id },
+          data: {
+            status: shouldCancel ? PresentialPackageStatus.CANCELLED : PresentialPackageStatus.PAST_DUE,
+            consecutiveFailedCycles: failedCount,
+            lastBillingFailureReason: "Pix de renovação expirou sem pagamento.",
+            cancelledAt: shouldCancel ? new Date() : null,
+            pendingChargeMpPaymentId: null,
+            pendingChargePixQrCodeUrl: null,
+            pendingChargePixCopyPasteCode: null,
+            pendingChargePixExpiresAt: null
+          }
+        });
+        await notificationService.sendToUsers([pkg.client.id], {
+          preferenceType: "PAYMENTS",
+          title: shouldCancel ? "Pacote presencial cancelado" : "Pix de renovação expirou",
+          body: shouldCancel
+            ? "Seu pacote presencial foi cancelado após várias renovações sem pagamento."
+            : "O Pix da renovação expirou sem pagamento. Uma nova cobrança será gerada em breve.",
+          data: { type: "PRESENTIAL_PACKAGE_RENEWAL_PIX_EXPIRED", packageId: pkg.id }
+        });
+        await notificationService.sendToUsers([pkg.provider.userId], {
+          preferenceType: "PAYMENTS",
+          title: shouldCancel ? "Pacote presencial cancelado" : "Renovação de aluno pendente",
+          body: shouldCancel
+            ? `O pacote de ${pkg.client.name} foi cancelado por falta de pagamento.`
+            : `${pkg.client.name} não pagou o Pix de renovação a tempo.`,
+          data: { type: "PRESENTIAL_PACKAGE_RENEWAL_PIX_EXPIRED", packageId: pkg.id }
+        });
+      } catch (error) {
+        console.error(`[presential-package] expireStalePendingPixCharges falhou para ${pkg.id}:`, error);
+      }
+    }
   }
 }
