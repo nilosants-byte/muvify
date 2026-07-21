@@ -199,7 +199,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
                 <MvText variant="semi2">CREF pendente de validação</MvText>
               </View>
               <MvText variant="body4" color="secondary" style={{ marginBottom: 10 }}>
-                Publicar ofertas depende da aprovação do seu CREF — e é publicando uma oferta que você passa a aparecer para alunos e recebe solicitações. Valide seu CREF para liberar sua consultoria.
+                Enquanto isso, você não pode publicar ofertas nem aparecer para alunos.
               </MvText>
               <MvButton
                 variant="outline"
