@@ -95,14 +95,18 @@ export async function onWorkoutCompleted(
 
 export async function onTrainingPlanCompleted(
   clientId: string,
-  contractId: string
+  completionId: string,
+  providerId: string
 ): Promise<void> {
   try {
     const prevTotalXp = await getTotalXp(clientId);
     const prevLevel = computeLevel(prevTotalXp);
 
-    // 50 XP por treino de consultoria concluído (online, menos esforço)
-    await awardXp(clientId, 50, "ONLINE_WORKOUT_COMPLETED", contractId);
+    // 50 XP por treino de consultoria concluído (online, menos esforço).
+    // referenceId e o id da conclusao (unico por vez que o cliente finaliza),
+    // nao o contrato — senao XP e post so acontecem na primeira conclusao de
+    // cada contrato, mesmo que o cliente conclua o treino varias vezes.
+    await awardXp(clientId, 50, "ONLINE_WORKOUT_COMPLETED", completionId);
 
     const { milestoneHit, alreadyTrainedToday } = await recordTraining(clientId);
 
@@ -122,30 +126,21 @@ export async function onTrainingPlanCompleted(
       });
     }
 
-    // Try to enrich with provider info — contractId may be a contract or a completion id
-    const contractForPost = await prisma.consultancyContract.findUnique({
-      where: { id: contractId },
-      select: {
-        provider: {
-          select: { id: true, displayName: true, photoUrl: true, updatedAt: true }
-        }
-      }
+    const provider = await prisma.providerProfile.findUnique({
+      where: { id: providerId },
+      select: { id: true, displayName: true, photoUrl: true, updatedAt: true }
     }).catch(() => null);
 
-    const onlineProviderMeta = contractForPost?.provider
+    const onlineProviderMeta = provider
       ? {
-          providerId: contractForPost.provider.id,
-          providerName: contractForPost.provider.displayName,
-          providerPhotoUrl: toProviderPhotoUrl(
-            contractForPost.provider.id,
-            contractForPost.provider.photoUrl,
-            contractForPost.provider.updatedAt
-          ),
+          providerId: provider.id,
+          providerName: provider.displayName,
+          providerPhotoUrl: toProviderPhotoUrl(provider.id, provider.photoUrl, provider.updatedAt),
         }
       : {};
 
     await createAutoPost(clientId, "WORKOUT_COMPLETED", {
-      referenceId: contractId,
+      referenceId: completionId,
       metadata: { type: "ONLINE", ...onlineProviderMeta },
     });
 

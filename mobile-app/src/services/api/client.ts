@@ -383,6 +383,16 @@ export type TrainingPlan = {
   exercises: TrainingPlanExercise[];
 };
 
+export type TrainingPlanCompletion = {
+  id: string;
+  clientId: string;
+  providerId: string;
+  trainingPlanId: string;
+  contractId?: string | null;
+  notes?: string | null;
+  completedAt: string;
+};
+
 export type MyTrainingResponse = {
   locked: boolean;
   waitingDelivery: Array<{
@@ -2461,6 +2471,16 @@ export const consultancyApi = {
   },
   myTraining(token: string) {
     return apiRequest<MyTrainingResponse>("/consultancy/my/training", { token });
+  },
+  completeTrainingPlan(token: string, trainingPlanId: string, notes?: string) {
+    return apiRequest<TrainingPlanCompletion>(`/consultancy/my/training/plans/${trainingPlanId}/complete`, {
+      method: "POST",
+      token,
+      body: { notes }
+    });
+  },
+  myTrainingCompletions(token: string) {
+    return apiRequest<TrainingPlanCompletion[]>("/consultancy/my/training/completions", { token });
   },
   myRequests(token: string) {
     return apiRequest<ConsultancyRequest[]>("/consultancy/my/requests", { token });

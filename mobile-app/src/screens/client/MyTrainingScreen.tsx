@@ -1,8 +1,11 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as ImagePicker from "expo-image-picker";
 import {
+  ActivityIndicator,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -16,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientTabParamList } from "../../navigation/route-types";
 import {
+  communityApi,
   consultancyApi,
   ConsultancyContract,
   ConsultancyPaymentMethod,
@@ -23,6 +27,7 @@ import {
   MyTrainingResponse,
   TrainingPlan,
   TrainingPlanExercise,
+  uploadsApi,
 } from "../../services/api/client";
 import { useAppState, ToastType } from "../../state/AppState";
 import { hapticWorkoutStart, hapticWorkoutFinish, hapticCta } from "../../utils/haptics";
@@ -93,20 +98,28 @@ function WorkoutDetailModal({
   plan,
   onClose,
   showToast,
+  runWithAuth,
+  onCompleted,
 }: {
   plan: FlatPlan;
   onClose: () => void;
   showToast: (msg: string, type?: ToastType) => void;
+  runWithAuth: <T>(fn: (token: string) => Promise<T>) => Promise<T>;
+  onCompleted: () => void;
 }) {
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const [started, setStarted] = useState(false);
   const [done, setDone] = useState<Set<string>>(new Set());
   const [finished, setFinished] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimestampRef = useRef<number | null>(null);
+
+  // ── Opt-in de foto pro feed de evolução (não obrigatório) ─────────────────
+  const [sharePhotoStage, setSharePhotoStage] = useState<"idle" | "capturing" | "uploading" | "done">("idle");
 
   // Chave de persistência do timer — específica por plano (guard contra id undefined)
   const TIMER_KEY = plan?.id ? `@muvify/workoutTimer_${plan.id}` : null;
@@ -180,14 +193,74 @@ function WorkoutDetailModal({
     });
   }
 
-  function handleFinish() {
-    hapticWorkoutFinish(); // Momento 5 — treino finalizado
-    setShowFinishConfirm(false);
-    setFinished(true);
-    if (timerRef.current) clearInterval(timerRef.current);
-    // Limpa o timer persistido — treino encerrado manualmente
-    if (TIMER_KEY) AsyncStorage.removeItem(TIMER_KEY).catch(() => {});
-    showToast("Treino finalizado! +120 pts", "success");
+  async function handleFinish() {
+    try {
+      setCompleting(true);
+      await runWithAuth((token) => consultancyApi.completeTrainingPlan(token, plan.id));
+      hapticWorkoutFinish(); // Momento 5 — treino finalizado
+      setShowFinishConfirm(false);
+      setFinished(true);
+      if (timerRef.current) clearInterval(timerRef.current);
+      // Limpa o timer persistido — treino encerrado manualmente
+      if (TIMER_KEY) AsyncStorage.removeItem(TIMER_KEY).catch(() => {});
+      showToast("Treino concluído! +50 pts", "success");
+      onCompleted();
+    } catch (error) {
+      setShowFinishConfirm(false);
+      showToast(
+        error instanceof Error ? error.message : "Não foi possível registrar a conclusão do treino.",
+        "error"
+      );
+    } finally {
+      setCompleting(false);
+    }
+  }
+
+  // Abre a câmera do celular na hora (frontal por padrão, mas o próprio app
+  // de câmera nativo permite trocar) — nunca da galeria, pra garantir que a
+  // foto é do momento, igual ao opt-in do presencial.
+  async function captureAndSharePhoto() {
+    try {
+      setSharePhotoStage("capturing");
+      if (Platform.OS !== "web") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (permission.status !== "granted") {
+          showToast("Permissão de câmera negada.", "error");
+          setSharePhotoStage("idle");
+          return;
+        }
+      }
+      const result =
+        Platform.OS === "web"
+          ? await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"] as ImagePicker.MediaType[], quality: 0.5, base64: true })
+          : await ImagePicker.launchCameraAsync({ cameraType: "front" as ImagePicker.CameraType, allowsEditing: false, quality: 0.5, base64: true });
+
+      if (result.canceled) {
+        setSharePhotoStage("idle");
+        return;
+      }
+      const asset = result.assets?.[0];
+      if (!asset?.base64) {
+        showToast("Falha ao capturar a foto.", "error");
+        setSharePhotoStage("idle");
+        return;
+      }
+
+      setSharePhotoStage("uploading");
+      const { url } = await runWithAuth((token) =>
+        uploadsApi.uploadMedia(
+          token,
+          { uri: asset.uri, mimeType: asset.mimeType ?? "image/jpeg", fileName: "feed-photo.jpg" },
+          "feed-photos"
+        )
+      );
+      await runWithAuth((token) => communityApi.createPost(token, { imageUrl: url, caption: "Treino concluído! 💪" }));
+      setSharePhotoStage("done");
+      showToast("Foto publicada no feed de evolução!", "success");
+    } catch {
+      showToast("Não foi possível publicar a foto. Tente novamente.", "error");
+      setSharePhotoStage("idle");
+    }
   }
 
   const exercises = plan.exercises ?? [];
@@ -211,8 +284,7 @@ function WorkoutDetailModal({
           {/* Badges de conquista */}
           <View style={{ flexDirection: "row", gap: 12, justifyContent: "center" }}>
             {[
-              { icon: "trophy" as const, label: "Nível 12", color: C.amber },
-              { icon: "flash" as const, label: "+120 pts", color: theme.primary },
+              { icon: "flash" as const, label: "+50 pts", color: theme.primary },
               { icon: "flame" as const, label: "Sequência", color: "#f97316" },
             ].map((b) => (
               <View key={b.label} style={{ alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 18, padding: 14 }}>
@@ -221,6 +293,40 @@ function WorkoutDetailModal({
               </View>
             ))}
           </View>
+
+          {/* Opt-in de foto pro feed de evolução — não obrigatório */}
+          {sharePhotoStage === "idle" ? (
+            <View style={{ width: "100%", gap: 10, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg }}>
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1, textAlign: "center" }}>
+                Quer postar uma foto desse treino no feed de evolução?
+              </Text>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, textAlign: "center" }}>
+                Não é obrigatório — só pra mostrar pros seus amigos que você treinou.
+              </Text>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity
+                  onPress={() => setSharePhotoStage("done")}
+                  style={{ flex: 1, height: 44, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
+                >
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Agora não</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void captureAndSharePhoto()}
+                  style={{ flex: 1, height: 44, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center" }}
+                >
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Tirar foto</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : sharePhotoStage === "capturing" || sharePhotoStage === "uploading" ? (
+            <View style={{ alignItems: "center", gap: 8 }}>
+              <ActivityIndicator color={theme.primary} />
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>
+                {sharePhotoStage === "capturing" ? "Abrindo câmera..." : "Publicando foto..."}
+              </Text>
+            </View>
+          ) : null}
+
           {/* CTA */}
           <TouchableOpacity
             onPress={onClose}
@@ -400,16 +506,22 @@ function WorkoutDetailModal({
             </Text>
             <View style={{ flexDirection: "row", gap: 10, marginTop: 20 }}>
               <TouchableOpacity
+                disabled={completing}
                 onPress={() => setShowFinishConfirm(false)}
-                style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
+                style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center", opacity: completing ? 0.6 : 1 }}
               >
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Continuar</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={handleFinish}
-                style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+                disabled={completing}
+                onPress={() => void handleFinish()}
+                style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4, opacity: completing ? 0.7 : 1 }}
               >
-                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>Finalizar</Text>
+                {completing ? (
+                  <ActivityIndicator color={theme.textOnPrimary} />
+                ) : (
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>Finalizar</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -706,6 +818,8 @@ export function MyTrainingScreen({ navigation }: Props) {
             plan={selectedPlan}
             onClose={() => setSelectedPlan(null)}
             showToast={showToast}
+            runWithAuth={runWithAuth}
+            onCompleted={() => void trainingQuery.refetch()}
           />
         )}
       </Modal>

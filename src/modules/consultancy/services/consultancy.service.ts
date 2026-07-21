@@ -2334,7 +2334,7 @@ export class ConsultancyService {
     });
 
     const { onTrainingPlanCompleted } = await import("../../gamification/services/gamification-events.service");
-    void onTrainingPlanCompleted(clientId, contractId ?? completion.id);
+    void onTrainingPlanCompleted(clientId, completion.id, providerId);
 
     return completion;
   }
