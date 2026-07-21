@@ -263,6 +263,23 @@ O código de presença é um mecanismo de segurança gerado automaticamente para
 
 Agendamentos confirmados mas não iniciados (sem registro de código de presença) expiram automaticamente após **48 horas** da data e horário agendados. O valor pago é reembolsado ao Aluno integralmente.
 
+### 7.5 Pacotes Presenciais e Cobrança Recorrente
+
+Além do agendamento avulso (Cláusula 7.1 a 7.4), o Profissional pode oferecer **pacotes presenciais** com cobrança periódica e recorrente, em uma das seguintes modalidades, à escolha do Profissional na criação da oferta:
+
+1. **Horário fixo semanal (FIXED_RECURRING):** as sessões da semana são pré-agendadas automaticamente na agenda do Aluno, conforme os dias e horários definidos na contratação;
+2. **Créditos flexíveis (FLEXIBLE_CREDITS):** o Aluno recebe uma quantidade determinada de créditos a cada ciclo de cobrança, podendo agendar livremente dentro do prazo de vigência do ciclo. **Créditos não utilizados até o fim do ciclo expiram e não são acumulados** para o ciclo seguinte.
+
+**7.5.1 Funcionamento da cobrança:** ao contrário do pagamento único do agendamento avulso, o pacote presencial é cobrado **por ciclo** (semanal, quinzenal ou mensal, conforme definido pelo Profissional), de forma automática e recorrente, até que o Aluno ou o Profissional cancele. Cada ciclo é uma cobrança independente — **não existe uma assinatura ou autorização de débito permanente registrada externamente**; cada cobrança é processada individualmente, por cartão salvo (tokenizado) ou por Pix gerado a cada ciclo.
+
+**7.5.2 Falha no pagamento do ciclo:** em caso de falha na cobrança do ciclo (cartão recusado ou Pix não pago dentro de 24 horas), o pacote entra em situação de pendência e as sessões/créditos daquele ciclo ficam suspensos até a regularização. Após **3 (três) falhas consecutivas**, o pacote é cancelado automaticamente, sem qualquer cobrança adicional.
+
+**7.5.3 Cancelamento:** o cancelamento do pacote presencial é imediato e interrompe as cobranças futuras — nenhum novo ciclo será cobrado após o cancelamento. Quando o cancelamento é feito pelo Profissional, o valor do ciclo vigente mais recente é reembolsado integralmente ao Aluno. Quando o cancelamento é feito pelo Aluno, o ciclo já cobrado não é reembolsado, mas nenhuma cobrança futura ocorre.
+
+**7.5.4 Combo (pacote presencial + consultoria online):** o Profissional pode oferecer um pacote combinado, com uma parte presencial (cobrança recorrente, conforme esta cláusula) e uma parte de consultoria online (pagamento único, conforme Cláusula 8), com valores definidos separadamente pelo Profissional no momento da oferta. **Cada parte do combo pode ser cancelada de forma independente**, sem afetar a outra.
+
+**7.5.5 Direito de arrependimento:** aplica-se ao pacote presencial o mesmo direito de arrependimento previsto no item 10.1 destes Termos.
+
 ---
 
 ## 8. CONSULTORIAS E PLANOS DE TREINO ONLINE (CONSULTANCY)
@@ -366,12 +383,16 @@ Para exercer o direito de arrependimento, acesse Configurações → Meus Agenda
 
 ### 10.3 Cancelamento de Consultorias
 
+A consultoria e os planos de treino online são tratados como um **produto de elaboração única**: uma vez que o Profissional entrega a primeira ficha de treino, o serviço já foi integralmente produzido e entregue, não havendo mais o que reembolsar proporcionalmente. Por isso, a regra de reembolso é **binária**, não proporcional:
+
 | Situação | Consequência |
 |---|---|
-| Aluno cancela antes do Profissional iniciar a elaboração | Reembolso integral |
-| Aluno cancela após o Profissional ter iniciado | Reembolso proporcional ao trabalho não concluído — avaliado caso a caso |
+| Aluno cancela em até **48 (quarenta e oito) horas** da contratação **e** antes da entrega da primeira ficha de treino (o que ocorrer primeiro) | Reembolso integral |
+| Aluno cancela após as 48 horas **ou** após a entrega da primeira ficha (o que ocorrer primeiro) | **Sem reembolso** — o produto já foi elaborado e entregue |
 | Profissional não entrega no prazo contratado | Reembolso integral automático ao Aluno |
-| Profissional cancela unilateralmente | Reembolso integral ao Aluno + penalidades ao Profissional (item 19.2) |
+| Profissional cancela unilateralmente antes da entrega | Reembolso integral ao Aluno + penalidades ao Profissional (item 19.2) |
+
+Esta regra não afeta o direito de arrependimento do item 10.1, que já assegura o reembolso integral dentro do prazo ali previsto.
 
 ### 10.4 Prazo de Processamento dos Reembolsos
 
@@ -383,11 +404,18 @@ Reembolsos são processados pelo Mercado Pago nos seguintes prazos estimados:
 
 A Muvify não controla os prazos internos das operadoras de cartão.
 
-### 10.5 Disputas (Chargebacks)
+### 10.5 Disputas (Chargebacks) e Análise Manual de Casos
 
-Em caso de disputa iniciada pelo Aluno diretamente junto à operadora do cartão (chargeback), a Muvify cooperará com o processo e poderá reter o valor correspondente do Profissional até a resolução definitiva. Se a disputa for julgada improcedente para o Aluno, o valor será repassado ao Profissional; se procedente, o valor será devolvido ao Aluno e descontado do Profissional.
+**10.5.1 Disputas junto à operadora do cartão (chargeback):** em caso de disputa iniciada pelo Aluno diretamente junto à operadora do cartão, a Muvify cooperará com o processo e poderá reter o valor correspondente do Profissional até a resolução definitiva. Se a disputa for julgada improcedente para o Aluno, o valor será repassado ao Profissional; se procedente, o valor será devolvido ao Aluno e descontado do Profissional.
 
 O Profissional deve manter evidências suficientes da prestação dos serviços (registros de presença, evidências fotográficas, comunicações) para subsidiar a defesa em casos de disputa.
+
+**10.5.2 Análise manual interna:** além das disputas de chargeback, a Muvify mantém um processo interno de análise manual, conduzido por um administrador da plataforma, para os seguintes casos:
+
+1. **Falta contestada:** quando a parte reportada por falta de comparecimento (item 7.3) contesta o relato dentro do prazo previsto, o caso deixa de ser resolvido automaticamente e passa a ser analisado manualmente, considerando o relato de ambas as partes e as evidências disponíveis no agendamento (código de presença, selfie de comprovação, histórico de mensagens);
+2. **Reembolso automático que falhou:** quando um reembolso que deveria ocorrer automaticamente (por exemplo, ao cancelar um pacote presencial — item 7.5.3) não puder ser processado por falha técnica ou do processador de pagamento, um administrador é acionado para resolver o caso manualmente.
+
+Em ambos os casos, o administrador decide entre reembolsar (integral ou parcialmente) ou negar o reembolso, e **a decisão é sempre acompanhada de uma justificativa em linguagem simples**, comunicada a ambas as partes envolvidas.
 
 ### 10.6 Reembolsos por Falha Técnica
 

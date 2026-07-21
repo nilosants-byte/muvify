@@ -131,13 +131,22 @@ Profissional de educação física detentor de registro ativo no **Conselho Regi
 | Nome do dispositivo | Identificação de dispositivos ativos (ex.: "iPhone de João") |
 | Data/hora do último acesso do dispositivo | Gestão de sessões e dispositivos inativos |
 
-### 3.5 Dados de evidência de presença
+### 3.5 Dados de evidência de presença e fotos de treino no feed
 
-Ao concluir sessões presenciais, o Aplicativo captura uma **selfie do aluno** (imagem fotográfica) como comprovante de presença. Dados coletados:
+**Selfie de comprovação de presença (sessões presenciais):** ao concluir sessões presenciais, o Aplicativo captura uma **selfie do aluno** (imagem fotográfica) como comprovante de presença. Dados coletados:
 
 - Imagem em formato digital (JPEG, PNG ou similar, validado por MIME type)
 - Câmera utilizada (frontal ou traseira)
 - Data e hora da captura
+
+Essa selfie é armazenada de forma criptografada e destinada, em regra, exclusivamente a comprovar a realização da sessão. Excepcionalmente, ela pode ser **acessada por um administrador da Muvify**, exclusivamente no contexto de uma análise manual de disputa (por exemplo, quando uma das partes contesta um relato de falta de comparecimento — item 10.5.2 dos Termos de Uso), nunca para qualquer outra finalidade.
+
+**Foto opcional no feed de evolução (presencial e treino online):** ao concluir uma sessão presencial ou um treino de uma ficha de consultoria online, o Aplicativo pergunta ao Aluno se deseja publicar uma foto no feed de evolução, para fins de engajamento social e gamificação — funcionalidade **totalmente opcional, nunca obrigatória para concluir a sessão ou o treino**. Caso o Aluno autorize:
+
+- No treino **presencial**, é gerada uma **cópia separada e não criptografada** da imagem, exclusivamente para essa publicação — a selfie de comprovação de presença (criptografada, de uso interno) nunca é publicada diretamente nem reaproveitada automaticamente para essa finalidade;
+- No treino **online** (consultoria), como não existe selfie de comprovação de presença nesse fluxo, o Aplicativo abre a câmera do celular no momento da conclusão para capturar uma foto especificamente para essa publicação.
+
+Em qualquer dos dois casos, a foto publicada é pública (visível a quem segue o perfil do Aluno) e passa a ser conteúdo gerado pelo usuário, sujeito às mesmas regras da Cláusula 15 dos Termos de Uso. Caso o Aluno não autorize, nenhuma foto é enviada ou publicada.
 
 ---
 
@@ -211,7 +220,7 @@ A anamnese é um questionário clínico-funcional preenchido pelo aluno **com co
 
 ### 4.4 Selfie de Evidência de Presença
 
-A fotografia do aluno capturada como comprovante de presença em sessão presencial é tratada como dado biométrico potencial e armazenada de forma segura com período de retenção definido (730 dias).
+A fotografia do aluno capturada como comprovante de presença em sessão presencial é tratada como dado biométrico potencial e armazenada de forma segura com período de retenção definido (730 dias). Além de comprovar a presença, essa imagem pode excepcionalmente ser acessada por um administrador da Muvify durante a análise manual de um caso de disputa envolvendo falta de comparecimento (item 10.5.2 dos Termos de Uso) — vide item 3.5.
 
 ---
 
