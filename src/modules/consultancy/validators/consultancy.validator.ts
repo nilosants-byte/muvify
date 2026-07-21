@@ -40,6 +40,8 @@ export const updateOnlineSettingSchema = z.object({
   })
 });
 
+const presentialPackageModeSchema = z.enum(["FIXED_RECURRING", "FLEXIBLE_CREDITS"]);
+
 export const createProviderOfferSchema = z.object({
   body: z.object({
     kind: offerKindSchema,
@@ -57,7 +59,14 @@ export const createProviderOfferSchema = z.object({
     acceptsDebitCard: z.boolean().optional().default(true),
     acceptsCreditCard: z.boolean().optional().default(true),
     maxCreditInstallments: z.number().int().min(1).max(12).optional().default(1),
-    isActive: z.boolean().optional().default(true)
+    isActive: z.boolean().optional().default(true),
+    // Pacote presencial (so PRESENTIAL/COMBO) - assinatura cobrada em ciclos
+    presentialPackageMode: presentialPackageModeSchema.optional(),
+    presentialHasFixedTerm: z.boolean().optional().default(false),
+    presentialTotalCycles: z.number().int().min(1).max(60).optional(),
+    presentialSessionsPerCycle: z.number().int().min(1).max(60).optional(),
+    comboPresentialShareCents: z.number().int().min(100).max(10_000_000).optional(),
+    comboConsultancyShareCents: z.number().int().min(100).max(10_000_000).optional()
   })
 });
 
@@ -81,7 +90,13 @@ export const updateProviderOfferSchema = z.object({
     acceptsDebitCard: z.boolean().optional(),
     acceptsCreditCard: z.boolean().optional(),
     maxCreditInstallments: z.number().int().min(1).max(12).optional(),
-    isActive: z.boolean().optional()
+    isActive: z.boolean().optional(),
+    presentialPackageMode: presentialPackageModeSchema.nullable().optional(),
+    presentialHasFixedTerm: z.boolean().optional(),
+    presentialTotalCycles: z.number().int().min(1).max(60).nullable().optional(),
+    presentialSessionsPerCycle: z.number().int().min(1).max(60).nullable().optional(),
+    comboPresentialShareCents: z.number().int().min(100).max(10_000_000).nullable().optional(),
+    comboConsultancyShareCents: z.number().int().min(100).max(10_000_000).nullable().optional()
   })
 });
 

@@ -6,6 +6,7 @@
   ConsultancyRequestStatus,
   OfferBillingCycle,
   Prisma,
+  PresentialPackageMode,
   ServiceOfferKind,
   UserRole
 } from "@prisma/client";
@@ -48,6 +49,12 @@ type OfferInput = {
   acceptsCreditCard?: boolean;
   maxCreditInstallments?: number;
   isActive?: boolean;
+  presentialPackageMode?: PresentialPackageMode | null;
+  presentialHasFixedTerm?: boolean;
+  presentialTotalCycles?: number | null;
+  presentialSessionsPerCycle?: number | null;
+  comboPresentialShareCents?: number | null;
+  comboConsultancyShareCents?: number | null;
 };
 
 type ExerciseInput = {
@@ -551,6 +558,60 @@ export class ConsultancyService {
         );
       }
     }
+
+    // Pacote presencial (assinatura cobrada em ciclos) - so PRESENTIAL/COMBO
+    if (
+      input.presentialPackageMode &&
+      kind !== ServiceOfferKind.PRESENTIAL &&
+      kind !== ServiceOfferKind.COMBO
+    ) {
+      throw new AppError(
+        "Pacote presencial (assinatura por ciclo) é permitido apenas em ofertas presenciais ou combo.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    if (input.presentialPackageMode) {
+      if (!input.presentialSessionsPerCycle || input.presentialSessionsPerCycle < 1) {
+        throw new AppError(
+          "Informe quantas sessões (ou créditos) o pacote libera por ciclo.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+      if (input.presentialHasFixedTerm && (!input.presentialTotalCycles || input.presentialTotalCycles < 1)) {
+        throw new AppError(
+          "Informe o número total de ciclos para um pacote com vigência determinada.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+    }
+
+    if (
+      kind !== ServiceOfferKind.COMBO &&
+      (typeof input.comboPresentialShareCents !== "undefined" ||
+        typeof input.comboConsultancyShareCents !== "undefined") &&
+      (input.comboPresentialShareCents !== null || input.comboConsultancyShareCents !== null)
+    ) {
+      throw new AppError(
+        "Valores de cada parte do combo são permitidos apenas para ofertas do tipo Combo.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    if (kind === ServiceOfferKind.COMBO && (input.comboPresentialShareCents || input.comboConsultancyShareCents)) {
+      if (!input.comboPresentialShareCents || !input.comboConsultancyShareCents) {
+        throw new AppError(
+          "Informe o valor de cada metade do combo (presencial e consultoria).",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+      if (input.comboPresentialShareCents + input.comboConsultancyShareCents !== input.priceCents) {
+        throw new AppError(
+          "A soma das duas metades do combo deve ser igual ao valor total da oferta.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+    }
   }
 
   private async normalizePlanExercises(
@@ -899,7 +960,18 @@ export class ConsultancyService {
         acceptsDebitCard,
         acceptsCreditCard,
         maxCreditInstallments,
-        isActive: input.isActive ?? true
+        isActive: input.isActive ?? true,
+        presentialPackageMode:
+          input.kind === ServiceOfferKind.PRESENTIAL || input.kind === ServiceOfferKind.COMBO
+            ? input.presentialPackageMode ?? null
+            : null,
+        presentialHasFixedTerm: Boolean(input.presentialHasFixedTerm),
+        presentialTotalCycles: input.presentialHasFixedTerm ? input.presentialTotalCycles ?? null : null,
+        presentialSessionsPerCycle: input.presentialSessionsPerCycle ?? null,
+        comboPresentialShareCents:
+          input.kind === ServiceOfferKind.COMBO ? input.comboPresentialShareCents ?? null : null,
+        comboConsultancyShareCents:
+          input.kind === ServiceOfferKind.COMBO ? input.comboConsultancyShareCents ?? null : null
       }
     });
 
@@ -948,6 +1020,30 @@ export class ConsultancyService {
       typeof input.maxCreditInstallments === "number"
         ? input.maxCreditInstallments
         : offer.maxCreditInstallments;
+    const nextPresentialPackageMode =
+      typeof input.presentialPackageMode === "undefined"
+        ? offer.presentialPackageMode
+        : input.presentialPackageMode;
+    const nextPresentialHasFixedTerm =
+      typeof input.presentialHasFixedTerm === "boolean"
+        ? input.presentialHasFixedTerm
+        : offer.presentialHasFixedTerm;
+    const nextPresentialTotalCycles =
+      typeof input.presentialTotalCycles === "undefined"
+        ? offer.presentialTotalCycles
+        : input.presentialTotalCycles;
+    const nextPresentialSessionsPerCycle =
+      typeof input.presentialSessionsPerCycle === "undefined"
+        ? offer.presentialSessionsPerCycle
+        : input.presentialSessionsPerCycle;
+    const nextComboPresentialShareCents =
+      typeof input.comboPresentialShareCents === "undefined"
+        ? offer.comboPresentialShareCents
+        : input.comboPresentialShareCents;
+    const nextComboConsultancyShareCents =
+      typeof input.comboConsultancyShareCents === "undefined"
+        ? offer.comboConsultancyShareCents
+        : input.comboConsultancyShareCents;
 
     this.validateOfferInput(
       {
@@ -968,7 +1064,13 @@ export class ConsultancyService {
         acceptsDebitCard: nextAcceptsDebitCard,
         acceptsCreditCard: nextAcceptsCreditCard,
         maxCreditInstallments: nextMaxCreditInstallments,
-        isActive: input.isActive ?? offer.isActive
+        isActive: input.isActive ?? offer.isActive,
+        presentialPackageMode: nextPresentialPackageMode,
+        presentialHasFixedTerm: nextPresentialHasFixedTerm,
+        presentialTotalCycles: nextPresentialTotalCycles,
+        presentialSessionsPerCycle: nextPresentialSessionsPerCycle,
+        comboPresentialShareCents: nextComboPresentialShareCents,
+        comboConsultancyShareCents: nextComboConsultancyShareCents
       },
       offer.kind
     );
@@ -1066,7 +1168,16 @@ export class ConsultancyService {
           typeof input.billingCycle === "undefined"
             ? undefined
             : resolvedMaxCreditInstallments,
-        isActive: input.isActive
+        isActive: input.isActive,
+        presentialPackageMode:
+          nextKind === ServiceOfferKind.PRESENTIAL || nextKind === ServiceOfferKind.COMBO
+            ? nextPresentialPackageMode
+            : null,
+        presentialHasFixedTerm: nextPresentialHasFixedTerm,
+        presentialTotalCycles: nextPresentialHasFixedTerm ? nextPresentialTotalCycles : null,
+        presentialSessionsPerCycle: nextPresentialSessionsPerCycle,
+        comboPresentialShareCents: nextKind === ServiceOfferKind.COMBO ? nextComboPresentialShareCents : null,
+        comboConsultancyShareCents: nextKind === ServiceOfferKind.COMBO ? nextComboConsultancyShareCents : null
       }
     });
 
