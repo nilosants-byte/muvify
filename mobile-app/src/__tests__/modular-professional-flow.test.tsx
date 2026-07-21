@@ -1,5 +1,6 @@
 ﻿import React from "react";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AvailabilityManagerScreen } from "../screens/professional/AvailabilityManagerScreen";
 import { BookingDetailProfessionalScreen } from "../screens/professional/BookingDetailProfessionalScreen";
 import { BookingPaymentStatusScreen } from "../screens/professional/BookingPaymentStatusScreen";
@@ -63,6 +64,16 @@ afterAll(() => {
   (console.error as jest.Mock).mockRestore();
 });
 
+// As telas reais (fora do barrel legado Screens.tsx) usam useAuthQuery/useQueryClient
+// (TanStack Query) de verdade — precisam de um QueryClientProvider no ancestral,
+// igual ao App.tsx faz em produção.
+function renderWithQueryClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+  });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
+
 function providerBooking(
   status: Booking["status"] = "PENDING"
 ): Booking {
@@ -104,7 +115,7 @@ describe("Fluxo modular profissional", () => {
       getParent: () => ({ navigate: stackNavigate })
     };
 
-    const homeUi = render(
+    const homeUi = renderWithQueryClient(
       <ProfessionalHomeScreen navigation={navigation as any} route={{} as any} />
     );
     await waitFor(() => expect(bookingsApi.me).toHaveBeenCalled(), { timeout: 3000 });
@@ -119,7 +130,7 @@ describe("Fluxo modular profissional", () => {
 
     homeUi.unmount();
 
-    const agendaUi = render(
+    const agendaUi = renderWithQueryClient(
       <ProfessionalAgendaScreen navigation={navigation as any} route={{} as any} />
     );
     await waitFor(() => expect(bookingsApi.me).toHaveBeenCalled(), { timeout: 3000 });
@@ -157,12 +168,12 @@ describe("Fluxo modular profissional", () => {
       goBack: jest.fn()
     };
     const route = { params: { bookingId: "booking-pro-1" } };
-    const ui = render(
+    const ui = renderWithQueryClient(
       <BookingDetailProfessionalScreen navigation={navigation as any} route={route as any} />
     );
 
     expect(await ui.findByText("Detalhe do atendimento")).toBeTruthy();
-    fireEvent.press(ui.getByText("Confirmar agendamento"));
+    fireEvent.press(await ui.findByText("Confirmar agendamento"));
     await waitFor(() =>
       expect(updateStatusSpy).toHaveBeenCalledWith("token-test", "booking-pro-1", "CONFIRMED")
     );
@@ -176,7 +187,7 @@ describe("Fluxo modular profissional", () => {
       navigate: jest.fn(),
       goBack: jest.fn()
     };
-    const completionUi = render(
+    const completionUi = renderWithQueryClient(
       <ProfessionalConfirmCompletionScreen
         navigation={completionNavigation as any}
         route={route as any}
@@ -228,14 +239,14 @@ describe("Fluxo modular profissional", () => {
       getParent: () => ({ navigate: jest.fn() }),
       navigate: jest.fn()
     };
-    const payoutUi = render(
+    const payoutUi = renderWithQueryClient(
       <PayoutStatusScreen navigation={payoutNavigation as any} route={{} as any} />
     );
     // PayoutStatus renderiza — verificamos que a tela montou sem crash
     await waitFor(() => expect(payoutUi.toJSON()).not.toBeNull(), { timeout: 3000 });
 
     const connectNavigation = { replace: jest.fn(), navigate: jest.fn() };
-    const connectUi = render(
+    const connectUi = renderWithQueryClient(
       <ConnectPayoutAccountScreen navigation={connectNavigation as any} route={{} as any} />
     );
     expect(await connectUi.findByText("Conta não vinculada")).toBeTruthy();
@@ -249,12 +260,12 @@ describe("Fluxo modular profissional", () => {
       .mockResolvedValue({ id: "slot-2", weekday: 2, startTime: "09:00", endTime: "17:00", isActive: true } as any);
 
     const availabilityNavigation = { goBack: jest.fn(), navigate: jest.fn() };
-    const availabilityUi = render(
+    const availabilityUi = renderWithQueryClient(
       <AvailabilityManagerScreen navigation={availabilityNavigation as any} route={{} as any} />
     );
     // Tela de disponibilidade carregada — renderização verificada em provider-payment-critical.test.tsx
 
-    const paymentUi = render(
+    const paymentUi = renderWithQueryClient(
       <BookingPaymentStatusScreen
         navigation={{ goBack: jest.fn() } as any}
         route={{ params: { bookingId: "booking-pro-1" } } as any}

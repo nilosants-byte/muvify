@@ -1,5 +1,6 @@
 ﻿import React from "react";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ForgotPasswordScreen } from "../screens/client/ForgotPasswordScreen";
 import { ClientProfileScreen } from "../screens/client/ClientProfileScreen";
 import { authApi } from "../services/api/client";
@@ -20,6 +21,15 @@ jest.mock("@react-navigation/native", () => {
   };
 });
 
+// ClientProfileScreen usa useAuthQuery/TanStack Query de verdade — precisa de
+// um QueryClientProvider no ancestral, igual ao App.tsx faz em produção.
+function renderWithQueryClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+  });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
+
 describe("Fluxo modular cliente - auth/perfil", () => {
   it("carrega perfil real e abre configurações", async () => {
     const showToast = jest.fn();
@@ -34,7 +44,7 @@ describe("Fluxo modular cliente - auth/perfil", () => {
       getParent: () => ({ navigate: parentNavigate })
     };
 
-    const ui = render(<ClientProfileScreen navigation={navigation as any} route={{} as any} />);
+    const ui = renderWithQueryClient(<ClientProfileScreen navigation={navigation as any} route={{} as any} />);
     expect(await ui.findByText("Fallback")).toBeTruthy();
     expect(await ui.findByText("fallback@email.com")).toBeTruthy();
 
