@@ -19,9 +19,13 @@ Frontend mobile-first em React Native + Expo + TypeScript, pronto para integrar 
   - Agendamentos e mudanca de status
   - Avaliacoes
   - Disponibilidade do profissional
-  - Metodo de pagamento do cliente com Stripe PaymentSheet (status + setup intent + confirmacao)
-  - Stripe Connect status/onboarding
+  - Metodo de pagamento do cliente (cartao e PIX) via Mercado Pago
+  - Onboarding e status da conta de recebimento do profissional (Mercado Pago Connect)
   - Status de pagamento por agendamento
+  - Compra e gestao de pacotes presenciais com cobranca recorrente
+  - Consultoria online, fichas de treino e entregas
+  - Feed social, gamificacao (XP, sequencia, conquistas) e ranking de amigos
+  - Ferramentas de admin: validacao de CREF, suporte, financeiro e fila de disputas
   - Agenda profissional e confirmacao de conclusao
   - Perfil do cliente e perfil profissional (criacao)
   - Registro automatico de push token (Expo) apos login
@@ -138,7 +142,6 @@ Defina o endpoint da API para dispositivo fisico/emulador:
 
 ```bash
 EXPO_PUBLIC_API_BASE_URL=http://SEU_IP:3000/api
-EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxx
 EXPO_PUBLIC_EAS_PROJECT_ID=
 EXPO_PUBLIC_SENTRY_DSN=
 EXPO_PUBLIC_APP_ENV=development
