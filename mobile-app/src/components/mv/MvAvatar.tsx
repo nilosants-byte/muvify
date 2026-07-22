@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { resolveMediaUrl } from "../../utils/media";
 import { DISPLAY } from "../../theme/v2tokens";
+import { useMvTheme } from "../../theme/MvThemeContext";
 
 // V2: tons alinhados ao design system (green, amber, blue/sky).
 // Os tons legados (purple, red, teal) são mapeados para os mais próximos do V2.
@@ -20,13 +21,27 @@ interface MvAvatarProps {
   size?: AvatarSize;
   borderRadius?: number;
   photoUri?: string | null;
+  /** Capa verde ao redor da miniatura (liga por padrão — ver protótipo aprovado). */
+  aura?: boolean;
 }
 
 const SIZE_MAP: Record<string, number> = { sm: 36, md: 46, lg: 56 };
 
+// Capa: degradê verde -> cor de fundo do tema, "aceso" a 200° (medido a
+// partir do topo, sentido horário) — traduzido pras coordenadas 0-1 que o
+// LinearGradient usa (aproximação linear do conic-gradient do protótipo).
+const AURA_START = { x: 0.33, y: 0.97 };
+const AURA_END = { x: 0.67, y: 0.03 };
+
 function resolveSize(size: AvatarSize): number {
   if (typeof size === "number") return Math.max(16, Math.min(200, size));
   return SIZE_MAP[size] ?? 46;
+}
+
+// Espessura da capa proporcional ao tamanho do avatar (~7.5%), pra ficar
+// "fina" em qualquer tamanho — 4px no tamanho testado/aprovado (56px).
+function resolveAuraThickness(dim: number): number {
+  return Math.max(2, Math.min(6, Math.round(dim * 0.075)));
 }
 
 // Gradientes V2: fundo escuro com overlay colorido translúcido
@@ -56,7 +71,9 @@ export function MvAvatar({
   size = "md",
   borderRadius,
   photoUri,
+  aura = true,
 }: MvAvatarProps) {
+  const { theme } = useMvTheme();
   const resolvedTone: AvatarTone = tone ?? color ?? "green";
   const resolvedPhotoUri = resolveMediaUrl(photoUri);
   const dim = resolveSize(size);
@@ -64,8 +81,10 @@ export function MvAvatar({
   const fontSize = Math.round(dim * 0.34);
   const [photoError, setPhotoError] = useState(false);
 
+  let content: React.ReactNode;
+
   if (resolvedPhotoUri && !photoError) {
-    return (
+    content = (
       <Image
         source={{ uri: resolvedPhotoUri }}
         style={{ width: dim, height: dim, borderRadius: br }}
@@ -73,43 +92,72 @@ export function MvAvatar({
         onError={() => setPhotoError(true)}
       />
     );
+  } else {
+    const [from, to] = GRADIENTS[resolvedTone] ?? GRADIENTS.green;
+    content = (
+      <LinearGradient
+        colors={[from, to]}
+        start={{ x: 0.35, y: 0.2 }}
+        end={{ x: 1, y: 1 }}
+        style={[
+          styles.base,
+          {
+            width: dim,
+            height: dim,
+            borderRadius: br,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.38,
+            shadowRadius: 12,
+            elevation: 6,
+          },
+        ]}
+      >
+        {/* overlay de destaque no canto superior esquerdo */}
+        <View style={[styles.highlight, { borderRadius: br }]} />
+        <Text
+          style={{
+            fontFamily: DISPLAY,
+            fontWeight: "800",
+            fontSize,
+            color: TEXT_COLORS[resolvedTone] ?? "#FFF",
+            letterSpacing: -0.02 * fontSize,
+          }}
+          numberOfLines={1}
+        >
+          {(initials ?? "").trim().toUpperCase().slice(0, 2) || "?"}
+        </Text>
+      </LinearGradient>
+    );
   }
 
-  const [from, to] = GRADIENTS[resolvedTone] ?? GRADIENTS.green;
+  if (!aura) {
+    return content;
+  }
+
+  const thickness = resolveAuraThickness(dim);
+  const outerDim = dim + thickness * 2;
 
   return (
     <LinearGradient
-      colors={[from, to]}
-      start={{ x: 0.35, y: 0.2 }}
-      end={{ x: 1, y: 1 }}
-      style={[
-        styles.base,
-        {
-          width: dim,
-          height: dim,
-          borderRadius: br,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.38,
-          shadowRadius: 12,
-          elevation: 6,
-        },
-      ]}
+      colors={[theme.textGreen, theme.bg]}
+      start={AURA_START}
+      end={AURA_END}
+      style={{
+        width: outerDim,
+        height: outerDim,
+        borderRadius: outerDim / 2,
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        shadowColor: theme.textGreen,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.45,
+        shadowRadius: 8,
+        elevation: 8,
+      }}
     >
-      {/* overlay de destaque no canto superior esquerdo */}
-      <View style={[styles.highlight, { borderRadius: br }]} />
-      <Text
-        style={{
-          fontFamily: DISPLAY,
-          fontWeight: "800",
-          fontSize,
-          color: TEXT_COLORS[resolvedTone] ?? "#FFF",
-          letterSpacing: -0.02 * fontSize,
-        }}
-        numberOfLines={1}
-      >
-        {(initials ?? "").trim().toUpperCase().slice(0, 2) || "?"}
-      </Text>
+      {content}
     </LinearGradient>
   );
 }
