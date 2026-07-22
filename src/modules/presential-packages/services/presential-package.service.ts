@@ -891,7 +891,7 @@ export class PresentialPackageService {
 
     const now = new Date();
     const deliveryDeadlineAt = new Date(
-      now.getTime() + env.CONSULTANCY_DELIVERY_DEADLINE_DAYS * 24 * 60 * 60 * 1000
+      now.getTime() + env.CONSULTANCY_DELIVERY_DEADLINE_HOURS * 60 * 60 * 1000
     );
 
     const contract = await prisma.$transaction(async (tx) => {

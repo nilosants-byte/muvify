@@ -18,8 +18,7 @@ export class ConsultancyController {
 
   async upsertOnlineSetting(request: Request, response: Response) {
     const setting = await consultancyService.upsertOnlineSetting(request.user!.id, {
-      enabled: request.body.enabled,
-      responseSlaDays: request.body.responseSlaDays
+      enabled: request.body.enabled
     });
     return response.json(setting);
   }

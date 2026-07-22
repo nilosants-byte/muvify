@@ -97,7 +97,7 @@ const envSchema = z.object({
   BOOKING_ATTENDANCE_CODE_EXPIRY_HOURS: z.coerce.number().int().min(1).max(72).default(6),
   REQUIRE_ANAMNESIS_FOR_CONTRACTS: booleanFlag.default(true),
   AUTO_CAPTURE_CONFIRMATION_HOURS: z.coerce.number().int().min(1).max(168).default(24),
-  CONSULTANCY_DELIVERY_DEADLINE_DAYS: z.coerce.number().int().min(1).max(30).default(7),
+  CONSULTANCY_DELIVERY_DEADLINE_HOURS: z.coerce.number().int().min(1).max(168).default(48),
   PAYMENT_JOB_INTERVAL_SECONDS: z.coerce.number().int().min(15).max(3600).default(60),
   RUN_PAYMENT_JOBS: booleanFlag.default(true),
   RUN_EMAIL_RETRY_JOB: booleanFlag.default(true),

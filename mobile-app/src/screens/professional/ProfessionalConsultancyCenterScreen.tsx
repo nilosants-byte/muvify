@@ -6,7 +6,7 @@ import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { consultancyApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvInput, MvProgressBar, MvRefreshControl, MvText, MvToggle } from "../../components/mv";
+import { MvBadge, MvButton, MvCard, MvProgressBar, MvRefreshControl, MvText, MvToggle } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
@@ -35,8 +35,6 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
     crefValidated,
     prebuiltPlanCount,
     settingsEnabled,
-    responseSlaDays,
-    setResponseSlaDays,
     openRequests,
     respondedRequests,
     acceptedRequests,
@@ -48,7 +46,6 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
   } = useConsultancyCenterData();
 
   const [savingSettings, setSavingSettings] = React.useState(false);
-  const [slaEditorOpen, setSlaEditorOpen] = React.useState(false);
   const [checklistExpanded, setChecklistExpanded] = React.useState(false);
   const { runWithAuth, showToast } = useAppState();
 
@@ -61,9 +58,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
   async function toggleOnlineSetting(enabled: boolean) {
     try {
       setSavingSettings(true);
-      await runWithAuth((token: string) =>
-        consultancyApi.upsertProviderSettings(token, { enabled, responseSlaDays: Number(responseSlaDays) || 7 })
-      );
+      await runWithAuth((token: string) => consultancyApi.upsertProviderSettings(token, { enabled }));
       showToast(enabled ? "Consultoria online habilitada." : "Consultoria online desabilitada.", "success");
       void centerQuery.refetch();
     } catch (error) {
@@ -390,29 +385,11 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
                 <View style={{ flex: 1 }}>
                   <MvText variant="semi3">Consultoria online</MvText>
                   <MvText variant="caption" color="secondary">
-                    {settingsEnabled ? `Entrega em até ${responseSlaDays} dia(s)` : "Desligada — você não recebe novas solicitações"}
+                    {settingsEnabled ? "Entrega em até 48h após a compra" : "Desligada — você não recebe novas solicitações"}
                   </MvText>
                 </View>
                 <MvToggle value={settingsEnabled} onValueChange={(v) => void toggleOnlineSetting(v)} disabled={savingSettings} />
-                <PressableScale onPress={() => setSlaEditorOpen((current) => !current)} style={{ padding: 4 }}>
-                  <Ionicons name={slaEditorOpen ? "chevron-up" : "pencil-outline"} size={16} color={theme.text3} />
-                </PressableScale>
               </View>
-              {slaEditorOpen ? (
-                <View style={{ gap: 8 }}>
-                  <MvInput
-                    keyboardType="numeric"
-                    placeholder="Prazo máximo de entrega (dias)"
-                    value={responseSlaDays}
-                    onChangeText={setResponseSlaDays}
-                  />
-                  <MvButton
-                    label="Salvar prazo"
-                    loading={savingSettings}
-                    onPress={() => { void toggleOnlineSetting(settingsEnabled); setSlaEditorOpen(false); }}
-                  />
-                </View>
-              ) : null}
             </View>
 
             {prebuiltPlanCount === 0 ? (

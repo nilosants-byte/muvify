@@ -231,7 +231,7 @@ async function main() {
   await prisma.onlineConsultancySetting.upsert({
     where: { providerId: p2.id },
     update: {},
-    create: { providerId: p2.id, enabled: false, responseSlaDays: 7 },
+    create: { providerId: p2.id, enabled: false },
   });
 
   // ── 7. ANAMNESE DOS CLIENTES ───────────────────────────────────────────────

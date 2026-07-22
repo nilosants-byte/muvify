@@ -35,8 +35,7 @@ export const providerCatalogSchema = z.object({
 
 export const updateOnlineSettingSchema = z.object({
   body: z.object({
-    enabled: z.boolean(),
-    responseSlaDays: z.number().int().min(1).max(30).optional()
+    enabled: z.boolean()
   })
 });
 

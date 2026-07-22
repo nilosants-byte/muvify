@@ -11,7 +11,7 @@ import { useAuthQuery } from "./useAuthQuery";
 import { queryKeys } from "../lib/queryKeys";
 
 type CenterData = {
-  settings: { enabled: boolean; responseSlaDays: number } | null;
+  settings: { enabled: boolean } | null;
   offers: ProviderServiceOffer[];
   requests: ConsultancyRequest[];
   crefValidated: boolean;
@@ -29,7 +29,6 @@ function offerEffectivePriceCents(offer: ProviderServiceOffer) {
 // React Query serve do cache ao trocar de tela, sem refetch duplicado.
 export function useConsultancyCenterData() {
   const [settingsEnabled, setSettingsEnabled] = useState(false);
-  const [responseSlaDays, setResponseSlaDays] = useState("7");
   const [offers, setOffers] = useState<ProviderServiceOffer[]>([]);
   const [requests, setRequests] = useState<ConsultancyRequest[]>([]);
   const [selectedOfferByRequest, setSelectedOfferByRequest] = useState<Record<string, string>>({});
@@ -55,7 +54,7 @@ export function useConsultancyCenterData() {
       const credentials = credentialsResult as { crefValidationStatus?: string } | null;
       const planList = providerPlans as Array<{ isPrebuilt?: boolean }>;
       return {
-        settings: providerSettings ? (providerSettings as { enabled: boolean; responseSlaDays: number }) : null,
+        settings: providerSettings ? (providerSettings as { enabled: boolean }) : null,
         offers: providerOffers,
         requests: providerRequests,
         crefValidated: credentials?.crefValidationStatus === "APPROVED",
@@ -77,7 +76,6 @@ export function useConsultancyCenterData() {
     setRequests(data.requests);
     if (!data.profileMissing && data.settings) {
       setSettingsEnabled(data.settings.enabled);
-      setResponseSlaDays(String(data.settings.responseSlaDays));
     }
     const availableOnlineOffers = data.offers.filter(
       (item) => item.isActive !== false &&
@@ -177,8 +175,6 @@ export function useConsultancyCenterData() {
     prebuiltPlanCount,
     settingsEnabled,
     setSettingsEnabled,
-    responseSlaDays,
-    setResponseSlaDays,
     offers,
     setOffers,
     requests,

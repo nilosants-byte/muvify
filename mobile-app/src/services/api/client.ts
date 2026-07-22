@@ -2550,13 +2550,11 @@ export const consultancyApi = {
     token: string,
     body: {
       enabled: boolean;
-      responseSlaDays?: number;
     }
   ) {
     return apiRequest<{
       id: string;
       enabled: boolean;
-      responseSlaDays: number;
       providerId: string;
     }>("/consultancy/provider/settings", {
       method: "PUT",
@@ -2568,7 +2566,6 @@ export const consultancyApi = {
     return apiRequest<{
       id: string | null;
       enabled: boolean;
-      responseSlaDays: number;
       providerId: string;
     }>("/consultancy/provider/settings", {
       token

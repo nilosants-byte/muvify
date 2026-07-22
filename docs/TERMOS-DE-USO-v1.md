@@ -290,13 +290,13 @@ Além do agendamento avulso (Cláusula 7.1 a 7.4), o Profissional pode oferecer 
 2. **Resposta:** O Profissional aceita ou recusa a solicitação no prazo de **[X horas]**. Ao aceitar, apresenta uma proposta com escopo, prazo de entrega e valor;
 3. **Contrato:** O Aluno aceita a proposta e efetua o pagamento. Um contrato de consultoria é firmado digitalmente no Aplicativo;
 4. **Anamnese:** O Aluno preenche a anamnese (se ainda não preenchida), que é compartilhada com o Profissional;
-5. **Elaboração e entrega:** O Profissional elabora e entrega a primeira ficha de treino dentro do prazo contratado. **Um mesmo contrato pode receber várias fichas de treino ao longo da sua vigência** — o Profissional pode entregar novas fichas conforme o Aluno evolui, e também pode atualizar/editar uma ficha já entregue. Cada ficha tem sua própria vigência, que nunca ultrapassa a vigência do contrato;
+5. **Elaboração e entrega:** O Profissional elabora e entrega a primeira ficha de treino em até **48 (quarenta e oito) horas** a partir da confirmação do pagamento da consultoria. **Um mesmo contrato pode receber várias fichas de treino ao longo da sua vigência** — o Profissional pode entregar novas fichas conforme o Aluno evolui, e também pode atualizar/editar uma ficha já entregue. Cada ficha tem sua própria vigência, que nunca ultrapassa a vigência do contrato;
 6. **Execução:** O Aluno executa os treinos das fichas recebidas e pode registrar a conclusão de cada um pelo Aplicativo, com opção de compartilhar uma foto no feed de evolução (item 13);
 7. **Conclusão e repasse:** O repasse ao Profissional é processado após a entrega da primeira ficha, conforme o prazo de reembolso da Cláusula 10.3 — a obrigação principal do Profissional (produzir e entregar o plano) já está cumprida a partir daí, mesmo que fichas adicionais sejam entregues depois.
 
 ### 8.2 Prazos de Entrega
 
-O prazo de entrega do plano de treino ou consultoria é definido no contrato aceito pelo Aluno. **O não cumprimento do prazo pelo Profissional dá ao Aluno o direito ao reembolso integral do valor pago**, processado automaticamente pelo sistema.
+O prazo de entrega da primeira ficha de treino é de **48 (quarenta e oito) horas**, contado a partir da confirmação do pagamento da consultoria. **O não cumprimento do prazo pelo Profissional dá ao Aluno o direito ao reembolso integral do valor pago**, processado automaticamente pelo sistema.
 
 ### 8.3 Parcelamento
 

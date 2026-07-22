@@ -812,7 +812,7 @@ export class ConsultancyService {
     };
   }
 
-  async upsertOnlineSetting(userId: string, input: { enabled: boolean; responseSlaDays?: number }) {
+  async upsertOnlineSetting(userId: string, input: { enabled: boolean }) {
     const provider = await this.providerProfileByUserId(userId);
 
     if (input.enabled) {
@@ -871,13 +871,11 @@ export class ConsultancyService {
         providerId: provider.id
       },
       update: {
-        enabled: input.enabled,
-        responseSlaDays: input.responseSlaDays ?? env.CONSULTANCY_DELIVERY_DEADLINE_DAYS
+        enabled: input.enabled
       },
       create: {
         providerId: provider.id,
-        enabled: input.enabled,
-        responseSlaDays: input.responseSlaDays ?? env.CONSULTANCY_DELIVERY_DEADLINE_DAYS
+        enabled: input.enabled
       }
     });
   }
@@ -897,8 +895,7 @@ export class ConsultancyService {
     return {
       id: null,
       providerId: provider.id,
-      enabled: false,
-      responseSlaDays: env.CONSULTANCY_DELIVERY_DEADLINE_DAYS
+      enabled: false
     };
   }
 
@@ -1864,11 +1861,8 @@ export class ConsultancyService {
     }
 
     const now = new Date();
-    const deliveryDays =
-      request.provider.onlineConsultancySetting?.responseSlaDays ??
-      env.CONSULTANCY_DELIVERY_DEADLINE_DAYS;
     const deliveryDeadlineAt = new Date(
-      now.getTime() + deliveryDays * 24 * 60 * 60 * 1000
+      now.getTime() + env.CONSULTANCY_DELIVERY_DEADLINE_HOURS * 60 * 60 * 1000
     );
 
     const { updatedRequest, contract } = await prisma.$transaction(async (tx) => {
@@ -2376,64 +2370,64 @@ export class ConsultancyService {
   }
 
   async sendConsultancyExpiryReminders(referenceDate = new Date()) {
-    const dayMs = 24 * 60 * 60 * 1000;
+    const hourMs = 60 * 60 * 1000;
     const windowMs = 5 * 60 * 1000;
 
-    const lower7d = new Date(referenceDate.getTime() + 7 * dayMs - windowMs);
-    const upper7d = new Date(referenceDate.getTime() + 7 * dayMs + windowMs);
+    const lower24h = new Date(referenceDate.getTime() + 24 * hourMs - windowMs);
+    const upper24h = new Date(referenceDate.getTime() + 24 * hourMs + windowMs);
 
-    const due7d = await prisma.consultancyContract.findMany({
+    const due24h = await prisma.consultancyContract.findMany({
       where: {
         status: ConsultancyContractStatus.ACTIVE,
-        expiry7dSentAt: null,
-        deliveryDeadlineAt: { gte: lower7d, lte: upper7d },
+        expiry24hSentAt: null,
+        deliveryDeadlineAt: { gte: lower24h, lte: upper24h },
       },
       select: { id: true, clientId: true, provider: { select: { userId: true } } },
     });
 
-    if (due7d.length > 0) {
+    if (due24h.length > 0) {
       await prisma.consultancyContract.updateMany({
-        where: { id: { in: due7d.map((c) => c.id) }, expiry7dSentAt: null },
-        data: { expiry7dSentAt: referenceDate },
+        where: { id: { in: due24h.map((c) => c.id) }, expiry24hSentAt: null },
+        data: { expiry24hSentAt: referenceDate },
       });
-      for (const contract of due7d) {
+      for (const contract of due24h) {
         void notificationService
           .sendToUsers([contract.clientId, contract.provider.userId], {
             preferenceType: "CONSULTANCY",
-            title: "Consultoria expira em 7 dias",
-            body: "O prazo de entrega do seu plano de treino expira em 7 dias.",
-            data: { type: "CONSULTANCY_EXPIRY_7D", contractId: contract.id },
+            title: "Consultoria expira em 24 horas",
+            body: "O prazo de entrega do seu plano de treino expira em 24 horas.",
+            data: { type: "CONSULTANCY_EXPIRY_24H", contractId: contract.id },
           })
-          .catch((e) => console.error("Consultancy 7d reminder failed:", e));
+          .catch((e) => console.error("Consultancy 24h reminder failed:", e));
       }
     }
 
-    const lower1d = new Date(referenceDate.getTime() + 1 * dayMs - windowMs);
-    const upper1d = new Date(referenceDate.getTime() + 1 * dayMs + windowMs);
+    const lower6h = new Date(referenceDate.getTime() + 6 * hourMs - windowMs);
+    const upper6h = new Date(referenceDate.getTime() + 6 * hourMs + windowMs);
 
-    const due1d = await prisma.consultancyContract.findMany({
+    const due6h = await prisma.consultancyContract.findMany({
       where: {
         status: ConsultancyContractStatus.ACTIVE,
-        expiry1dSentAt: null,
-        deliveryDeadlineAt: { gte: lower1d, lte: upper1d },
+        expiry6hSentAt: null,
+        deliveryDeadlineAt: { gte: lower6h, lte: upper6h },
       },
       select: { id: true, clientId: true, provider: { select: { userId: true } } },
     });
 
-    if (due1d.length > 0) {
+    if (due6h.length > 0) {
       await prisma.consultancyContract.updateMany({
-        where: { id: { in: due1d.map((c) => c.id) }, expiry1dSentAt: null },
-        data: { expiry1dSentAt: referenceDate },
+        where: { id: { in: due6h.map((c) => c.id) }, expiry6hSentAt: null },
+        data: { expiry6hSentAt: referenceDate },
       });
-      for (const contract of due1d) {
+      for (const contract of due6h) {
         void notificationService
           .sendToUsers([contract.clientId, contract.provider.userId], {
             preferenceType: "CONSULTANCY",
-            title: "Consultoria expira amanhã",
-            body: "O prazo de entrega do seu plano de treino expira em 24 horas.",
-            data: { type: "CONSULTANCY_EXPIRY_1D", contractId: contract.id },
+            title: "Consultoria expira em breve",
+            body: "O prazo de entrega do seu plano de treino expira em 6 horas.",
+            data: { type: "CONSULTANCY_EXPIRY_6H", contractId: contract.id },
           })
-          .catch((e) => console.error("Consultancy 1d reminder failed:", e));
+          .catch((e) => console.error("Consultancy 6h reminder failed:", e));
       }
     }
 
@@ -2486,7 +2480,7 @@ export class ConsultancyService {
 
     const processContract = async (contract: (typeof expiredContracts)[number]) => {
       let mpRefundId: string | null = null;
-      let refundReason = "Prazo de 7 dias expirado sem entrega do treino personalizado.";
+      let refundReason = `Prazo de ${env.CONSULTANCY_DELIVERY_DEADLINE_HOURS} horas expirado sem entrega do treino personalizado.`;
 
       if (contract.mpPaymentId) {
         try {

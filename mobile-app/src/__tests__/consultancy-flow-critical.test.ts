@@ -59,7 +59,7 @@ function buildContract(overrides?: Partial<ConsultancyContract>): ConsultancyCon
     paymentAmountCents: 30000,
     providerAmountCents: 27000,
     platformAmountCents: 3000,
-    deliveryDeadlineAt: "2026-04-08T10:00:00Z",
+    deliveryDeadlineAt: "2026-04-03T10:00:00Z",
     ...overrides,
   };
 }

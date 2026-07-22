@@ -805,13 +805,12 @@ model ProviderBankAccount {
 }
 
 model OnlineConsultancySetting {
-  id              String          @id @default(uuid())
-  providerId      String          @unique
-  enabled         Boolean         @default(false)
-  responseSlaDays Int             @default(7)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  provider        ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  id         String          @id @default(uuid())
+  providerId String          @unique
+  enabled    Boolean         @default(false)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  provider   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
 }
 
 model ProviderServiceOffer {
@@ -1058,8 +1057,8 @@ model ConsultancyContract {
   deliveredAt             DateTime?
   refundedAt              DateTime?
   refundReason            String?
-  expiry7dSentAt          DateTime?
-  expiry1dSentAt          DateTime?
+  expiry24hSentAt         DateTime?
+  expiry6hSentAt          DateTime?
   expiryNoticeSentAt      DateTime?
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
