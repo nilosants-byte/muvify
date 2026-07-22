@@ -8,7 +8,7 @@ Backend em Node.js/TypeScript + app mobile em React Native/Expo, no mesmo reposi
 
 - **Aluno**: busca profissionais por localização/categoria/nota, agenda sessões presenciais ou contrata consultoria online, acompanha planos de treino, evolução física e participa de um feed social com gamificação.
 - **Profissional**: gerencia agenda, valida CREF, cria ofertas (avulsas, pacotes recorrentes, consultoria, combos), entrega fichas de treino, acompanha financeiro e recebimentos.
-- **Admin**: valida cadastros de CREF, atende suporte, acompanha o financeiro da plataforma e resolve manualmente disputas (falta contestada, contestação bancária, reembolso automático que falhou).
+- **Admin**: papel operacional interno (não é um tipo de conta que o usuário escolhe no cadastro — é liberado por uma lista de e-mails autorizados configurada no servidor, reconferida a cada login). Valida cadastros de CREF, atende suporte, acompanha o financeiro da plataforma e resolve manualmente disputas (falta contestada, contestação bancária, reembolso automático que falhou).
 
 ## Destaques técnicos
 
