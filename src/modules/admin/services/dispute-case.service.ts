@@ -169,16 +169,29 @@ export class DisputeCaseService {
       resolvedAmountCents = amountCents;
     }
 
-    const updated = await prisma.disputeCase.update({
-      where: { id: caseId },
-      data: {
-        status: DisputeCaseStatus.RESOLVED,
-        resolution: input.resolution as DisputeCaseResolution,
-        resolvedAmountCents,
-        resolutionNote: note,
-        resolvedByAdminId: admin.id,
-        resolvedAt: new Date()
+    const resolvedAt = new Date();
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const resolvedCase = await tx.disputeCase.update({
+        where: { id: caseId },
+        data: {
+          status: DisputeCaseStatus.RESOLVED,
+          resolution: input.resolution as DisputeCaseResolution,
+          resolvedAmountCents,
+          resolutionNote: note,
+          resolvedByAdminId: admin.id,
+          resolvedAt
+        }
+      });
+
+      if (resolvedCase.noShowReportId) {
+        await tx.noShowReport.update({
+          where: { id: resolvedCase.noShowReportId },
+          data: { status: "RESOLVED", resolvedAt }
+        });
       }
+
+      return resolvedCase;
     });
 
     void writeAdminAuditLog({

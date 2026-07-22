@@ -70,7 +70,6 @@ jobs:
           --non-interactive
         env:
           EXPO_PUBLIC_API_BASE_URL: ${{ secrets.MOBILE_EXPO_PUBLIC_API_BASE_URL }}
-          EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.MOBILE_EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
           EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.MOBILE_EXPO_PUBLIC_SENTRY_DSN }}
           EXPO_PUBLIC_APP_ENV: ${{ inputs.profile == 'production' && 'production' || 'preview' }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -87,7 +86,6 @@ jobs:
           --non-interactive
         env:
           EXPO_PUBLIC_API_BASE_URL: ${{ secrets.MOBILE_EXPO_PUBLIC_API_BASE_URL }}
-          EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.MOBILE_EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
           EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.MOBILE_EXPO_PUBLIC_SENTRY_DSN }}
           EXPO_PUBLIC_APP_ENV: production
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}

@@ -299,6 +299,44 @@ describe("DisputeCase — fila de disputas (Fase 6)", () => {
     ).rejects.toThrow();
   });
 
+  it("admin resolve um caso de falta contestada: o NoShowReport vinculado também vira RESOLVED", async () => {
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        providerId,
+        categoryId,
+        scheduledAt: new Date(Date.now() - 60 * 60 * 1000),
+        priceCents: 8000,
+        status: BookingStatus.CONFIRMED
+      }
+    });
+
+    await request(app)
+      .post(`/api/bookings/${booking.id}/report-no-show`)
+      .set("Authorization", `Bearer ${clientToken}`)
+      .send({ reportReason: "O profissional não apareceu no horário combinado." });
+
+    await request(app)
+      .post(`/api/bookings/${booking.id}/contest-no-show`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({ contestReason: "Eu estava no local, o cliente que não veio." });
+
+    const report = await prisma.noShowReport.findUnique({ where: { bookingId: booking.id } });
+    expect(report?.status).toBe("CONTESTED");
+
+    const disputeCase = await prisma.disputeCase.findFirst({ where: { bookingId: booking.id } });
+    expect(disputeCase?.noShowReportId).toBe(report?.id);
+
+    await disputeCaseService.resolveCase(adminId, disputeCase!.id, {
+      resolution: "DENIED",
+      note: "Evidências indicam que o profissional compareceu."
+    });
+
+    const reportAfter = await prisma.noShowReport.findUnique({ where: { bookingId: booking.id } });
+    expect(reportAfter?.status).toBe("RESOLVED");
+    expect(reportAfter?.resolvedAt).not.toBeNull();
+  });
+
   it("nega acesso a quem não está na allowlist de admin", async () => {
     const disputeCase = await prisma.disputeCase.create({
       data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 5000 }
