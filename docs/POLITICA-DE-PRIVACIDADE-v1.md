@@ -120,6 +120,7 @@ Profissional de educação física detentor de registro ativo no **Conselho Regi
 | Atividade social | Follows, seguidores, feed de evolução, conquistas (achievements) |
 | Favoritos | Profissionais favoritados pelo aluno |
 | Tickets de suporte | Mensagens enviadas ao suporte via aplicativo |
+| Relatos de falta e casos de disputa | Motivo do relato/contestação de falta de comparecimento, nota de contexto e motivo da decisão do administrador em casos de disputa (item 10.5.2 dos Termos de Uso) |
 
 ### 3.4 Dados coletados automaticamente pelo dispositivo
 
@@ -281,6 +282,7 @@ Os seguintes prestadores de serviços atuam como **operadores de dados** sob ins
 | **Mercado Pago S.A.** | Brasil / Argentina | Processamento de pagamentos, emissão de PIX, tokenização de cartões, gestão de repasses | CPF, dados de cartão (tokenizados), valor das transações, identificadores de pagamento, conta do profissional (Connect) |
 | **Expo (Expo Technology, Inc.)** | EUA | Entrega de notificações push iOS e Android | Token push, dados da notificação (título, corpo, tipo) |
 | **Provedor de E-mail SMTP** | Configurável | Envio de e-mails transacionais e operacionais | Nome, endereço de e-mail, conteúdo do e-mail |
+| **Cloudflare (R2 Object Storage)** | Rede global (Cloudflare) | Armazenamento de fotos e vídeos enviados pelos usuários (foto de perfil, vídeo de apresentação do profissional, documentos do CREF, fotos do feed de evolução, mídia de exercícios) | Arquivos de imagem/vídeo enviados pelo usuário |
 | **Amazon Web Services (AWS S3)** | EUA (região configurável) | Armazenamento de backups criptografados do banco de dados | Backup completo da base de dados (criptografado com chave própria) |
 | **Sentry (Functional Software, Inc.)** | EUA | Monitoramento de erros e estabilidade da aplicação | Dados de contexto de erro (sem dados de saúde ou financeiros identificáveis) |
 
@@ -307,6 +309,7 @@ Alguns de nossos prestadores (vide item 6.2) possuem infraestrutura fora do Bras
 
 - **Mercado Pago:** Sujeito à regulamentação do Banco Central do Brasil e às normas de proteção de dados do Mercosul. Possui Política de Privacidade própria publicada.
 - **Expo:** Transferência para os EUA. Adotamos cláusulas contratuais de proteção (DPA — Data Processing Agreement) com obrigações equivalentes às da LGPD.
+- **Cloudflare (R2):** Rede de armazenamento distribuída globalmente. A Cloudflare possui certificações SOC 2 e ISO 27001 e disponibiliza cláusulas contratuais de proteção de dados (DPA) equivalentes às exigências da LGPD.
 - **AWS S3:** Transferência para os EUA. A AWS possui certificações SOC 2, ISO 27001 e adere a mecanismos de adequação reconhecidos internacionalmente. Os backups são criptografados com chave exclusiva antes de qualquer upload (criptografia end-to-end).
 - **Sentry:** Transferência para os EUA. Adotamos DPA e filtramos dados sensíveis antes do envio ao Sentry.
 
@@ -334,7 +337,8 @@ A Muvify mantém os dados pessoais apenas pelo tempo necessário para as finalid
 | Notas de agendamento | 730 dias (2 anos) | Anonimização do conteúdo |
 | Fila de e-mail com falha | 90 dias | Exclusão automática |
 | Registros de tickets de suporte | 5 anos (1.825 dias) | Anonimização do conteúdo |
-| Registros financeiros e auditoria de pagamentos | Mínimo 5 anos | Arquivamento seguro com acesso restrito |
+| Motivo de relato/contestação de falta e nota de caso de disputa | 730 dias (2 anos) após a resolução do caso | Anonimização do conteúdo (o registro do caso — status, decisão, valores — é mantido para auditoria) |
+| Registros financeiros e auditoria de pagamentos (inclui pacotes presenciais e seus ciclos de cobrança) | Mínimo 5 anos | Arquivamento seguro com acesso restrito |
 | Logs de acesso à aplicação | Mínimo 6 meses (Marco Civil da Internet, art. 15) | Rotação/exclusão automatizada |
 
 ### 8.1 Encerramento de Conta (Exclusão a Pedido)

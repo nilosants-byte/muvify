@@ -290,10 +290,9 @@ Além do agendamento avulso (Cláusula 7.1 a 7.4), o Profissional pode oferecer 
 2. **Resposta:** O Profissional aceita ou recusa a solicitação no prazo de **[X horas]**. Ao aceitar, apresenta uma proposta com escopo, prazo de entrega e valor;
 3. **Contrato:** O Aluno aceita a proposta e efetua o pagamento. Um contrato de consultoria é firmado digitalmente no Aplicativo;
 4. **Anamnese:** O Aluno preenche a anamnese (se ainda não preenchida), que é compartilhada com o Profissional;
-5. **Elaboração:** O Profissional elabora o plano de treino ou consultoria no prazo contratado;
-6. **Entrega:** O plano é entregue ao Aluno via Aplicativo;
-7. **Execução:** O Aluno executa as sessões do plano e registra os completions pelo Aplicativo;
-8. **Conclusão e repasse:** Concluído o plano, o repasse é processado.
+5. **Elaboração e entrega:** O Profissional elabora e entrega a primeira ficha de treino dentro do prazo contratado. **Um mesmo contrato pode receber várias fichas de treino ao longo da sua vigência** — o Profissional pode entregar novas fichas conforme o Aluno evolui, e também pode atualizar/editar uma ficha já entregue. Cada ficha tem sua própria vigência, que nunca ultrapassa a vigência do contrato;
+6. **Execução:** O Aluno executa os treinos das fichas recebidas e pode registrar a conclusão de cada um pelo Aplicativo, com opção de compartilhar uma foto no feed de evolução (item 13);
+7. **Conclusão e repasse:** O repasse ao Profissional é processado após a entrega da primeira ficha, conforme o prazo de reembolso da Cláusula 10.3 — a obrigação principal do Profissional (produzir e entregar o plano) já está cumprida a partir daí, mesmo que fichas adicionais sejam entregues depois.
 
 ### 8.2 Prazos de Entrega
 
@@ -330,11 +329,13 @@ A comissão pode ser alterada mediante comunicação ao Profissional com anteced
 
 ### 9.3 Processamento de Pagamentos por Cartão
 
-Pagamentos por cartão seguem o seguinte fluxo:
+Pagamentos de **agendamentos avulsos** por cartão seguem o seguinte fluxo:
 
 1. **Autorização:** O valor é bloqueado no cartão do Aluno no momento da confirmação do agendamento;
 2. **Captura:** O valor autorizado é capturado após o prazo de **24 horas** da autorização (ou após a conclusão confirmada da sessão, o que ocorrer primeiro);
 3. **Repasse:** O repasse ao Profissional é processado após a captura, observados os prazos operacionais do Mercado Pago.
+
+**Exceção — pacotes presenciais (Cláusula 7.5):** cada ciclo de cobrança do pacote presencial é **cobrado diretamente** no cartão salvo, sem a etapa de pré-autorização — não há bloqueio prévio seguido de captura; o valor é debitado de uma vez no momento da cobrança do ciclo.
 
 Para pagamentos com cartão de crédito acima de R$ 1.000,00 (mil reais), o Aplicativo pode exigir autenticação adicional via **3D Secure (3DS)** como medida de segurança antifraude.
 

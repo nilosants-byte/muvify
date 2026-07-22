@@ -47,7 +47,8 @@ Esta politica cobre:
 | Anamnese (sensivel) | respostas de saude/limitacoes | Consentimento especifico + tutela da saude quando aplicavel | 24 meses | ultima atualizacao | Redacao/anonimizacao de conteudo |
 | Chat de agendamento | mensagens aluno-profissional | Execucao de contrato + defesa | 24 meses | ultima interacao | Redacao de conteudo |
 | Suporte | mensagem do ticket e resposta | Execucao de contrato + defesa de direitos | 5 anos | criacao do ticket | Redacao de conteudo |
-| Pagamentos e evidencias financeiras | status de pagamento, auditoria, conciliacao | Obrigacao legal/regulatoria + defesa | 5 anos (minimo) | liquidacao/encerramento | Arquivo restrito + descarte seguro futuro |
+| Relato de falta e caso de disputa | motivo do relato/contestacao, nota de contexto e motivo da decisao do admin | Execucao de contrato + defesa | 24 meses apos resolucao | resolucao do caso | Redacao de conteudo (registro do caso mantido) |
+| Pagamentos e evidencias financeiras (inclui pacotes presenciais e ciclos de cobranca) | status de pagamento, auditoria, conciliacao | Obrigacao legal/regulatoria + defesa | 5 anos (minimo) | liquidacao/encerramento | Arquivo restrito + descarte seguro futuro |
 | Logs de acesso a aplicacao | metadados de acesso | Obrigacao legal (Marco Civil) | 6 meses (minimo legal) | geracao do registro | Expurgo automatizado/rotacao |
 
 ## 6. Regras de excecao (Legal Hold)

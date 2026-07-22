@@ -23,6 +23,7 @@ const RETENTION_WINDOWS_DAYS = {
   biometricAssessments: 730,
   emailDeliveryQueue: 90,
   reviewComments: 730,
+  disputeNarratives: 730,
 } as const;
 
 type RetentionRuleMode = "DELETE" | "UPDATE";
@@ -93,6 +94,8 @@ export class DataRetentionService {
         safeRun(() => this.cleanupBiometricAssessments(now, input.dryRun)),
         safeRun(() => this.cleanupEmailDeliveryQueue(now, input.dryRun)),
         safeRun(() => this.cleanupReviewComments(now, input.dryRun)),
+        safeRun(() => this.cleanupDisputeCaseNarratives(now, input.dryRun)),
+        safeRun(() => this.cleanupNoShowReportNarratives(now, input.dryRun)),
       ]);
       rules.push(...(results.filter(Boolean) as RetentionRuleExecution[]));
 
@@ -559,6 +562,81 @@ export class DataRetentionService {
     return this.buildRule(
       "support_tickets_redaction",
       "Redact support messages after retention window.",
+      "UPDATE",
+      retentionDays,
+      cutoff,
+      matchedCount,
+      affectedCount
+    );
+  }
+
+  // So redige casos JA RESOLVIDOS (nunca um caso OPEN — o admin ainda precisa
+  // do texto pra decidir). O registro em si (status, resolucao, valores)
+  // continua existindo pra fins de auditoria financeira; so o texto livre
+  // (motivo do admin, nota de contexto) e removido.
+  private async cleanupDisputeCaseNarratives(now: Date, dryRun: boolean) {
+    const retentionDays = RETENTION_WINDOWS_DAYS.disputeNarratives;
+    const cutoff = this.cutoffFromDays(now, retentionDays);
+    const where: Prisma.DisputeCaseWhereInput = {
+      ...this.getUserFilter("clientId"),
+      status: "RESOLVED",
+      resolvedAt: { lt: cutoff },
+      OR: [{ contextNote: { not: null } }, { resolutionNote: { not: null } }]
+    };
+    const matchedCount = await prisma.disputeCase.count({ where });
+    const affectedCount = dryRun
+      ? 0
+      : (
+          await prisma.disputeCase.updateMany({
+            where,
+            data: { contextNote: null, resolutionNote: "[CONTEUDO REMOVIDO POR RETENCAO]" }
+          })
+        ).count;
+    return this.buildRule(
+      "dispute_case_narratives_redaction",
+      "Redact dispute case free-text (context note, resolution note) after retention window for resolved cases.",
+      "UPDATE",
+      retentionDays,
+      cutoff,
+      matchedCount,
+      affectedCount
+    );
+  }
+
+  // Mesma logica do relato de falta: so redige quando ja foi resolvido (pela
+  // resolucao automatica por prazo, OU pelo caso de disputa vinculado —
+  // contestar so muda o NoShowReport pra CONTESTED, quem fecha o ciclo e o
+  // DisputeCase).
+  private async cleanupNoShowReportNarratives(now: Date, dryRun: boolean) {
+    const retentionDays = RETENTION_WINDOWS_DAYS.disputeNarratives;
+    const cutoff = this.cutoffFromDays(now, retentionDays);
+    const legalHold = this.legalHoldUserIds;
+    const where: Prisma.NoShowReportWhereInput = {
+      AND: [
+        {
+          OR: [
+            { status: "RESOLVED", resolvedAt: { lt: cutoff } },
+            { disputeCase: { status: "RESOLVED", resolvedAt: { lt: cutoff } } }
+          ]
+        },
+        { OR: [{ reportReason: { not: null } }, { contestReason: { not: null } }] },
+        ...(legalHold.length > 0
+          ? [{ reportedUserId: { notIn: legalHold } }, { reportedByUserId: { notIn: legalHold } }]
+          : [])
+      ]
+    };
+    const matchedCount = await prisma.noShowReport.count({ where });
+    const affectedCount = dryRun
+      ? 0
+      : (
+          await prisma.noShowReport.updateMany({
+            where,
+            data: { reportReason: null, contestReason: null }
+          })
+        ).count;
+    return this.buildRule(
+      "no_show_report_narratives_redaction",
+      "Redact no-show report free-text (report/contest reason) after retention window for resolved reports.",
       "UPDATE",
       retentionDays,
       cutoff,
