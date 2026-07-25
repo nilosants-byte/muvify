@@ -931,18 +931,24 @@ model PresentialPackage {
   @@index([status, nextBillingAt])
 }
 
-// Um registro por cobranca periodica capturada — fonte de receita real
-// (Financeiro soma por aqui, nao inventa valor a partir do pacote inteiro).
+// Um registro por periodo do pacote. Pra pacotes pagos em Pix (ou no formato
+// de creditos flexiveis, que ainda usa cobranca por ciclo — ver memoria
+// "pacote-creditos-flexiveis-pendente"), os campos de pagamento abaixo
+// continuam preenchidos: e a fonte de receita real desse caso (Financeiro
+// soma por aqui). Pra pacotes de horario fixo pagos em cartao, cada sessao
+// virou um Booking/Payment de verdade (mesmo motor da sessao avulsa) — esse
+// registro fica so como marcador do periodo (pra saber pra qual janela as
+// sessoes ja foram geradas), sem nenhum valor de pagamento associado.
 model PresentialPackageCycle {
-  id                  String   @id @default(uuid())
+  id                  String    @id @default(uuid())
   packageId           String
   cycleIndex          Int
-  amountCents         Int
-  providerAmountCents Int
-  platformAmountCents Int
+  amountCents         Int?
+  providerAmountCents Int?
+  platformAmountCents Int?
   sessionsGranted     Int
   mpPaymentId         String?
-  capturedAt          DateTime @default(now())
+  capturedAt          DateTime?
   periodStart         DateTime
   periodEnd           DateTime
 

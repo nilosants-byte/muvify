@@ -6,6 +6,7 @@ import {
   ConsultancyRequestStatus,
   CrefValidationStatus,
   OfferBillingCycle,
+  PaymentMethod,
   PresentialPackageMode,
   PresentialPackageStatus,
   ServiceOfferKind
@@ -20,6 +21,10 @@ import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/pl
 import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { billingCycleDurationDays } from "../../../shared/utils/consultancy-validity";
 import { NotificationService } from "../../notifications/services/notification.service";
+// PaymentService é importado dinamicamente onde é usado (não no topo do
+// arquivo) porque payment.service.ts também importa PresentialPackageService
+// — import estático dos dois lados cria dependência circular na inicialização
+// dos módulos (mesmo problema já resolvido assim com gamification-events).
 
 const notificationService = new NotificationService();
 const mpPaymentClient = new Payment(mp);
@@ -257,6 +262,16 @@ export class PresentialPackageService {
       );
     }
 
+    // Horário fixo pago em cartão: valida o cartão do cliente já na compra
+    // (falha rápido e com mensagem clara, em vez de deixar pra descobrir só
+    // quando a primeira sessão tentar reservar o valor, dias depois).
+    const isCardFixedRecurring =
+      offer.presentialPackageMode === PresentialPackageMode.FIXED_RECURRING &&
+      input.paymentMethod === ConsultancyPaymentMethod.CREDIT_CARD;
+    const billingCardId = isCardFixedRecurring
+      ? (await resolveClientCardForBilling(clientId)).mpCardId
+      : null;
+
     const pkg = await prisma.presentialPackage.create({
       data: {
         providerId: offer.providerId,
@@ -271,11 +286,20 @@ export class PresentialPackageService {
         sessionsPerCycle,
         weeklySchedule: weeklySchedule ?? undefined,
         hasFixedTerm: offer.presentialHasFixedTerm,
-        totalCycles: offer.presentialHasFixedTerm ? offer.presentialTotalCycles : null
+        totalCycles: offer.presentialHasFixedTerm ? offer.presentialTotalCycles : null,
+        billingCardId
       }
     });
 
-    const chargeResult = await this.chargeCycle(pkg.id, { isFirstCycle: true });
+    // Horário fixo em cartão: nenhuma cobrança de ciclo — cada sessão vira
+    // sua própria reserva, no mesmo motor de pagamento da sessão avulsa (ver
+    // activateCardFixedPeriod). Todos os outros casos (Pix, ou créditos
+    // flexíveis — formato ainda pendente de redesenho, ver memória
+    // "pacote-creditos-flexiveis-pendente") continuam cobrando o ciclo
+    // inteiro adiantado, como já funciona hoje.
+    const chargeResult = isCardFixedRecurring
+      ? await this.activateCardFixedPeriod(pkg.id, { isFirstPeriod: true })
+      : await this.chargeCycle(pkg.id, { isFirstCycle: true });
 
     const updated = await prisma.presentialPackage.findUniqueOrThrow({
       where: { id: pkg.id },
@@ -536,17 +560,123 @@ export class PresentialPackageService {
     });
   }
 
+  // Horário fixo pago em cartão: nenhuma cobrança de ciclo acontece aqui —
+  // cada sessão do período vira um agendamento de verdade, com sua própria
+  // reserva de valor (o mesmo motor de pré-autorização + captura que a
+  // sessão avulsa já usa, via createPendingForBooking). O registro de ciclo
+  // vira só um marcador de "sessões deste período já foram geradas", sem
+  // nenhum valor de pagamento associado — não existe mais uma cobrança
+  // única pra falhar ou pra reembolsar.
+  private async activateCardFixedPeriod(packageId: string, opts: { isFirstPeriod: boolean }) {
+    const pkg = await prisma.presentialPackage.findUniqueOrThrow({
+      where: { id: packageId },
+      include: { provider: true }
+    });
+
+    const cycleIndex = pkg.nextCycleIndex;
+    const periodStart = opts.isFirstPeriod ? new Date() : pkg.nextBillingAt ?? new Date();
+    const periodEnd = addCycles(periodStart, pkg.billingCycle, 1);
+    const isFirstCycle = cycleIndex === 1;
+    const validUntil =
+      pkg.hasFixedTerm && pkg.totalCycles
+        ? addCycles(isFirstCycle ? periodStart : pkg.validFrom ?? periodStart, pkg.billingCycle, pkg.totalCycles)
+        : null;
+
+    // Preço por sessão: o valor do "ciclo" dividido pelas sessões previstas
+    // — cada sessão é cobrada de forma independente, então não existe mais
+    // a obrigação de a soma bater exatamente com o valor anunciado do
+    // ciclo (diferença de arredondamento é normal em preço por unidade).
+    const perSessionPriceCents = Math.max(1, Math.round(pkg.cycleAmountCents / pkg.sessionsPerCycle));
+
+    const { PaymentService } = await import("../../payments/services/payment.service");
+    const paymentService = new PaymentService();
+
+    let generatedCount = 0;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.presentialPackageCycle.create({
+        data: {
+          packageId,
+          cycleIndex,
+          sessionsGranted: pkg.sessionsPerCycle,
+          periodStart,
+          periodEnd
+        }
+      });
+
+      await tx.presentialPackage.update({
+        where: { id: packageId },
+        data: {
+          status: PresentialPackageStatus.ACTIVE,
+          nextCycleIndex: cycleIndex + 1,
+          nextBillingAt: periodEnd,
+          consecutiveFailedCycles: 0,
+          lastBillingFailureReason: null,
+          validFrom: isFirstCycle ? periodStart : pkg.validFrom,
+          validUntil
+        }
+      });
+
+      const schedule = pkg.weeklySchedule as unknown as WeeklyScheduleEntry[];
+      const minNoticeMs = Math.max(24, pkg.provider.minBookingNoticeHours) * 60 * 60 * 1000;
+      const occurrences = computeCycleOccurrences(schedule, periodStart, periodEnd, minNoticeMs, env.APP_TIMEZONE);
+
+      for (const scheduledAt of occurrences) {
+        const conflict = await tx.booking.findFirst({
+          where: {
+            providerId: pkg.providerId,
+            scheduledAt,
+            status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] }
+          }
+        });
+        if (conflict) continue;
+
+        const booking = await tx.booking.create({
+          data: {
+            clientId: pkg.clientId,
+            providerId: pkg.providerId,
+            categoryId: pkg.categoryId,
+            packageId: pkg.id,
+            scheduledAt,
+            priceCents: perSessionPriceCents,
+            status: BookingStatus.CONFIRMED
+          }
+        });
+        await paymentService.createPendingForBooking(
+          tx,
+          booking.id,
+          perSessionPriceCents,
+          "BRL",
+          PaymentMethod.CREDIT_CARD,
+          pkg.billingCardId
+        );
+        generatedCount += 1;
+      }
+    });
+
+    await notificationService.sendToUsers([pkg.provider.userId], {
+      preferenceType: "PAYMENTS",
+      title: opts.isFirstPeriod ? "Novo pacote presencial vendido" : "Próximo período do pacote agendado",
+      body: `${generatedCount} sessão(ões) agendada(s) — cada uma será cobrada individualmente perto da data.`,
+      data: { type: "PRESENTIAL_PACKAGE_PERIOD_SCHEDULED", packageId: pkg.id, cycleIndex }
+    }).catch((error) => console.error("Presential package period notification failed:", error));
+
+    return { status: "SCHEDULED" as const, sessionsScheduled: generatedCount };
+  }
+
   // Job periodico (payment-jobs.ts): cobra o proximo ciclo de cada pacote
   // cuja data de cobranca ja chegou. Nao reentra num pacote que ja tem uma
   // cobranca pendente em aberto (Pix aguardando pagamento) - essa so volta
   // a ser candidata depois que expireStalePendingPixCharges liberar.
+  // Horario fixo pago em cartao NAO passa por aqui — ver generateDueCardFixedPeriods.
   async chargeDueCycles() {
     const now = new Date();
     const candidates = await prisma.presentialPackage.findMany({
       where: {
         status: { in: [PresentialPackageStatus.ACTIVE, PresentialPackageStatus.PAST_DUE] },
         nextBillingAt: { lte: now },
-        pendingChargeMpPaymentId: null
+        pendingChargeMpPaymentId: null,
+        NOT: { mode: PresentialPackageMode.FIXED_RECURRING, paymentMethod: ConsultancyPaymentMethod.CREDIT_CARD }
       },
       select: { id: true, hasFixedTerm: true, totalCycles: true, nextCycleIndex: true }
     });
@@ -563,6 +693,37 @@ export class PresentialPackageService {
         await this.chargeCycle(candidate.id, { isFirstCycle: false });
       } catch (error) {
         console.error(`[presential-package] chargeDueCycles falhou para ${candidate.id}:`, error);
+      }
+    }
+  }
+
+  // Job periodico (payment-jobs.ts): gera o proximo periodo de sessoes dos
+  // pacotes de horario fixo pagos em cartao — sem cobrar nada aqui, cada
+  // sessao gerada ja nasce com sua propria reserva (ver activateCardFixedPeriod).
+  async generateDueCardFixedPeriods() {
+    const now = new Date();
+    const candidates = await prisma.presentialPackage.findMany({
+      where: {
+        status: PresentialPackageStatus.ACTIVE,
+        mode: PresentialPackageMode.FIXED_RECURRING,
+        paymentMethod: ConsultancyPaymentMethod.CREDIT_CARD,
+        nextBillingAt: { lte: now }
+      },
+      select: { id: true, hasFixedTerm: true, totalCycles: true, nextCycleIndex: true }
+    });
+
+    for (const candidate of candidates) {
+      try {
+        if (candidate.hasFixedTerm && candidate.totalCycles && candidate.nextCycleIndex > candidate.totalCycles) {
+          await prisma.presentialPackage.update({
+            where: { id: candidate.id },
+            data: { status: PresentialPackageStatus.EXPIRED }
+          });
+          continue;
+        }
+        await this.activateCardFixedPeriod(candidate.id, { isFirstPeriod: false });
+      } catch (error) {
+        console.error(`[presential-package] generateDueCardFixedPeriods falhou para ${candidate.id}:`, error);
       }
     }
   }
@@ -701,8 +862,33 @@ export class PresentialPackageService {
       }
     });
 
+    const isCardFixedRecurring =
+      pkg.mode === PresentialPackageMode.FIXED_RECURRING && pkg.paymentMethod === ConsultancyPaymentMethod.CREDIT_CARD;
+
     let refundFailed = false;
-    if (isProvider) {
+    let releasedFutureSessions = 0;
+    if (isCardFixedRecurring) {
+      // Nada foi pago adiantado — não existe "último ciclo" pra reembolsar.
+      // Cancela as sessões futuras já geradas (cada uma libera sua própria
+      // reserva ou estorna, se já tiver sido capturada) — não importa quem
+      // cancelou, o resultado é o mesmo: nada é cobrado por serviço que não
+      // vai mais acontecer.
+      const { PaymentService } = await import("../../payments/services/payment.service");
+      const paymentService = new PaymentService();
+      const futureSessions = await prisma.booking.findMany({
+        where: {
+          packageId: pkg.id,
+          status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+          scheduledAt: { gt: new Date() }
+        },
+        select: { id: true }
+      });
+      for (const session of futureSessions) {
+        await paymentService.cancelPaymentForBooking(session.id);
+        await prisma.booking.update({ where: { id: session.id }, data: { status: BookingStatus.CANCELLED } });
+        releasedFutureSessions += 1;
+      }
+    } else if (isProvider) {
       const lastCycle = await prisma.presentialPackageCycle.findFirst({
         where: { packageId: pkg.id },
         orderBy: { cycleIndex: "desc" }
@@ -718,7 +904,7 @@ export class PresentialPackageService {
               type: "REFUND_FAILED",
               clientId: pkg.clientId,
               providerId: pkg.providerId,
-              amountCents: lastCycle.amountCents,
+              amountCents: lastCycle.amountCents ?? 0,
               mpPaymentId: lastCycle.mpPaymentId,
               presentialPackageId: pkg.id,
               presentialPackageCycleId: lastCycle.id,
@@ -732,11 +918,15 @@ export class PresentialPackageService {
     await notificationService.sendToUsers([pkg.clientId], {
       preferenceType: "PAYMENTS",
       title: "Pacote presencial cancelado",
-      body: isProvider
-        ? refundFailed
-          ? "O profissional cancelou seu pacote presencial. Houve uma falha ao processar o reembolso do ciclo mais recente — nossa equipe já foi avisada e vai resolver manualmente."
-          : "O profissional cancelou seu pacote presencial. O ciclo mais recente foi reembolsado."
-        : "Seu pacote presencial foi cancelado. As sessões já pagas neste ciclo continuam valendo.",
+      body: isCardFixedRecurring
+        ? releasedFutureSessions > 0
+          ? `Pacote cancelado — ${releasedFutureSessions} sessão(ões) futura(s) foram desmarcadas e nenhuma delas será cobrada.`
+          : "Seu pacote presencial foi cancelado."
+        : isProvider
+          ? refundFailed
+            ? "O profissional cancelou seu pacote presencial. Houve uma falha ao processar o reembolso do ciclo mais recente — nossa equipe já foi avisada e vai resolver manualmente."
+            : "O profissional cancelou seu pacote presencial. O ciclo mais recente foi reembolsado."
+          : "Seu pacote presencial foi cancelado. As sessões já pagas neste ciclo continuam valendo.",
       data: { type: "PRESENTIAL_PACKAGE_CANCELLED", packageId: pkg.id }
     });
     await notificationService.sendToUsers([pkg.provider.userId], {

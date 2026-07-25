@@ -66,6 +66,10 @@ export function startPaymentJobs() {
       await runWithTimeout(() => consultancyService.autoRefundExpiredContracts(), "autoRefundExpiredContracts");
       await runWithTimeout(() => presentialPackageService.chargeDueCycles(), "presentialPackageChargeDueCycles");
       await runWithTimeout(
+        () => presentialPackageService.generateDueCardFixedPeriods(),
+        "presentialPackageGenerateDueCardFixedPeriods"
+      );
+      await runWithTimeout(
         () => presentialPackageService.expireStalePendingPixCharges(),
         "presentialPackageExpireStalePendingPixCharges"
       );

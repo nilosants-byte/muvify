@@ -82,6 +82,8 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
   const unitLabel = pkg.mode === "FLEXIBLE_CREDITS" ? "créditos" : "sessões";
   const canCancel = pkg.status === "ACTIVE" || pkg.status === "PAST_DUE";
   const cycles = pkg.cycles ?? [];
+  const isCardFixedRecurring = pkg.mode === "FIXED_RECURRING" && pkg.paymentMethod === "CREDIT_CARD";
+  const billedCycles = cycles.filter((cycle) => cycle.amountCents !== null);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -147,16 +149,20 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
 
         <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 8 }}>
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Cobranças já realizadas</Text>
-          {cycles.length === 0 ? (
+          {isCardFixedRecurring ? (
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>
+              Este pacote cobra cada sessão individualmente, perto da data — confira o valor e o status de cada uma em "Meus agendamentos".
+            </Text>
+          ) : billedCycles.length === 0 ? (
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>Nenhum ciclo cobrado ainda.</Text>
           ) : (
-            cycles.map((cycle) => (
+            billedCycles.map((cycle) => (
               <View key={cycle.id} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.border }}>
                 <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>
-                  Ciclo {cycle.cycleIndex} · {formatBRDate(cycle.capturedAt)}
+                  Ciclo {cycle.cycleIndex} · {formatBRDate(cycle.capturedAt!)}
                 </Text>
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>
-                  {formatCurrencyBRL(cycle.amountCents / 100)}
+                  {formatCurrencyBRL((cycle.amountCents ?? 0) / 100)}
                 </Text>
               </View>
             ))

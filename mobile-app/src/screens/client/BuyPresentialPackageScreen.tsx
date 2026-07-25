@@ -229,6 +229,13 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
           await hapticCta();
           showToast("Pacote contratado com sucesso!", "success");
           navigation.replace("MyPresentialPackages");
+        } else if (result.payment.status === "SCHEDULED") {
+          await hapticCta();
+          showToast(
+            `Pacote contratado! ${result.payment.sessionsScheduled} sessão(ões) agendada(s) — cada uma é cobrada individualmente perto da data.`,
+            "success"
+          );
+          navigation.replace("MyPresentialPackages");
         } else if (result.payment.status === "PENDING" && result.payment.pix) {
           setPixPending(result.payment.pix);
         } else {
@@ -244,6 +251,9 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
 
   const cycleLabel = billingCycleLabel(billingCycle);
   const unitLabel = presentialPackageMode === "FLEXIBLE_CREDITS" ? "créditos" : "sessões";
+  // Único caso que já cobra sessão por sessão em vez do ciclo inteiro
+  // adiantado — o combo ainda usa o modelo antigo pro lado presencial.
+  const isCardFixedRecurringPurchase = !isCombo && isFixedRecurring && paymentMethod === "CREDIT_CARD";
 
   if (setupQuery.isLoading) {
     return (
@@ -331,24 +341,37 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
           {/* Card: Como funciona a cobrança - comunicação obrigatória antes de confirmar */}
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: "rgba(36,230,109,0.08)", padding: S.cardPad, gap: 6 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Como funciona esta cobrança</Text>
-            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
-              Esta é uma assinatura: você paga {formatCurrencyBRL((isCombo ? comboPresentialShareCents ?? 0 : cycleAmountCents) / 100)} a cada ciclo ({cycleLabel}),
-              liberando {presentialSessionsPerCycle} {unitLabel} por ciclo.
-              {presentialHasFixedTerm && presentialTotalCycles
-                ? ` A assinatura tem prazo determinado de ${presentialTotalCycles} ciclos e encerra sozinha ao final.`
-                : " Sem prazo fixo - renova automaticamente até você ou o profissional cancelarem."}
-              {" "}Você pode cancelar quando quiser: cancelar só impede a próxima cobrança, sem afetar o que já foi pago.
-            </Text>
+            {isCardFixedRecurringPurchase ? (
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
+                {presentialSessionsPerCycle} sessão(ões) por ciclo ({cycleLabel}), no valor de {formatCurrencyBRL(cycleAmountCents / 100)} no total —
+                mas você não paga tudo de uma vez: cada sessão é cobrada individualmente, perto da data em que vai acontecer.
+                {presentialHasFixedTerm && presentialTotalCycles
+                  ? ` A assinatura tem prazo determinado de ${presentialTotalCycles} ciclos e encerra sozinha ao final.`
+                  : " Sem prazo fixo - renova automaticamente até você ou o profissional cancelarem."}
+                {" "}Cancelar a qualquer momento libera as sessões futuras ainda não cobradas, sem nenhum custo.
+              </Text>
+            ) : (
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
+                Esta é uma assinatura: você paga {formatCurrencyBRL((isCombo ? comboPresentialShareCents ?? 0 : cycleAmountCents) / 100)} a cada ciclo ({cycleLabel}),
+                liberando {presentialSessionsPerCycle} {unitLabel} por ciclo.
+                {presentialHasFixedTerm && presentialTotalCycles
+                  ? ` A assinatura tem prazo determinado de ${presentialTotalCycles} ciclos e encerra sozinha ao final.`
+                  : " Sem prazo fixo - renova automaticamente até você ou o profissional cancelarem."}
+                {" "}Você pode cancelar quando quiser: cancelar só impede a próxima cobrança, sem afetar o que já foi pago.
+              </Text>
+            )}
             {isCombo ? (
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
                 A consultoria online do combo é cobrada à parte, uma única vez: {formatCurrencyBRL((comboConsultancyShareCents ?? 0) / 100)}.
               </Text>
             ) : null}
-            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
-              {paymentMethod === "PIX"
-                ? "No Pix, cada ciclo gera um QR code novo - você precisa pagar manualmente a cada renovação para manter o pacote ativo."
-                : "No cartão, a renovação é automática a cada ciclo, usando o cartão salvo na sua conta."}
-            </Text>
+            {!isCardFixedRecurringPurchase ? (
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
+                {paymentMethod === "PIX"
+                  ? "No Pix, cada ciclo gera um QR code novo - você precisa pagar manualmente a cada renovação para manter o pacote ativo."
+                  : "No cartão, a renovação é automática a cada ciclo, usando o cartão salvo na sua conta."}
+              </Text>
+            ) : null}
           </View>
 
           {/* Card: Categoria */}

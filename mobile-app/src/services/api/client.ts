@@ -2859,12 +2859,15 @@ export type PresentialPackageCycle = {
   id: string;
   packageId: string;
   cycleIndex: number;
-  amountCents: number;
-  providerAmountCents: number;
-  platformAmountCents: number;
+  // Nulos pra pacotes de horário fixo pagos em cartão (cada sessão é cobrada
+  // individualmente — esse registro vira só um marcador do período). Só vem
+  // preenchido pra pacotes pagos em Pix (ou o formato de créditos flexíveis).
+  amountCents: number | null;
+  providerAmountCents: number | null;
+  platformAmountCents: number | null;
   sessionsGranted: number;
   mpPaymentId?: string | null;
-  capturedAt: string;
+  capturedAt: string | null;
   periodStart: string;
   periodEnd: string;
 };
@@ -2907,6 +2910,7 @@ export type PresentialPackage = {
 export type PresentialPackageChargeResult =
   | { status: "CAPTURED" }
   | { status: "AUTHORIZED" }
+  | { status: "SCHEDULED"; sessionsScheduled: number }
   | {
       status: "PENDING";
       method?: "PIX";
