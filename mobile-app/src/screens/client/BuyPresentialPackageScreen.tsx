@@ -113,6 +113,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   const [newSlotWeekday, setNewSlotWeekday] = useState(1);
   const [newSlotTime, setNewSlotTime] = useState("08:00");
   const [purchasing, setPurchasing] = useState(false);
+  const [consentAcknowledged, setConsentAcknowledged] = useState(false);
   const [purchasedPackage, setPurchasedPackage] = useState<PresentialPackage | null>(null);
   const [pixPending, setPixPending] = useState<{
     qrCodeUrl: string | null;
@@ -188,7 +189,8 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   const canSubmit =
     Boolean(selectedCategoryId) &&
     (!isFixedRecurring || weeklySchedule.length > 0) &&
-    (paymentMethod !== "CREDIT_CARD" || paymentReady);
+    (paymentMethod !== "CREDIT_CARD" || paymentReady) &&
+    (!isCombo || consentAcknowledged);
 
   async function handlePurchase() {
     if (!canSubmit || purchasing) return;
@@ -199,6 +201,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
         categoryId: selectedCategoryId,
         paymentMethod: paymentMethod as "CREDIT_CARD" | "PIX",
         weeklySchedule: isFixedRecurring ? weeklySchedule : undefined,
+        ...(isCombo ? { acknowledgedImmediateExecution: true } : {}),
       };
       if (isCombo) {
         const result = await runWithAuth((token) => presentialPackagesApi.purchaseCombo(token, body));
@@ -430,6 +433,22 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
               {formatCurrencyBRL((isCombo ? comboPresentialShareCents ?? 0 : cycleAmountCents) / 100)} / {cycleLabel}
             </Text>
           </View>
+
+          {isCombo ? (
+            <TouchableOpacity
+              onPress={() => setConsentAcknowledged((v) => !v)}
+              style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}
+            >
+              <Ionicons
+                name={consentAcknowledged ? "checkbox" : "square-outline"}
+                size={18}
+                color={consentAcknowledged ? theme.primary : theme.text3}
+              />
+              <Text style={{ flex: 1, fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text2 }}>
+                Peço o início imediato do atendimento de consultoria deste combo e estou ciente de que, após a entrega da primeira ficha de treino, perco o direito de arrependimento de 7 dias previsto no CDC para essa parte da contratação.
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           <View style={{ paddingBottom: Math.max(16, insets.bottom) }}>
             <TouchableOpacity

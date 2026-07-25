@@ -47,6 +47,7 @@ export type PurchasePresentialPackageInput = {
   categoryId: string;
   paymentMethod: ConsultancyPaymentMethod;
   weeklySchedule?: WeeklyScheduleEntry[];
+  acknowledgedImmediateExecution?: boolean;
 };
 
 function offerEffectivePriceCents(offer: {
@@ -828,6 +829,15 @@ export class PresentialPackageService {
     if (offer.provider.userId === clientId) {
       throw new AppError("Você não pode comprar seu próprio pacote.", StatusCodes.UNPROCESSABLE_ENTITY);
     }
+    if (input.acknowledgedImmediateExecution !== true) {
+      // Mesma base legal do fluxo de consultoria avulsa (art. 49 do CDC) — a
+      // metade de consultoria do combo também exige consentimento expresso
+      // ao início imediato do atendimento.
+      throw new AppError(
+        "É necessário confirmar a ciência sobre o início imediato do atendimento de consultoria para contratar o combo.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
     if (!offer.provider.mpAccountId) {
       throw new AppError(
         "Este profissional ainda não configurou o recebimento de pagamentos.",
@@ -901,6 +911,10 @@ export class PresentialPackageService {
           clientId,
           status: ConsultancyRequestStatus.RESPONDED,
           quotedOfferId: offer.id,
+          // Combo pula direto pra RESPONDED (nao ha etapa de solicitacao
+          // em aberto aguardando o profissional) - o prazo de resposta
+          // nao se aplica aqui, so precisa de um valor nao-nulo.
+          responseDeadlineAt: now,
           respondedAt: now
         }
       });
@@ -917,7 +931,8 @@ export class PresentialPackageService {
           paymentAmountCents: offer.comboConsultancyShareCents!,
           providerAmountCents: providerSplitAmount(offer.comboConsultancyShareCents!),
           platformAmountCents: platformFeeAmount(offer.comboConsultancyShareCents!),
-          deliveryDeadlineAt
+          deliveryDeadlineAt,
+          immediateExecutionAcknowledgedAt: now
         }
       });
     });

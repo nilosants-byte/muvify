@@ -558,6 +558,7 @@ export function MyTrainingScreen({ navigation }: Props) {
   const [decidingRequestId, setDecidingRequestId] = useState<string | null>(null);
   const [cancellingContractId, setCancellingContractId] = useState<string | null>(null);
   const [paymentByRequestId, setPaymentByRequestId] = useState<Record<string, ConsultancyPaymentMethod>>({});
+  const [consentByRequestId, setConsentByRequestId] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<TrainingTab>("active");
   const [selectedPlan, setSelectedPlan] = useState<FlatPlan | null>(null);
 
@@ -613,7 +614,13 @@ export function MyTrainingScreen({ navigation }: Props) {
   async function decideRequest(requestId: string, decision: "ACCEPT" | "REFUSE", pm?: ConsultancyPaymentMethod) {
     try {
       setDecidingRequestId(requestId);
-      await runWithAuth((token) => consultancyApi.decideRequest(token, requestId, { decision, paymentMethod: pm }));
+      await runWithAuth((token) =>
+        consultancyApi.decideRequest(token, requestId, {
+          decision,
+          paymentMethod: pm,
+          ...(decision === "ACCEPT" ? { acknowledgedImmediateExecution: true } : {})
+        })
+      );
       showToast(decision === "ACCEPT" ? "Proposta aceita com sucesso." : "Proposta recusada.", "success");
       await trainingQuery.refetch();
     } catch (error) {
@@ -767,11 +774,28 @@ export function MyTrainingScreen({ navigation }: Props) {
                         );
                       })}
                     </View>
+                    <TouchableOpacity
+                      onPress={() => setConsentByRequestId((c) => ({ ...c, [req.id]: !c[req.id] }))}
+                      style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}
+                    >
+                      <Ionicons
+                        name={consentByRequestId[req.id] ? "checkbox" : "square-outline"}
+                        size={18}
+                        color={consentByRequestId[req.id] ? theme.primary : theme.text3}
+                      />
+                      <Text style={{ flex: 1, fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text2 }}>
+                        Peço o início imediato do atendimento e estou ciente de que, após a entrega da primeira ficha de treino, perco o direito de arrependimento de 7 dias previsto no CDC.
+                      </Text>
+                    </TouchableOpacity>
                     <View style={{ flexDirection: "row", gap: 10 }}>
                       <TouchableOpacity onPress={() => void decideRequest(req.id, "REFUSE")} disabled={decidingRequestId === req.id} style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
                         <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Recusar</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => void decideRequest(req.id, "ACCEPT", paymentByRequestId[req.id] ?? "CREDIT_CARD")} disabled={decidingRequestId === req.id} style={{ flex: 1.4, height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}>
+                      <TouchableOpacity
+                        onPress={() => void decideRequest(req.id, "ACCEPT", paymentByRequestId[req.id] ?? "CREDIT_CARD")}
+                        disabled={decidingRequestId === req.id || !consentByRequestId[req.id]}
+                        style={{ flex: 1.4, height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4, opacity: consentByRequestId[req.id] ? 1 : 0.5 }}
+                      >
                         <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Aceitar</Text>
                       </TouchableOpacity>
                     </View>

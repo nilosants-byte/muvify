@@ -368,9 +368,11 @@ Todos os valores são expressos e processados em **Reais (BRL)**.
 
 ### 10.1 Direito de Arrependimento (Consumidor)
 
-Nos termos do art. 49 do Código de Defesa do Consumidor, o Aluno que contratar serviços pelo Aplicativo tem direito ao **cancelamento sem ônus e reembolso integral no prazo de 7 (sete) dias corridos** a contar da data de confirmação do pagamento, desde que a sessão ou o plano de treino ainda **não tenha sido iniciado**.
+Nos termos do art. 49 do Código de Defesa do Consumidor, o Aluno que contratar serviços pelo Aplicativo tem direito ao **cancelamento sem ônus e reembolso integral no prazo de 7 (sete) dias corridos** a contar da data de confirmação do pagamento, desde que a prestação do serviço ainda **não tenha sido iniciada**.
 
 Para exercer o direito de arrependimento, acesse Configurações → Meus Agendamentos/Consultorias → Cancelar, ou entre em contato com o suporte.
+
+**Exceção — consultoria e planos de treino online (Cláusula 8):** ao aceitar uma proposta de consultoria, o Aluno **solicita expressamente o início imediato do atendimento** e é informado, nesse momento, de que perde o direito de arrependimento de 7 dias em relação a essa contratação, conforme permite o próprio art. 49 do CDC para serviços cuja execução é iniciada mediante consentimento expresso do consumidor. Em substituição, aplica-se a regra específica da Cláusula 10.3: o Aluno pode cancelar com reembolso integral **a qualquer momento antes da entrega da primeira ficha de treino** — sem precisar aguardar (nem ficar limitado a) o prazo de 7 dias — perdendo esse direito assim que a ficha é entregue.
 
 ### 10.2 Cancelamento de Agendamentos Presenciais
 

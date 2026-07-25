@@ -171,7 +171,8 @@ export const decideConsultancyRequestSchema = z.object({
     .object({
       decision: z.enum(["ACCEPT", "REFUSE"]),
       paymentMethod: z.enum(["CREDIT_CARD", "DEBIT_CARD", "PIX"]).optional(),
-      installments: z.number().int().min(1).max(12).optional()
+      installments: z.number().int().min(1).max(12).optional(),
+      acknowledgedImmediateExecution: z.boolean().optional()
     })
     .superRefine((value, ctx) => {
       if (value.decision === "ACCEPT" && !value.paymentMethod) {
@@ -179,6 +180,14 @@ export const decideConsultancyRequestSchema = z.object({
           code: z.ZodIssueCode.custom,
           path: ["paymentMethod"],
           message: "Método de pagamento obrigatório para aceitar contratacao."
+        });
+      }
+
+      if (value.decision === "ACCEPT" && value.acknowledgedImmediateExecution !== true) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["acknowledgedImmediateExecution"],
+          message: "É necessário confirmar a ciência sobre o início imediato do atendimento para aceitar a proposta."
         });
       }
 

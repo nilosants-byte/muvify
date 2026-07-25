@@ -174,7 +174,8 @@ export class ConsultancyController {
     const result = await consultancyService.decideRequest(request.user!.id, request.params.requestId, {
       decision: request.body.decision,
       paymentMethod: request.body.paymentMethod as ConsultancyPaymentMethod | undefined,
-      installments: request.body.installments
+      installments: request.body.installments,
+      acknowledgedImmediateExecution: request.body.acknowledgedImmediateExecution
     });
     return response.json(result);
   }

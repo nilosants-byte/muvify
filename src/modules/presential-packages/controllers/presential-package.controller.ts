@@ -21,7 +21,8 @@ export class PresentialPackageController {
       offerId: request.body.offerId,
       categoryId: request.body.categoryId,
       paymentMethod: request.body.paymentMethod as ConsultancyPaymentMethod,
-      weeklySchedule: request.body.weeklySchedule
+      weeklySchedule: request.body.weeklySchedule,
+      acknowledgedImmediateExecution: request.body.acknowledgedImmediateExecution
     });
     return response.status(StatusCodes.CREATED).json(result);
   }

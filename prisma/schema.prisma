@@ -1057,6 +1057,7 @@ model ConsultancyContract {
   platformAmountCents     Int
   paymentCapturedAt       DateTime?
   deliveryDeadlineAt      DateTime
+  immediateExecutionAcknowledgedAt DateTime
   deliveredAt             DateTime?
   refundedAt              DateTime?
   refundReason            String?

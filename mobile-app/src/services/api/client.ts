@@ -2514,6 +2514,7 @@ export const consultancyApi = {
     body: {
       decision: "ACCEPT" | "REFUSE";
       paymentMethod?: ConsultancyPaymentMethod;
+      acknowledgedImmediateExecution?: boolean;
     }
   ) {
     return apiRequest<{ request: ConsultancyRequest; contract: ConsultancyContract | null }>(
@@ -2933,6 +2934,7 @@ export const presentialPackagesApi = {
       categoryId: string;
       paymentMethod: "CREDIT_CARD" | "PIX";
       weeklySchedule?: PresentialPackageWeeklyScheduleSlot[];
+      acknowledgedImmediateExecution?: boolean;
     }
   ) {
     return apiRequest<PurchaseComboResponse>("/presential-packages/combo", {

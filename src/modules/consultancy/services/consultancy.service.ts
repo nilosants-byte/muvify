@@ -1711,6 +1711,7 @@ export class ConsultancyService {
       decision: "ACCEPT" | "REFUSE";
       paymentMethod?: ConsultancyPaymentMethod;
       installments?: number;
+      acknowledgedImmediateExecution?: boolean;
     }
   ) {
     const request = await prisma.consultancyRequest.findUnique({
@@ -1792,6 +1793,16 @@ export class ConsultancyService {
 
     if (request.contract) {
       return { request, contract: request.contract };
+    }
+
+    if (input.acknowledgedImmediateExecution !== true) {
+      // Defesa em profundidade — o validator já bloqueia isso, mas o consentimento
+      // expresso ao início imediato do atendimento é a base legal (art. 49 do CDC)
+      // pra dispensar o direito de arrependimento de 7 dias após a entrega da ficha.
+      throw new AppError(
+        "É necessário confirmar a ciência sobre o início imediato do atendimento para aceitar a proposta.",
+        StatusCodes.BAD_REQUEST
+      );
     }
 
     const selectedMethod = input.paymentMethod ?? ConsultancyPaymentMethod.CREDIT_CARD;
@@ -1905,7 +1916,8 @@ export class ConsultancyService {
           paymentAmountCents,
           providerAmountCents: providerAmountFrom(paymentAmountCents),
           platformAmountCents: platformAmountFrom(paymentAmountCents),
-          deliveryDeadlineAt
+          deliveryDeadlineAt,
+          immediateExecutionAcknowledgedAt: now
         },
         include: {
           offer: true
