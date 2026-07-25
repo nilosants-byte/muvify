@@ -937,7 +937,10 @@ export class PresentialPackageService {
       });
     });
 
-    let consultancyPaymentResult: { status: "CAPTURED" } | { status: "PENDING"; pix: unknown };
+    let consultancyPaymentResult:
+      | { status: "CAPTURED" }
+      | { status: "AUTHORIZED" }
+      | { status: "PENDING"; pix: unknown };
     try {
       consultancyPaymentResult = await this.chargeComboConsultancy(
         contract.id,
@@ -1053,6 +1056,8 @@ export class PresentialPackageService {
       const tokenResult = await mpCardTokenClient.create({
         body: { customer_id: cardData.mpCustomerId, card_id: cardData.mpCardId }
       });
+      // capture:false — mesma lógica da consultoria avulsa: reserva o valor,
+      // só cobra de verdade quando a primeira ficha for entregue.
       mpPay = await mpPaymentClient.create({
         body: {
           transaction_amount: amountCents / 100,
@@ -1060,6 +1065,7 @@ export class PresentialPackageService {
           installments: 1,
           payer: { type: "customer", id: cardData.mpCustomerId, email: cardData.clientEmail },
           description: "Combo - consultoria online",
+          capture: false,
           metadata,
           ...split
         },
@@ -1074,6 +1080,7 @@ export class PresentialPackageService {
     const mpPayId = String(mpPay.id);
 
     if (mpStatus === "approved") {
+      // MP capturou na hora mesmo com capture:false pedido (ex.: débito).
       await prisma.consultancyContract.update({
         where: { id: contractId },
         data: {
@@ -1084,6 +1091,18 @@ export class PresentialPackageService {
         }
       });
       return { status: "CAPTURED" as const };
+    }
+
+    if (mpStatus === "authorized") {
+      await prisma.consultancyContract.update({
+        where: { id: contractId },
+        data: {
+          mpPaymentId: mpPayId,
+          paymentStatus: ConsultancyPaymentStatus.AUTHORIZED,
+          status: ConsultancyContractStatus.ACTIVE
+        }
+      });
+      return { status: "AUTHORIZED" as const };
     }
 
     if (paymentMethod === ConsultancyPaymentMethod.PIX && (mpStatus === "pending" || mpStatus === "in_process")) {

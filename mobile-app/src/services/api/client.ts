@@ -332,9 +332,9 @@ export type ConsultancyContract = {
   providerId: string;
   clientId: string;
   offerId: string;
-  status: "PENDING_PAYMENT" | "ACTIVE" | "DELIVERED" | "REFUNDED_EXPIRED" | "ARCHIVED";
+  status: "PENDING_PAYMENT" | "ACTIVE" | "DELIVERED" | "CANCELLED" | "REFUNDED_EXPIRED" | "ARCHIVED";
   paymentMethod?: ConsultancyPaymentMethod | null;
-  paymentStatus: "PENDING" | "CAPTURED" | "REFUNDED" | "FAILED";
+  paymentStatus: "PENDING" | "AUTHORIZED" | "CAPTURED" | "CANCELED" | "REFUNDED" | "FAILED";
   paymentAmountCents: number;
   providerAmountCents: number;
   platformAmountCents: number;
@@ -2906,6 +2906,7 @@ export type PresentialPackage = {
 
 export type PresentialPackageChargeResult =
   | { status: "CAPTURED" }
+  | { status: "AUTHORIZED" }
   | {
       status: "PENDING";
       method?: "PIX";

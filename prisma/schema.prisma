@@ -85,7 +85,9 @@ enum ConsultancyContractStatus {
 
 enum ConsultancyPaymentStatus {
   PENDING
+  AUTHORIZED
   CAPTURED
+  CANCELED
   REFUNDED
   FAILED
 }
@@ -1058,6 +1060,7 @@ model ConsultancyContract {
   providerAmountCents     Int
   platformAmountCents     Int
   paymentCapturedAt       DateTime?
+  paymentCanceledAt       DateTime?
   deliveryDeadlineAt      DateTime
   immediateExecutionAcknowledgedAt DateTime
   deliveredAt             DateTime?

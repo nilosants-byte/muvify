@@ -1628,7 +1628,9 @@ export class ProviderService {
       prisma.consultancyContract.findMany({
         where: {
           providerId: provider.id,
-          paymentStatus: ConsultancyPaymentStatus.CAPTURED,
+          // AUTHORIZED entra aqui também: o personal precisa ver o aluno como
+          // ativo mesmo antes da captura (que só acontece na entrega).
+          paymentStatus: { in: [ConsultancyPaymentStatus.AUTHORIZED, ConsultancyPaymentStatus.CAPTURED] },
           status: {
             in: [ConsultancyContractStatus.ACTIVE, ConsultancyContractStatus.DELIVERED]
           }
@@ -2023,7 +2025,8 @@ export class ProviderService {
     const now = new Date();
     const contractsWithValidity = contracts.map((contract) => {
       const isCaptured =
-        contract.paymentStatus === ConsultancyPaymentStatus.CAPTURED &&
+        (contract.paymentStatus === ConsultancyPaymentStatus.AUTHORIZED ||
+          contract.paymentStatus === ConsultancyPaymentStatus.CAPTURED) &&
         (contract.status === ConsultancyContractStatus.ACTIVE || contract.status === ConsultancyContractStatus.DELIVERED);
       const validUntil = isCaptured ? consultancyValidUntil(contract, contract.offer.billingCycle) : null;
       return {

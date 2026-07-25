@@ -208,7 +208,10 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
         setPurchasedPackage(result.package);
         if (result.presentialPayment.status === "PENDING" && result.presentialPayment.pix) {
           setPixPending(result.presentialPayment.pix);
-        } else if (result.presentialPayment.status === "CAPTURED" && result.consultancyPayment.status === "CAPTURED") {
+        } else if (
+          result.presentialPayment.status === "CAPTURED" &&
+          (result.consultancyPayment.status === "CAPTURED" || result.consultancyPayment.status === "AUTHORIZED")
+        ) {
           await hapticCta();
           showToast("Combo contratado com sucesso!", "success");
           navigation.replace("MyPresentialPackages");

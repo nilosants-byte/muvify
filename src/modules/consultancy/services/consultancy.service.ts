@@ -318,6 +318,10 @@ export class ConsultancyService {
       body: { customer_id: paymentData.mpCustomerId, card_id: paymentData.mpCardId }
     });
 
+    // capture:false — o valor fica reservado no cartão, sem cobrar ainda. A
+    // cobrança de verdade só acontece quando o profissional entrega a primeira
+    // ficha (ver deliverContract); se ele não entregar em 48h, a reserva é
+    // liberada sem nunca ter sido cobrada (ver autoRefundExpiredContracts).
     return mpPaymentClient.create({
       body: {
         transaction_amount: input.amountCents / 100,
@@ -329,6 +333,7 @@ export class ConsultancyService {
           email: paymentData.clientEmail
         },
         description: `Consultoria #${input.requestId}`,
+        capture: false,
         metadata,
         ...split
       },
@@ -1974,12 +1979,26 @@ export class ConsultancyService {
     const mpStatus = mpPay.status;
 
     if (mpStatus === "approved") {
+      // MP capturou na hora mesmo com capture:false pedido (acontece com débito,
+      // que não suporta reserva em duas etapas) — trata como já cobrado de verdade.
       updatedContract = await prisma.consultancyContract.update({
         where: { id: contract.id },
         data: {
           mpPaymentId: mpPayId,
           paymentStatus: ConsultancyPaymentStatus.CAPTURED,
           paymentCapturedAt: paymentNow,
+          status: ConsultancyContractStatus.ACTIVE
+        },
+        include: { offer: true }
+      });
+    } else if (mpStatus === "authorized") {
+      // Caso normal do cartão de crédito: valor reservado, ainda não cobrado.
+      // A cobrança de verdade só acontece na entrega da primeira ficha.
+      updatedContract = await prisma.consultancyContract.update({
+        where: { id: contract.id },
+        data: {
+          mpPaymentId: mpPayId,
+          paymentStatus: ConsultancyPaymentStatus.AUTHORIZED,
           status: ConsultancyContractStatus.ACTIVE
         },
         include: { offer: true }
@@ -2127,6 +2146,31 @@ export class ConsultancyService {
       planValidUntil = parsed;
     }
 
+    // Se for a primeira entrega e o pagamento ainda estiver só reservado no
+    // cartão (capture:false), captura AGORA, antes de salvar qualquer coisa.
+    // Se a captura falhar, a entrega inteira falha e o profissional pode
+    // tentar de novo — em vez de marcar como entregue sem o pagamento ter
+    // sido efetivado de verdade (o que exigiria um job de retry separado
+    // e espalharia essa distinção por mais telas do que o necessário).
+    const shouldCaptureNow =
+      isFirstDelivery &&
+      contract.paymentStatus === ConsultancyPaymentStatus.AUTHORIZED &&
+      Boolean(contract.mpPaymentId);
+    if (shouldCaptureNow) {
+      try {
+        await mpPaymentClient.capture({
+          id: contract.mpPaymentId!,
+          transaction_amount: contract.paymentAmountCents / 100
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "erro desconhecido";
+        throw new AppError(
+          `Não foi possível confirmar o pagamento reservado pra liberar a entrega. Tente novamente em instantes. (${message})`,
+          StatusCodes.BAD_REQUEST
+        );
+      }
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const normalizedExercises = await this.normalizePlanExercises(provider.id, input.exercises, tx);
 
@@ -2156,7 +2200,10 @@ export class ConsultancyService {
             where: { id: contract.id },
             data: {
               status: ConsultancyContractStatus.DELIVERED,
-              deliveredAt: now
+              deliveredAt: now,
+              ...(shouldCaptureNow
+                ? { paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: now }
+                : {})
             },
             include: { offer: true }
           })
@@ -2243,7 +2290,10 @@ export class ConsultancyService {
     const contracts = await prisma.consultancyContract.findMany({
       where: {
         clientId,
-        paymentStatus: ConsultancyPaymentStatus.CAPTURED,
+        // AUTHORIZED entra aqui também: cartão com valor reservado (ainda não
+        // capturado) já é um contrato ativo de verdade — o aluno precisa ver
+        // que está "em preparação" mesmo antes da entrega/captura acontecer.
+        paymentStatus: { in: [ConsultancyPaymentStatus.AUTHORIZED, ConsultancyPaymentStatus.CAPTURED] },
         status: {
           in: [ConsultancyContractStatus.ACTIVE, ConsultancyContractStatus.DELIVERED]
         }
@@ -2459,27 +2509,44 @@ export class ConsultancyService {
       );
     }
 
-    let refundSucceeded = true;
+    // Cartão (AUTHORIZED): a reserva nunca chegou a ser cobrada — só precisa
+    // ser liberada. PIX/débito (CAPTURED): o valor já foi cobrado de verdade,
+    // precisa de estorno de fato.
+    const isHoldOnly = contract.paymentStatus === ConsultancyPaymentStatus.AUTHORIZED;
+
+    let gatewaySucceeded = true;
     let mpRefundId: string | null = null;
 
     if (contract.mpPaymentId) {
       try {
-        const refund = await mpRefundClient.create({ payment_id: contract.mpPaymentId, body: {} });
-        mpRefundId = String(refund.id);
+        if (isHoldOnly) {
+          await mpPaymentClient.cancel({ id: contract.mpPaymentId });
+        } else {
+          const refund = await mpRefundClient.create({ payment_id: contract.mpPaymentId, body: {} });
+          mpRefundId = String(refund.id);
+        }
       } catch (error) {
-        console.error("Consultancy client cancel refund failed (MP error):", { contractId: contract.id, error });
-        refundSucceeded = false;
-        await prisma.disputeCase.create({
-          data: {
-            type: "REFUND_FAILED",
-            clientId: contract.clientId,
-            providerId: contract.providerId,
-            amountCents: contract.paymentAmountCents,
-            mpPaymentId: contract.mpPaymentId,
-            consultancyContractId: contract.id,
-            contextNote: "Reembolso automático falhou ao cancelar consultoria pelo aluno antes da entrega."
-          }
-        });
+        console.error(
+          isHoldOnly ? "Consultancy client cancel hold failed (MP error):" : "Consultancy client cancel refund failed (MP error):",
+          { contractId: contract.id, error }
+        );
+        gatewaySucceeded = false;
+        // Falha ao liberar reserva não precisa de disputa (nada foi cobrado,
+        // a reserva expira sozinha em 5 dias) — só falha ao estornar dinheiro
+        // de verdade precisa de revisão manual.
+        if (!isHoldOnly) {
+          await prisma.disputeCase.create({
+            data: {
+              type: "REFUND_FAILED",
+              clientId: contract.clientId,
+              providerId: contract.providerId,
+              amountCents: contract.paymentAmountCents,
+              mpPaymentId: contract.mpPaymentId,
+              consultancyContractId: contract.id,
+              contextNote: "Reembolso automático falhou ao cancelar consultoria pelo aluno antes da entrega."
+            }
+          });
+        }
       }
     }
 
@@ -2487,12 +2554,19 @@ export class ConsultancyService {
       where: { id: contract.id },
       data: {
         status: ConsultancyContractStatus.CANCELLED,
-        paymentStatus: refundSucceeded ? ConsultancyPaymentStatus.REFUNDED : ConsultancyPaymentStatus.CAPTURED,
-        refundedAt: refundSucceeded ? new Date() : null,
+        paymentStatus: isHoldOnly
+          ? ConsultancyPaymentStatus.CANCELED
+          : gatewaySucceeded
+            ? ConsultancyPaymentStatus.REFUNDED
+            : ConsultancyPaymentStatus.CAPTURED,
+        refundedAt: !isHoldOnly && gatewaySucceeded ? new Date() : null,
+        paymentCanceledAt: isHoldOnly ? new Date() : null,
         mpRefundId,
-        refundReason: refundSucceeded
-          ? "Cancelado pelo aluno antes da entrega da primeira ficha."
-          : "Cancelado pelo aluno antes da entrega. Reembolso via gateway falhou — pendente revisao manual."
+        refundReason: isHoldOnly
+          ? "Cancelado pelo aluno antes da entrega. Reserva liberada, nunca chegou a ser cobrada."
+          : gatewaySucceeded
+            ? "Cancelado pelo aluno antes da entrega da primeira ficha."
+            : "Cancelado pelo aluno antes da entrega. Reembolso via gateway falhou — pendente revisao manual."
       }
     });
 
@@ -2505,9 +2579,11 @@ export class ConsultancyService {
     void notificationService.sendToUsers([contract.clientId], {
       preferenceType: "CONSULTANCY",
       title: "Consultoria cancelada",
-      body: refundSucceeded
-        ? "Sua consultoria foi cancelada e o valor foi estornado."
-        : "Sua consultoria foi cancelada. Houve uma falha ao processar o reembolso — nossa equipe já foi avisada e vai resolver manualmente.",
+      body: isHoldOnly
+        ? "Sua consultoria foi cancelada. O valor reservado no cartão nunca chegou a ser cobrado."
+        : gatewaySucceeded
+          ? "Sua consultoria foi cancelada e o valor foi estornado."
+          : "Sua consultoria foi cancelada. Houve uma falha ao processar o reembolso — nossa equipe já foi avisada e vai resolver manualmente.",
       data: { type: "CONSULTANCY_CANCELLED_BY_CLIENT", contractId: contract.id }
     });
 
@@ -2641,7 +2717,7 @@ export class ConsultancyService {
     const expiredContracts = await prisma.consultancyContract.findMany({
       where: {
         status: ConsultancyContractStatus.ACTIVE,
-        paymentStatus: ConsultancyPaymentStatus.CAPTURED,
+        paymentStatus: { in: [ConsultancyPaymentStatus.AUTHORIZED, ConsultancyPaymentStatus.CAPTURED] },
         deliveredAt: null,
         deliveryDeadlineAt: {
           lte: referenceDate
@@ -2658,31 +2734,49 @@ export class ConsultancyService {
     });
 
     const processContract = async (contract: (typeof expiredContracts)[number]) => {
+      // Cartão (AUTHORIZED): a reserva nunca chegou a ser cobrada — só precisa
+      // ser liberada. PIX/débito (CAPTURED): o valor já foi cobrado de
+      // verdade, precisa de estorno de fato.
+      const isHoldOnly = contract.paymentStatus === ConsultancyPaymentStatus.AUTHORIZED;
+
       let mpRefundId: string | null = null;
-      let refundSucceeded = true;
+      let gatewaySucceeded = true;
       let refundReason = `Prazo de ${env.CONSULTANCY_DELIVERY_DEADLINE_HOURS} horas expirado sem entrega do treino personalizado.`;
 
       if (contract.mpPaymentId) {
         try {
-          const refund = await mpRefundClient.create({ payment_id: contract.mpPaymentId, body: {} });
-          mpRefundId = String(refund.id);
+          if (isHoldOnly) {
+            await mpPaymentClient.cancel({ id: contract.mpPaymentId });
+          } else {
+            const refund = await mpRefundClient.create({ payment_id: contract.mpPaymentId, body: {} });
+            mpRefundId = String(refund.id);
+          }
         } catch (error) {
-          // Não interrompe o lote — registra o erro e abre um caso de disputa pra revisão manual,
-          // em vez de marcar o contrato como reembolsado sem o dinheiro ter voltado de verdade.
-          console.error("Consultancy refund failed (MP error):", { contractId: contract.id, error });
-          refundSucceeded = false;
-          refundReason = "Prazo expirado sem entrega. Reembolso via gateway falhou — pendente revisao manual.";
-          await prisma.disputeCase.create({
-            data: {
-              type: "REFUND_FAILED",
-              clientId: contract.clientId,
-              providerId: contract.providerId,
-              amountCents: contract.paymentAmountCents,
-              mpPaymentId: contract.mpPaymentId,
-              consultancyContractId: contract.id,
-              contextNote: "Reembolso automático falhou ao expirar o prazo de entrega da consultoria (48h sem ficha entregue)."
-            }
-          });
+          // Não interrompe o lote — registra o erro. Só abre caso de disputa
+          // quando havia dinheiro de verdade em jogo (CAPTURED); uma reserva
+          // que falhou ao ser cancelada expira sozinha em até 5 dias pelo
+          // próprio Mercado Pago, sem risco financeiro pro aluno.
+          console.error(
+            isHoldOnly ? "Consultancy hold cancel failed (MP error):" : "Consultancy refund failed (MP error):",
+            { contractId: contract.id, error }
+          );
+          gatewaySucceeded = false;
+          refundReason = isHoldOnly
+            ? "Prazo expirado sem entrega. Falha ao cancelar a reserva no gateway — expira sozinha em até 5 dias."
+            : "Prazo expirado sem entrega. Reembolso via gateway falhou — pendente revisao manual.";
+          if (!isHoldOnly) {
+            await prisma.disputeCase.create({
+              data: {
+                type: "REFUND_FAILED",
+                clientId: contract.clientId,
+                providerId: contract.providerId,
+                amountCents: contract.paymentAmountCents,
+                mpPaymentId: contract.mpPaymentId,
+                consultancyContractId: contract.id,
+                contextNote: "Reembolso automático falhou ao expirar o prazo de entrega da consultoria (48h sem ficha entregue)."
+              }
+            });
+          }
         }
       } else {
         refundReason = "Prazo expirado sem entrega. Contrato legado sem cobranca gateway registrada.";
@@ -2693,8 +2787,13 @@ export class ConsultancyService {
           where: { id: contract.id },
           data: {
             status: ConsultancyContractStatus.REFUNDED_EXPIRED,
-            paymentStatus: refundSucceeded ? ConsultancyPaymentStatus.REFUNDED : ConsultancyPaymentStatus.CAPTURED,
-            refundedAt: refundSucceeded ? referenceDate : null,
+            paymentStatus: isHoldOnly
+              ? ConsultancyPaymentStatus.CANCELED
+              : gatewaySucceeded
+                ? ConsultancyPaymentStatus.REFUNDED
+                : ConsultancyPaymentStatus.CAPTURED,
+            refundedAt: !isHoldOnly && gatewaySucceeded ? referenceDate : null,
+            paymentCanceledAt: isHoldOnly ? referenceDate : null,
             mpRefundId,
             refundReason
           }
@@ -2704,10 +2803,12 @@ export class ConsultancyService {
 
       void notificationService.sendToUsers([contract.clientId], {
         preferenceType: "CONSULTANCY",
-        title: "Estorno automatico da consultoria",
-        body: refundSucceeded
-          ? "Prazo de entrega expirado sem treino entregue. Valor estornado automaticamente."
-          : "Prazo de entrega expirado sem treino entregue. Houve uma falha ao processar o reembolso — nossa equipe já foi avisada e vai resolver manualmente.",
+        title: isHoldOnly ? "Reserva liberada" : "Estorno automatico da consultoria",
+        body: isHoldOnly
+          ? "Prazo de entrega expirado sem treino entregue. O valor reservado no cartão nunca chegou a ser cobrado."
+          : gatewaySucceeded
+            ? "Prazo de entrega expirado sem treino entregue. Valor estornado automaticamente."
+            : "Prazo de entrega expirado sem treino entregue. Houve uma falha ao processar o reembolso — nossa equipe já foi avisada e vai resolver manualmente.",
         data: { type: "CONSULTANCY_AUTO_REFUND", contractId: contract.id }
       });
       void notificationService.sendToUsers([contract.provider.userId], { preferenceType: "CONSULTANCY", title: "Contrato estornado por prazo expirado", body: "Contrato de consultoria expirou sem entrega e foi estornado ao aluno.", data: { type: "CONSULTANCY_CONTRACT_EXPIRED", contractId: contract.id } });
