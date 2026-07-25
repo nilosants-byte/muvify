@@ -2186,6 +2186,59 @@ export class ConsultancyService {
     return result;
   }
 
+  // Mesmo prazo simétrico da entrega (48h): se a primeira ficha entregue for
+  // claramente inadequada (ex.: vazia, só pra travar o prazo de entrega), o
+  // aluno tem essa janela pra contestar antes que o pagamento fique definitivo.
+  async contestDelivery(clientId: string, contractId: string, reason?: string) {
+    const contract = await prisma.consultancyContract.findUnique({
+      where: { id: contractId },
+      include: { provider: { select: { userId: true } } }
+    });
+
+    if (!contract || contract.clientId !== clientId) {
+      throw new AppError("Contrato não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    if (contract.status !== ConsultancyContractStatus.DELIVERED || !contract.deliveredAt) {
+      throw new AppError("Este contrato ainda não teve a primeira ficha entregue.", StatusCodes.BAD_REQUEST);
+    }
+
+    const deadline = new Date(
+      contract.deliveredAt.getTime() + env.CONSULTANCY_DELIVERY_DEADLINE_HOURS * 60 * 60 * 1000
+    );
+    if (new Date() > deadline) {
+      throw new AppError("O prazo para contestar a entrega já passou.", StatusCodes.BAD_REQUEST);
+    }
+
+    const existing = await prisma.disputeCase.findFirst({
+      where: { consultancyContractId: contract.id, type: "DELIVERY_CONTESTED" }
+    });
+    if (existing) {
+      throw new AppError("Você já contestou a entrega deste contrato.", StatusCodes.BAD_REQUEST);
+    }
+
+    const disputeCase = await prisma.disputeCase.create({
+      data: {
+        type: "DELIVERY_CONTESTED",
+        clientId: contract.clientId,
+        providerId: contract.providerId,
+        amountCents: contract.paymentAmountCents,
+        mpPaymentId: contract.mpPaymentId,
+        consultancyContractId: contract.id,
+        contextNote: reason?.trim() || null
+      }
+    });
+
+    void notificationService.sendToUsers([contract.provider.userId], {
+      preferenceType: "CONSULTANCY",
+      title: "Entrega da ficha contestada",
+      body: "O aluno contestou a qualidade da ficha de treino entregue. O caso vai para análise de um administrador.",
+      data: { type: "CONSULTANCY_DELIVERY_CONTESTED", contractId: contract.id }
+    });
+
+    return disputeCase;
+  }
+
   async getMyTraining(clientId: string) {
     const contracts = await prisma.consultancyContract.findMany({
       where: {

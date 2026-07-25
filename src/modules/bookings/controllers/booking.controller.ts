@@ -80,6 +80,15 @@ export class BookingController {
     return response.json(report);
   }
 
+  async contestAutoCapturedCompletion(request: Request, response: Response) {
+    const disputeCase = await bookingService.contestAutoCapturedCompletion(
+      request.user!.id,
+      request.params.bookingId,
+      request.body.reason
+    );
+    return response.status(StatusCodes.CREATED).json(disputeCase);
+  }
+
   async getCompletionProofImage(request: Request, response: Response) {
     const { buffer, mimeType } = await bookingService.getCompletionProofImage(
       request.user!.id,

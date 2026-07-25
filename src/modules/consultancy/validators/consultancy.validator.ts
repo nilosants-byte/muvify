@@ -215,6 +215,15 @@ export const contractIdParamSchema = z.object({
   })
 });
 
+export const contestDeliverySchema = z.object({
+  params: z.object({
+    contractId: z.string().uuid()
+  }),
+  body: z.object({
+    reason: z.string().trim().min(3).max(500).optional()
+  })
+});
+
 export const deliverContractSchema = z.object({
   params: z.object({
     contractId: z.string().uuid()

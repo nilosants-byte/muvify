@@ -88,6 +88,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   const [validated, setValidated] = useState(() => _validatedCache.get(bookingId) ?? false);
   const [reportingNoShow, setReportingNoShow] = useState(false);
   const [contestingNoShow, setContestingNoShow] = useState(false);
+  const [contestingAutoCapture, setContestingAutoCapture] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [contestReason, setContestReason] = useState("");
 
@@ -97,6 +98,42 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
     wasReportedAsNoShow &&
     noShowReport!.status === "PENDING" &&
     new Date(noShowReport!.contestDeadlineAt) > new Date();
+
+  // Se só o aluno confirmou a conclusão (o profissional nunca confirmou), a
+  // cobrança foi forçada por confirmação única — o profissional tem 24h após
+  // a conclusão pra contestar essa cobrança específica.
+  const canContestAutoCapture = Boolean(
+    booking &&
+    booking.status === "COMPLETED" &&
+    booking.completedAt &&
+    !booking.providerConfirmedAt &&
+    booking.clientConfirmedAt &&
+    Date.now() - new Date(booking.completedAt).getTime() <= 24 * 60 * 60 * 1000
+  );
+
+  function handleContestAutoCapture() {
+    if (!booking) return;
+    Alert.alert(
+      "Contestar cobrança",
+      "Essa sessão foi cobrada porque só o aluno confirmou a conclusão dentro do prazo. Se você discorda, contestar abre um caso pra um administrador analisar antes da cobrança ficar definitiva.",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Contestar",
+          onPress: async () => {
+            try {
+              setContestingAutoCapture(true);
+              await runWithAuth((token) => bookingsApi.contestAutoCapture(token, booking.id));
+              showToast("Contestação registrada. O caso está em análise.", "success");
+              void bookingDetailQuery.refetch();
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível contestar.", navigation });
+            } finally { setContestingAutoCapture(false); }
+          },
+        },
+      ]
+    );
+  }
 
   function handleContestNoShow() {
     if (!booking) return;
@@ -514,6 +551,21 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
                     />
                   </View>
                 ) : null}
+              </MvCard>
+            ) : null}
+
+            {canContestAutoCapture ? (
+              <MvCard style={{ borderColor: theme.danger, gap: 8 }}>
+                <MvText variant="semi3">Esta sessão foi cobrada por confirmação única</MvText>
+                <MvText variant="body4" color="secondary">
+                  Só o aluno confirmou a conclusão — você não confirmou. Você tem 24h após a conclusão pra contestar essa cobrança, se discordar de que a sessão aconteceu como descrito.
+                </MvText>
+                <MvButton
+                  variant="outline"
+                  label={contestingAutoCapture ? "Enviando..." : "Contestar cobrança"}
+                  loading={contestingAutoCapture}
+                  onPress={handleContestAutoCapture}
+                />
               </MvCard>
             ) : null}
 

@@ -8,6 +8,7 @@ import { ConsultancyController } from "../controllers/consultancy.controller";
 import {
   archivedConsultancyQuerySchema,
   completeTrainingPlanSchema,
+  contestDeliverySchema,
   contractIdParamSchema,
   createConsultancyRequestSchema,
   offerIdParamSchema,
@@ -72,6 +73,13 @@ consultancyRoutes.post(
   uploadRateLimiter,
   validate(contractIdParamSchema),
   consultancyController.cancelContract
+);
+consultancyRoutes.post(
+  "/contracts/:contractId/contest-delivery",
+  ensureRole(UserRole.CLIENT),
+  uploadRateLimiter,
+  validate(contestDeliverySchema),
+  consultancyController.contestDelivery
 );
 
 consultancyRoutes.get(

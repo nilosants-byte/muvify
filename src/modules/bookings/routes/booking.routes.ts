@@ -8,6 +8,7 @@ import { BookingController } from "../controllers/booking.controller";
 import {
   bookingIdParamSchema,
   completionProofParamSchema,
+  contestAutoCaptureSchema,
   contestNoShowSchema,
   createBookingSchema,
   reportNoShowSchema,
@@ -57,6 +58,13 @@ bookingRoutes.post(
   uploadRateLimiter,
   validate(contestNoShowSchema),
   bookingController.contestNoShowReport
+);
+bookingRoutes.post(
+  "/:bookingId/contest-auto-capture",
+  clientOrProvider,
+  uploadRateLimiter,
+  validate(contestAutoCaptureSchema),
+  bookingController.contestAutoCapturedCompletion
 );
 bookingRoutes.get(
   "/:bookingId/completion-proof/:evidenceUserId",

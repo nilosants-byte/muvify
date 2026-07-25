@@ -79,6 +79,15 @@ export const contestNoShowSchema = z.object({
   })
 });
 
+export const contestAutoCaptureSchema = z.object({
+  params: z.object({
+    bookingId: z.string().uuid()
+  }),
+  body: z.object({
+    reason: z.string().trim().min(3).max(500).optional()
+  })
+});
+
 export const completionProofParamSchema = z.object({
   params: z.object({
     bookingId: z.string().uuid(),

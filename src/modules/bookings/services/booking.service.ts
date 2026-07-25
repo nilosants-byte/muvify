@@ -1403,6 +1403,90 @@ export class BookingService {
     return updated;
   }
 
+  // Quando só uma das partes confirma a sessão, a cobrança é forçada depois de
+  // AUTO_CAPTURE_CONFIRMATION_HOURS (ver payment.service.ts::autoCaptureSingleConfirmation)
+  // pra proteger quem prestou o serviço de um silêncio da outra parte. Em troca,
+  // quem nunca confirmou ganha uma segunda janela de 24h pra contestar essa
+  // cobrança específica antes dela ficar definitiva de vez.
+  private static readonly AUTO_CAPTURE_CONTEST_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+  async contestAutoCapturedCompletion(userId: string, bookingId: string, reason?: string) {
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        provider: { select: { userId: true } },
+        payment: { select: { mpPaymentId: true } }
+      }
+    });
+
+    if (!booking) {
+      throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    const isClient = booking.clientId === userId;
+    const isProvider = booking.provider.userId === userId;
+    if (!isClient && !isProvider) {
+      throw new AppError("Você não tem permissão para contestar este agendamento.", StatusCodes.FORBIDDEN);
+    }
+
+    if (booking.status !== BookingStatus.COMPLETED || !booking.completedAt) {
+      throw new AppError("Este agendamento ainda não foi concluído.", StatusCodes.BAD_REQUEST);
+    }
+
+    const clientNeverConfirmed = booking.clientConfirmedAt === null;
+    const providerNeverConfirmed = booking.providerConfirmedAt === null;
+    if (clientNeverConfirmed === providerNeverConfirmed) {
+      // Ou as duas partes confirmaram (conclusão normal, nada a contestar aqui),
+      // ou nenhuma confirmou (não deveria existir booking COMPLETED assim).
+      throw new AppError(
+        "Este agendamento não foi concluído por cobrança automática de confirmação única.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+    if ((clientNeverConfirmed && !isClient) || (providerNeverConfirmed && !isProvider)) {
+      throw new AppError("Apenas quem não confirmou a sessão pode contestar.", StatusCodes.FORBIDDEN);
+    }
+
+    const deadline = new Date(
+      booking.completedAt.getTime() + BookingService.AUTO_CAPTURE_CONTEST_WINDOW_MS
+    );
+    if (new Date() > deadline) {
+      throw new AppError("O prazo de 24 horas para contestar esta cobrança já passou.", StatusCodes.BAD_REQUEST);
+    }
+
+    const existing = await prisma.disputeCase.findFirst({
+      where: { bookingId, type: "AUTO_CAPTURE_CONTESTED" }
+    });
+    if (existing) {
+      throw new AppError("Você já contestou esta cobrança.", StatusCodes.BAD_REQUEST);
+    }
+
+    const disputeCase = await prisma.disputeCase.create({
+      data: {
+        type: "AUTO_CAPTURE_CONTESTED",
+        clientId: booking.clientId,
+        providerId: booking.providerId,
+        amountCents: booking.priceCents,
+        mpPaymentId: booking.payment?.mpPaymentId ?? null,
+        bookingId,
+        contextNote: reason?.trim() || null
+      }
+    });
+
+    void notificationService
+      .sendToUsers([isClient ? booking.provider.userId : booking.clientId], {
+        preferenceType: "BOOKINGS",
+        title: "Cobrança automática contestada",
+        body: "A cobrança feita por confirmação única de sessão foi contestada. O caso vai para análise de um administrador.",
+        data: { type: "BOOKING_AUTO_CAPTURE_CONTESTED", bookingId }
+      })
+      .catch((error) => {
+        console.error("Auto-capture contest notification failed:", error);
+      });
+
+    return disputeCase;
+  }
+
   // Roda periodicamente (ver payment-jobs.ts) — resolve relatos cujo prazo de
   // contestacao venceu sem contestacao: aplica o strike e move o dinheiro na
   // direcao certa (quem faltou nao fica com o beneficio da duvida).

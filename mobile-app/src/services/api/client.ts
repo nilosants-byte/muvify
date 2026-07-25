@@ -1983,6 +1983,13 @@ export const bookingsApi = {
       token,
       body: { contestReason }
     });
+  },
+  contestAutoCapture(token: string, bookingId: string, reason?: string) {
+    return apiRequest<unknown>(`/bookings/${bookingId}/contest-auto-capture`, {
+      method: "POST",
+      token,
+      body: { reason }
+    });
   }
 };
 
@@ -2530,6 +2537,13 @@ export const consultancyApi = {
     return apiRequest<ConsultancyContract>(`/consultancy/contracts/${contractId}/cancel`, {
       method: "POST",
       token
+    });
+  },
+  contestDelivery(token: string, contractId: string, reason?: string) {
+    return apiRequest<unknown>(`/consultancy/contracts/${contractId}/contest-delivery`, {
+      method: "POST",
+      token,
+      body: { reason }
     });
   },
   providerRequests(token: string) {

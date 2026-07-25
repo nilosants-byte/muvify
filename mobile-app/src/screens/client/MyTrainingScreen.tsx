@@ -81,7 +81,12 @@ function planValidityStyle(isVigente: boolean, theme: MvTheme) {
 }
 
 // ── Flat plan list helper ──────────────────────────────────────────────────────
-type FlatPlan = TrainingPlan & { contractStatus: string; providerName: string; contractId: string };
+type FlatPlan = TrainingPlan & {
+  contractStatus: string;
+  providerName: string;
+  contractId: string;
+  contractDeliveredAt: string | null;
+};
 
 function flatPlans(contracts: ConsultancyContract[]): FlatPlan[] {
   return contracts.flatMap((c) =>
@@ -90,8 +95,15 @@ function flatPlans(contracts: ConsultancyContract[]): FlatPlan[] {
       contractStatus: c.status,
       providerName: c.provider?.displayName ?? "Personal",
       contractId: c.id,
+      contractDeliveredAt: c.deliveredAt ?? null,
     }))
   );
+}
+
+const DELIVERY_CONTEST_WINDOW_MS = 48 * 60 * 60 * 1000;
+function canContestDelivery(plan: FlatPlan) {
+  if (plan.contractStatus !== "DELIVERED" || !plan.contractDeliveredAt) return false;
+  return Date.now() - new Date(plan.contractDeliveredAt).getTime() <= DELIVERY_CONTEST_WINDOW_MS;
 }
 
 // ── WorkoutDetailModal ────────────────────────────────────────────────────────
@@ -557,6 +569,7 @@ export function MyTrainingScreen({ navigation }: Props) {
 
   const [decidingRequestId, setDecidingRequestId] = useState<string | null>(null);
   const [cancellingContractId, setCancellingContractId] = useState<string | null>(null);
+  const [contestingContractId, setContestingContractId] = useState<string | null>(null);
   const [paymentByRequestId, setPaymentByRequestId] = useState<Record<string, ConsultancyPaymentMethod>>({});
   const [consentByRequestId, setConsentByRequestId] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<TrainingTab>("active");
@@ -654,6 +667,31 @@ export function MyTrainingScreen({ navigation }: Props) {
     );
   }
 
+  function handleContestDelivery(contractId: string) {
+    Alert.alert(
+      "Contestar entrega",
+      "Use isso se a ficha entregue não faz sentido pro seu objetivo (ex.: vazia, incompleta). Um administrador vai analisar o caso. Deseja contestar?",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Contestar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setContestingContractId(contractId);
+              await runWithAuth((token) => consultancyApi.contestDelivery(token, contractId));
+              showToast("Contestação enviada. Um administrador vai analisar.", "success");
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível contestar.", navigation });
+            } finally {
+              setContestingContractId(null);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   function goToArchived() {
     const parent = navigation.getParent<any>();
     if (parent) parent.navigate("ArchivedRequests");
@@ -698,6 +736,17 @@ export function MyTrainingScreen({ navigation }: Props) {
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, marginTop: 2 }}>
             {isVigente ? `Válido até ${validUntilLabel}` : `Venceu em ${validUntilLabel}`}
           </Text>
+        ) : null}
+        {canContestDelivery(item) ? (
+          <TouchableOpacity
+            onPress={() => handleContestDelivery(item.contractId)}
+            disabled={contestingContractId === item.contractId}
+            style={{ marginTop: 10 }}
+          >
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: theme.text2, textDecorationLine: "underline" }}>
+              {contestingContractId === item.contractId ? "Enviando..." : "Contestar esta entrega"}
+            </Text>
+          </TouchableOpacity>
         ) : null}
       </PressableScale>
     );

@@ -199,6 +199,15 @@ export class ConsultancyController {
     return response.json(cancelled);
   }
 
+  async contestDelivery(request: Request, response: Response) {
+    const disputeCase = await consultancyService.contestDelivery(
+      request.user!.id,
+      request.params.contractId,
+      request.body.reason
+    );
+    return response.status(StatusCodes.CREATED).json(disputeCase);
+  }
+
   async myTraining(request: Request, response: Response) {
     const data = await consultancyService.getMyTraining(request.user!.id);
     return response.json(data);

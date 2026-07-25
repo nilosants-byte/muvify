@@ -120,6 +120,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   const [cancelling, setCancelling] = useState(false);
   const [reportingNoShow, setReportingNoShow] = useState(false);
   const [contestingNoShow, setContestingNoShow] = useState(false);
+  const [contestingAutoCapture, setContestingAutoCapture] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [contestReason, setContestReason] = useState("");
 
@@ -194,6 +195,18 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     wasReportedAsNoShow &&
     noShowReport!.status === "PENDING" &&
     new Date(noShowReport!.contestDeadlineAt) > new Date();
+
+  // Se só o profissional confirmou a conclusão (o cliente nunca confirmou), a
+  // cobrança foi forçada por confirmação única — o cliente tem 24h após a
+  // conclusão pra contestar essa cobrança específica.
+  const canContestAutoCapture = Boolean(
+    booking &&
+    booking.status === "COMPLETED" &&
+    booking.completedAt &&
+    !booking.clientConfirmedAt &&
+    booking.providerConfirmedAt &&
+    Date.now() - new Date(booking.completedAt).getTime() <= 24 * 60 * 60 * 1000
+  );
 
   // ── Animação de validação do código (scale bounce + fade) ─────────────────
   const checkScale = useSharedValue(0);
@@ -285,6 +298,30 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             } catch (error) {
               handleScreenError({ error, showToast, fallbackMessage: "Não foi possível contestar.", navigation });
             } finally { setContestingNoShow(false); }
+          },
+        },
+      ]
+    );
+  }
+
+  function handleContestAutoCapture() {
+    if (!booking) return;
+    Alert.alert(
+      "Contestar cobrança",
+      "Essa sessão foi cobrada porque só o profissional confirmou a conclusão dentro do prazo. Se você discorda, contestar abre um caso pra um administrador analisar antes da cobrança ficar definitiva.",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Contestar",
+          onPress: async () => {
+            try {
+              setContestingAutoCapture(true);
+              await runWithAuth((token) => bookingsApi.contestAutoCapture(token, booking.id));
+              showToast("Contestação registrada. O caso está em análise.", "success");
+              void detailQuery.refetch();
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível contestar.", navigation });
+            } finally { setContestingAutoCapture(false); }
           },
         },
       ]
@@ -755,6 +792,26 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                 </TouchableOpacity>
               </View>
             ) : null}
+          </View>
+        ) : null}
+
+        {canContestAutoCapture ? (
+          <View style={{ marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.danger, backgroundColor: "rgba(239,68,68,0.08)", padding: 14, gap: 8 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>
+              Esta sessão foi cobrada por confirmação única
+            </Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
+              Só o profissional confirmou a conclusão — você não confirmou. Você tem 24h após a conclusão pra contestar essa cobrança, se discordar de que a sessão aconteceu como descrito.
+            </Text>
+            <TouchableOpacity
+              disabled={contestingAutoCapture}
+              onPress={handleContestAutoCapture}
+              style={{ height: 40, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.danger, alignItems: "center", justifyContent: "center", opacity: contestingAutoCapture ? 0.6 : 1 }}
+            >
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.danger }}>
+                {contestingAutoCapture ? "Enviando..." : "Contestar cobrança"}
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : null}
       </ScrollView>
