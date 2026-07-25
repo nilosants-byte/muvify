@@ -287,7 +287,7 @@ Além do agendamento avulso (Cláusula 7.1 a 7.4), o Profissional pode oferecer 
 ### 8.1 Fluxo da Consultoria
 
 1. **Solicitação:** O Aluno submete uma requisição de consultoria ao Profissional, descrevendo seus objetivos e necessidades;
-2. **Resposta:** O Profissional aceita ou recusa a solicitação no prazo de **[X horas]**. Ao aceitar, apresenta uma proposta com escopo, prazo de entrega e valor;
+2. **Resposta:** O Profissional aceita ou recusa a solicitação no prazo de **48 (quarenta e oito) horas**. Ao aceitar, apresenta uma proposta com escopo, prazo de entrega e valor. Não havendo resposta dentro do prazo, a solicitação expira automaticamente e o Aluno é notificado;
 3. **Contrato:** O Aluno aceita a proposta e efetua o pagamento. Um contrato de consultoria é firmado digitalmente no Aplicativo;
 4. **Anamnese:** O Aluno preenche a anamnese (se ainda não preenchida), que é compartilhada com o Profissional;
 5. **Elaboração e entrega:** O Profissional elabora e entrega a primeira ficha de treino em até **48 (quarenta e oito) horas** a partir da confirmação do pagamento da consultoria. **Um mesmo contrato pode receber várias fichas de treino ao longo da sua vigência** — o Profissional pode entregar novas fichas conforme o Aluno evolui, e também pode atualizar/editar uma ficha já entregue. Cada ficha tem sua própria vigência, que nunca ultrapassa a vigência do contrato;
@@ -376,8 +376,8 @@ Para exercer o direito de arrependimento, acesse Configurações → Meus Agenda
 
 | Quem cancela | Antecedência | Consequência |
 |---|---|---|
-| **Aluno** | Mais de **[X horas]** antes da sessão | Reembolso integral |
-| **Aluno** | Menos de **[X horas]** antes da sessão | Sem reembolso — valor repassado ao Profissional |
+| **Aluno** | 2 (duas) horas ou mais antes da sessão | Reembolso integral |
+| **Aluno** | Menos de 2 (duas) horas antes da sessão | Sem reembolso — valor repassado ao Profissional |
 | **Aluno** | No-show (não compareceu) | Sem reembolso — valor repassado ao Profissional |
 | **Profissional** | Qualquer antecedência | Reembolso integral ao Aluno |
 | **Muvify** (por suspensão do Profissional) | Qualquer | Reembolso integral ao Aluno |
@@ -388,12 +388,10 @@ A consultoria e os planos de treino online são tratados como um **produto de el
 
 | Situação | Consequência |
 |---|---|
-| Aluno cancela em até **48 (quarenta e oito) horas** da contratação **e** antes da entrega da primeira ficha de treino (o que ocorrer primeiro) | Reembolso integral |
-| Aluno cancela após as 48 horas **ou** após a entrega da primeira ficha (o que ocorrer primeiro) | **Sem reembolso** — o produto já foi elaborado e entregue |
-| Profissional não entrega no prazo contratado | Reembolso integral automático ao Aluno |
+| Aluno cancela a qualquer momento **antes** da entrega da primeira ficha de treino | Reembolso integral |
+| Aluno cancela **após** a entrega da primeira ficha | **Sem reembolso** — o produto já foi elaborado e entregue |
+| Profissional não entrega dentro do prazo de **48 (quarenta e oito) horas** | Reembolso integral automático ao Aluno |
 | Profissional cancela unilateralmente antes da entrega | Reembolso integral ao Aluno + penalidades ao Profissional (item 19.2) |
-
-Esta regra não afeta o direito de arrependimento do item 10.1, que já assegura o reembolso integral dentro do prazo ali previsto.
 
 ### 10.4 Prazo de Processamento dos Reembolsos
 

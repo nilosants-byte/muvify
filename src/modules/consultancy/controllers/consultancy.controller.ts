@@ -193,6 +193,11 @@ export class ConsultancyController {
     return response.json(delivered);
   }
 
+  async cancelContract(request: Request, response: Response) {
+    const cancelled = await consultancyService.cancelContract(request.user!.id, request.params.contractId);
+    return response.json(cancelled);
+  }
+
   async myTraining(request: Request, response: Response) {
     const data = await consultancyService.getMyTraining(request.user!.id);
     return response.json(data);

@@ -1463,7 +1463,8 @@ export class ConsultancyService {
         clientId,
         trainingNeedText: input.trainingNeedText,
         limitationText: input.limitationText,
-        extraInfoText: input.extraInfoText
+        extraInfoText: input.extraInfoText,
+        responseDeadlineAt: new Date(Date.now() + env.CONSULTANCY_DELIVERY_DEADLINE_HOURS * 60 * 60 * 1000)
       },
       include: {
         provider: {
@@ -1482,7 +1483,7 @@ export class ConsultancyService {
     await notificationService.sendToUsers([provider.userId], {
         preferenceType: "CONSULTANCY",
       title: "Nova solicitação de consultoria",
-      body: "Um aluno enviou uma nova solicitação de consultoria on-line.",
+      body: `Um aluno enviou uma nova solicitação de consultoria on-line. Você tem ${env.CONSULTANCY_DELIVERY_DEADLINE_HOURS}h para responder, ou o pedido expira automaticamente.`,
       data: {
         type: "CONSULTANCY_REQUEST_CREATED",
         requestId: request.id
@@ -2369,6 +2370,119 @@ export class ConsultancyService {
     }));
   }
 
+  // O aluno pode desistir da consultoria a qualquer momento antes da primeira
+  // ficha ser entregue — depois disso, o serviço já foi prestado e não cabe
+  // mais cancelamento (ver Cláusula 8.2 dos Termos de Uso).
+  async cancelContract(clientId: string, contractId: string) {
+    const contract = await prisma.consultancyContract.findUnique({
+      where: { id: contractId },
+      include: { provider: { select: { userId: true } } }
+    });
+
+    if (!contract || contract.clientId !== clientId) {
+      throw new AppError("Contrato não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    if (contract.status !== ConsultancyContractStatus.ACTIVE) {
+      throw new AppError("Este contrato não pode mais ser cancelado.", StatusCodes.BAD_REQUEST);
+    }
+
+    if (contract.deliveredAt) {
+      throw new AppError(
+        "A primeira ficha já foi entregue — não é mais possível cancelar.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    let refundSucceeded = true;
+    let mpRefundId: string | null = null;
+
+    if (contract.mpPaymentId) {
+      try {
+        const refund = await mpRefundClient.create({ payment_id: contract.mpPaymentId, body: {} });
+        mpRefundId = String(refund.id);
+      } catch (error) {
+        console.error("Consultancy client cancel refund failed (MP error):", { contractId: contract.id, error });
+        refundSucceeded = false;
+        await prisma.disputeCase.create({
+          data: {
+            type: "REFUND_FAILED",
+            clientId: contract.clientId,
+            providerId: contract.providerId,
+            amountCents: contract.paymentAmountCents,
+            mpPaymentId: contract.mpPaymentId,
+            consultancyContractId: contract.id,
+            contextNote: "Reembolso automático falhou ao cancelar consultoria pelo aluno antes da entrega."
+          }
+        });
+      }
+    }
+
+    const updated = await prisma.consultancyContract.update({
+      where: { id: contract.id },
+      data: {
+        status: ConsultancyContractStatus.CANCELLED,
+        paymentStatus: refundSucceeded ? ConsultancyPaymentStatus.REFUNDED : ConsultancyPaymentStatus.CAPTURED,
+        refundedAt: refundSucceeded ? new Date() : null,
+        mpRefundId,
+        refundReason: refundSucceeded
+          ? "Cancelado pelo aluno antes da entrega da primeira ficha."
+          : "Cancelado pelo aluno antes da entrega. Reembolso via gateway falhou — pendente revisao manual."
+      }
+    });
+
+    void notificationService.sendToUsers([contract.provider.userId], {
+      preferenceType: "CONSULTANCY",
+      title: "Consultoria cancelada pelo aluno",
+      body: "O aluno cancelou a consultoria antes da entrega da primeira ficha.",
+      data: { type: "CONSULTANCY_CANCELLED_BY_CLIENT", contractId: contract.id }
+    });
+    void notificationService.sendToUsers([contract.clientId], {
+      preferenceType: "CONSULTANCY",
+      title: "Consultoria cancelada",
+      body: refundSucceeded
+        ? "Sua consultoria foi cancelada e o valor foi estornado."
+        : "Sua consultoria foi cancelada. Houve uma falha ao processar o reembolso — nossa equipe já foi avisada e vai resolver manualmente.",
+      data: { type: "CONSULTANCY_CANCELLED_BY_CLIENT", contractId: contract.id }
+    });
+
+    return updated;
+  }
+
+  // Se o profissional nunca responder uma solicitação em aberto dentro do prazo,
+  // ela expira sozinha — o aluno não fica esperando indefinidamente por alguém
+  // que, na prática, não deu a atenção devida ao pedido.
+  async expireStaleConsultancyRequests(referenceDate = new Date()) {
+    const staleRequests = await prisma.consultancyRequest.findMany({
+      where: {
+        status: ConsultancyRequestStatus.OPEN,
+        responseDeadlineAt: { lte: referenceDate }
+      },
+      include: { provider: { select: { userId: true } } },
+      take: 200
+    });
+
+    for (const request of staleRequests) {
+      await prisma.consultancyRequest.update({
+        where: { id: request.id },
+        data: { status: ConsultancyRequestStatus.EXPIRED }
+      });
+
+      void notificationService.sendToUsers([request.clientId], {
+        preferenceType: "CONSULTANCY",
+        title: "Solicitação de consultoria expirou",
+        body: "O profissional não respondeu dentro do prazo. Você já pode procurar outro profissional.",
+        data: { type: "CONSULTANCY_REQUEST_EXPIRED", requestId: request.id }
+      });
+      void notificationService.sendToUsers([request.provider.userId], {
+        preferenceType: "CONSULTANCY",
+        title: "Solicitação de consultoria expirou",
+        body: "Você não respondeu a uma solicitação de consultoria dentro do prazo e ela foi encerrada automaticamente.",
+        data: { type: "CONSULTANCY_REQUEST_EXPIRED", requestId: request.id }
+      });
+    }
+  }
+
   async sendConsultancyExpiryReminders(referenceDate = new Date()) {
     const hourMs = 60 * 60 * 1000;
     const windowMs = 5 * 60 * 1000;
@@ -2480,6 +2594,7 @@ export class ConsultancyService {
 
     const processContract = async (contract: (typeof expiredContracts)[number]) => {
       let mpRefundId: string | null = null;
+      let refundSucceeded = true;
       let refundReason = `Prazo de ${env.CONSULTANCY_DELIVERY_DEADLINE_HOURS} horas expirado sem entrega do treino personalizado.`;
 
       if (contract.mpPaymentId) {
@@ -2487,9 +2602,22 @@ export class ConsultancyService {
           const refund = await mpRefundClient.create({ payment_id: contract.mpPaymentId, body: {} });
           mpRefundId = String(refund.id);
         } catch (error) {
-          // Não interrompe — registra o erro e marca o contrato como expirado sem reembolso gateway
+          // Não interrompe o lote — registra o erro e abre um caso de disputa pra revisão manual,
+          // em vez de marcar o contrato como reembolsado sem o dinheiro ter voltado de verdade.
           console.error("Consultancy refund failed (MP error):", { contractId: contract.id, error });
+          refundSucceeded = false;
           refundReason = "Prazo expirado sem entrega. Reembolso via gateway falhou — pendente revisao manual.";
+          await prisma.disputeCase.create({
+            data: {
+              type: "REFUND_FAILED",
+              clientId: contract.clientId,
+              providerId: contract.providerId,
+              amountCents: contract.paymentAmountCents,
+              mpPaymentId: contract.mpPaymentId,
+              consultancyContractId: contract.id,
+              contextNote: "Reembolso automático falhou ao expirar o prazo de entrega da consultoria (48h sem ficha entregue)."
+            }
+          });
         }
       } else {
         refundReason = "Prazo expirado sem entrega. Contrato legado sem cobranca gateway registrada.";
@@ -2498,12 +2626,25 @@ export class ConsultancyService {
       await prisma.$transaction(async (tx) => {
         await tx.consultancyContract.update({
           where: { id: contract.id },
-          data: { status: ConsultancyContractStatus.REFUNDED_EXPIRED, paymentStatus: ConsultancyPaymentStatus.REFUNDED, refundedAt: referenceDate, mpRefundId, refundReason }
+          data: {
+            status: ConsultancyContractStatus.REFUNDED_EXPIRED,
+            paymentStatus: refundSucceeded ? ConsultancyPaymentStatus.REFUNDED : ConsultancyPaymentStatus.CAPTURED,
+            refundedAt: refundSucceeded ? referenceDate : null,
+            mpRefundId,
+            refundReason
+          }
         });
         await tx.consultancyRequest.update({ where: { id: contract.requestId }, data: { status: ConsultancyRequestStatus.EXPIRED_REFUNDED } });
       });
 
-      void notificationService.sendToUsers([contract.clientId], { preferenceType: "CONSULTANCY", title: "Estorno automatico da consultoria", body: "Prazo de entrega expirado sem treino entregue. Valor estornado automaticamente.", data: { type: "CONSULTANCY_AUTO_REFUND", contractId: contract.id } });
+      void notificationService.sendToUsers([contract.clientId], {
+        preferenceType: "CONSULTANCY",
+        title: "Estorno automatico da consultoria",
+        body: refundSucceeded
+          ? "Prazo de entrega expirado sem treino entregue. Valor estornado automaticamente."
+          : "Prazo de entrega expirado sem treino entregue. Houve uma falha ao processar o reembolso — nossa equipe já foi avisada e vai resolver manualmente.",
+        data: { type: "CONSULTANCY_AUTO_REFUND", contractId: contract.id }
+      });
       void notificationService.sendToUsers([contract.provider.userId], { preferenceType: "CONSULTANCY", title: "Contrato estornado por prazo expirado", body: "Contrato de consultoria expirou sem entrega e foi estornado ao aluno.", data: { type: "CONSULTANCY_CONTRACT_EXPIRED", contractId: contract.id } });
     };
 

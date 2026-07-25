@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   Platform,
@@ -555,6 +556,7 @@ export function MyTrainingScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
 
   const [decidingRequestId, setDecidingRequestId] = useState<string | null>(null);
+  const [cancellingContractId, setCancellingContractId] = useState<string | null>(null);
   const [paymentByRequestId, setPaymentByRequestId] = useState<Record<string, ConsultancyPaymentMethod>>({});
   const [activeTab, setActiveTab] = useState<TrainingTab>("active");
   const [selectedPlan, setSelectedPlan] = useState<FlatPlan | null>(null);
@@ -617,6 +619,32 @@ export function MyTrainingScreen({ navigation }: Props) {
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao registrar decisão.", navigation });
     } finally { setDecidingRequestId(null); }
+  }
+
+  function handleCancelContract(contractId: string) {
+    Alert.alert(
+      "Cancelar consultoria",
+      "Como a ficha ainda não foi entregue, você pode desistir agora e receber o valor de volta integralmente. Deseja cancelar?",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Cancelar consultoria",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setCancellingContractId(contractId);
+              await runWithAuth((token) => consultancyApi.cancelContract(token, contractId));
+              showToast("Consultoria cancelada e valor estornado.", "success");
+              await trainingQuery.refetch();
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível cancelar.", navigation });
+            } finally {
+              setCancellingContractId(null);
+            }
+          },
+        },
+      ]
+    );
   }
 
   function goToArchived() {
@@ -757,9 +785,18 @@ export function MyTrainingScreen({ navigation }: Props) {
               <View style={{ gap: 8 }}>
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Em preparação</Text>
                 {waitingDelivery.map((item) => (
-                  <View key={item.contractId} style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: C.skyBorder, backgroundColor: C.skyDim, padding: 14 }}>
+                  <View key={item.contractId} style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: C.skyBorder, backgroundColor: C.skyDim, padding: 14, gap: 8 }}>
                     <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{item.providerName}</Text>
-                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 4 }}>Entrega até {formatDateLabel(item.deliveryDeadlineAt)}</Text>
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>Entrega até {formatDateLabel(item.deliveryDeadlineAt)}</Text>
+                    <TouchableOpacity
+                      onPress={() => handleCancelContract(item.contractId)}
+                      disabled={cancellingContractId === item.contractId}
+                      style={{ alignSelf: "flex-start" }}
+                    >
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text2, textDecorationLine: "underline" }}>
+                        {cancellingContractId === item.contractId ? "Cancelando..." : "Cancelar consultoria"}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 ))}
               </View>

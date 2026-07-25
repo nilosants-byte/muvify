@@ -2525,6 +2525,12 @@ export const consultancyApi = {
       }
     );
   },
+  cancelContract(token: string, contractId: string) {
+    return apiRequest<ConsultancyContract>(`/consultancy/contracts/${contractId}/cancel`, {
+      method: "POST",
+      token
+    });
+  },
   providerRequests(token: string) {
     return apiRequest<ConsultancyRequest[]>("/consultancy/provider/requests", { token });
   },

@@ -69,6 +69,7 @@ enum ConsultancyRequestStatus {
   RESPONDED
   ACCEPTED
   REFUSED
+  EXPIRED
   EXPIRED_REFUNDED
   ARCHIVED
 }
@@ -77,6 +78,7 @@ enum ConsultancyContractStatus {
   PENDING_PAYMENT
   ACTIVE
   DELIVERED
+  CANCELLED
   REFUNDED_EXPIRED
   ARCHIVED
 }
@@ -1024,6 +1026,7 @@ model ConsultancyRequest {
   providerResponseText String?
   status               ConsultancyRequestStatus @default(OPEN)
   quotedOfferId        String?
+  responseDeadlineAt   DateTime
   respondedAt          DateTime?
   clientDecisionAt     DateTime?
   createdAt            DateTime                 @default(now())

@@ -200,6 +200,12 @@ export const decideConsultancyRequestSchema = z.object({
     })
 });
 
+export const contractIdParamSchema = z.object({
+  params: z.object({
+    contractId: z.string().uuid()
+  })
+});
+
 export const deliverContractSchema = z.object({
   params: z.object({
     contractId: z.string().uuid()
