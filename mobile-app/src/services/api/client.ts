@@ -1938,6 +1938,7 @@ export const bookingsApi = {
       sessionLocation?: string;
       clientLatitude?: number;
       clientLongitude?: number;
+      packageId?: string;
     }
   ) {
     return apiRequest<Booking>("/bookings", { method: "POST", token, body });
@@ -2972,6 +2973,7 @@ export type PresentialPackageChargeResult =
   | { status: "CAPTURED" }
   | { status: "AUTHORIZED" }
   | { status: "SCHEDULED"; sessionsScheduled: number }
+  | { status: "READY"; sessionsAvailable: number }
   | {
       status: "PENDING";
       method?: "PIX";

@@ -289,6 +289,13 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
             "success"
           );
           navigation.replace("MyPresentialPackages");
+        } else if (result.payment.status === "READY") {
+          await hapticCta();
+          showToast(
+            `Pacote contratado! Você tem ${result.payment.sessionsAvailable} sessão(ões) pra agendar quando quiser — cada uma é cobrada só na hora que acontecer.`,
+            "success"
+          );
+          navigation.replace("MyPresentialPackages");
         } else if (result.payment.status === "PENDING" && result.payment.pix) {
           setPixPending(result.payment.pix);
         } else {
@@ -307,6 +314,8 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   // Único caso que já cobra sessão por sessão em vez do ciclo inteiro
   // adiantado — o combo ainda usa o modelo antigo pro lado presencial.
   const isCardFixedRecurringPurchase = !isCombo && isFixedRecurring && paymentMethod === "CREDIT_CARD";
+  const isFlexibleCreditsPurchase = presentialPackageMode === "FLEXIBLE_CREDITS";
+  const isPerSessionBilling = isCardFixedRecurringPurchase || isFlexibleCreditsPurchase;
 
   if (setupQuery.isLoading) {
     return (
@@ -403,6 +412,15 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
                   : " Sem prazo fixo - renova automaticamente até você ou o profissional cancelarem."}
                 {" "}Cancelar a qualquer momento libera as sessões futuras ainda não cobradas, sem nenhum custo.
               </Text>
+            ) : isFlexibleCreditsPurchase ? (
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
+                Um bloco fechado de {presentialSessionsPerCycle} sessões, ao preço de {formatCurrencyBRL(cycleAmountCents / 100)} por sessão —
+                nada é cobrado agora. Você agenda quando quiser (dentro da validade do pacote) e cada sessão só é cobrada perto da data em que vai acontecer.
+                {presentialHasFixedTerm && presentialTotalCycles
+                  ? ` O pacote vale por ${presentialTotalCycles} ${cycleLabel === "diário" ? "dia(s)" : `${cycleLabel}(s)`} a partir da compra.`
+                  : ""}
+                {" "}Sem sessões usadas dentro da validade = sem cobrança nenhuma. Cancelar a qualquer momento libera as sessões que sobrarem.
+              </Text>
             ) : (
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
                 Esta é uma assinatura: você paga {formatCurrencyBRL((isCombo ? comboPresentialShareCents ?? 0 : cycleAmountCents) / 100)} a cada ciclo ({cycleLabel}),
@@ -418,7 +436,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
                 A consultoria online do combo é cobrada à parte, uma única vez: {formatCurrencyBRL((comboConsultancyShareCents ?? 0) / 100)}.
               </Text>
             ) : null}
-            {!isCardFixedRecurringPurchase ? (
+            {!isPerSessionBilling ? (
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
                 {paymentMethod === "PIX"
                   ? "No Pix, cada ciclo gera um QR code novo - você precisa pagar manualmente a cada renovação para manter o pacote ativo."

@@ -659,13 +659,25 @@ export class ConsultancyService {
     if (input.presentialPackageMode) {
       if (!input.presentialSessionsPerCycle || input.presentialSessionsPerCycle < 1) {
         throw new AppError(
-          "Informe quantas sessões (ou créditos) o pacote libera por ciclo.",
+          input.presentialPackageMode === "FLEXIBLE_CREDITS"
+            ? "Informe quantas sessões o pacote inclui no total."
+            : "Informe quantas sessões (ou créditos) o pacote libera por ciclo.",
           StatusCodes.BAD_REQUEST
         );
       }
       if (input.presentialHasFixedTerm && (!input.presentialTotalCycles || input.presentialTotalCycles < 1)) {
         throw new AppError(
           "Informe o número total de ciclos para um pacote com vigência determinada.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+      // Frente D (liberdade de ofertas): pacote de sessões avulsas (créditos
+      // flexíveis redesenhado) é um bloco fechado — sempre precisa de uma
+      // validade (não existe mais "renova sozinho até cancelar" nesse
+      // formato, isso era o modelo antigo de assinatura recorrente).
+      if (input.presentialPackageMode === "FLEXIBLE_CREDITS" && !input.presentialHasFixedTerm) {
+        throw new AppError(
+          "Pacotes de sessões avulsas precisam de uma validade — informe por quanto tempo o pacote vale.",
           StatusCodes.BAD_REQUEST
         );
       }

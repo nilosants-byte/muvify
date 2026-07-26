@@ -126,6 +126,8 @@ describe("Liberdade de ofertas — Frente B (validade de ficha + rota HTTP de of
         comboOnlineDaysPerWeek: 2,
         presentialPackageMode: "FLEXIBLE_CREDITS",
         presentialSessionsPerCycle: 4,
+        presentialHasFixedTerm: true,
+        presentialTotalCycles: 1,
         comboPresentialShareCents: 40000,
         comboConsultancyShareCents: 20000
       });

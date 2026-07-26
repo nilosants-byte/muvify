@@ -359,13 +359,16 @@ export class PresentialPackageService {
 
     // Horário fixo em cartão: nenhuma cobrança de ciclo — cada sessão vira
     // sua própria reserva, no mesmo motor de pagamento da sessão avulsa (ver
-    // activateCardFixedPeriod). Todos os outros casos (Pix, ou créditos
-    // flexíveis — formato ainda pendente de redesenho, ver memória
-    // "pacote-creditos-flexiveis-pendente") continuam cobrando o ciclo
-    // inteiro adiantado, como já funciona hoje.
+    // activateCardFixedPeriod). Créditos flexíveis (Frente D): nenhuma
+    // cobrança na compra, em cartão ou Pix — pacote fechado de sessões
+    // avulsas, cada uma cobrada individualmente quando o aluno agenda (ver
+    // activateFlexibleSessionPack e booking.service.ts), pelo mesmo motor
+    // de pagamento avulso comum (que já aceita os dois métodos por sessão).
     const chargeResult = isCardFixedRecurring
       ? await this.activateCardFixedPeriod(pkg.id, { isFirstPeriod: true })
-      : await this.chargeCycle(pkg.id, { isFirstCycle: true });
+      : offer.presentialPackageMode === PresentialPackageMode.FLEXIBLE_CREDITS
+        ? await this.activateFlexibleSessionPack(pkg.id)
+        : await this.chargeCycle(pkg.id, { isFirstCycle: true });
 
     const updated = await prisma.presentialPackage.findUniqueOrThrow({
       where: { id: pkg.id },
@@ -373,6 +376,33 @@ export class PresentialPackageService {
     });
 
     return { package: updated, payment: chargeResult };
+  }
+
+  // Frente D (liberdade de ofertas): pacote de sessões avulsas (créditos
+  // flexíveis redesenhado) - um bloco fechado de N sessões com validade,
+  // sem nenhuma cobrança adiantada. O pacote já nasce ativo; cada sessão
+  // que o aluno agendar (booking.service.ts, via packageId) é cobrada
+  // individualmente na hora (mesmo motor da sessão avulsa comum) e consome
+  // uma vaga do total contratado. Sem sessão agendada, sem cobrança - e
+  // sem renovação: quando a validade vence ou as sessões acabam, encerra
+  // sozinho (não é mais uma assinatura recorrente).
+  private async activateFlexibleSessionPack(packageId: string) {
+    const pkg = await prisma.presentialPackage.findUniqueOrThrow({ where: { id: packageId } });
+    const now = new Date();
+    const validUntil = addCycles(now, pkg.billingCycle, pkg.totalCycles ?? 1);
+
+    await prisma.presentialPackage.update({
+      where: { id: packageId },
+      data: {
+        status: PresentialPackageStatus.ACTIVE,
+        validFrom: now,
+        validUntil,
+        creditsRemainingThisCycle: pkg.sessionsPerCycle,
+        nextBillingAt: null
+      }
+    });
+
+    return { status: "READY" as const, sessionsAvailable: pkg.sessionsPerCycle };
   }
 
   // Cobra um ciclo (a primeira, na compra, ou uma renovacao, via cron) -
@@ -932,10 +962,15 @@ export class PresentialPackageService {
 
     const isCardFixedRecurring =
       pkg.mode === PresentialPackageMode.FIXED_RECURRING && pkg.paymentMethod === ConsultancyPaymentMethod.CREDIT_CARD;
+    // Créditos flexíveis (Frente D): mesmo caso do horário fixo em cartão —
+    // cada sessão já é cobrada individualmente, nunca existe "ciclo pago
+    // adiantado" pra reembolsar, só sessões futuras já agendadas (se houver)
+    // pra liberar.
+    const isFlexibleSessionPack = pkg.mode === PresentialPackageMode.FLEXIBLE_CREDITS;
 
     let refundFailed = false;
     let releasedFutureSessions = 0;
-    if (isCardFixedRecurring) {
+    if (isCardFixedRecurring || isFlexibleSessionPack) {
       // Nada foi pago adiantado — não existe "último ciclo" pra reembolsar.
       // Cancela as sessões futuras já geradas (cada uma libera sua própria
       // reserva ou estorna, se já tiver sido capturada) — não importa quem
@@ -986,7 +1021,7 @@ export class PresentialPackageService {
     await notificationService.sendToUsers([pkg.clientId], {
       preferenceType: "PAYMENTS",
       title: "Pacote presencial cancelado",
-      body: isCardFixedRecurring
+      body: isCardFixedRecurring || isFlexibleSessionPack
         ? releasedFutureSessions > 0
           ? `Pacote cancelado — ${releasedFutureSessions} sessão(ões) futura(s) foram desmarcadas e nenhuma delas será cobrada.`
           : "Seu pacote presencial foi cancelado."
@@ -1252,9 +1287,12 @@ export class PresentialPackageService {
       }
     });
 
-    let presentialPaymentResult: { status: "CAPTURED" | "PENDING" | "FAILED" } = { status: "FAILED" };
+    let presentialPaymentResult: { status: "CAPTURED" | "PENDING" | "FAILED" | "READY" } = { status: "FAILED" };
     try {
-      presentialPaymentResult = await this.chargeCycle(pkg.id, { isFirstCycle: true });
+      presentialPaymentResult =
+        offer.presentialPackageMode === PresentialPackageMode.FLEXIBLE_CREDITS
+          ? await this.activateFlexibleSessionPack(pkg.id)
+          : await this.chargeCycle(pkg.id, { isFirstCycle: true });
     } catch {
       presentialPaymentResult = { status: "FAILED" };
     }

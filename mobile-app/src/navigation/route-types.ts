@@ -52,6 +52,10 @@ export type ClientStackParamList = {
     offerPriceCents?: number;
     offerKind?: import("../services/api/client").ServiceOfferKind;
     isPromotionalOffer?: boolean;
+    packageId?: string;
+    packageCategoryId?: string;
+    packageSessionPriceCents?: number;
+    packageSessionsRemaining?: number;
   };
   BuyPresentialPackage: {
     professionalId: string;

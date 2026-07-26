@@ -712,7 +712,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       {([
                         { value: "FIXED_RECURRING" as const, label: "Horário fixo", desc: "Mesmo dia/horário toda semana" },
-                        { value: "FLEXIBLE_CREDITS" as const, label: "Créditos flexíveis", desc: "Aluno agenda quando quiser" },
+                        { value: "FLEXIBLE_CREDITS" as const, label: "Sessões avulsas", desc: "Bloco fechado, aluno agenda quando quiser" },
                       ]).map((opt) => {
                         const sel = presentialPackageMode === opt.value;
                         return (
@@ -730,7 +730,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     </View>
                     <MvInput
                       keyboardType="numeric"
-                      label={presentialPackageMode === "FLEXIBLE_CREDITS" ? "Créditos por ciclo" : "Sessões por ciclo"}
+                      label={presentialPackageMode === "FLEXIBLE_CREDITS" ? "Total de sessões no pacote" : "Sessões por ciclo"}
                       placeholder="Ex: 8"
                       value={presentialSessionsPerCycle}
                       onChangeText={setPresentialSessionsPerCycle}
@@ -883,7 +883,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                         <View style={{ flexDirection: "row", gap: 8 }}>
                           {([
                             { value: "FIXED_RECURRING" as const, label: "Horário fixo", desc: "Mesmo dia/horário toda semana" },
-                            { value: "FLEXIBLE_CREDITS" as const, label: "Créditos flexíveis", desc: "Aluno agenda quando quiser" },
+                            { value: "FLEXIBLE_CREDITS" as const, label: "Sessões avulsas", desc: "Bloco fechado, aluno agenda quando quiser" },
                           ]).map((opt) => {
                             const sel = presentialPackageMode === opt.value;
                             return (
@@ -901,7 +901,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                         </View>
                         <MvInput
                           keyboardType="numeric"
-                          label={presentialPackageMode === "FLEXIBLE_CREDITS" ? "Créditos por ciclo" : "Sessões por ciclo"}
+                          label={presentialPackageMode === "FLEXIBLE_CREDITS" ? "Total de sessões no pacote" : "Sessões por ciclo"}
                           placeholder="Ex: 8"
                           value={presentialSessionsPerCycle}
                           onChangeText={setPresentialSessionsPerCycle}

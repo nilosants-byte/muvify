@@ -162,6 +162,10 @@ export function CreateBookingScreen({ navigation, route }: Props) {
     typeof route.params.offerPriceCents === "number" && route.params.offerPriceCents > 0
       ? route.params.offerPriceCents
       : null;
+  const packageIdFromRoute = route.params.packageId;
+  const packageCategoryIdFromRoute = route.params.packageCategoryId;
+  const packageSessionPriceCentsFromRoute = route.params.packageSessionPriceCents ?? null;
+  const packageSessionsRemainingFromRoute = route.params.packageSessionsRemaining ?? null;
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
@@ -241,11 +245,14 @@ export function CreateBookingScreen({ navigation, route }: Props) {
   );
 
   const unitPriceCents = useMemo(() => {
+    if (packageSessionPriceCentsFromRoute && packageSessionPriceCentsFromRoute > 0) {
+      return packageSessionPriceCentsFromRoute;
+    }
     if (offerPriceCentsFromRoute && offerPriceCentsFromRoute > 0) {
       return offerPriceCentsFromRoute;
     }
     return provider?.priceCents ?? 0;
-  }, [offerPriceCentsFromRoute, provider?.priceCents]);
+  }, [packageSessionPriceCentsFromRoute, offerPriceCentsFromRoute, provider?.priceCents]);
 
   const selectedLessonsCount = selectedDateKeys.length;
   const totalSelectedPriceCents = Math.max(0, unitPriceCents) * selectedLessonsCount;
@@ -303,7 +310,9 @@ export function CreateBookingScreen({ navigation, route }: Props) {
     const cats = data.categories;
     setCategories(cats);
     setSelectedCategoryId((current) =>
-      current && cats.some((c) => c.id === current) ? current : (cats[0]?.id ?? "")
+      packageCategoryIdFromRoute
+        ? packageCategoryIdFromRoute
+        : current && cats.some((c) => c.id === current) ? current : (cats[0]?.id ?? "")
     );
     if (data.provider.serviceMode === "HOME_VISIT_ONLY") {
       setSessionLocation("A domicílio");
@@ -448,6 +457,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
               sessionLocation: sessionLocation ?? undefined,
               clientLatitude: sessionLocation === "A domicílio" ? homeAddressCoords?.lat : undefined,
               clientLongitude: sessionLocation === "A domicílio" ? homeAddressCoords?.lng : undefined,
+              packageId: packageIdFromRoute || undefined,
             })
           );
           createdBookingIds.push(booking.id);
@@ -622,6 +632,17 @@ export function CreateBookingScreen({ navigation, route }: Props) {
             </View>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>{offerTitleFromRoute}</Text>
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>Valor por aula: {formatCurrencyBRL(unitPriceCents / 100)}</Text>
+          </View>
+        ) : null}
+
+        {/* Card: Pacote de sessões */}
+        {packageIdFromRoute ? (
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: "rgba(36,230,109,0.09)", padding: S.cardPad, gap: 4 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Usando seu pacote de sessões</Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>
+              {formatCurrencyBRL(unitPriceCents / 100)} por sessão
+              {packageSessionsRemainingFromRoute != null ? ` · ${packageSessionsRemainingFromRoute} sessão(ões) restante(s)` : ""}
+            </Text>
           </View>
         ) : null}
 

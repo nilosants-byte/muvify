@@ -141,11 +141,36 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
             </Text>
           ) : null}
           {pkg.mode === "FLEXIBLE_CREDITS" && pkg.status === "ACTIVE" ? (
-            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>
-              {pkg.creditsRemainingThisCycle} crédito{pkg.creditsRemainingThisCycle === 1 ? "" : "s"} disponíve{pkg.creditsRemainingThisCycle === 1 ? "l" : "is"} neste ciclo
-            </Text>
+            <>
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>
+                {pkg.creditsRemainingThisCycle} sessão{pkg.creditsRemainingThisCycle === 1 ? "" : "ões"} restante{pkg.creditsRemainingThisCycle === 1 ? "" : "s"}
+                {pkg.validUntil ? ` · válido até ${formatBRDate(pkg.validUntil)}` : ""}
+              </Text>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>
+                Cada sessão é cobrada individualmente quando você agenda — nada foi cobrado adiantado.
+              </Text>
+            </>
           ) : null}
         </View>
+
+        {pkg.mode === "FLEXIBLE_CREDITS" && pkg.status === "ACTIVE" && pkg.creditsRemainingThisCycle > 0 ? (
+          <TouchableOpacity
+            onPress={() =>
+              navigation.navigate("CreateBooking", {
+                professionalId: pkg.providerId,
+                packageId: pkg.id,
+                packageCategoryId: pkg.categoryId,
+                packageSessionPriceCents: pkg.cycleAmountCents,
+                packageSessionsRemaining: pkg.creditsRemainingThisCycle,
+              })
+            }
+            style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center" }}
+          >
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
+              Agendar sessão
+            </Text>
+          </TouchableOpacity>
+        ) : null}
 
         <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 8 }}>
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Cobranças já realizadas</Text>

@@ -209,11 +209,14 @@ export class BookingService {
         );
       }
 
-      // Agendamento pago com credito de um pacote presencial (modo
-      // FLEXIBLE_CREDITS) - o dinheiro ja foi cobrado no ciclo, aqui so
-      // consome 1 credito. A categoria usada e sempre a do pacote (definida
-      // na compra), nao a que o cliente passar.
-      let presentialPackage: { id: string; categoryId: string } | null = null;
+      // Frente D (liberdade de ofertas): pacote de sessões avulsas (modo
+      // FLEXIBLE_CREDITS, redesenhado) - um número fechado de sessões com
+      // validade, sem cobrança adiantada nenhuma. Cada sessão agendada aqui
+      // é cobrada individualmente (reserva + captura, igual à sessão avulsa
+      // comum) pelo preço por sessão já travado na compra do pacote - só
+      // consome 1 vaga do total contratado. A categoria usada é sempre a do
+      // pacote (definida na compra), não a que o cliente passar.
+      let presentialPackage: { id: string; categoryId: string; sessionPriceCents: number } | null = null;
       if (packageId) {
         const pkg = await tx.presentialPackage.findUnique({
           where: { id: packageId },
@@ -224,7 +227,9 @@ export class BookingService {
             categoryId: true,
             mode: true,
             status: true,
-            creditsRemainingThisCycle: true
+            creditsRemainingThisCycle: true,
+            cycleAmountCents: true,
+            validUntil: true
           }
         });
         if (!pkg || pkg.clientId !== clientId || pkg.providerId !== providerId) {
@@ -243,9 +248,15 @@ export class BookingService {
           );
         }
         if (pkg.creditsRemainingThisCycle <= 0) {
-          throw new AppError("Você não tem créditos disponíveis neste ciclo.", StatusCodes.BAD_REQUEST);
+          throw new AppError("Você já usou todas as sessões deste pacote.", StatusCodes.BAD_REQUEST);
         }
-        presentialPackage = { id: pkg.id, categoryId: pkg.categoryId };
+        if (pkg.validUntil && scheduleDate > pkg.validUntil) {
+          throw new AppError(
+            "Este horário está fora da validade do pacote — escolha uma data anterior ao vencimento.",
+            StatusCodes.BAD_REQUEST
+          );
+        }
+        presentialPackage = { id: pkg.id, categoryId: pkg.categoryId, sessionPriceCents: pkg.cycleAmountCents };
       }
 
       const effectiveCategoryId = presentialPackage ? presentialPackage.categoryId : categoryId;
@@ -350,9 +361,10 @@ export class BookingService {
       let bookingPriceCents = provider.priceCents;
 
       if (presentialPackage) {
-        // Ja foi pago no ciclo do pacote - esta sessao especifica so
-        // consome 1 credito, nao gera cobranca propria.
-        bookingPriceCents = 0;
+        // Preço por sessão travado na compra do pacote (Frente D) - nada
+        // foi cobrado adiantado, essa sessão segue o mesmo motor de
+        // reserva+captura da sessão avulsa comum.
+        bookingPriceCents = presentialPackage.sessionPriceCents;
       } else if (offerId) {
         const offer = await tx.providerServiceOffer.findFirst({
           where: {
@@ -420,15 +432,14 @@ export class BookingService {
           where: { id: presentialPackage.id },
           data: { creditsRemainingThisCycle: { decrement: 1 } }
         });
-      } else {
-        await paymentService.createPendingForBooking(
-          tx,
-          booking.id,
-          booking.priceCents,
-          booking.currency,
-          paymentMethod
-        );
       }
+      await paymentService.createPendingForBooking(
+        tx,
+        booking.id,
+        booking.priceCents,
+        booking.currency,
+        paymentMethod
+      );
       return booking;
     });
 
