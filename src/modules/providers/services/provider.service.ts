@@ -1646,6 +1646,11 @@ export class ProviderService {
           },
           _count: {
             select: { trainingPlans: true }
+          },
+          trainingPlans: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { validUntil: true }
           }
         },
         orderBy: { createdAt: "desc" },
@@ -1685,6 +1690,8 @@ export class ProviderService {
       age: number | null;
       anamnesisPending: boolean;
       trainingPlanPending: boolean;
+      fichaRenewalPending: boolean;
+      fichaValidUntil: Date | null;
       services: Map<string, ServiceEntry>;
       totalBookings: number;
       totalContracts: number;
@@ -1705,6 +1712,8 @@ export class ProviderService {
           age: parseStudentAgeFromAnamnesis(client.anamnesisProfile?.answers),
           anamnesisPending: client.anamnesisProfile?.status !== AnamnesisStatus.COMPLETED,
           trainingPlanPending: false,
+          fichaRenewalPending: false,
+          fichaValidUntil: null,
           services: new Map(),
           totalBookings: 0,
           totalContracts: 0,
@@ -1824,6 +1833,22 @@ export class ProviderService {
       ) {
         student.trainingPlanPending = true;
       }
+
+      // Frente B (liberdade de ofertas): ficha da consultoria vencendo em
+      // breve (proximos 3 dias) ou ja vencida - mesma janela usada no job
+      // de lembretes (sendFichaExpiryReminders). So considera a ficha MAIS
+      // RECENTE do contrato (trainingPlans[0], ja ordenada desc).
+      const latestPlanValidUntil = contract.trainingPlans[0]?.validUntil ?? null;
+      if (
+        contract.status === ConsultancyContractStatus.DELIVERED &&
+        latestPlanValidUntil &&
+        latestPlanValidUntil.getTime() - now.getTime() <= 3 * 24 * 60 * 60 * 1000
+      ) {
+        student.fichaRenewalPending = true;
+        if (!student.fichaValidUntil || latestPlanValidUntil < student.fichaValidUntil) {
+          student.fichaValidUntil = latestPlanValidUntil;
+        }
+      }
     }
 
     const result = Array.from(students.values())
@@ -1843,6 +1868,8 @@ export class ProviderService {
           age: student.age,
           anamnesisPending: student.anamnesisPending,
           trainingPlanPending: student.trainingPlanPending,
+          fichaRenewalPending: student.fichaRenewalPending,
+          fichaValidUntil: student.fichaValidUntil,
           active: services.some((service) => service.active),
           totalValueCents,
           services,

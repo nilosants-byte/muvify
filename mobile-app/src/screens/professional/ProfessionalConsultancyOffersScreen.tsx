@@ -149,6 +149,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
   const [acceptsDebitCard, setAcceptsDebitCard] = useState(true);
   const [acceptsCreditCard, setAcceptsCreditCard] = useState(true);
   const [maxCreditInstallments, setMaxCreditInstallments] = useState("1");
+  const [fichaValidityDays, setFichaValidityDays] = useState("");
 
   useEffect(() => {
     if (centerQuery.error) {
@@ -280,6 +281,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     setAcceptsDebitCard(true);
     setAcceptsCreditCard(true);
     setMaxCreditInstallments("1");
+    setFichaValidityDays("");
     setOfferWizardStep(0);
   }
 
@@ -307,6 +309,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     setAcceptsDebitCard(offer.acceptsDebitCard ?? true);
     setAcceptsCreditCard(offer.acceptsCreditCard ?? true);
     setMaxCreditInstallments(String(offer.maxCreditInstallments ?? 1));
+    setFichaValidityDays(offer.fichaValidityDays ? String(offer.fichaValidityDays) : "");
     setOfferFormVisible(true);
   }
 
@@ -399,6 +402,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
             acceptsDebitCard,
             acceptsCreditCard,
             maxCreditInstallments: maxCreditInstallmentsNumber,
+            fichaValidityDays: offerKind !== "PRESENTIAL" && fichaValidityDays.trim() ? Number(fichaValidityDays) : null,
           })
         );
         setOffers((prev) =>
@@ -439,6 +443,8 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
             acceptsDebitCard,
             acceptsCreditCard,
             maxCreditInstallments: maxCreditInstallmentsNumber,
+            fichaValidityDays:
+              offerKind !== "PRESENTIAL" && fichaValidityDays.trim() ? Number(fichaValidityDays) : undefined,
           })
         );
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -632,6 +638,21 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                 />
                 {offerKind === "PRESENTIAL" ? (
                   <MvInput keyboardType="numeric" label="Dias por semana (presencial)" placeholder="Ex: 3" value={daysPerWeek} onChangeText={setDaysPerWeek} />
+                ) : null}
+                {offerKind !== "PRESENTIAL" ? (
+                  <View style={{ gap: 4 }}>
+                    <MvInput
+                      keyboardType="numeric"
+                      label="Validade de cada ficha (dias) — opcional"
+                      placeholder="Ex: 30"
+                      value={fichaValidityDays}
+                      onChangeText={setFichaValidityDays}
+                    />
+                    <MvText variant="caption" color="secondary">
+                      Quando a ficha vence, você é avisado pra renovar — a renovação cobra o valor desta oferta de
+                      novo. Se deixar em branco, a ficha não tem validade automática.
+                    </MvText>
+                  </View>
                 ) : null}
                 {offerKind === "COMBO" ? (
                   <>
@@ -923,6 +944,11 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                         Aceita: {[acceptsPix && "Pix", acceptsDebitCard && "Débito", acceptsCreditCard && "Crédito"].filter(Boolean).join(", ")}
                         {acceptsCreditCard && maxCreditInstallmentsNumber > 1 ? ` (crédito em até ${maxCreditInstallmentsNumber}x)` : ""}
                       </MvText>
+                      {offerKind !== "PRESENTIAL" && fichaValidityDays.trim() ? (
+                        <MvText variant="caption" color="secondary">
+                          Cada ficha vale {fichaValidityDays} dias — renovação cobra {formatCurrencyBRL(basePriceCents / 100)} de novo.
+                        </MvText>
+                      ) : null}
                     </View>
                     {!crefValidated ? (
                       <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Publicar ofertas fica disponível quando seu CREF for aprovado.</MvText>

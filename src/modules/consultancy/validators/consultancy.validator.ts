@@ -65,7 +65,8 @@ export const createProviderOfferSchema = z.object({
     presentialTotalCycles: z.number().int().min(1).max(60).optional(),
     presentialSessionsPerCycle: z.number().int().min(1).max(60).optional(),
     comboPresentialShareCents: z.number().int().min(100).max(10_000_000).optional(),
-    comboConsultancyShareCents: z.number().int().min(100).max(10_000_000).optional()
+    comboConsultancyShareCents: z.number().int().min(100).max(10_000_000).optional(),
+    fichaValidityDays: z.number().int().min(1).max(365).optional()
   })
 });
 
@@ -95,7 +96,8 @@ export const updateProviderOfferSchema = z.object({
     presentialTotalCycles: z.number().int().min(1).max(60).nullable().optional(),
     presentialSessionsPerCycle: z.number().int().min(1).max(60).nullable().optional(),
     comboPresentialShareCents: z.number().int().min(100).max(10_000_000).nullable().optional(),
-    comboConsultancyShareCents: z.number().int().min(100).max(10_000_000).nullable().optional()
+    comboConsultancyShareCents: z.number().int().min(100).max(10_000_000).nullable().optional(),
+    fichaValidityDays: z.number().int().min(1).max(365).nullable().optional()
   })
 });
 

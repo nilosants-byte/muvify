@@ -256,6 +256,10 @@ export type ProviderServiceOffer = {
   acceptsDebitCard?: boolean;
   acceptsCreditCard?: boolean;
   maxCreditInstallments?: number;
+  // Consultoria (ONLINE_CONSULTANCY/SPECIALIZED/metade online do COMBO):
+  // validade padrão (em dias) de cada ficha entregue — a cada renovação, a
+  // ficha nova é cobrada de novo no mesmo valor da oferta.
+  fichaValidityDays?: number | null;
 };
 
 export type PromotionFeedItem = {
@@ -803,6 +807,8 @@ export type ProviderStudent = {
   age?: number | null;
   anamnesisPending: boolean;
   trainingPlanPending: boolean;
+  fichaRenewalPending: boolean;
+  fichaValidUntil?: string | null;
   active: boolean;
   totalValueCents: number;
   services: ProviderStudentServiceEntry[];
@@ -2659,6 +2665,7 @@ export const consultancyApi = {
       acceptsDebitCard?: boolean;
       acceptsCreditCard?: boolean;
       maxCreditInstallments?: number;
+      fichaValidityDays?: number;
     }
   ) {
     return apiRequest<ProviderServiceOffer>("/consultancy/provider/offers", {
@@ -2691,6 +2698,7 @@ export const consultancyApi = {
       acceptsDebitCard?: boolean;
       acceptsCreditCard?: boolean;
       maxCreditInstallments?: number;
+      fichaValidityDays?: number | null;
     }
   ) {
     return apiRequest<ProviderServiceOffer>(`/consultancy/provider/offers/${offerId}`, {

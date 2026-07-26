@@ -106,6 +106,14 @@ function canContestDelivery(plan: FlatPlan) {
   return Date.now() - new Date(plan.contractDeliveredAt).getTime() <= DELIVERY_CONTEST_WINDOW_MS;
 }
 
+// Consultoria em andamento (ja com pelo menos uma ficha entregue) pode ser
+// encerrada pelo aluno a qualquer momento - cada ficha ja recebida ja foi
+// cobrada de forma justa na hora da entrega, entao nao ha reembolso
+// envolvido, so para de valer (ver cancelContract no backend).
+function canEndOngoingConsultancy(plan: FlatPlan) {
+  return plan.contractStatus === "DELIVERED" && Boolean(plan.isVigente);
+}
+
 // ── WorkoutDetailModal ────────────────────────────────────────────────────────
 function WorkoutDetailModal({
   plan,
@@ -669,6 +677,32 @@ export function MyTrainingScreen({ navigation }: Props) {
     );
   }
 
+  function handleEndOngoingConsultancy(contractId: string) {
+    Alert.alert(
+      "Encerrar consultoria",
+      "Isso encerra sua consultoria com este profissional. As fichas já recebidas continuam disponíveis, mas nenhuma ficha nova será entregue ou cobrada. Deseja encerrar?",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Encerrar consultoria",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setCancellingContractId(contractId);
+              await runWithAuth((token) => consultancyApi.cancelContract(token, contractId));
+              showToast("Consultoria encerrada.", "success");
+              await trainingQuery.refetch();
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível encerrar.", navigation });
+            } finally {
+              setCancellingContractId(null);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   function handleContestDelivery(contractId: string) {
     Alert.alert(
       "Contestar entrega",
@@ -747,6 +781,17 @@ export function MyTrainingScreen({ navigation }: Props) {
           >
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: theme.text2, textDecorationLine: "underline" }}>
               {contestingContractId === item.contractId ? "Enviando..." : "Contestar esta entrega"}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+        {canEndOngoingConsultancy(item) ? (
+          <TouchableOpacity
+            onPress={() => handleEndOngoingConsultancy(item.contractId)}
+            disabled={cancellingContractId === item.contractId}
+            style={{ marginTop: 6 }}
+          >
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: theme.danger, textDecorationLine: "underline" }}>
+              {cancellingContractId === item.contractId ? "Encerrando..." : "Encerrar consultoria"}
             </Text>
           </TouchableOpacity>
         ) : null}

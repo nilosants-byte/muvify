@@ -892,6 +892,11 @@ model ProviderServiceOffer {
   // Combo: quanto de priceCents corresponde a cada lado, pra reembolso parcial sem ambiguidade.
   comboPresentialShareCents  Int?
   comboConsultancyShareCents Int?
+  // Consultoria (ONLINE_CONSULTANCY/SPECIALIZED/metade online do COMBO): por
+  // quantos dias cada ficha entregue vale, por padrao (o profissional pode
+  // ajustar por entrega individualmente). Null preserva o comportamento
+  // antigo (ficha herda a vigencia inteira do contrato).
+  fichaValidityDays          Int?
   createdAt                  DateTime               @default(now())
   updatedAt                  DateTime               @updatedAt
   provider                   ProviderProfile        @relation(fields: [providerId], references: [id], onDelete: Cascade)
@@ -1013,6 +1018,11 @@ model TrainingPlan {
   isPrebuilt  Boolean                  @default(true)
   isActive    Boolean                  @default(true)
   validUntil  DateTime?
+  // Frente B (liberdade de ofertas): lembretes de renovacao de ficha
+  // enviados ao profissional - evita reenviar o mesmo aviso a cada rodada
+  // do job periodico.
+  expiryReminderSentAt DateTime?
+  expiredNoticeSentAt  DateTime?
   createdAt   DateTime                 @default(now())
   updatedAt   DateTime                 @updatedAt
   provider    ProviderProfile          @relation(fields: [providerId], references: [id], onDelete: Cascade)

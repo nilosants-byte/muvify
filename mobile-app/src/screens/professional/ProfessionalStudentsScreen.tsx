@@ -491,6 +491,15 @@ function StudentRow({
                 <Ionicons name="barbell-outline" size={13} color="#F59E0B" />
               </View>
             ) : null}
+            {student.fichaRenewalPending ? (
+              <View style={{
+                width: 22, height: 22, borderRadius: 6,
+                backgroundColor: "rgba(239,68,68,0.14)",
+                alignItems: "center", justifyContent: "center",
+              }}>
+                <Ionicons name="refresh-outline" size={13} color="#EF4444" />
+              </View>
+            ) : null}
             <View style={{
               paddingHorizontal: 10,
               paddingVertical: 4,

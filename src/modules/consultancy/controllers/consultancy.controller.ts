@@ -50,7 +50,14 @@ export class ConsultancyController {
       acceptsDebitCard: request.body.acceptsDebitCard,
       acceptsCreditCard: request.body.acceptsCreditCard,
       maxCreditInstallments: request.body.maxCreditInstallments,
-      isActive: request.body.isActive
+      isActive: request.body.isActive,
+      presentialPackageMode: request.body.presentialPackageMode,
+      presentialHasFixedTerm: request.body.presentialHasFixedTerm,
+      presentialTotalCycles: request.body.presentialTotalCycles,
+      presentialSessionsPerCycle: request.body.presentialSessionsPerCycle,
+      comboPresentialShareCents: request.body.comboPresentialShareCents,
+      comboConsultancyShareCents: request.body.comboConsultancyShareCents,
+      fichaValidityDays: request.body.fichaValidityDays
     });
 
     return response.status(StatusCodes.CREATED).json(offer);
@@ -76,7 +83,14 @@ export class ConsultancyController {
         acceptsDebitCard: request.body.acceptsDebitCard,
         acceptsCreditCard: request.body.acceptsCreditCard,
         maxCreditInstallments: request.body.maxCreditInstallments,
-        isActive: request.body.isActive
+        isActive: request.body.isActive,
+        presentialPackageMode: request.body.presentialPackageMode,
+        presentialHasFixedTerm: request.body.presentialHasFixedTerm,
+        presentialTotalCycles: request.body.presentialTotalCycles,
+        presentialSessionsPerCycle: request.body.presentialSessionsPerCycle,
+        comboPresentialShareCents: request.body.comboPresentialShareCents,
+        comboConsultancyShareCents: request.body.comboConsultancyShareCents,
+        fichaValidityDays: request.body.fichaValidityDays
       }
     );
 

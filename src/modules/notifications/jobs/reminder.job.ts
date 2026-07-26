@@ -44,6 +44,7 @@ export function startReminderJob() {
           bookingService.sendSessionReminders(),
           consultancyService.sendConsultancyExpiryReminders(),
           consultancyService.expireStaleConsultancyRequests(),
+          consultancyService.sendFichaExpiryReminders(),
         ]),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("Reminder job timeout after 120s")), JOB_TIMEOUT_MS)

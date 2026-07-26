@@ -56,6 +56,7 @@ type OfferInput = {
   presentialSessionsPerCycle?: number | null;
   comboPresentialShareCents?: number | null;
   comboConsultancyShareCents?: number | null;
+  fichaValidityDays?: number | null;
 };
 
 type ExerciseInput = {
@@ -346,6 +347,76 @@ export class ConsultancyService {
     });
   }
 
+  // Frente B (liberdade de ofertas): cobra a renovacao de uma ficha (2a
+  // entrega em diante) - cobranca de verdade, na hora, sem reserva previa
+  // (a entrega e a cobranca sao o mesmo evento). Pix nao suporta cobranca
+  // sincrona no momento da entrega (precisaria de QR code + confirmacao
+  // assincrona por webhook) - por isso so cartao (credito ou debito) e
+  // aceito pra renovacao de ficha; Pix continua funcionando normalmente
+  // so pra primeira cobranca do contrato.
+  private async chargeFichaRenewal(input: {
+    contractId: string;
+    providerId: string;
+    clientId: string;
+    paymentMethod: ConsultancyPaymentMethod;
+    amountCents: number;
+    renewalIndex: number;
+  }) {
+    if (input.paymentMethod === ConsultancyPaymentMethod.PIX) {
+      throw new AppError(
+        "Consultoria paga via Pix não suporta renovação automática de ficha. Peça ao aluno para cadastrar um cartão antes de entregar uma nova ficha.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    const paymentData = await this.resolveClientPaymentData(input.clientId, input.paymentMethod);
+    if (!paymentData.mpCardId || !paymentData.mpCustomerId) {
+      throw new AppError("Método de pagamento do cliente não configurado.", StatusCodes.BAD_REQUEST);
+    }
+
+    const provider = await prisma.providerProfile.findUnique({
+      where: { id: input.providerId },
+      select: { mpAccountId: true }
+    });
+    const providerAccessToken = await resolveProviderMpAccessToken(input.providerId);
+    const split =
+      providerAccessToken && provider?.mpAccountId
+        ? {
+            collector: { id: Number(provider.mpAccountId) },
+            marketplace_fee: platformFeeAmount(input.amountCents) / 100
+          }
+        : {};
+
+    const tokenResult = await mpCardTokenClient.create({
+      body: { customer_id: paymentData.mpCustomerId, card_id: paymentData.mpCardId }
+    });
+
+    const mpPay = await mpPaymentClient.create({
+      body: {
+        transaction_amount: input.amountCents / 100,
+        token: String(tokenResult.id),
+        installments: 1,
+        payer: { type: "customer", id: paymentData.mpCustomerId, email: paymentData.clientEmail },
+        description: `Consultoria #${input.contractId} - renovação de ficha`,
+        metadata: { domain: "CONSULTANCY_FICHA_RENEWAL", contractId: input.contractId },
+        ...split
+      },
+      requestOptions: {
+        idempotencyKey: `consultancy:${input.contractId}:ficha-renewal:${input.renewalIndex}`,
+        ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+      }
+    });
+
+    if (mpPay.status !== "approved") {
+      throw new AppError(
+        `Não foi possível cobrar a renovação da ficha (status: ${mpPay.status}/${mpPay.status_detail}). Peça ao aluno para revisar o método de pagamento e tente novamente.`,
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    return mpPay;
+  }
+
   private assertPromotionConfig(params: {
     basePriceCents: number;
     isPromotion: boolean;
@@ -495,7 +566,8 @@ export class ConsultancyService {
     if (
       kind !== ServiceOfferKind.COMBO &&
       (typeof input.comboPresentialDaysPerWeek !== "undefined" ||
-        typeof input.comboOnlineDaysPerWeek !== "undefined")
+        typeof input.comboOnlineDaysPerWeek !== "undefined") &&
+      (input.comboPresentialDaysPerWeek !== null || input.comboOnlineDaysPerWeek !== null)
     ) {
       throw new AppError(
         "Campos do combo sao permitidos apenas para ofertas do tipo Combo.",
@@ -618,6 +690,17 @@ export class ConsultancyService {
           StatusCodes.BAD_REQUEST
         );
       }
+    }
+
+    if (
+      kind === ServiceOfferKind.PRESENTIAL &&
+      typeof input.fichaValidityDays !== "undefined" &&
+      input.fichaValidityDays !== null
+    ) {
+      throw new AppError(
+        "Validade de ficha é permitida apenas para ofertas com consultoria (consultoria, especializada ou combo).",
+        StatusCodes.BAD_REQUEST
+      );
     }
   }
 
@@ -975,7 +1058,8 @@ export class ConsultancyService {
         comboPresentialShareCents:
           input.kind === ServiceOfferKind.COMBO ? input.comboPresentialShareCents ?? null : null,
         comboConsultancyShareCents:
-          input.kind === ServiceOfferKind.COMBO ? input.comboConsultancyShareCents ?? null : null
+          input.kind === ServiceOfferKind.COMBO ? input.comboConsultancyShareCents ?? null : null,
+        fichaValidityDays: input.kind !== ServiceOfferKind.PRESENTIAL ? input.fichaValidityDays ?? null : null
       }
     });
 
@@ -1048,6 +1132,8 @@ export class ConsultancyService {
       typeof input.comboConsultancyShareCents === "undefined"
         ? offer.comboConsultancyShareCents
         : input.comboConsultancyShareCents;
+    const nextFichaValidityDays =
+      typeof input.fichaValidityDays === "undefined" ? offer.fichaValidityDays : input.fichaValidityDays;
 
     this.validateOfferInput(
       {
@@ -1074,7 +1160,8 @@ export class ConsultancyService {
         presentialTotalCycles: nextPresentialTotalCycles,
         presentialSessionsPerCycle: nextPresentialSessionsPerCycle,
         comboPresentialShareCents: nextComboPresentialShareCents,
-        comboConsultancyShareCents: nextComboConsultancyShareCents
+        comboConsultancyShareCents: nextComboConsultancyShareCents,
+        fichaValidityDays: nextFichaValidityDays
       },
       offer.kind
     );
@@ -1181,7 +1268,8 @@ export class ConsultancyService {
         presentialTotalCycles: nextPresentialHasFixedTerm ? nextPresentialTotalCycles : null,
         presentialSessionsPerCycle: nextPresentialSessionsPerCycle,
         comboPresentialShareCents: nextKind === ServiceOfferKind.COMBO ? nextComboPresentialShareCents : null,
-        comboConsultancyShareCents: nextKind === ServiceOfferKind.COMBO ? nextComboConsultancyShareCents : null
+        comboConsultancyShareCents: nextKind === ServiceOfferKind.COMBO ? nextComboConsultancyShareCents : null,
+        fichaValidityDays: nextKind !== ServiceOfferKind.PRESENTIAL ? nextFichaValidityDays : null
       }
     });
 
@@ -2105,7 +2193,8 @@ export class ConsultancyService {
         },
         offer: {
           select: {
-            billingCycle: true
+            billingCycle: true,
+            fichaValidityDays: true
           }
         }
       }
@@ -2131,8 +2220,18 @@ export class ConsultancyService {
     // contratada. Se o profissional nao informar uma data, o treino herda a
     // vigencia inteira da consultoria (ele pode escalonar vigencias diferentes
     // pra treinos diferentes conforme o aluno evolui, mas nunca alem do contrato).
+    //
+    // Frente B (liberdade de ofertas): se a oferta configurou uma validade
+    // padrao de ficha (fichaValidityDays), essa passa a ser a vigencia
+    // padrao do treino - e deixa de ser limitada pela vigencia do contrato,
+    // porque nesse modelo o contrato continua indefinidamente conforme as
+    // fichas vao sendo renovadas (nao ha mais um "fim" fixo do contrato).
     const contractValidUntil = consultancyValidUntil(contract, contract.offer.billingCycle);
-    let planValidUntil = contractValidUntil;
+    const usesFichaValidity = Boolean(contract.offer.fichaValidityDays);
+    const defaultValidUntil = usesFichaValidity
+      ? new Date(now.getTime() + contract.offer.fichaValidityDays! * 24 * 60 * 60 * 1000)
+      : contractValidUntil;
+    let planValidUntil = defaultValidUntil;
     if (input.validUntil) {
       const parsed = new Date(input.validUntil);
       if (Number.isNaN(parsed.getTime())) {
@@ -2141,7 +2240,7 @@ export class ConsultancyService {
       if (parsed <= now) {
         throw new AppError("A vigência do treino deve ser uma data futura.", StatusCodes.BAD_REQUEST);
       }
-      if (parsed > contractValidUntil) {
+      if (!usesFichaValidity && parsed > contractValidUntil) {
         throw new AppError(
           "A vigência do treino não pode ultrapassar a vigência da consultoria contratada.",
           StatusCodes.BAD_REQUEST
@@ -2173,6 +2272,22 @@ export class ConsultancyService {
           StatusCodes.BAD_REQUEST
         );
       }
+    }
+
+    // Frente B (liberdade de ofertas): a partir da 2a ficha, cada entrega
+    // cobra de novo (mesmo valor combinado na assinatura) - sem ficha nova,
+    // sem cobranca nova. Cobra ANTES de salvar (fail-loud, mesmo principio
+    // da primeira entrega) - se a cobranca falhar, a entrega inteira falha.
+    if (!isFirstDelivery) {
+      const existingPlansCount = await prisma.trainingPlan.count({ where: { contractId: contract.id } });
+      await this.chargeFichaRenewal({
+        contractId: contract.id,
+        providerId: provider.id,
+        clientId: contract.client.id,
+        paymentMethod: contract.paymentMethod!,
+        amountCents: contract.paymentAmountCents,
+        renewalIndex: existingPlansCount
+      });
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -2222,17 +2337,31 @@ export class ConsultancyService {
       };
     });
 
+    const planValidUntilLabel = planValidUntil.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    const chargedAmountLabel = (contract.paymentAmountCents / 100).toFixed(2).replace(".", ",");
+
     await notificationService.sendToUsers([contract.client.id], {
       preferenceType: "CONSULTANCY",
       title: isFirstDelivery ? "Treino personalizado disponivel" : "Novo treino disponivel",
       body: isFirstDelivery
-        ? "Seu treino foi entregue e já esta liberado em Seu Treino."
-        : "Seu profissional liberou mais um treino. Confira em Seu Treino.",
+        ? `Seu treino foi entregue e já esta liberado em Seu Treino. Válido até ${planValidUntilLabel}.`
+        : `Seu profissional liberou mais um treino (R$ ${chargedAmountLabel} cobrado no seu cartão). Válido até ${planValidUntilLabel}.`,
       data: {
         type: "CONSULTANCY_TRAINING_DELIVERED",
         contractId: contract.id
       }
     });
+
+    if (!isFirstDelivery) {
+      void notificationService
+        .sendToUsers([userId], {
+          preferenceType: "CONSULTANCY",
+          title: "Ficha renovada",
+          body: `Cobrança de R$ ${chargedAmountLabel} confirmada — nova ficha liberada, válida até ${planValidUntilLabel}.`,
+          data: { type: "CONSULTANCY_FICHA_RENEWED", contractId: contract.id }
+        })
+        .catch((error) => console.error("Falha ao notificar profissional sobre renovação de ficha:", error));
+    }
 
     return result;
   }
@@ -2502,15 +2631,39 @@ export class ConsultancyService {
       throw new AppError("Contrato não encontrado.", StatusCodes.NOT_FOUND);
     }
 
-    if (contract.status !== ConsultancyContractStatus.ACTIVE) {
+    if (
+      contract.status !== ConsultancyContractStatus.ACTIVE &&
+      contract.status !== ConsultancyContractStatus.DELIVERED
+    ) {
       throw new AppError("Este contrato não pode mais ser cancelado.", StatusCodes.BAD_REQUEST);
     }
 
+    // Frente B (liberdade de ofertas): depois da primeira ficha entregue, a
+    // consultoria vira uma relacao continua (cada ficha nova cobra na hora
+    // que e entregue - ver deliverContract) - nao ha mais nenhum valor
+    // reservado ou prepago pra devolver, entao encerrar aqui e so isso:
+    // para de valer, sem nenhuma acao financeira (cada ficha ja recebida
+    // ja foi paga de forma justa, uma a uma).
     if (contract.deliveredAt) {
-      throw new AppError(
-        "A primeira ficha já foi entregue — não é mais possível cancelar.",
-        StatusCodes.BAD_REQUEST
-      );
+      const ended = await prisma.consultancyContract.update({
+        where: { id: contract.id },
+        data: { status: ConsultancyContractStatus.CANCELLED }
+      });
+
+      void notificationService.sendToUsers([contract.provider.userId], {
+        preferenceType: "CONSULTANCY",
+        title: "Consultoria encerrada pelo aluno",
+        body: "O aluno encerrou a consultoria em andamento. Nenhuma ficha nova será cobrada.",
+        data: { type: "CONSULTANCY_ENDED_BY_CLIENT", contractId: contract.id }
+      });
+      void notificationService.sendToUsers([contract.clientId], {
+        preferenceType: "CONSULTANCY",
+        title: "Consultoria encerrada",
+        body: "Sua consultoria foi encerrada. As fichas já recebidas continuam disponíveis em Seu Treino.",
+        data: { type: "CONSULTANCY_ENDED_BY_CLIENT", contractId: contract.id }
+      });
+
+      return ended;
     }
 
     // Cartão (AUTHORIZED): a reserva nunca chegou a ser cobrada — só precisa
@@ -2714,6 +2867,98 @@ export class ConsultancyService {
           })
           .catch((e) => console.error("Consultancy expiry notice failed:", e));
       }
+    }
+  }
+
+  // Frente B (liberdade de ofertas): avisa o profissional (pendencia) e o
+  // aluno quando a ficha atual de uma consultoria em andamento esta perto
+  // de vencer e quando vence de fato - sempre considerando so a ficha MAIS
+  // RECENTE de cada contrato (uma ficha antiga ja superada por uma entrega
+  // posterior nao deve gerar aviso).
+  async sendFichaExpiryReminders(referenceDate = new Date()) {
+    const REMINDER_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+    async function isLatestPlanForContract(planId: string, contractId: string, createdAt: Date) {
+      const newerCount = await prisma.trainingPlan.count({
+        where: { contractId, createdAt: { gt: createdAt } }
+      });
+      return newerCount === 0;
+    }
+
+    const approaching = await prisma.trainingPlan.findMany({
+      where: {
+        contractId: { not: null },
+        expiryReminderSentAt: null,
+        validUntil: { gte: referenceDate, lte: new Date(referenceDate.getTime() + REMINDER_WINDOW_MS) }
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        contract: { select: { id: true, status: true, clientId: true, provider: { select: { userId: true } } } }
+      }
+    });
+
+    for (const plan of approaching) {
+      if (!plan.contract || plan.contract.status !== ConsultancyContractStatus.DELIVERED) continue;
+      if (!(await isLatestPlanForContract(plan.id, plan.contract.id, plan.createdAt))) continue;
+
+      await prisma.trainingPlan.update({ where: { id: plan.id }, data: { expiryReminderSentAt: referenceDate } });
+
+      void notificationService
+        .sendToUsers([plan.contract.provider.userId], {
+          preferenceType: "CONSULTANCY",
+          title: "Ficha de aluno vencendo em breve",
+          body: "A ficha de um dos seus alunos está perto de vencer — prepare a atualização.",
+          data: { type: "CONSULTANCY_FICHA_EXPIRING_SOON", contractId: plan.contract.id }
+        })
+        .catch((e) => console.error("Ficha expiry-soon reminder (provider) failed:", e));
+
+      void notificationService
+        .sendToUsers([plan.contract.clientId], {
+          preferenceType: "CONSULTANCY",
+          title: "Sua ficha está perto de vencer",
+          body: "Seu personal vai te enviar uma ficha atualizada em breve.",
+          data: { type: "CONSULTANCY_FICHA_EXPIRING_SOON", contractId: plan.contract.id }
+        })
+        .catch((e) => console.error("Ficha expiry-soon reminder (client) failed:", e));
+    }
+
+    const expired = await prisma.trainingPlan.findMany({
+      where: {
+        contractId: { not: null },
+        expiredNoticeSentAt: null,
+        validUntil: { lt: referenceDate }
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        contract: { select: { id: true, status: true, clientId: true, provider: { select: { userId: true } } } }
+      }
+    });
+
+    for (const plan of expired) {
+      if (!plan.contract || plan.contract.status !== ConsultancyContractStatus.DELIVERED) continue;
+      if (!(await isLatestPlanForContract(plan.id, plan.contract.id, plan.createdAt))) continue;
+
+      await prisma.trainingPlan.update({ where: { id: plan.id }, data: { expiredNoticeSentAt: referenceDate } });
+
+      void notificationService
+        .sendToUsers([plan.contract.provider.userId], {
+          preferenceType: "CONSULTANCY",
+          title: "Ficha de aluno vencida",
+          body: "A ficha de um dos seus alunos venceu — entregue uma atualização para continuar recebendo por essa consultoria.",
+          data: { type: "CONSULTANCY_FICHA_EXPIRED", contractId: plan.contract.id }
+        })
+        .catch((e) => console.error("Ficha expired notice (provider) failed:", e));
+
+      void notificationService
+        .sendToUsers([plan.contract.clientId], {
+          preferenceType: "CONSULTANCY",
+          title: "Sua ficha venceu",
+          body: "Sua ficha de treino venceu. Você pode encerrar a consultoria a qualquer momento se preferir.",
+          data: { type: "CONSULTANCY_FICHA_EXPIRED", contractId: plan.contract.id }
+        })
+        .catch((e) => console.error("Ficha expired notice (client) failed:", e));
     }
   }
 
