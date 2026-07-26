@@ -290,7 +290,7 @@ export class FinancialService {
 
     const appBookingRevenueCents     = completedBookings.reduce((s, b) => s + b.priceCents, 0);
     const appConsultancyRevenueCents = capturedContracts.reduce((s, c) => s + c.paymentAmountCents, 0);
-    const appPackageRevenueCents     = capturedPackageCycles.reduce((s, c) => s + c.amountCents, 0);
+    const appPackageRevenueCents     = capturedPackageCycles.reduce((s, c) => s + (c.amountCents ?? 0), 0);
     const appRevenueCents            = appBookingRevenueCents + appConsultancyRevenueCents + appPackageRevenueCents;
     const confirmedRevenueCents      = confirmedBookingsAgg._sum.priceCents ?? 0;
     const manualRevenueCents         = incomes.reduce((s, i) => s + i.amountCents, 0);
@@ -344,8 +344,12 @@ export class FinancialService {
       dailyMap[day] = (dailyMap[day] ?? 0) + c.paymentAmountCents;
     }
     for (const cycle of capturedPackageCycles) {
-      const day = cycle.capturedAt.toISOString().slice(0, 10);
-      dailyMap[day] = (dailyMap[day] ?? 0) + cycle.amountCents;
+      // capturedAt/amountCents so nulos pros marcadores de periodo do
+      // combo cartao+horario fixo (Frente 3b.2) - a propria condicao
+      // "capturedAt: { gte, lte }" da query ja exclui esses registros,
+      // entao aqui os dois campos estao sempre preenchidos de verdade.
+      const day = cycle.capturedAt!.toISOString().slice(0, 10);
+      dailyMap[day] = (dailyMap[day] ?? 0) + (cycle.amountCents ?? 0);
     }
 
     return {
@@ -760,8 +764,11 @@ export class FinancialService {
     }
 
     for (const cycle of packageCycles) {
-      const entry = getEntry(cycle.package.clientId, cycle.package.client.name, cycle.capturedAt.toISOString());
-      entry.completedCents   += cycle.amountCents;
+      // capturedAt/amountCents nulos so ocorrem nos marcadores do combo
+      // cartao+horario fixo (Frente 3b.2), ja excluidos pelo filtro
+      // "capturedAt: { gte, lte }" da query acima.
+      const entry = getEntry(cycle.package.clientId, cycle.package.client.name, cycle.capturedAt!.toISOString());
+      entry.completedCents   += cycle.amountCents ?? 0;
       entry.packageCycleCount += 1;
       const svcName = "Pacote presencial";
       if (!entry.services.includes(svcName)) entry.services.push(svcName);
@@ -877,9 +884,12 @@ export class FinancialService {
         take: 50
       }),
       // ciclos de pacote presencial ja tem o split pronto (providerAmountCents/
-      // platformAmountCents gravados no instante da captura) - nao recalcula
+      // platformAmountCents gravados no instante da captura) - nao recalcula.
+      // Exclui os marcadores de periodo do combo cartao+horario fixo (Frente
+      // 3b.2, sem valor de pagamento) - o repasse dessas sessoes ja aparece
+      // via bookingTransactions, uma por sessao.
       prisma.presentialPackageCycle.findMany({
-        where: { package: { providerId: provider.id } },
+        where: { package: { providerId: provider.id }, capturedAt: { not: null } },
         select: {
           id: true,
           amountCents: true,
@@ -931,12 +941,12 @@ export class FinancialService {
       id:                  cycle.id,
       type:                "PRESENTIAL_PACKAGE" as const,
       bookingId:           null as string | null,
-      amountCents:         cycle.amountCents,
-      providerAmountCents: cycle.providerAmountCents,
+      amountCents:         cycle.amountCents ?? 0,
+      providerAmountCents: cycle.providerAmountCents ?? 0,
       platformFeeCents:    cycle.platformAmountCents,
       method:              (cycle.package.paymentMethod ?? "CREDIT_CARD") as string,
       status:              "CAPTURED" as string,
-      capturedAt:          cycle.capturedAt.toISOString(),
+      capturedAt:          cycle.capturedAt!.toISOString(),
       scheduledAt:         null as string | null
     }));
 
@@ -948,7 +958,7 @@ export class FinancialService {
       pendingCents:   pending.reduce((s, p)  => s + netFor(p), 0),
       availableCents: captured.reduce((s, p) => s + netFor(p), 0)
         + contracts.reduce((s, c) => s + c.providerAmountCents, 0)
-        + packageCycles.reduce((s, c) => s + c.providerAmountCents, 0),
+        + packageCycles.reduce((s, c) => s + (c.providerAmountCents ?? 0), 0),
       payments: transactions
     };
   }

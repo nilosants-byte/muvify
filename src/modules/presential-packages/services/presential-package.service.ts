@@ -21,12 +21,14 @@ import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/pl
 import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { billingCycleDurationDays } from "../../../shared/utils/consultancy-validity";
 import { NotificationService } from "../../notifications/services/notification.service";
+import { DebtService } from "../../payments/services/debt.service";
 // PaymentService é importado dinamicamente onde é usado (não no topo do
 // arquivo) porque payment.service.ts também importa PresentialPackageService
 // — import estático dos dois lados cria dependência circular na inicialização
 // dos módulos (mesmo problema já resolvido assim com gamification-events).
 
 const notificationService = new NotificationService();
+const debtService = new DebtService();
 const mpPaymentClient = new Payment(mp);
 const mpCardTokenClient = new CardToken(mp);
 const mpRefundClient = new PaymentRefund(mp);
@@ -180,6 +182,8 @@ async function resolveClientCardForBilling(clientId: string) {
 
 export class PresentialPackageService {
   async purchasePackage(clientId: string, input: PurchasePresentialPackageInput) {
+    await debtService.assertNoOutstandingDebt(clientId);
+
     const offer = await prisma.providerServiceOffer.findFirst({
       where: { id: input.offerId, isActive: true },
       include: { provider: true }

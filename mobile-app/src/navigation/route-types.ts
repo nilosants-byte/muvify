@@ -69,6 +69,7 @@ export type ClientStackParamList = {
   };
   MyPresentialPackages: undefined;
   PresentialPackageDetail: { packageId: string };
+  MyDebts: undefined;
   BookingConfirmation: {
     bookingId: string;
     bookingCount?: number;
@@ -105,6 +106,7 @@ export type ProfessionalStackParamList = {
   ConnectPayoutAccount: undefined;
   BookingPaymentStatus: { bookingId: string };
   ProfessionalStudents: undefined;
+  ProviderDebts: undefined;
   FinancialStudents: undefined;
   FinancialHistory: undefined;
   FinancialGoals: undefined;

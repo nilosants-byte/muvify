@@ -253,6 +253,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
         {/* ── DOCUMENTOS ── */}
         <View style={{ marginHorizontal: 16, borderRadius: 16, borderWidth: 1, backgroundColor: cardBg, borderColor: border, overflow: "hidden", marginBottom: 12 }}>
           <MenuItem icon="card-outline" label="Conta de recebimento" sub="Mercado Pago" onPress={() => goToStack("ConnectPayoutAccount")} isFirst />
+          <MenuItem icon="alert-circle-outline" label="Pendências" sub="Casos de disputa em aberto" onPress={() => goToStack("ProviderDebts")} />
           <MenuItem icon="shield-checkmark-outline" label="CREF e documentos" onPress={() => goToStack("ProfessionalCredentials")} />
           <MenuItem icon="star-outline" label="Minhas avaliações" onPress={() => goToStack("ProfessionalReviews")} />
           <MenuItem icon="lock-closed-outline" label="Segurança" onPress={() => goToStack("Security")} />

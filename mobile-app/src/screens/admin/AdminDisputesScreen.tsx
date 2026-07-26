@@ -19,7 +19,9 @@ type QueueStatus = "OPEN" | "RESOLVED";
 const TYPE_LABEL: Record<AdminDisputeCaseType, string> = {
   NO_SHOW_CONTESTED: "Falta contestada",
   CHARGEBACK: "Contestação bancária (chargeback)",
-  REFUND_FAILED: "Falha no reembolso automático"
+  REFUND_FAILED: "Falha no reembolso automático",
+  DELIVERY_CONTESTED: "Entrega de ficha contestada",
+  AUTO_CAPTURE_CONTESTED: "Contestação pós-cobrança automática"
 };
 
 function formatCents(amountCents: number) {

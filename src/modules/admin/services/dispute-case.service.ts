@@ -14,6 +14,11 @@ type ResolveDisputeCaseInput = {
   resolution: "REFUNDED" | "DENIED";
   amountCents?: number;
   note: string;
+  // So aplicavel quando resolution === "DENIED": registra que o aluno ja
+  // recebeu esse valor indevidamente antes desta disputa ser aberta (caso
+  // raro em que um reembolso anterior acaba sendo revertido pelo julgamento
+  // do admin). Ver DebtRecord no schema.
+  chargeClientDebtCents?: number;
 };
 
 function formatCents(amountCents: number) {
@@ -169,6 +174,14 @@ export class DisputeCaseService {
       resolvedAmountCents = amountCents;
     }
 
+    let clientDebtCents: number | null = null;
+    if (input.resolution === "DENIED" && input.chargeClientDebtCents !== undefined) {
+      if (!Number.isInteger(input.chargeClientDebtCents) || input.chargeClientDebtCents <= 0) {
+        throw new AppError("Valor de pendência do aluno inválido.", StatusCodes.BAD_REQUEST);
+      }
+      clientDebtCents = input.chargeClientDebtCents;
+    }
+
     const resolvedAt = new Date();
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -191,6 +204,36 @@ export class DisputeCaseService {
         });
       }
 
+      // Reembolso resolvido == pagamento ja estava capturado e repassado
+      // (reembolso so existe pra pagamento capturado - pre-autorizacao usa
+      // cancelamento, nao reembolso), entao o personal ja recebeu esse
+      // valor: a divida nasce automatica aqui, sem acao extra do admin.
+      if (resolvedAmountCents !== null) {
+        await tx.debtRecord.create({
+          data: {
+            disputeCaseId: caseId,
+            debtorType: "PROVIDER",
+            providerId: disputeCase.providerId,
+            amountCents: resolvedAmountCents,
+            reason: note,
+            status: "NOTIFIED"
+          }
+        });
+      }
+
+      if (clientDebtCents !== null) {
+        await tx.debtRecord.create({
+          data: {
+            disputeCaseId: caseId,
+            debtorType: "CLIENT",
+            clientId: disputeCase.clientId,
+            amountCents: clientDebtCents,
+            reason: note,
+            status: "NOTIFIED"
+          }
+        });
+      }
+
       return resolvedCase;
     });
 
@@ -205,11 +248,13 @@ export class DisputeCaseService {
     const clientMessage =
       input.resolution === "REFUNDED"
         ? `Seu caso foi resolvido: você foi reembolsado em R$ ${formatCents(resolvedAmountCents!)}. Motivo: ${note}`
-        : `Seu caso foi resolvido: o reembolso não foi aprovado. Motivo: ${note}`;
+        : clientDebtCents !== null
+          ? `Seu caso foi resolvido: o reembolso não foi aprovado. Motivo: ${note} Além disso, foi identificado que você já havia recebido R$ ${formatCents(clientDebtCents)} indevidamente antes desta disputa — enquanto essa pendência não for regularizada, novas compras ficarão bloqueadas.`
+          : `Seu caso foi resolvido: o reembolso não foi aprovado. Motivo: ${note}`;
 
     const providerMessage =
       input.resolution === "REFUNDED"
-        ? `O caso foi resolvido: o cliente foi reembolsado em R$ ${formatCents(resolvedAmountCents!)}. Motivo: ${note}`
+        ? `O caso foi resolvido: o cliente foi reembolsado em R$ ${formatCents(resolvedAmountCents!)}. Motivo: ${note} Esse valor será descontado do seu próximo repasse.`
         : `O caso foi resolvido: o pedido de reembolso do cliente não foi aprovado. Motivo: ${note}`;
 
     void this.notificationService

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
-import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvButton, MvCard, MvInput, MvText, MvToggle } from "../../components/mv";
 import { adminApi, AdminDisputeCaseType } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -17,7 +17,9 @@ type Props = {
 const TYPE_LABEL: Record<AdminDisputeCaseType, string> = {
   NO_SHOW_CONTESTED: "Falta contestada",
   CHARGEBACK: "Contestação bancária (chargeback)",
-  REFUND_FAILED: "Falha no reembolso automático"
+  REFUND_FAILED: "Falha no reembolso automático",
+  DELIVERY_CONTESTED: "Entrega de ficha contestada",
+  AUTO_CAPTURE_CONTESTED: "Contestação pós-cobrança automática"
 };
 
 function formatCents(amountCents: number) {
@@ -36,6 +38,8 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
   const [decision, setDecision] = useState<"REFUNDED" | "DENIED" | null>(null);
   const [amountText, setAmountText] = useState("");
   const [note, setNote] = useState("");
+  const [chargeClientDebt, setChargeClientDebt] = useState(false);
+  const [clientDebtAmountText, setClientDebtAmountText] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const detailQuery = useAuthQuery(
@@ -84,15 +88,33 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
       amountCents = Math.round(parsed * 100);
     }
 
+    let chargeClientDebtCents: number | undefined;
+    if (decision === "DENIED" && chargeClientDebt) {
+      const normalized = clientDebtAmountText.trim().replace(/\./g, "").replace(",", ".");
+      const parsed = Number(normalized);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        showToast("Informe um valor de pendência válido.", "error");
+        return;
+      }
+      chargeClientDebtCents = Math.round(parsed * 100);
+    }
+
     try {
       setSubmitting(true);
       await runWithAuth((token) =>
-        adminApi.resolveDisputeCase(token, caseId, { resolution: decision, amountCents, note: trimmedNote })
+        adminApi.resolveDisputeCase(token, caseId, {
+          resolution: decision,
+          amountCents,
+          note: trimmedNote,
+          chargeClientDebtCents
+        })
       );
       showToast("Caso resolvido. As partes foram notificadas.", "success");
       await detailQuery.refetch();
       setDecision(null);
       setNote("");
+      setChargeClientDebt(false);
+      setClientDebtAmountText("");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao resolver o caso.", navigation });
     } finally {
@@ -240,6 +262,28 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
                     onChangeText={setAmountText}
                     placeholder="0,00"
                   />
+                </View>
+              ) : null}
+
+              {decision === "DENIED" ? (
+                <View style={{ gap: 8 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <MvText variant="caption" color="secondary" style={{ flex: 1, marginRight: 8 }}>
+                      Este aluno já recebeu um reembolso indevido antes desta disputa e precisa devolver o valor
+                    </MvText>
+                    <MvToggle value={chargeClientDebt} onValueChange={setChargeClientDebt} />
+                  </View>
+                  {chargeClientDebt ? (
+                    <View style={{ gap: 4 }}>
+                      <MvText variant="caption" color="secondary">Valor a cobrar do aluno</MvText>
+                      <MvInput
+                        keyboardType="decimal-pad"
+                        value={clientDebtAmountText}
+                        onChangeText={setClientDebtAmountText}
+                        placeholder="0,00"
+                      />
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
 

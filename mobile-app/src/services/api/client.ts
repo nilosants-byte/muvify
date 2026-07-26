@@ -1566,7 +1566,12 @@ export const adminApi = {
   resolveDisputeCase(
     token: string,
     caseId: string,
-    input: { resolution: "REFUNDED" | "DENIED"; amountCents?: number; note: string }
+    input: {
+      resolution: "REFUNDED" | "DENIED";
+      amountCents?: number;
+      note: string;
+      chargeClientDebtCents?: number;
+    }
   ) {
     return apiRequest<AdminDisputeCaseListItem>(`/admin/disputes/${caseId}/resolve`, {
       method: "POST",
@@ -1576,7 +1581,12 @@ export const adminApi = {
   }
 };
 
-export type AdminDisputeCaseType = "NO_SHOW_CONTESTED" | "CHARGEBACK" | "REFUND_FAILED";
+export type AdminDisputeCaseType =
+  | "NO_SHOW_CONTESTED"
+  | "CHARGEBACK"
+  | "REFUND_FAILED"
+  | "DELIVERY_CONTESTED"
+  | "AUTO_CAPTURE_CONTESTED";
 export type AdminDisputeCaseStatus = "OPEN" | "RESOLVED";
 export type AdminDisputeCaseResolution = "REFUNDED" | "DENIED";
 
@@ -2348,6 +2358,30 @@ export type FinancialPayouts = {
   pendingCents: number;
   availableCents: number;
   payments: FinancialPayoutItem[];
+};
+
+export type DebtRecordStatus = "PENDING" | "NOTIFIED" | "PAID" | "WRITTEN_OFF";
+
+export type DebtRecord = {
+  id: string;
+  amountCents: number;
+  reason: string;
+  status: DebtRecordStatus;
+  paidAt?: string | null;
+  createdAt: string;
+  disputeCase: { id: string; type: AdminDisputeCaseType };
+};
+
+export const debtsApi = {
+  myDebts(token: string) {
+    return apiRequest<DebtRecord[]>("/debts/my", { token });
+  },
+  payDebt(token: string, debtId: string) {
+    return apiRequest<DebtRecord>(`/debts/${debtId}/pay`, { method: "POST", token });
+  },
+  providerDebts(token: string) {
+    return apiRequest<DebtRecord[]>("/debts/provider/my", { token });
+  }
 };
 
 export const financialApi = {

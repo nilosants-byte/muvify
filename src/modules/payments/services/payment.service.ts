@@ -1564,7 +1564,7 @@ export class PaymentService {
                 type: "CHARGEBACK",
                 clientId: cycle.package.clientId,
                 providerId: cycle.package.providerId,
-                amountCents: cycle.amountCents,
+                amountCents: cycle.amountCents ?? 0,
                 mpPaymentId: String(mpPay.id),
                 presentialPackageId: cycle.packageId,
                 presentialPackageCycleId: cycle.id

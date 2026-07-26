@@ -19,9 +19,11 @@ import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-
 import { getPrivateObject, putPrivateObject } from "../../../shared/services/storage.service";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { PaymentService } from "../../payments/services/payment.service";
+import { DebtService } from "../../payments/services/debt.service";
 import { EmailService } from "../../../shared/services/email.service";
 
 const emailService = new EmailService();
+const debtService = new DebtService();
 
 type CompletionProofInput = {
   imageBase64: string;
@@ -142,6 +144,8 @@ export class BookingService {
     if (Number.isNaN(scheduleDate.getTime()) || scheduleDate <= new Date()) {
       throw new AppError("Data de agendamento inválida.");
     }
+
+    await debtService.assertNoOutstandingDebt(clientId);
 
     // Pre-compute timezone-dependent values outside the transaction to
     // minimize the time spent holding the advisory lock.

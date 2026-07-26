@@ -129,6 +129,7 @@ export const adminResolveDisputeCaseSchema = z.object({
   body: z.object({
     resolution: z.enum(["REFUNDED", "DENIED"]),
     amountCents: z.coerce.number().int().positive().optional(),
-    note: z.string().trim().min(5).max(500)
+    note: z.string().trim().min(5).max(500),
+    chargeClientDebtCents: z.coerce.number().int().positive().optional()
   })
 });

@@ -305,6 +305,7 @@ model User {
   noShowReportsFiled       NoShowReport[]              @relation("NoShowReportedBy")
   disputeCasesAsClient     DisputeCase[]               @relation("DisputeCaseClient")
   disputeCasesResolved     DisputeCase[]               @relation("DisputeCaseResolvedBy")
+  debtRecords              DebtRecord[]
 
   @@index([createdAt])
   @@index([documentHash])
@@ -383,6 +384,7 @@ model ProviderProfile {
   financialGoals              FinancialGoal[]
   financialClassSessions      FinancialClassSession[]
   manualBlocks                ProviderManualBlock[]
+  debtRecords                 DebtRecord[]
 
   @@index([displayName])
   @@index([serviceMode, averageRating])
@@ -546,10 +548,53 @@ model DisputeCase {
   presentialPackageCycle PresentialPackageCycle? @relation(fields: [presentialPackageCycleId], references: [id], onDelete: SetNull)
   noShowReport           NoShowReport?           @relation(fields: [noShowReportId], references: [id], onDelete: SetNull)
   resolvedByAdmin        User?                   @relation("DisputeCaseResolvedBy", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
+  debtRecords            DebtRecord[]
 
   @@index([status, createdAt])
   @@index([clientId])
   @@index([providerId])
+}
+
+enum DebtorType {
+  PROVIDER
+  CLIENT
+}
+
+enum DebtRecordStatus {
+  PENDING
+  NOTIFIED
+  PAID
+  WRITTEN_OFF
+}
+
+// Registro interno de "quem deve o quê, pra quem, por qual motivo" — sempre
+// ligado ao DisputeCase que originou a divida (Frente 4 do roteiro de
+// seguranca de pagamentos). Divida do personal nasce automatica sempre que
+// uma disputa e resolvida como reembolso (o pagamento reembolsado ja estava
+// capturado e repassado, entao o personal ja recebeu aquele valor). Divida
+// do aluno nasce por acao manual do admin ao negar uma disputa, pro caso raro
+// em que o aluno ja tinha recebido um reembolso indevido antes.
+model DebtRecord {
+  id            String           @id @default(uuid())
+  disputeCaseId String
+  debtorType    DebtorType
+  clientId      String?
+  providerId    String?
+  amountCents   Int
+  reason        String
+  status        DebtRecordStatus @default(PENDING)
+  mpPaymentId   String?
+  paidAt        DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  disputeCase DisputeCase      @relation(fields: [disputeCaseId], references: [id], onDelete: Cascade)
+  client      User?            @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  provider    ProviderProfile? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, status])
+  @@index([providerId, status])
+  @@index([disputeCaseId])
 }
 
 model Review {

@@ -20,6 +20,7 @@ import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
 import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
 import { NotificationService } from "../../notifications/services/notification.service";
+import { DebtService } from "../../payments/services/debt.service";
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
 
 const BASE_PRICE_UPDATE_COOLDOWN_DAYS = 30;
@@ -69,6 +70,7 @@ type ExerciseInput = {
 };
 
 const notificationService = new NotificationService();
+const debtService = new DebtService();
 
 function providerAmountFrom(priceCents: number) {
   return providerSplitAmount(priceCents);
@@ -1769,6 +1771,8 @@ export class ConsultancyService {
 
       return { request: updated, contract: null };
     }
+
+    await debtService.assertNoOutstandingDebt(clientId);
 
     if (env.REQUIRE_ANAMNESIS_FOR_CONTRACTS) {
       const anamnesis = await prisma.clientAnamnesis.findUnique({

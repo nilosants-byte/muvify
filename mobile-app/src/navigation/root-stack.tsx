@@ -37,6 +37,7 @@ import { ConsultancyRequestScreen } from "../screens/client/ConsultancyRequestSc
 import { CreateBookingScreen } from "../screens/client/CreateBookingScreen";
 import { ForgotPasswordScreen } from "../screens/client/ForgotPasswordScreen";
 import { MyPresentialPackagesScreen } from "../screens/client/MyPresentialPackagesScreen";
+import { MyDebtsScreen } from "../screens/client/MyDebtsScreen";
 import { PresentialPackageDetailScreen } from "../screens/client/PresentialPackageDetailScreen";
 import { ProfessionalDetailScreen } from "../screens/client/ProfessionalDetailScreen";
 import { ProfessionalsListScreen } from "../screens/client/ProfessionalsListScreen";
@@ -62,6 +63,7 @@ import { ProfessionalSettingsScreen } from "../screens/professional/Professional
 import { ProfessionalStudentAnamnesisScreen } from "../screens/professional/ProfessionalStudentAnamnesisScreen";
 import { ProfessionalStudentDetailScreen } from "../screens/professional/ProfessionalStudentDetailScreen";
 import { ProfessionalStudentsScreen } from "../screens/professional/ProfessionalStudentsScreen";
+import { ProviderDebtsScreen } from "../screens/professional/ProviderDebtsScreen";
 import { ProfessionalTrainingCreationScreen } from "../screens/professional/ProfessionalTrainingCreationScreen";
 import { ProfessionalChatListScreen } from "../screens/professional/ProfessionalChatListScreen";
 import { GenericErrorScreen } from "../screens/shared/GenericErrorScreen";
@@ -332,6 +334,10 @@ export function RootNavigator() {
         component={PresentialPackageDetailScreen as React.ComponentType<any>}
       />
       <ClientStack.Screen
+        name="MyDebts"
+        component={MyDebtsScreen as React.ComponentType<any>}
+      />
+      <ClientStack.Screen
         name="BookingConfirmation"
         component={BookingConfirmationScreen as React.ComponentType<any>}
       />
@@ -480,6 +486,10 @@ export function RootNavigator() {
       <ProfessionalStack.Screen
         name="ProfessionalStudents"
         component={ProfessionalStudentsScreen as React.ComponentType<any>}
+      />
+      <ProfessionalStack.Screen
+        name="ProviderDebts"
+        component={ProviderDebtsScreen as React.ComponentType<any>}
       />
       <ProfessionalStack.Screen
         name="ProfessionalStudentDetail"

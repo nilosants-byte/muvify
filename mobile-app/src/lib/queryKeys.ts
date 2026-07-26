@@ -159,6 +159,11 @@ export const queryKeys = {
     providerList: () => ["presentialPackages", "providerList"] as const,
     detail: (packageId: string) => ["presentialPackages", "detail", packageId] as const,
   },
+  debts: {
+    all: ["debts"] as const,
+    my: () => ["debts", "my"] as const,
+    providerList: () => ["debts", "providerList"] as const,
+  },
 
   // ── Comunidade ─────────────────────────────────────────────────────────────
   community: {
