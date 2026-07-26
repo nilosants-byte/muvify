@@ -252,6 +252,10 @@ export type ProviderServiceOffer = {
   presentialSessionsPerCycle?: number | null;
   comboPresentialShareCents?: number | null;
   comboConsultancyShareCents?: number | null;
+  acceptsPix?: boolean;
+  acceptsDebitCard?: boolean;
+  acceptsCreditCard?: boolean;
+  maxCreditInstallments?: number;
 };
 
 export type PromotionFeedItem = {
@@ -2555,6 +2559,7 @@ export const consultancyApi = {
     body: {
       decision: "ACCEPT" | "REFUSE";
       paymentMethod?: ConsultancyPaymentMethod;
+      installments?: number;
       acknowledgedImmediateExecution?: boolean;
     }
   ) {
@@ -2650,6 +2655,10 @@ export const consultancyApi = {
       presentialSessionsPerCycle?: number;
       comboPresentialShareCents?: number;
       comboConsultancyShareCents?: number;
+      acceptsPix?: boolean;
+      acceptsDebitCard?: boolean;
+      acceptsCreditCard?: boolean;
+      maxCreditInstallments?: number;
     }
   ) {
     return apiRequest<ProviderServiceOffer>("/consultancy/provider/offers", {
@@ -2678,6 +2687,10 @@ export const consultancyApi = {
       presentialSessionsPerCycle?: number | null;
       comboPresentialShareCents?: number | null;
       comboConsultancyShareCents?: number | null;
+      acceptsPix?: boolean;
+      acceptsDebitCard?: boolean;
+      acceptsCreditCard?: boolean;
+      maxCreditInstallments?: number;
     }
   ) {
     return apiRequest<ProviderServiceOffer>(`/consultancy/provider/offers/${offerId}`, {

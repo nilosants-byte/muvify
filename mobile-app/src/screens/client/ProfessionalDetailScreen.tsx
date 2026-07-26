@@ -183,6 +183,8 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
       presentialTotalCycles: offer.presentialTotalCycles ?? null,
       comboPresentialShareCents: offer.comboPresentialShareCents ?? null,
       comboConsultancyShareCents: offer.comboConsultancyShareCents ?? null,
+      acceptsPix: offer.acceptsPix ?? true,
+      acceptsCreditCard: offer.acceptsCreditCard ?? true,
     });
   }
 

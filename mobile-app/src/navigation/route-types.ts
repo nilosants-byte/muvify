@@ -66,6 +66,8 @@ export type ClientStackParamList = {
     presentialTotalCycles?: number | null;
     comboPresentialShareCents?: number | null;
     comboConsultancyShareCents?: number | null;
+    acceptsPix?: boolean;
+    acceptsCreditCard?: boolean;
   };
   MyPresentialPackages: undefined;
   PresentialPackageDetail: { packageId: string };

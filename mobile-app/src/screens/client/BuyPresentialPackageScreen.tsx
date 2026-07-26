@@ -101,6 +101,8 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
     presentialTotalCycles,
     comboPresentialShareCents,
     comboConsultancyShareCents,
+    acceptsPix = true,
+    acceptsCreditCard = true,
   } = route.params;
 
   const isFixedRecurring = presentialPackageMode === "FIXED_RECURRING";
@@ -108,7 +110,9 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<ConsultancyPaymentMethod>("CREDIT_CARD");
+  const [paymentMethod, setPaymentMethod] = useState<ConsultancyPaymentMethod>(
+    acceptsCreditCard ? "CREDIT_CARD" : "PIX"
+  );
   const [weeklySchedule, setWeeklySchedule] = useState<PresentialPackageWeeklyScheduleSlot[]>([]);
   const [newSlotWeekday, setNewSlotWeekday] = useState(1);
   const [newSlotTime, setNewSlotTime] = useState("08:00");
@@ -437,8 +441,12 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 10 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Pagamento</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <Chip label="Cartão" selected={paymentMethod === "CREDIT_CARD"} onPress={() => setPaymentMethod("CREDIT_CARD")} />
-              <Chip label="Pix" selected={paymentMethod === "PIX"} onPress={() => setPaymentMethod("PIX")} />
+              {acceptsCreditCard ? (
+                <Chip label="Cartão" selected={paymentMethod === "CREDIT_CARD"} onPress={() => setPaymentMethod("CREDIT_CARD")} />
+              ) : null}
+              {acceptsPix ? (
+                <Chip label="Pix" selected={paymentMethod === "PIX"} onPress={() => setPaymentMethod("PIX")} />
+              ) : null}
             </View>
             {paymentMethod === "CREDIT_CARD" && !paymentReady ? (
               <TouchableOpacity onPress={() => navigation.navigate("ClientPaymentMethod")}>

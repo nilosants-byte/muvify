@@ -77,6 +77,14 @@ function cycleLabel(cycle: OfferBillingCycle) {
   return cycleOptions.find((item) => item.value === cycle)?.label ?? cycle;
 }
 
+// Espelha installmentEligibleCycles/supportsInstallments do backend
+// (consultancy.service.ts) — parcelamento só é aceito pelo Mercado Pago em
+// ciclos longos o suficiente pra fazer sentido parcelar.
+const installmentEligibleCycles = new Set<OfferBillingCycle>(["QUARTERLY", "SEMIANNUAL", "ANNUAL"]);
+function supportsInstallments(cycle: OfferBillingCycle) {
+  return installmentEligibleCycles.has(cycle);
+}
+
 function packageModeLabel(mode?: PresentialPackageMode | null): string | null {
   if (mode === "FIXED_RECURRING") return "Pacote · horário fixo";
   if (mode === "FLEXIBLE_CREDITS") return "Pacote · créditos flexíveis";
@@ -137,6 +145,10 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
   const [presentialSessionsPerCycle, setPresentialSessionsPerCycle] = useState("8");
   const [comboPresentialShare, setComboPresentialShare] = useState("0,00");
   const [comboConsultancyShare, setComboConsultancyShare] = useState("0,00");
+  const [acceptsPix, setAcceptsPix] = useState(true);
+  const [acceptsDebitCard, setAcceptsDebitCard] = useState(true);
+  const [acceptsCreditCard, setAcceptsCreditCard] = useState(true);
+  const [maxCreditInstallments, setMaxCreditInstallments] = useState("1");
 
   useEffect(() => {
     if (centerQuery.error) {
@@ -195,6 +207,28 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     return undefined;
   }, [offerKind, presentialPackageMode, presentialSessionsPerCycle, presentialHasFixedTerm, presentialTotalCycles]);
 
+  const maxCreditInstallmentsNumber = Number(maxCreditInstallments) || 1;
+
+  const paymentMethodsError = useMemo(() => {
+    if (!acceptsPix && !acceptsDebitCard && !acceptsCreditCard) {
+      return "Selecione ao menos uma forma de pagamento aceita.";
+    }
+    if (!acceptsCreditCard && maxCreditInstallmentsNumber > 1) {
+      return "Parcelamento acima de 1x exige cartão de crédito habilitado.";
+    }
+    if (acceptsCreditCard && maxCreditInstallmentsNumber > 1) {
+      if (!supportsInstallments(offerCycle)) {
+        return "Parcelamento é permitido apenas para ciclos trimestral, semestral ou anual.";
+      }
+      const minInstallmentCents = 500;
+      if (basePriceCents > 0 && basePriceCents / maxCreditInstallmentsNumber < minInstallmentCents) {
+        const maxAllowed = Math.floor(basePriceCents / minInstallmentCents);
+        return `Cada parcela deve ser de no mínimo R$ 5,00. Máximo permitido para este valor: ${maxAllowed}x.`;
+      }
+    }
+    return undefined;
+  }, [acceptsPix, acceptsDebitCard, acceptsCreditCard, maxCreditInstallmentsNumber, offerCycle, basePriceCents]);
+
   const comboShareError = useMemo(() => {
     if (offerKind !== "COMBO" || !presentialPackageMode) return undefined;
     if (comboPresentialShareCents <= 0 || comboConsultancyShareCents <= 0) {
@@ -242,6 +276,10 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     setPresentialSessionsPerCycle("8");
     setComboPresentialShare("0,00");
     setComboConsultancyShare("0,00");
+    setAcceptsPix(true);
+    setAcceptsDebitCard(true);
+    setAcceptsCreditCard(true);
+    setMaxCreditInstallments("1");
     setOfferWizardStep(0);
   }
 
@@ -265,6 +303,10 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     setComboConsultancyShare(
       offer.comboConsultancyShareCents ? (offer.comboConsultancyShareCents / 100).toFixed(2).replace(".", ",") : "0,00"
     );
+    setAcceptsPix(offer.acceptsPix ?? true);
+    setAcceptsDebitCard(offer.acceptsDebitCard ?? true);
+    setAcceptsCreditCard(offer.acceptsCreditCard ?? true);
+    setMaxCreditInstallments(String(offer.maxCreditInstallments ?? 1));
     setOfferFormVisible(true);
   }
 
@@ -319,6 +361,10 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
       showToast(comboShareError, "error");
       return;
     }
+    if (paymentMethodsError) {
+      showToast(paymentMethodsError, "error");
+      return;
+    }
     if (markAsPromotion && (promotionValueError || promotionDateError)) {
       showToast(promotionValueError ?? promotionDateError ?? "Promoção inválida.", "error");
       return;
@@ -349,6 +395,10 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
               offerKind === "COMBO" && presentialPackageMode ? comboPresentialShareCents : null,
             comboConsultancyShareCents:
               offerKind === "COMBO" && presentialPackageMode ? comboConsultancyShareCents : null,
+            acceptsPix,
+            acceptsDebitCard,
+            acceptsCreditCard,
+            maxCreditInstallments: maxCreditInstallmentsNumber,
           })
         );
         setOffers((prev) =>
@@ -385,6 +435,10 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
               offerKind === "COMBO" && presentialPackageMode ? comboPresentialShareCents : undefined,
             comboConsultancyShareCents:
               offerKind === "COMBO" && presentialPackageMode ? comboConsultancyShareCents : undefined,
+            acceptsPix,
+            acceptsDebitCard,
+            acceptsCreditCard,
+            maxCreditInstallments: maxCreditInstallmentsNumber,
           })
         );
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -712,12 +766,30 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     </View>
                     <MvInput keyboardType="numeric" placeholder="Valor base (R$)" value={offerPrice} onChangeText={(value) => setOfferPrice(maskPriceInput(value))} />
                     <MvText variant="caption" color="secondary">O valor base pode ser alterado apenas 1 vez a cada 30 dias.</MvText>
+
+                    <MvText variant="body4" style={{ marginTop: 6 }}>Formas de pagamento aceitas</MvText>
+                    <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                      <Chip label="Pix" selected={acceptsPix} onPress={() => setAcceptsPix((c) => !c)} />
+                      <Chip label="Débito" selected={acceptsDebitCard} onPress={() => setAcceptsDebitCard((c) => !c)} />
+                      <Chip label="Crédito" selected={acceptsCreditCard} onPress={() => setAcceptsCreditCard((c) => !c)} />
+                    </View>
+                    {acceptsCreditCard && supportsInstallments(offerCycle) ? (
+                      <MvInput
+                        keyboardType="numeric"
+                        label="Parcelamento máximo no crédito (1 a 12x)"
+                        placeholder="Ex: 3"
+                        value={maxCreditInstallments}
+                        onChangeText={setMaxCreditInstallments}
+                      />
+                    ) : null}
+                    {paymentMethodsError ? <MvText variant="body4" color="danger">{paymentMethodsError}</MvText> : null}
+
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       <View style={{ flex: 1 }}>
                         <MvButton variant="outline" label="← Voltar" onPress={() => setOfferWizardStep(0)} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <MvButton label="Avançar →" disabled={basePriceCents < 100} onPress={() => setOfferWizardStep(2)} />
+                        <MvButton label="Avançar →" disabled={basePriceCents < 100 || Boolean(paymentMethodsError)} onPress={() => setOfferWizardStep(2)} />
                       </View>
                     </View>
                   </View>
@@ -847,6 +919,10 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                             : ""}
                         </MvText>
                       ) : null}
+                      <MvText variant="caption" color="secondary">
+                        Aceita: {[acceptsPix && "Pix", acceptsDebitCard && "Débito", acceptsCreditCard && "Crédito"].filter(Boolean).join(", ")}
+                        {acceptsCreditCard && maxCreditInstallmentsNumber > 1 ? ` (crédito em até ${maxCreditInstallmentsNumber}x)` : ""}
+                      </MvText>
                     </View>
                     {!crefValidated ? (
                       <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Publicar ofertas fica disponível quando seu CREF for aprovado.</MvText>
@@ -861,7 +937,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                           loading={creatingOffer}
                           disabled={
                             !crefValidated ||
-                            Boolean(promotionValueError || promotionDateError || comboDaysError || presentialPackageError || comboShareError)
+                            Boolean(promotionValueError || promotionDateError || comboDaysError || presentialPackageError || comboShareError || paymentMethodsError)
                           }
                           onPress={() => void handleCreateOffer()}
                         />

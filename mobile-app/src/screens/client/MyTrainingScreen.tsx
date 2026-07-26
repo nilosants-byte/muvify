@@ -571,6 +571,7 @@ export function MyTrainingScreen({ navigation }: Props) {
   const [cancellingContractId, setCancellingContractId] = useState<string | null>(null);
   const [contestingContractId, setContestingContractId] = useState<string | null>(null);
   const [paymentByRequestId, setPaymentByRequestId] = useState<Record<string, ConsultancyPaymentMethod>>({});
+  const [installmentsByRequestId, setInstallmentsByRequestId] = useState<Record<string, number>>({});
   const [consentByRequestId, setConsentByRequestId] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<TrainingTab>("active");
   const [selectedPlan, setSelectedPlan] = useState<FlatPlan | null>(null);
@@ -624,13 +625,14 @@ export function MyTrainingScreen({ navigation }: Props) {
     { key: "history", label: "Histórico", count: historyPlans.length },
   ], [activePlans.length, historyPlans.length, pendingPlans.length, respondedRequests.length, waitingDelivery.length]);
 
-  async function decideRequest(requestId: string, decision: "ACCEPT" | "REFUSE", pm?: ConsultancyPaymentMethod) {
+  async function decideRequest(requestId: string, decision: "ACCEPT" | "REFUSE", pm?: ConsultancyPaymentMethod, installments?: number) {
     try {
       setDecidingRequestId(requestId);
       await runWithAuth((token) =>
         consultancyApi.decideRequest(token, requestId, {
           decision,
           paymentMethod: pm,
+          ...(decision === "ACCEPT" && pm === "CREDIT_CARD" && installments && installments > 1 ? { installments } : {}),
           ...(decision === "ACCEPT" ? { acknowledgedImmediateExecution: true } : {})
         })
       );
@@ -806,23 +808,57 @@ export function MyTrainingScreen({ navigation }: Props) {
                         Contratar por {formatCurrencyBRL(req.quotedOffer.priceCents / 100)}
                       </Text>
                     )}
-                    {/* Método de pagamento */}
-                    <View style={{ flexDirection: "row", gap: 8 }}>
-                      {(["CREDIT_CARD", "DEBIT_CARD", "PIX"] as ConsultancyPaymentMethod[]).map((pm) => {
-                        const active = paymentByRequestId[req.id] === pm;
-                        return (
-                          <TouchableOpacity
-                            key={pm}
-                            onPress={() => setPaymentByRequestId((c) => ({ ...c, [req.id]: pm }))}
-                            style={{ flex: 1, height: S.touchMin, borderRadius: S.chipR, backgroundColor: active ? theme.primarySubtle : "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: active ? theme.primarySubtleBorder : theme.border, alignItems: "center", justifyContent: "center" }}
-                          >
-                            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: active ? theme.primary : theme.text2 }}>
-                              {pm === "CREDIT_CARD" ? "Crédito" : pm === "DEBIT_CARD" ? "Débito" : "PIX"}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
+                    {/* Método de pagamento — filtrado pelo que a oferta aceita */}
+                    {(() => {
+                      const offerAcceptsPix = req.quotedOffer?.acceptsPix ?? true;
+                      const offerAcceptsDebit = req.quotedOffer?.acceptsDebitCard ?? true;
+                      const offerAcceptsCredit = req.quotedOffer?.acceptsCreditCard ?? true;
+                      const maxInstallments = req.quotedOffer?.maxCreditInstallments ?? 1;
+                      const allowedMethods = (["CREDIT_CARD", "DEBIT_CARD", "PIX"] as ConsultancyPaymentMethod[]).filter(
+                        (pm) =>
+                          (pm === "CREDIT_CARD" && offerAcceptsCredit) ||
+                          (pm === "DEBIT_CARD" && offerAcceptsDebit) ||
+                          (pm === "PIX" && offerAcceptsPix)
+                      );
+                      const selectedMethod = paymentByRequestId[req.id] ?? allowedMethods[0];
+                      const selectedInstallments = installmentsByRequestId[req.id] ?? 1;
+                      return (
+                        <>
+                          <View style={{ flexDirection: "row", gap: 8 }}>
+                            {allowedMethods.map((pm) => {
+                              const active = selectedMethod === pm;
+                              return (
+                                <TouchableOpacity
+                                  key={pm}
+                                  onPress={() => setPaymentByRequestId((c) => ({ ...c, [req.id]: pm }))}
+                                  style={{ flex: 1, height: S.touchMin, borderRadius: S.chipR, backgroundColor: active ? theme.primarySubtle : "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: active ? theme.primarySubtleBorder : theme.border, alignItems: "center", justifyContent: "center" }}
+                                >
+                                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: active ? theme.primary : theme.text2 }}>
+                                    {pm === "CREDIT_CARD" ? "Crédito" : pm === "DEBIT_CARD" ? "Débito" : "PIX"}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                          {selectedMethod === "CREDIT_CARD" && maxInstallments > 1 ? (
+                            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                              {Array.from({ length: maxInstallments }, (_, i) => i + 1).map((n) => {
+                                const active = selectedInstallments === n;
+                                return (
+                                  <TouchableOpacity
+                                    key={n}
+                                    onPress={() => setInstallmentsByRequestId((c) => ({ ...c, [req.id]: n }))}
+                                    style={{ height: 30, paddingHorizontal: 10, borderRadius: S.chipR, backgroundColor: active ? theme.primarySubtle : "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: active ? theme.primarySubtleBorder : theme.border, alignItems: "center", justifyContent: "center" }}
+                                  >
+                                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: active ? theme.primary : theme.text2 }}>{n}x</Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                     <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, lineHeight: 16 }}>
                       Depois de aceitar, o profissional tem até 48h para entregar sua ficha de treino. Você pode desistir e ser reembolsado integralmente a qualquer momento antes da entrega.
                     </Text>
@@ -844,7 +880,14 @@ export function MyTrainingScreen({ navigation }: Props) {
                         <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Recusar</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        onPress={() => void decideRequest(req.id, "ACCEPT", paymentByRequestId[req.id] ?? "CREDIT_CARD")}
+                        onPress={() =>
+                          void decideRequest(
+                            req.id,
+                            "ACCEPT",
+                            paymentByRequestId[req.id] ?? (req.quotedOffer?.acceptsCreditCard ?? true ? "CREDIT_CARD" : "PIX"),
+                            installmentsByRequestId[req.id] ?? 1
+                          )
+                        }
                         disabled={decidingRequestId === req.id || !consentByRequestId[req.id]}
                         style={{ flex: 1.4, height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4, opacity: consentByRequestId[req.id] ? 1 : 0.5 }}
                       >
