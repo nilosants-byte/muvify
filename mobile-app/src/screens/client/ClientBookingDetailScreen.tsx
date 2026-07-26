@@ -284,7 +284,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     if (!booking) return;
     Alert.alert(
       "Contestar relato de falta",
-      "Você está contestando o relato de que não compareceu. O caso vai para análise antes de qualquer cobrança ou estorno.",
+      "Você está contestando o relato de que não compareceu. Um administrador vai analisar o caso antes de qualquer cobrança ou estorno.",
       [
         { text: "Voltar", style: "cancel" },
         {
@@ -293,7 +293,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             try {
               setContestingNoShow(true);
               await runWithAuth((token) => bookingsApi.contestNoShow(token, booking.id, contestReason.trim() || undefined));
-              showToast("Contestação registrada. O caso está em análise.", "success");
+              showToast("Contestação registrada. Um administrador vai analisar.", "success");
               void detailQuery.refetch();
             } catch (error) {
               handleScreenError({ error, showToast, fallbackMessage: "Não foi possível contestar.", navigation });
@@ -537,6 +537,9 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
           paddingHorizontal: S.px, paddingBottom: Math.max(12, insets.bottom + 12), paddingTop: 12,
           backgroundColor: `${theme.bg}f0`, borderTopWidth: 1, borderTopColor: theme.border,
         }}>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, textAlign: "center", marginBottom: 8 }}>
+            Se o profissional ainda não confirmou, a cobrança acontece automaticamente em até 24h — você ainda terá uma janela para contestar antes de ficar definitiva.
+          </Text>
           <TouchableOpacity
             disabled={submitting || !completionProof}
             onPress={() => { hapticCta(); void handleConfirmPost(); }}

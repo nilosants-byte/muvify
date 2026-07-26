@@ -139,7 +139,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
     if (!booking) return;
     Alert.alert(
       "Contestar relato de falta",
-      "Você está contestando o relato de que não compareceu. O caso vai para análise antes de qualquer cobrança ou estorno.",
+      "Você está contestando o relato de que não compareceu. Um administrador vai analisar o caso antes de qualquer cobrança ou estorno.",
       [
         { text: "Voltar", style: "cancel" },
         {
@@ -148,7 +148,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
             try {
               setContestingNoShow(true);
               await runWithAuth((token) => bookingsApi.contestNoShow(token, booking.id, contestReason.trim() || undefined));
-              showToast("Contestação registrada. O caso está em análise.", "success");
+              showToast("Contestação registrada. Um administrador vai analisar.", "success");
               void bookingDetailQuery.refetch();
             } catch (error) {
               handleScreenError({ error, showToast, fallbackMessage: "Não foi possível contestar.", navigation });

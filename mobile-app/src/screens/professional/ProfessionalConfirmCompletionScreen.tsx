@@ -300,6 +300,10 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
           showToast={showToast}
         />
 
+        <MvText variant="caption" color="secondary">
+          Se o aluno ainda não confirmou, a cobrança acontece automaticamente em até 24h — e ele ainda terá uma janela para contestar antes de ficar definitiva.
+        </MvText>
+
         <View style={{ gap: 10 }}>
           <MvButton
             label="Confirmar conclusão"

@@ -823,6 +823,9 @@ export function MyTrainingScreen({ navigation }: Props) {
                         );
                       })}
                     </View>
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, lineHeight: 16 }}>
+                      Depois de aceitar, o profissional tem até 48h para entregar sua ficha de treino. Você pode desistir e ser reembolsado integralmente a qualquer momento antes da entrega.
+                    </Text>
                     <TouchableOpacity
                       onPress={() => setConsentByRequestId((c) => ({ ...c, [req.id]: !c[req.id] }))}
                       style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}

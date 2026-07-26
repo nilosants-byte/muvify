@@ -239,6 +239,9 @@ export function ProfessionalConsultancyRequestsScreen({ navigation, onSwitchToOf
                           value={responseTextByRequest[request.id] ?? ""}
                           onChangeText={(value) => setResponseTextByRequest((current) => ({ ...current, [request.id]: value }))}
                         />
+                        <MvText variant="caption" color="secondary">
+                          Se o aluno aceitar, você terá até 48h para entregar a primeira ficha de treino.
+                        </MvText>
                         <MvButton
                           label="Enviar proposta"
                           disabled={!onlineOffers.length}
