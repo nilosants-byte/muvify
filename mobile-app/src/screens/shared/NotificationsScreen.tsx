@@ -41,6 +41,7 @@ type NotificationAction =
   | { type: "CLIENT_TRAINING" }
   | { type: "CLIENT_ARCHIVED_REQUESTS" }
   | { type: "CLIENT_PROMOTIONS" }
+  | { type: "PRESENTIAL_PACKAGE_DETAIL"; packageId: string }
   | { type: "PROVIDER_AGENDA" }
   | { type: "PROVIDER_CONSULTANCY_CENTER" }
   | { type: "PROVIDER_ARCHIVED_REQUESTS" }
@@ -136,6 +137,15 @@ function resolveInboxAction(
   const bookingId = data.bookingId;
   const requestId = data.requestId;
   const contractId = data.contractId;
+  const packageId = data.packageId;
+
+  if (type === "COMBO_CONSULTANCY_AUTO_REFUND") {
+    return packageId
+      ? { type: "PRESENTIAL_PACKAGE_DETAIL", packageId }
+      : role === "PROVIDER"
+        ? { type: "PROVIDER_CONSULTANCY_CENTER" }
+        : { type: "CLIENT_TRAINING" };
+  }
 
   if (type === "CHAT_MESSAGE") {
     return bookingId
@@ -598,6 +608,9 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
         case "CLIENT_TRAINING": if (role === "CLIENT") navigation.navigate("ClientTabs", { screen: "MyTraining" }); return;
         case "CLIENT_ARCHIVED_REQUESTS": if (role === "CLIENT") navigation.navigate("ArchivedRequests"); return;
         case "CLIENT_PROMOTIONS": if (role === "CLIENT") navigation.navigate("ClientTabs", { screen: "Promotions" }); return;
+        case "PRESENTIAL_PACKAGE_DETAIL":
+          if (role === "CLIENT") navigation.navigate("PresentialPackageDetail", { packageId: item.action.packageId });
+          return;
         case "PROVIDER_AGENDA": if (role === "PROVIDER") navigation.navigate("ProfessionalTabs", { screen: "ProfessionalAgenda" }); return;
         case "PROVIDER_CONSULTANCY_CENTER": if (role === "PROVIDER") navigation.navigate("ProfessionalConsultancyCenter"); return;
         case "PROVIDER_ARCHIVED_REQUESTS": if (role === "PROVIDER") navigation.navigate("ProfessionalArchivedRequests"); return;

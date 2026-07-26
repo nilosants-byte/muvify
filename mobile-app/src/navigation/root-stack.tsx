@@ -99,6 +99,7 @@ const CONSULTANCY_TYPES_PRO = new Set([
   "CONSULTANCY_REQUEST_CREATED", "CONSULTANCY_PROPOSAL_REFUSED",
   "CONSULTANCY_CONTRACT_ACCEPTED", "CONSULTANCY_CONTRACT_EXPIRED",
   "CONSULTANCY_AUTO_REFUND", "CONSULTANCY_EXPIRY_24H", "CONSULTANCY_EXPIRY_6H", "CONSULTANCY_EXPIRED",
+  "COMBO_CONSULTANCY_AUTO_REFUND",
 ]);
 const PAYMENT_TYPES_PRO = new Set([
   "PAYMENT_AUTHORIZED", "PAYMENT_REFUNDED", "PAYMENT_AUTH_FAILED", "PAYMENT_CANCELED",
@@ -115,11 +116,11 @@ function routeNotification(
 ) {
   if (!navigationRef.isReady() || !role) return;
   const type = typeof data.type === "string" ? data.type : "";
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const rawBookingId = typeof data.bookingId === "string" ? data.bookingId : undefined;
-  const bookingId =
-    rawBookingId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawBookingId)
-      ? rawBookingId
-      : undefined;
+  const bookingId = rawBookingId && uuidRegex.test(rawBookingId) ? rawBookingId : undefined;
+  const rawPackageId = typeof data.packageId === "string" ? data.packageId : undefined;
+  const packageId = rawPackageId && uuidRegex.test(rawPackageId) ? rawPackageId : undefined;
 
   if (role === "PROFESSIONAL") {
     if (bookingId && BOOKING_TYPES_PRO.has(type)) {
@@ -137,6 +138,8 @@ function routeNotification(
   if (role === "CLIENT") {
     if (bookingId && BOOKING_TYPES_CLIENT.has(type)) {
       (navigationRef as any).navigate("ClientBookingDetail", { bookingId });
+    } else if (type === "COMBO_CONSULTANCY_AUTO_REFUND" && packageId) {
+      (navigationRef as any).navigate("PresentialPackageDetail", { packageId });
     } else if (type === "PAYMENT_AUTH_FAILED") {
       (navigationRef as any).navigate("ClientPaymentMethod");
     } else {

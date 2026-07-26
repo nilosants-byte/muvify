@@ -2743,6 +2743,20 @@ export class ConsultancyService {
       // verdade, precisa de estorno de fato.
       const isHoldOnly = contract.paymentStatus === ConsultancyPaymentStatus.AUTHORIZED;
 
+      // Frente 5 do roteiro de seguranca de pagamentos: se este contrato é a
+      // metade de consultoria de um combo, a metade presencial (vinculada
+      // via consultancyContractId) continua normalmente - o aluno precisa
+      // ser avisado com clareza disso e ter a opção de cancelar também a
+      // parte presencial, em vez de só uma notificação genérica.
+      const linkedPackage = await prisma.presentialPackage.findFirst({
+        where: { consultancyContractId: contract.id },
+        select: { id: true, status: true }
+      });
+      const isComboHalf =
+        linkedPackage !== null &&
+        linkedPackage.status !== "CANCELLED" &&
+        linkedPackage.status !== "EXPIRED";
+
       let mpRefundId: string | null = null;
       let gatewaySucceeded = true;
       let refundReason = `Prazo de ${env.CONSULTANCY_DELIVERY_DEADLINE_HOURS} horas expirado sem entrega do treino personalizado.`;
@@ -2805,17 +2819,34 @@ export class ConsultancyService {
         await tx.consultancyRequest.update({ where: { id: contract.requestId }, data: { status: ConsultancyRequestStatus.EXPIRED_REFUNDED } });
       });
 
+      const baseReasonText = isHoldOnly
+        ? "Prazo de entrega expirado sem treino entregue. O valor reservado no cartão nunca chegou a ser cobrado."
+        : gatewaySucceeded
+          ? "Prazo de entrega expirado sem treino entregue. Valor estornado automaticamente."
+          : "Prazo de entrega expirado sem treino entregue. Houve uma falha ao processar o reembolso — nossa equipe já foi avisada e vai resolver manualmente.";
+
       void notificationService.sendToUsers([contract.clientId], {
         preferenceType: "CONSULTANCY",
-        title: isHoldOnly ? "Reserva liberada" : "Estorno automatico da consultoria",
-        body: isHoldOnly
-          ? "Prazo de entrega expirado sem treino entregue. O valor reservado no cartão nunca chegou a ser cobrado."
-          : gatewaySucceeded
-            ? "Prazo de entrega expirado sem treino entregue. Valor estornado automaticamente."
-            : "Prazo de entrega expirado sem treino entregue. Houve uma falha ao processar o reembolso — nossa equipe já foi avisada e vai resolver manualmente.",
-        data: { type: "CONSULTANCY_AUTO_REFUND", contractId: contract.id }
+        title: isComboHalf
+          ? "Consultoria do seu combo foi estornada"
+          : isHoldOnly
+            ? "Reserva liberada"
+            : "Estorno automatico da consultoria",
+        body: isComboHalf
+          ? `${baseReasonText} Isso afeta só a parte de consultoria — a parte presencial do combo continua normalmente, sendo cobrada como sempre. Se preferir, você pode cancelar a parte presencial também a qualquer momento.`
+          : baseReasonText,
+        data: isComboHalf
+          ? { type: "COMBO_CONSULTANCY_AUTO_REFUND", contractId: contract.id, packageId: linkedPackage!.id }
+          : { type: "CONSULTANCY_AUTO_REFUND", contractId: contract.id }
       });
-      void notificationService.sendToUsers([contract.provider.userId], { preferenceType: "CONSULTANCY", title: "Contrato estornado por prazo expirado", body: "Contrato de consultoria expirou sem entrega e foi estornado ao aluno.", data: { type: "CONSULTANCY_CONTRACT_EXPIRED", contractId: contract.id } });
+      void notificationService.sendToUsers([contract.provider.userId], {
+        preferenceType: "CONSULTANCY",
+        title: "Contrato estornado por prazo expirado",
+        body: isComboHalf
+          ? "A consultoria de um combo expirou sem entrega e foi estornada ao aluno. A parte presencial do combo continua normalmente."
+          : "Contrato de consultoria expirou sem entrega e foi estornado ao aluno.",
+        data: { type: "CONSULTANCY_CONTRACT_EXPIRED", contractId: contract.id }
+      });
     };
 
     // Processar 5 em paralelo para não sobrecarregar a API do MP
