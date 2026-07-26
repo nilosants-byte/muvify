@@ -68,6 +68,7 @@ export type ClientStackParamList = {
     comboConsultancyShareCents?: number | null;
     acceptsPix?: boolean;
     acceptsCreditCard?: boolean;
+    offerServiceMode?: import("../services/api/client").ProviderServiceMode | null;
   };
   MyPresentialPackages: undefined;
   PresentialPackageDetail: { packageId: string };

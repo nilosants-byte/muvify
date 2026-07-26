@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -103,6 +103,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
     comboConsultancyShareCents,
     acceptsPix = true,
     acceptsCreditCard = true,
+    offerServiceMode,
   } = route.params;
 
   const isFixedRecurring = presentialPackageMode === "FIXED_RECURRING";
@@ -114,6 +115,10 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
     acceptsCreditCard ? "CREDIT_CARD" : "PIX"
   );
   const [weeklySchedule, setWeeklySchedule] = useState<PresentialPackageWeeklyScheduleSlot[]>([]);
+  const [sessionLocation, setSessionLocation] = useState<string | null>(null);
+  const [homeAddressQuery, setHomeAddressQuery] = useState("");
+  const [homeAddressCoords, setHomeAddressCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [searchingHomeAddress, setSearchingHomeAddress] = useState(false);
   const [newSlotWeekday, setNewSlotWeekday] = useState(1);
   const [newSlotTime, setNewSlotTime] = useState("08:00");
   const [purchasing, setPurchasing] = useState(false);
@@ -190,11 +195,52 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
     setWeeklySchedule((current) => current.filter((_, i) => i !== index));
   }
 
+  async function searchHomeAddress() {
+    const query = homeAddressQuery.trim();
+    if (!query) return;
+    try {
+      setSearchingHomeAddress(true);
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=br`;
+      const resp = await fetch(url, {
+        headers: { "Accept-Language": "pt-BR", "User-Agent": "Muvify-App/1.0" },
+      });
+      const results = (await resp.json()) as Array<{ display_name: string; lat: string; lon: string }>;
+      const first = results[0];
+      if (!first) {
+        showToast("Endereço não encontrado.", "info");
+        setHomeAddressCoords(null);
+        return;
+      }
+      const lat = parseFloat(first.lat);
+      const lng = parseFloat(first.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        showToast("Endereço inválido.", "error");
+        setHomeAddressCoords(null);
+        return;
+      }
+      setHomeAddressCoords({ lat, lng });
+      setHomeAddressQuery(first.display_name);
+    } catch {
+      showToast("Falha ao buscar endereço.", "error");
+      setHomeAddressCoords(null);
+    } finally {
+      setSearchingHomeAddress(false);
+    }
+  }
+
+  // Local de atendimento da oferta prevalece sobre o do perfil - null herda
+  // o que o perfil do profissional já permite (ver Frente C).
+  const effectiveServiceMode = offerServiceMode ?? provider?.serviceMode;
+  const fixedLocations = provider?.fixedLocations ?? [];
+  const needsLocation = Boolean(effectiveServiceMode);
+
   const canSubmit =
     Boolean(selectedCategoryId) &&
     (!isFixedRecurring || weeklySchedule.length > 0) &&
     (paymentMethod !== "CREDIT_CARD" || paymentReady) &&
-    (!isCombo || consentAcknowledged);
+    (!isCombo || consentAcknowledged) &&
+    (!needsLocation || Boolean(sessionLocation)) &&
+    (sessionLocation !== "A domicílio" || Boolean(homeAddressCoords));
 
   async function handlePurchase() {
     if (!canSubmit || purchasing) return;
@@ -205,6 +251,9 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
         categoryId: selectedCategoryId,
         paymentMethod: paymentMethod as "CREDIT_CARD" | "PIX",
         weeklySchedule: isFixedRecurring ? weeklySchedule : undefined,
+        sessionLocation: sessionLocation ?? undefined,
+        clientLatitude: sessionLocation === "A domicílio" ? homeAddressCoords?.lat : undefined,
+        clientLongitude: sessionLocation === "A domicílio" ? homeAddressCoords?.lng : undefined,
         ...(isCombo ? { acknowledgedImmediateExecution: true } : {}),
       };
       if (isCombo) {
@@ -434,6 +483,55 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
                   Adicione ao menos um horário fixo semanal.
                 </Text>
               )}
+            </View>
+          ) : null}
+
+          {/* Card: Local */}
+          {needsLocation ? (
+            <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 10 }}>
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>
+                Local do atendimento <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>(obrigatório)</Text>
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {effectiveServiceMode === "HOME_VISIT_ONLY" || effectiveServiceMode === "BOTH" ? (
+                  <Chip label="A domicílio" selected={sessionLocation === "A domicílio"} onPress={() => setSessionLocation("A domicílio")} />
+                ) : null}
+                {effectiveServiceMode !== "HOME_VISIT_ONLY"
+                  ? fixedLocations.map((loc) => (
+                      <Chip key={loc.id} label={loc.name} selected={sessionLocation === loc.name} onPress={() => setSessionLocation(loc.name)} />
+                    ))
+                  : null}
+              </View>
+              {sessionLocation === "A domicílio" ? (
+                <View style={{ gap: 6 }}>
+                  <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                    <TextInput
+                      value={homeAddressQuery}
+                      onChangeText={(v) => { setHomeAddressQuery(v); setHomeAddressCoords(null); }}
+                      onSubmitEditing={() => void searchHomeAddress()}
+                      placeholder="Endereço completo do atendimento"
+                      placeholderTextColor={theme.text3}
+                      returnKeyType="search"
+                      style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 10, backgroundColor: theme.inputBg, paddingHorizontal: 12, paddingVertical: 10, color: theme.text1, fontSize: 13 }}
+                    />
+                    <TouchableOpacity
+                      onPress={() => void searchHomeAddress()}
+                      disabled={searchingHomeAddress || !homeAddressQuery.trim()}
+                      style={{ height: 40, paddingHorizontal: 14, borderRadius: 10, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", opacity: searchingHomeAddress || !homeAddressQuery.trim() ? 0.6 : 1 }}
+                    >
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: "#000" }}>
+                        {searchingHomeAddress ? "..." : "Buscar"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: homeAddressCoords ? theme.primary : theme.text3 }}>
+                    {homeAddressCoords ? "Endereço confirmado." : "Busque e confirme o endereço para checar se está dentro da área de atendimento."}
+                  </Text>
+                </View>
+              ) : null}
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>
+                Todas as sessões do pacote acontecerão neste local.
+              </Text>
             </View>
           ) : null}
 

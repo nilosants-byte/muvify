@@ -897,6 +897,12 @@ model ProviderServiceOffer {
   // ajustar por entrega individualmente). Null preserva o comportamento
   // antigo (ficha herda a vigencia inteira do contrato).
   fichaValidityDays          Int?
+  // Presencial/combo: local de atendimento especifico desta oferta (local
+  // fixo, a domicilio, ou ambos) - null herda o serviceMode geral do perfil
+  // do profissional. Só pode ser um subconjunto do que o perfil permite
+  // (nao da pra oferecer domicilio numa oferta se o profissional nunca
+  // habilitou atendimento a domicilio no perfil).
+  offerServiceMode           ProviderServiceMode?
   createdAt                  DateTime               @default(now())
   updatedAt                  DateTime               @updatedAt
   provider                   ProviderProfile        @relation(fields: [providerId], references: [id], onDelete: Cascade)
@@ -949,6 +955,11 @@ model PresentialPackage {
   validFrom             DateTime?
   validUntil            DateTime?
   cancelledAt           DateTime?
+  // Local de atendimento das sessoes geradas pelo pacote - decidido uma vez
+  // na compra (igual ao weeklySchedule) e aplicado a cada sessao gerada.
+  sessionLocation       String?
+  clientLatitude        Float?
+  clientLongitude       Float?
 
   // Controle de cobranca recorrente
   nextCycleIndex            Int       @default(1)

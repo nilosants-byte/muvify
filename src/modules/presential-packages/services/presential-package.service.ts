@@ -22,6 +22,7 @@ import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-
 import { billingCycleDurationDays } from "../../../shared/utils/consultancy-validity";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
+import { haversineKm } from "../../../shared/utils/geo";
 // PaymentService é importado dinamicamente onde é usado (não no topo do
 // arquivo) porque payment.service.ts também importa PresentialPackageService
 // — import estático dos dois lados cria dependência circular na inicialização
@@ -55,6 +56,9 @@ export type PurchasePresentialPackageInput = {
   paymentMethod: ConsultancyPaymentMethod;
   weeklySchedule?: WeeklyScheduleEntry[];
   acknowledgedImmediateExecution?: boolean;
+  sessionLocation?: string;
+  clientLatitude?: number;
+  clientLongitude?: number;
 };
 
 function offerEffectivePriceCents(offer: {
@@ -180,6 +184,54 @@ async function resolveClientCardForBilling(clientId: string) {
   };
 }
 
+// Frente C (liberdade de ofertas): mesma checagem de distancia que a sessao
+// avulsa ja faz (booking.service.ts) - so aplica quando o local nao e um
+// dos locais fixos do profissional (nesse caso o cliente e quem se desloca,
+// nao precisa validar nada). Decidido uma vez na compra do pacote, aplicado
+// a cada sessao gerada dali pra frente.
+async function resolveSessionLocationForPackage(
+  provider: {
+    fixedLocations: unknown;
+    serviceRadiusKm: number | null;
+    latitude: number | null;
+    longitude: number | null;
+  },
+  sessionLocation: string | undefined,
+  clientLatitude: number | undefined,
+  clientLongitude: number | undefined
+) {
+  if (!sessionLocation) {
+    return { sessionLocation: null as string | null, clientLatitude: null as number | null, clientLongitude: null as number | null };
+  }
+
+  const fixedLocations = Array.isArray(provider.fixedLocations)
+    ? (provider.fixedLocations as unknown as Array<{ name: string }>)
+    : [];
+  const isFixedLocation = fixedLocations.some((loc) => loc.name === sessionLocation);
+
+  if (!isFixedLocation && provider.serviceRadiusKm && provider.latitude != null && provider.longitude != null) {
+    if (clientLatitude == null || clientLongitude == null) {
+      throw new AppError(
+        "Informe o endereço do atendimento a domicílio para confirmar se está dentro da área de cobertura do profissional.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+    const distanceKm = haversineKm(provider.latitude, provider.longitude, clientLatitude, clientLongitude);
+    if (distanceKm > provider.serviceRadiusKm) {
+      throw new AppError(
+        `Este endereço está fora do raio de atendimento do profissional (${provider.serviceRadiusKm} km).`,
+        StatusCodes.BAD_REQUEST
+      );
+    }
+  }
+
+  return {
+    sessionLocation,
+    clientLatitude: !isFixedLocation ? clientLatitude ?? null : null,
+    clientLongitude: !isFixedLocation ? clientLongitude ?? null : null
+  };
+}
+
 export class PresentialPackageService {
   async purchasePackage(clientId: string, input: PurchasePresentialPackageInput) {
     await debtService.assertNoOutstandingDebt(clientId);
@@ -276,6 +328,13 @@ export class PresentialPackageService {
       ? (await resolveClientCardForBilling(clientId)).mpCardId
       : null;
 
+    const resolvedLocation = await resolveSessionLocationForPackage(
+      offer.provider,
+      input.sessionLocation,
+      input.clientLatitude,
+      input.clientLongitude
+    );
+
     const pkg = await prisma.presentialPackage.create({
       data: {
         providerId: offer.providerId,
@@ -289,6 +348,9 @@ export class PresentialPackageService {
         billingCycle: offer.billingCycle,
         sessionsPerCycle,
         weeklySchedule: weeklySchedule ?? undefined,
+        sessionLocation: resolvedLocation.sessionLocation,
+        clientLatitude: resolvedLocation.clientLatitude,
+        clientLongitude: resolvedLocation.clientLongitude,
         hasFixedTerm: offer.presentialHasFixedTerm,
         totalCycles: offer.presentialHasFixedTerm ? offer.presentialTotalCycles : null,
         billingCardId
@@ -556,6 +618,7 @@ export class PresentialPackageService {
               packageId: pkg.id,
               scheduledAt,
               priceCents: 0,
+              sessionLocation: pkg.sessionLocation,
               status: BookingStatus.CONFIRMED
             }
           });
@@ -643,6 +706,7 @@ export class PresentialPackageService {
             packageId: pkg.id,
             scheduledAt,
             priceCents: perSessionPriceCents,
+            sessionLocation: pkg.sessionLocation,
             status: BookingStatus.CONFIRMED
           }
         });
@@ -1159,6 +1223,13 @@ export class PresentialPackageService {
     // devolvemos os dois resultados pro chamador deixar claro pro cliente
     // exatamente o que foi confirmado e o que precisa ser tentado de novo,
     // em vez de mascarar um sucesso parcial como falha total.
+    const resolvedComboLocation = await resolveSessionLocationForPackage(
+      offer.provider,
+      input.sessionLocation,
+      input.clientLatitude,
+      input.clientLongitude
+    );
+
     const pkg = await prisma.presentialPackage.create({
       data: {
         providerId: offer.providerId,
@@ -1173,6 +1244,9 @@ export class PresentialPackageService {
         billingCycle: offer.billingCycle,
         sessionsPerCycle,
         weeklySchedule: weeklySchedule ?? undefined,
+        sessionLocation: resolvedComboLocation.sessionLocation,
+        clientLatitude: resolvedComboLocation.clientLatitude,
+        clientLongitude: resolvedComboLocation.clientLongitude,
         hasFixedTerm: offer.presentialHasFixedTerm,
         totalCycles: offer.presentialHasFixedTerm ? offer.presentialTotalCycles : null
       }

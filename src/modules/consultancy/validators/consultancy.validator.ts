@@ -40,6 +40,7 @@ export const updateOnlineSettingSchema = z.object({
 });
 
 const presentialPackageModeSchema = z.enum(["FIXED_RECURRING", "FLEXIBLE_CREDITS"]);
+const providerServiceModeSchema = z.enum(["PRESENTIAL_ONLY", "HOME_VISIT_ONLY", "BOTH"]);
 
 export const createProviderOfferSchema = z.object({
   body: z.object({
@@ -66,7 +67,8 @@ export const createProviderOfferSchema = z.object({
     presentialSessionsPerCycle: z.number().int().min(1).max(60).optional(),
     comboPresentialShareCents: z.number().int().min(100).max(10_000_000).optional(),
     comboConsultancyShareCents: z.number().int().min(100).max(10_000_000).optional(),
-    fichaValidityDays: z.number().int().min(1).max(365).optional()
+    fichaValidityDays: z.number().int().min(1).max(365).optional(),
+    offerServiceMode: providerServiceModeSchema.optional()
   })
 });
 
@@ -97,7 +99,8 @@ export const updateProviderOfferSchema = z.object({
     presentialSessionsPerCycle: z.number().int().min(1).max(60).nullable().optional(),
     comboPresentialShareCents: z.number().int().min(100).max(10_000_000).nullable().optional(),
     comboConsultancyShareCents: z.number().int().min(100).max(10_000_000).nullable().optional(),
-    fichaValidityDays: z.number().int().min(1).max(365).nullable().optional()
+    fichaValidityDays: z.number().int().min(1).max(365).nullable().optional(),
+    offerServiceMode: providerServiceModeSchema.nullable().optional()
   })
 });
 

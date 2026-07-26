@@ -7,6 +7,7 @@
   OfferBillingCycle,
   Prisma,
   PresentialPackageMode,
+  ProviderServiceMode,
   ServiceOfferKind,
   UserRole
 } from "@prisma/client";
@@ -57,6 +58,7 @@ type OfferInput = {
   comboPresentialShareCents?: number | null;
   comboConsultancyShareCents?: number | null;
   fichaValidityDays?: number | null;
+  offerServiceMode?: ProviderServiceMode | null;
 };
 
 type ExerciseInput = {
@@ -542,7 +544,11 @@ export class ConsultancyService {
     );
   }
 
-  private validateOfferInput(input: OfferInput, currentKind?: ServiceOfferKind) {
+  private validateOfferInput(
+    input: OfferInput,
+    currentKind?: ServiceOfferKind,
+    profileServiceMode?: ProviderServiceMode
+  ) {
     const kind = input.kind ?? currentKind;
     if (!kind) {
       throw new AppError("Tipo de oferta inválido.", StatusCodes.BAD_REQUEST);
@@ -701,6 +707,32 @@ export class ConsultancyService {
         "Validade de ficha é permitida apenas para ofertas com consultoria (consultoria, especializada ou combo).",
         StatusCodes.BAD_REQUEST
       );
+    }
+
+    // Frente C (liberdade de ofertas): local de atendimento por oferta - so
+    // pode restringir (nunca expandir) o que o perfil do profissional ja
+    // permite. Se o perfil so tem atendimento em local fixo, nenhuma oferta
+    // pode oferecer atendimento a domicilio, e vice-versa.
+    if (
+      input.offerServiceMode &&
+      kind !== ServiceOfferKind.PRESENTIAL &&
+      kind !== ServiceOfferKind.COMBO
+    ) {
+      throw new AppError(
+        "Local de atendimento por oferta é permitido apenas em ofertas presenciais ou combo.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    if (input.offerServiceMode && profileServiceMode && profileServiceMode !== ProviderServiceMode.BOTH) {
+      if (input.offerServiceMode !== profileServiceMode) {
+        throw new AppError(
+          profileServiceMode === ProviderServiceMode.PRESENTIAL_ONLY
+            ? "Seu perfil só atende em local fixo — habilite atendimento a domicílio no seu perfil antes de oferecer isso numa oferta."
+            : "Seu perfil só atende a domicílio — habilite atendimento em local fixo no seu perfil antes de oferecer isso numa oferta.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
     }
   }
 
@@ -1001,7 +1033,7 @@ export class ConsultancyService {
   async createProviderOffer(userId: string, input: OfferInput) {
     const provider = await this.providerProfileByUserId(userId);
     this.ensureProviderCanSaveOffer(provider);
-    this.validateOfferInput(input);
+    this.validateOfferInput(input, undefined, provider.serviceMode);
     const now = new Date();
     const isPromotion = Boolean(input.isPromotion);
     const promotionEndsAt =
@@ -1059,7 +1091,11 @@ export class ConsultancyService {
           input.kind === ServiceOfferKind.COMBO ? input.comboPresentialShareCents ?? null : null,
         comboConsultancyShareCents:
           input.kind === ServiceOfferKind.COMBO ? input.comboConsultancyShareCents ?? null : null,
-        fichaValidityDays: input.kind !== ServiceOfferKind.PRESENTIAL ? input.fichaValidityDays ?? null : null
+        fichaValidityDays: input.kind !== ServiceOfferKind.PRESENTIAL ? input.fichaValidityDays ?? null : null,
+        offerServiceMode:
+          input.kind === ServiceOfferKind.PRESENTIAL || input.kind === ServiceOfferKind.COMBO
+            ? input.offerServiceMode ?? null
+            : null
       }
     });
 
@@ -1134,6 +1170,8 @@ export class ConsultancyService {
         : input.comboConsultancyShareCents;
     const nextFichaValidityDays =
       typeof input.fichaValidityDays === "undefined" ? offer.fichaValidityDays : input.fichaValidityDays;
+    const nextOfferServiceMode =
+      typeof input.offerServiceMode === "undefined" ? offer.offerServiceMode : input.offerServiceMode;
 
     this.validateOfferInput(
       {
@@ -1161,9 +1199,11 @@ export class ConsultancyService {
         presentialSessionsPerCycle: nextPresentialSessionsPerCycle,
         comboPresentialShareCents: nextComboPresentialShareCents,
         comboConsultancyShareCents: nextComboConsultancyShareCents,
-        fichaValidityDays: nextFichaValidityDays
+        fichaValidityDays: nextFichaValidityDays,
+        offerServiceMode: nextOfferServiceMode
       },
-      offer.kind
+      offer.kind,
+      provider.serviceMode
     );
 
     const now = new Date();
@@ -1269,7 +1309,11 @@ export class ConsultancyService {
         presentialSessionsPerCycle: nextPresentialSessionsPerCycle,
         comboPresentialShareCents: nextKind === ServiceOfferKind.COMBO ? nextComboPresentialShareCents : null,
         comboConsultancyShareCents: nextKind === ServiceOfferKind.COMBO ? nextComboConsultancyShareCents : null,
-        fichaValidityDays: nextKind !== ServiceOfferKind.PRESENTIAL ? nextFichaValidityDays : null
+        fichaValidityDays: nextKind !== ServiceOfferKind.PRESENTIAL ? nextFichaValidityDays : null,
+        offerServiceMode:
+          nextKind === ServiceOfferKind.PRESENTIAL || nextKind === ServiceOfferKind.COMBO
+            ? nextOfferServiceMode
+            : null
       }
     });
 

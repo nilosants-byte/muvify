@@ -11,7 +11,10 @@ export const purchasePresentialPackageSchema = z.object({
     categoryId: z.string().uuid(),
     paymentMethod: z.enum(["CREDIT_CARD", "PIX"]),
     weeklySchedule: z.array(weeklyScheduleEntrySchema).min(1).max(7).optional(),
-    acknowledgedImmediateExecution: z.boolean().optional()
+    acknowledgedImmediateExecution: z.boolean().optional(),
+    sessionLocation: z.string().trim().min(1).max(200).optional(),
+    clientLatitude: z.number().min(-90).max(90).optional(),
+    clientLongitude: z.number().min(-180).max(180).optional()
   })
 });
 

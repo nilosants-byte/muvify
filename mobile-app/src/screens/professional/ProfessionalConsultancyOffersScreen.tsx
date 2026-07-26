@@ -10,8 +10,10 @@ import {
   consultancyApi,
   OfferBillingCycle,
   PresentialPackageMode,
+  ProviderServiceMode,
   ProviderServiceOffer,
   ServiceOfferKind,
+  userApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -21,6 +23,8 @@ import { PressableScale } from "../../components/polish/PressableScale";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { formatBRDate, formatCurrencyBRL, maskDateInputBR, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { useConsultancyCenterData, offerEffectivePriceCents } from "../../hooks/useConsultancyCenterData";
 
 type CenterNavigation = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalConsultancyCenter">["navigation"];
@@ -122,6 +126,9 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
 
   const { centerQuery, loading, crefValidated, offers, setOffers } = useConsultancyCenterData();
 
+  const myProfileQuery = useAuthQuery(queryKeys.user.me(), (token) => userApi.me(token));
+  const profileServiceMode: ProviderServiceMode = myProfileQuery.data?.providerProfile?.serviceMode ?? "BOTH";
+
   const [creatingOffer, setCreatingOffer] = useState(false);
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
   const [deletingOfferId, setDeletingOfferId] = useState<string | null>(null);
@@ -150,6 +157,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
   const [acceptsCreditCard, setAcceptsCreditCard] = useState(true);
   const [maxCreditInstallments, setMaxCreditInstallments] = useState("1");
   const [fichaValidityDays, setFichaValidityDays] = useState("");
+  const [offerServiceMode, setOfferServiceMode] = useState<ProviderServiceMode | null>(null);
 
   useEffect(() => {
     if (centerQuery.error) {
@@ -282,6 +290,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     setAcceptsCreditCard(true);
     setMaxCreditInstallments("1");
     setFichaValidityDays("");
+    setOfferServiceMode(null);
     setOfferWizardStep(0);
   }
 
@@ -310,6 +319,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     setAcceptsCreditCard(offer.acceptsCreditCard ?? true);
     setMaxCreditInstallments(String(offer.maxCreditInstallments ?? 1));
     setFichaValidityDays(offer.fichaValidityDays ? String(offer.fichaValidityDays) : "");
+    setOfferServiceMode(offer.offerServiceMode ?? null);
     setOfferFormVisible(true);
   }
 
@@ -403,6 +413,8 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
             acceptsCreditCard,
             maxCreditInstallments: maxCreditInstallmentsNumber,
             fichaValidityDays: offerKind !== "PRESENTIAL" && fichaValidityDays.trim() ? Number(fichaValidityDays) : null,
+            offerServiceMode:
+              offerKind === "PRESENTIAL" || offerKind === "COMBO" ? offerServiceMode : null,
           })
         );
         setOffers((prev) =>
@@ -445,6 +457,8 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
             maxCreditInstallments: maxCreditInstallmentsNumber,
             fichaValidityDays:
               offerKind !== "PRESENTIAL" && fichaValidityDays.trim() ? Number(fichaValidityDays) : undefined,
+            offerServiceMode:
+              offerKind === "PRESENTIAL" || offerKind === "COMBO" ? offerServiceMode ?? undefined : undefined,
           })
         );
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -660,6 +674,30 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     <MvInput keyboardType="numeric" label="Dias online por semana" placeholder="Ex: 2" value={comboOnlineDaysPerWeek} onChangeText={setComboOnlineDaysPerWeek} />
                     {comboDaysError ? <MvText variant="body4" color="danger">{comboDaysError}</MvText> : null}
                   </>
+                ) : null}
+                {(offerKind === "PRESENTIAL" || offerKind === "COMBO") && profileServiceMode === "BOTH" ? (
+                  <View style={{ gap: 8 }}>
+                    <MvText variant="body4" color="secondary">Local de atendimento desta oferta</MvText>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {([
+                        { value: null, label: "Igual ao perfil" },
+                        { value: "PRESENTIAL_ONLY" as const, label: "Só local fixo" },
+                        { value: "HOME_VISIT_ONLY" as const, label: "Só domicílio" },
+                      ]).map((opt) => {
+                        const sel = offerServiceMode === opt.value;
+                        return (
+                          <PressableScale
+                            key={opt.label}
+                            scale={0.97}
+                            onPress={() => setOfferServiceMode(opt.value)}
+                            style={{ flex: 1, borderRadius: 10, borderWidth: 1, borderColor: sel ? theme.primarySubtleBorder : theme.border, backgroundColor: sel ? theme.primarySubtle : theme.cardBg, padding: 8, alignItems: "center" }}
+                          >
+                            <MvText variant="caption" style={{ color: sel ? theme.textGreen : theme.text1 }}>{opt.label}</MvText>
+                          </PressableScale>
+                        );
+                      })}
+                    </View>
+                  </View>
                 ) : null}
                 {offerKind === "PRESENTIAL" ? (
                   <Chip

@@ -57,7 +57,8 @@ export class ConsultancyController {
       presentialSessionsPerCycle: request.body.presentialSessionsPerCycle,
       comboPresentialShareCents: request.body.comboPresentialShareCents,
       comboConsultancyShareCents: request.body.comboConsultancyShareCents,
-      fichaValidityDays: request.body.fichaValidityDays
+      fichaValidityDays: request.body.fichaValidityDays,
+      offerServiceMode: request.body.offerServiceMode
     });
 
     return response.status(StatusCodes.CREATED).json(offer);
@@ -90,7 +91,8 @@ export class ConsultancyController {
         presentialSessionsPerCycle: request.body.presentialSessionsPerCycle,
         comboPresentialShareCents: request.body.comboPresentialShareCents,
         comboConsultancyShareCents: request.body.comboConsultancyShareCents,
-        fichaValidityDays: request.body.fichaValidityDays
+        fichaValidityDays: request.body.fichaValidityDays,
+        offerServiceMode: request.body.offerServiceMode
       }
     );
 

@@ -260,6 +260,9 @@ export type ProviderServiceOffer = {
   // validade padrão (em dias) de cada ficha entregue — a cada renovação, a
   // ficha nova é cobrada de novo no mesmo valor da oferta.
   fichaValidityDays?: number | null;
+  // Presencial/combo: local de atendimento específico desta oferta — null
+  // herda o serviceMode geral do perfil do profissional.
+  offerServiceMode?: ProviderServiceMode | null;
 };
 
 export type PromotionFeedItem = {
@@ -2666,6 +2669,7 @@ export const consultancyApi = {
       acceptsCreditCard?: boolean;
       maxCreditInstallments?: number;
       fichaValidityDays?: number;
+      offerServiceMode?: ProviderServiceMode;
     }
   ) {
     return apiRequest<ProviderServiceOffer>("/consultancy/provider/offers", {
@@ -2699,6 +2703,7 @@ export const consultancyApi = {
       acceptsCreditCard?: boolean;
       maxCreditInstallments?: number;
       fichaValidityDays?: number | null;
+      offerServiceMode?: ProviderServiceMode | null;
     }
   ) {
     return apiRequest<ProviderServiceOffer>(`/consultancy/provider/offers/${offerId}`, {
@@ -2941,6 +2946,7 @@ export type PresentialPackage = {
   billingCycle: OfferBillingCycle;
   sessionsPerCycle: number;
   weeklySchedule?: PresentialPackageWeeklyScheduleSlot[] | null;
+  sessionLocation?: string | null;
   hasFixedTerm: boolean;
   totalCycles?: number | null;
   validFrom?: string | null;
@@ -2993,6 +2999,9 @@ export const presentialPackagesApi = {
       categoryId: string;
       paymentMethod: "CREDIT_CARD" | "PIX";
       weeklySchedule?: PresentialPackageWeeklyScheduleSlot[];
+      sessionLocation?: string;
+      clientLatitude?: number;
+      clientLongitude?: number;
     }
   ) {
     return apiRequest<PurchasePresentialPackageResponse>("/presential-packages", {
@@ -3009,6 +3018,9 @@ export const presentialPackagesApi = {
       paymentMethod: "CREDIT_CARD" | "PIX";
       weeklySchedule?: PresentialPackageWeeklyScheduleSlot[];
       acknowledgedImmediateExecution?: boolean;
+      sessionLocation?: string;
+      clientLatitude?: number;
+      clientLongitude?: number;
     }
   ) {
     return apiRequest<PurchaseComboResponse>("/presential-packages/combo", {
