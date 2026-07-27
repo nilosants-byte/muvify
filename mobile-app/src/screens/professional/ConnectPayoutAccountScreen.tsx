@@ -71,7 +71,22 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: Math.max(40, insets.bottom + 24), gap: 12 }}
           showsVerticalScrollIndicator={false}
         >
-          {mpStatus?.hasAccount ? (
+          {mpStatus?.hasAccount && mpStatus?.needsReconnect ? (
+            <MvCard>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(245,158,11,0.12)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="alert-circle-outline" size={20} color="#F59E0B" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <MvText variant="semi2">Reconexão necessária</MvText>
+                  <MvBadge label="Vendas pausadas" variant="orange" />
+                </View>
+              </View>
+              <MvText variant="body4" color="secondary">
+                Perdemos a conexão com sua conta Mercado Pago — suas vendas não estão sendo processadas até você reconectar. Isso costuma acontecer quando o acesso é revogado direto no painel do Mercado Pago.
+              </MvText>
+            </MvCard>
+          ) : mpStatus?.hasAccount ? (
             <MvCard>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 }}>
                 <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
@@ -107,8 +122,8 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
           <MvCard>
             <MvText variant="semi3" style={{ marginBottom: 8 }}>Como funciona o repasse</MvText>
             {[
-              { icon: "flash-outline" as const,            label: "PIX",       desc: "Disponível no mesmo dia (D+0)" },
-              { icon: "card-outline" as const,             label: "Cartão",    desc: "Disponível em até 14 dias (D+14)" },
+              { icon: "flash-outline" as const,            label: "PIX",       desc: "Normalmente no mesmo dia (D+0)*" },
+              { icon: "card-outline" as const,             label: "Cartão",    desc: "Normalmente em até 14 dias (D+14)*" },
               { icon: "shield-checkmark-outline" as const, label: "Segurança", desc: "100% processado pelo Mercado Pago" },
               { icon: "pie-chart-outline" as const,        label: "Divisão",   desc: "90% para você · 10% para a Muvify" },
             ].map((item) => (
@@ -122,6 +137,9 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
                 </View>
               </View>
             ))}
+            <MvText variant="body4" color="secondary" style={{ fontSize: 10, marginTop: 8 }}>
+              * Prazo definido pela sua própria configuração de recebimento no Mercado Pago — a Muvify não controla nem garante esse tempo.
+            </MvText>
           </MvCard>
 
           <MvButton

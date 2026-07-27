@@ -378,8 +378,21 @@ export class ConsultancyService {
 
     const provider = await prisma.providerProfile.findUnique({
       where: { id: input.providerId },
-      select: { mpAccountId: true }
+      select: { mpAccountId: true, mpTokenInvalidatedAt: true }
     });
+    // Raio-X de pagamentos, Lote 5: se a conexão do profissional JÁ FOI
+    // marcada como quebrada (refreshProviderMpTokens não conseguiu
+    // renovar), falha explicitamente com uma mensagem que aponta pro
+    // problema real — em vez de deixar a cobrança seguir sem repasse (ou,
+    // pior, o aluno receber uma mensagem que parece culpa do cartão dele).
+    // Não bloqueia o caso mais amplo de "token não resolveu por qualquer
+    // outro motivo" — esse ainda cai no fallback sem split existente.
+    if (provider?.mpTokenInvalidatedAt) {
+      throw new AppError(
+        "Não foi possível cobrar a renovação — a conexão deste profissional com o Mercado Pago precisa ser refeita. Peça para ele reconectar a conta em Recebimentos.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
     const providerAccessToken = await resolveProviderMpAccessToken(input.providerId);
     const split =
       providerAccessToken && provider?.mpAccountId

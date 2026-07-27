@@ -349,6 +349,13 @@ model ProviderProfile {
   mpAccessToken               String?
   mpRefreshToken              String?
   mpTokenExpiresAt            DateTime?
+  // Raio-X de pagamentos, Lote 5: setado quando a renovacao do token com o
+  // Mercado Pago falha de um jeito que nao se resolve sozinho tentando de
+  // novo (ex: profissional revogou o acesso do app no proprio painel do
+  // MP) - antes disso ficava so num log interno, sem ninguem saber que as
+  // vendas desse profissional pararam de repassar. Limpo automaticamente
+  // quando ele reconecta a conta com sucesso.
+  mpTokenInvalidatedAt        DateTime?
   crefNumber                  String?
   crefDocumentUrl             String?
   credentialDocuments         Json?

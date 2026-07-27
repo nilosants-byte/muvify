@@ -627,11 +627,19 @@ export class PaymentService {
 
   async getProviderConnectStatus(userId: string) {
     const provider = await prisma.providerProfile.findFirst({ where: { userId } });
+    const hasAccount = Boolean(provider?.mpAccountId);
+    // Raio-X de pagamentos, Lote 5: antes só conferia se existia um
+    // mpAccountId salvo, nunca se o token ainda funciona de verdade — um
+    // profissional cuja renovação de token falhou via
+    // refreshProviderMpTokens continuava vendo "Ativo" aqui, sem saber que
+    // as vendas dele já não estavam mais repassando.
+    const needsReconnect = hasAccount && Boolean(provider?.mpTokenInvalidatedAt);
     return {
-      hasAccount: Boolean(provider?.mpAccountId),
+      hasAccount,
       accountId: provider?.mpAccountId ?? null,
-      chargesEnabled: Boolean(provider?.mpAccountId),
-      payoutsEnabled: Boolean(provider?.mpAccountId)
+      chargesEnabled: hasAccount && !needsReconnect,
+      payoutsEnabled: hasAccount && !needsReconnect,
+      needsReconnect
     };
   }
 
@@ -714,6 +722,7 @@ export class PaymentService {
         mpAccessToken:    tokenData.access_token  ? encryptSensitiveText(tokenData.access_token)  : undefined,
         mpRefreshToken:   tokenData.refresh_token ? encryptSensitiveText(tokenData.refresh_token) : undefined,
         mpTokenExpiresAt: mpTokenExpiresAt ?? undefined,
+        mpTokenInvalidatedAt: null,
       }
     });
 
@@ -731,7 +740,7 @@ export class PaymentService {
         mpRefreshToken: { not: null },
         mpTokenExpiresAt: { lt: thirtyDaysFromNow },
       },
-      select: { id: true, mpRefreshToken: true },
+      select: { id: true, userId: true, mpRefreshToken: true, mpTokenInvalidatedAt: true },
     });
 
     for (const provider of providers) {
@@ -751,6 +760,24 @@ export class PaymentService {
         });
         if (!response.ok) {
           console.error(`[mp-token-refresh] provider ${provider.id}: HTTP ${response.status}`);
+          // Raio-X de pagamentos, Lote 5: 400/401 aqui significa que o
+          // refresh token em si não é mais válido (ex: profissional
+          // revogou o acesso no painel do Mercado Pago) — tentar de novo
+          // no próximo ciclo do job nunca vai resolver sozinho, diferente
+          // de uma falha 5xx/rede passageira. Marca e avisa o profissional
+          // uma única vez (só na transição de "ok" pra "inválido").
+          if ((response.status === 400 || response.status === 401) && !provider.mpTokenInvalidatedAt) {
+            await prisma.providerProfile.update({
+              where: { id: provider.id },
+              data: { mpTokenInvalidatedAt: new Date() }
+            });
+            void notificationService.sendToUsers([provider.userId], {
+              preferenceType: "PAYMENTS",
+              title: "Reconecte sua conta do Mercado Pago",
+              body: "Perdemos a conexão com sua conta do Mercado Pago — suas vendas não estão sendo repassadas. Reconecte em Recebimentos para voltar a vender.",
+              data: { type: "MP_TOKEN_INVALIDATED" }
+            });
+          }
           continue;
         }
         const tokenData = (await response.json()) as {
@@ -770,6 +797,7 @@ export class PaymentService {
               ? encryptSensitiveText(tokenData.refresh_token)
               : undefined,
             mpTokenExpiresAt: mpTokenExpiresAt ?? undefined,
+            mpTokenInvalidatedAt: null,
           },
         });
       } catch (err) {

@@ -441,6 +441,7 @@ export type ProviderAccountStatus = {
   accountId?: string;
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
+  needsReconnect?: boolean;
 };
 
 export type ProviderCredentialsDocument = {
