@@ -1075,30 +1075,61 @@ export class PaymentService {
     if (!payment) return;
 
     if (payment.status === PaymentStatus.CAPTURED && payment.mpPaymentId) {
-      const refund = await mpRefund.create({
-        payment_id: payment.mpPaymentId,
-        body: {}
-      });
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: PaymentStatus.REFUNDED,
-          refundedAt: new Date(),
-          mpChargeId: payment.mpPaymentId
+      try {
+        const refund = await mpRefund.create({
+          payment_id: payment.mpPaymentId,
+          body: {}
+        });
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: PaymentStatus.REFUNDED,
+            refundedAt: new Date(),
+            mpChargeId: payment.mpPaymentId
+          }
+        });
+        void writeAuditLog({
+          paymentId: payment.id,
+          fromStatus: PaymentStatus.CAPTURED,
+          toStatus: PaymentStatus.REFUNDED,
+          triggeredBy: "cancel_booking",
+          metadata: { mpRefundId: String(refund.id) }
+        });
+        await this.notifyBookingUsers(bookingId, {
+          title: "Pagamento estornado",
+          body: "Pagamento cancelado e estorno realizado para o cliente.",
+          data: { type: "PAYMENT_REFUNDED" }
+        });
+      } catch (error) {
+        // Dinheiro já cobrado de verdade (CAPTURED) e o estorno no gateway
+        // falhou — nunca deixar essa exceção subir (o agendamento precisa
+        // terminar cancelado do mesmo jeito); em vez disso, abre um caso de
+        // disputa pra revisão manual, igual ao padrão já usado em
+        // consultancy.service.ts e no cancelamento de pacote presencial.
+        console.error("cancelPaymentForBooking: estorno falhou (MP error):", { bookingId, paymentId: payment.id, error });
+        const booking = await prisma.booking.findUnique({
+          where: { id: bookingId },
+          select: { clientId: true, providerId: true }
+        });
+        if (booking) {
+          await prisma.disputeCase.create({
+            data: {
+              type: "REFUND_FAILED",
+              clientId: booking.clientId,
+              providerId: booking.providerId,
+              amountCents: payment.amountCents,
+              mpPaymentId: payment.mpPaymentId,
+              bookingId,
+              contextNote: "Reembolso automático falhou ao cancelar agendamento presencial."
+            }
+          });
         }
-      });
-      void writeAuditLog({
-        paymentId: payment.id,
-        fromStatus: PaymentStatus.CAPTURED,
-        toStatus: PaymentStatus.REFUNDED,
-        triggeredBy: "cancel_booking",
-        metadata: { mpRefundId: String(refund.id) }
-      });
-      await this.notifyBookingUsers(bookingId, {
-        title: "Pagamento estornado",
-        body: "Pagamento cancelado e estorno realizado para o cliente.",
-        data: { type: "PAYMENT_REFUNDED" }
-      });
+        await this.notifyBookingUsers(bookingId, {
+          title: "Estorno pendente de revisão",
+          body: "Não conseguimos confirmar o estorno automaticamente — nossa equipe já foi avisada e vai resolver manualmente.",
+          data: { type: "PAYMENT_REFUND_FAILED" }
+        });
+      }
       return;
     }
 
