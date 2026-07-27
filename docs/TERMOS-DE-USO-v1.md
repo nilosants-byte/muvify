@@ -239,7 +239,7 @@ A Muvify empreende esforços razoáveis para manter o Aplicativo disponível 24 
 
 ### 7.1 Fluxo de Agendamento
 
-1. **Solicitação:** O Aluno seleciona o Profissional, a data, o horário e o local de preferência e envia a solicitação de agendamento;
+1. **Solicitação:** O Aluno seleciona o Profissional, a data, o horário e o local de preferência e envia a solicitação de agendamento. O(s) local(is) disponível(is) (atendimento em endereço fixo, a domicílio, ou ambos) é definido pelo Profissional em cada oferta, sempre dentro do que já está cadastrado em seu perfil;
 2. **Confirmação:** O Profissional confirma ou recusa a solicitação no prazo de **[X horas]**. Após o prazo sem resposta, a solicitação expira automaticamente;
 3. **Pagamento:** Confirmado o agendamento, o Aluno efetua o pagamento pela plataforma (PIX ou cartão). O pagamento é requisito para a confirmação definitiva do agendamento;
 4. **Sessão:** O Profissional comparece no local, horário e data confirmados;
@@ -263,22 +263,24 @@ O código de presença é um mecanismo de segurança gerado automaticamente para
 
 Agendamentos confirmados mas não iniciados (sem registro de código de presença) expiram automaticamente após **48 horas** da data e horário agendados. O valor pago é reembolsado ao Aluno integralmente.
 
-### 7.5 Pacotes Presenciais e Cobrança Recorrente
+### 7.5 Pacotes Presenciais
 
-Além do agendamento avulso (Cláusula 7.1 a 7.4), o Profissional pode oferecer **pacotes presenciais** com cobrança periódica e recorrente, em uma das seguintes modalidades, à escolha do Profissional na criação da oferta:
+Além do agendamento avulso (Cláusula 7.1 a 7.4), o Profissional pode oferecer **pacotes presenciais**, em uma das seguintes modalidades, à escolha do Profissional na criação da oferta:
 
-1. **Horário fixo semanal (FIXED_RECURRING):** as sessões da semana são pré-agendadas automaticamente na agenda do Aluno, conforme os dias e horários definidos na contratação;
-2. **Créditos flexíveis (FLEXIBLE_CREDITS):** o Aluno recebe uma quantidade determinada de créditos a cada ciclo de cobrança, podendo agendar livremente dentro do prazo de vigência do ciclo. **Créditos não utilizados até o fim do ciclo expiram e não são acumulados** para o ciclo seguinte.
+1. **Horário fixo semanal (FIXED_RECURRING):** as sessões da semana são pré-agendadas automaticamente na agenda do Aluno, conforme os dias e horários definidos na contratação, com cobrança periódica e recorrente por ciclo (Cláusula 7.5.1 a 7.5.4);
+2. **Sessões avulsas:** o Aluno contrata, de uma vez, um bloco fechado de N sessões com validade determinada (calculada a partir da cadência e da duração escolhidas na contratação). **Não há cobrança no momento da compra do bloco** — cada sessão é cobrada individualmente, no valor unitário definido pela oferta, somente quando o Aluno efetivamente agenda aquela sessão, pelo mesmo mecanismo do agendamento avulso (Cláusula 7.1 a 7.4, incluindo Pix ou cartão, sem restrição de método). Sessões do bloco ainda não agendadas quando a validade expira são perdidas, sem geração de reembolso (já que nenhum valor foi antecipado por elas) — o Aluno é avisado com antecedência da proximidade do vencimento (Cláusula 7.5.6).
 
-**7.5.1 Funcionamento da cobrança:** ao contrário do pagamento único do agendamento avulso, o pacote presencial é cobrado **por ciclo** (semanal, quinzenal ou mensal, conforme definido pelo Profissional), de forma automática e recorrente, até que o Aluno ou o Profissional cancele. Cada ciclo é uma cobrança independente — **não existe uma assinatura ou autorização de débito permanente registrada externamente**; cada cobrança é processada individualmente, por cartão salvo (tokenizado) ou por Pix gerado a cada ciclo.
+**7.5.1 Funcionamento da cobrança (horário fixo semanal):** ao contrário do pagamento único do agendamento avulso, o pacote de horário fixo é cobrado **por ciclo** (semanal, quinzenal ou mensal, conforme definido pelo Profissional), de forma automática e recorrente, até que o Aluno ou o Profissional cancele. Cada ciclo é uma cobrança independente — **não existe uma assinatura ou autorização de débito permanente registrada externamente**; cada cobrança é processada individualmente, por cartão salvo (tokenizado, podendo ser parcelada conforme a Cláusula 8.3 quando o ciclo de faturamento contratado for trimestral, semestral ou anual) ou por Pix gerado a cada ciclo. Esta cobrança por ciclo não se aplica à modalidade de sessões avulsas, descrita acima.
 
-**7.5.2 Falha no pagamento do ciclo:** em caso de falha na cobrança do ciclo (cartão recusado ou Pix não pago dentro de 24 horas), o pacote entra em situação de pendência e as sessões/créditos daquele ciclo ficam suspensos até a regularização. Após **3 (três) falhas consecutivas**, o pacote é cancelado automaticamente, sem qualquer cobrança adicional.
+**7.5.2 Falha no pagamento do ciclo (horário fixo semanal):** em caso de falha na cobrança do ciclo (cartão recusado ou Pix não pago dentro de 24 horas), o pacote entra em situação de pendência e as sessões daquele ciclo ficam suspensas até a regularização. Após **3 (três) falhas consecutivas**, o pacote é cancelado automaticamente, sem qualquer cobrança adicional.
 
-**7.5.3 Cancelamento:** o cancelamento do pacote presencial é imediato e interrompe as cobranças futuras — nenhum novo ciclo será cobrado após o cancelamento. Quando o cancelamento é feito pelo Profissional, o valor do ciclo vigente mais recente é reembolsado integralmente ao Aluno. Quando o cancelamento é feito pelo Aluno, o ciclo já cobrado não é reembolsado, mas nenhuma cobrança futura ocorre.
+**7.5.3 Cancelamento (horário fixo semanal):** o cancelamento do pacote de horário fixo é imediato e interrompe as cobranças futuras — nenhum novo ciclo será cobrado após o cancelamento. Sessões futuras já agendadas dentro do ciclo vigente seguem a mesma regra de antecedência do agendamento avulso (Cláusula 10.2): sessões a **2 horas ou mais** do horário marcado são canceladas; sessões a **menos de 2 horas** são mantidas como devidas ao Profissional. Quando o cancelamento é feito pelo Profissional, o valor do ciclo vigente mais recente é reembolsado integralmente ao Aluno (deduzido o valor de sessões a menos de 2 horas, se houver). Quando o cancelamento é feito pelo Aluno, o ciclo já cobrado não é reembolsado, mas nenhuma cobrança futura ocorre.
 
-**7.5.4 Combo (pacote presencial + consultoria online):** o Profissional pode oferecer um pacote combinado, com uma parte presencial (cobrança recorrente, conforme esta cláusula) e uma parte de consultoria online (pagamento único, conforme Cláusula 8), com valores definidos separadamente pelo Profissional no momento da oferta. **Cada parte do combo pode ser cancelada de forma independente**, sem afetar a outra.
+**7.5.4 Combo (pacote presencial + consultoria online):** o Profissional pode oferecer um pacote combinado, com uma parte presencial (conforme esta cláusula) e uma parte de consultoria online (conforme Cláusula 8), com valores definidos separadamente pelo Profissional no momento da oferta. **Cada parte do combo pode ser cancelada de forma independente**, sem afetar a outra.
 
 **7.5.5 Direito de arrependimento:** aplica-se ao pacote presencial o mesmo direito de arrependimento previsto no item 10.1 destes Termos.
+
+**7.5.6 Sessões avulsas — validade e expiração:** o Aluno é avisado com antecedência (poucos dias antes) da proximidade do fim da validade do bloco, caso ainda existam sessões não utilizadas. Encerrada a validade sem que todas as sessões tenham sido agendadas, o pacote passa automaticamente para o status de expirado e o saldo remanescente deixa de estar disponível para agendamento, sem reembolso adicional — já que, como descrito acima, nenhum valor foi cobrado antecipadamente pelas sessões não utilizadas.
 
 ---
 
@@ -292,15 +294,18 @@ Além do agendamento avulso (Cláusula 7.1 a 7.4), o Profissional pode oferecer 
 4. **Anamnese:** O Aluno preenche a anamnese (se ainda não preenchida), que é compartilhada com o Profissional;
 5. **Elaboração e entrega:** O Profissional elabora e entrega a primeira ficha de treino em até **48 (quarenta e oito) horas** a partir da confirmação do pagamento da consultoria. **Um mesmo contrato pode receber várias fichas de treino ao longo da sua vigência** — o Profissional pode entregar novas fichas conforme o Aluno evolui, e também pode atualizar/editar uma ficha já entregue. Cada ficha tem sua própria vigência, que nunca ultrapassa a vigência do contrato;
 6. **Execução:** O Aluno executa os treinos das fichas recebidas e pode registrar a conclusão de cada um pelo Aplicativo, com opção de compartilhar uma foto no feed de evolução (item 13);
-7. **Conclusão e repasse:** O repasse ao Profissional é processado após a entrega da primeira ficha, conforme o prazo de reembolso da Cláusula 10.3 — a obrigação principal do Profissional (produzir e entregar o plano) já está cumprida a partir daí, mesmo que fichas adicionais sejam entregues depois.
+7. **Renovação de ficha (quando aplicável):** em ofertas de consultoria com validade de ficha configurada pelo Profissional (mais de uma ficha prevista, ou ficha por prazo indeterminado com renovações), cada nova ficha entregue **após a primeira** gera uma cobrança automática no cartão salvo do Aluno, no valor informado pelo Profissional na oferta e reforçado ao Aluno no momento da contratação (Cláusula 9.1). Essa cobrança de renovação **não é parcelável** — é sempre cobrada em uma única vez, por se tratar de uma cobrança recorrente por natureza;
+8. **Conclusão e repasse:** O repasse ao Profissional é processado após a entrega da primeira ficha, conforme o prazo de reembolso da Cláusula 10.3 — a obrigação principal do Profissional (produzir e entregar o plano) já está cumprida a partir daí, mesmo que fichas adicionais sejam entregues depois.
 
-### 8.2 Prazos de Entrega
+### 8.2 Prazos de Entrega e Vencimento de Ficha
 
 O prazo de entrega da primeira ficha de treino é de **48 (quarenta e oito) horas**, contado a partir da confirmação do pagamento da consultoria. **O não cumprimento do prazo pelo Profissional dá ao Aluno o direito ao reembolso integral do valor pago**, processado automaticamente pelo sistema.
 
+**Ficha vencida sem renovação:** em ofertas com validade de ficha configurada (Cláusula 8.1, item 7), quando uma ficha vence sem que uma nova tenha sido entregue, o Aplicativo passa a enviar lembretes com frequência crescente às duas partes durante os **7 (sete) dias** seguintes ao vencimento — ao Profissional, cobrando a entrega da nova ficha; ao Aluno, avisando do vencimento e orientando a solicitar a renovação ao Profissional. Persistindo a ausência de nova ficha ao final desses 7 dias, o contrato é **encerrado automaticamente pelo sistema**, sem reembolso (as fichas já entregues e pagas permanecem válidas como serviço prestado), com notificação a ambas as partes.
+
 ### 8.3 Parcelamento
 
-O pagamento de consultorias pode ser parcelado em cartão de crédito, conforme o número máximo de parcelas habilitado pelo Profissional em seu perfil. O parcelamento está sujeito aos termos e condições do processador de pagamento (Mercado Pago).
+O pagamento da consultoria (primeira ficha) pode ser parcelado em cartão de crédito, dentro do número máximo de parcelas habilitado pelo Profissional na oferta — cabendo ao Aluno escolher, no momento da compra, quantas dessas parcelas fazem sentido para ele. O parcelamento real só é oferecido quando o ciclo de faturamento da oferta é **trimestral, semestral ou anual**; ofertas com ciclo mensal, quinzenal ou semanal não admitem parcelamento, por já envolverem cobrança recorrente própria — parcelar, nesse caso, duplicaria a lógica de cobrança periódica. Pelo mesmo motivo, cobranças de renovação de ficha (Cláusula 8.1, item 7) nunca são parceladas. O parcelamento está sujeito aos termos e condições do processador de pagamento (Mercado Pago).
 
 ---
 
@@ -315,6 +320,8 @@ O pagamento de consultorias pode ser parcelado em cartão de crédito, conforme 
 | **PIX** | Para agendamentos e consultorias |
 
 Os dados de cartão são tokenizados pelo **Mercado Pago** e nunca armazenados nos servidores da Muvify.
+
+**Forma de pagamento por oferta:** dentro dos métodos acima, o Profissional define, em cada oferta, quais formas de pagamento aceita — podendo restringir (nunca ampliar além do que está disponível na plataforma) o que é oferecido ao Aluno naquela contratação específica. Quando a oferta envolve renovação de ficha de consultoria (Cláusula 8.1, item 7) e aceita Pix na contratação inicial, o Aluno é avisado, no momento da compra, de que será necessário cadastrar um cartão antes da primeira renovação — a cobrança de renovação é sempre feita em cartão salvo, por não ser compatível com a confirmação assíncrona do Pix.
 
 ### 9.2 Tarifas da Plataforma (Comissão)
 
@@ -335,7 +342,9 @@ Pagamentos de **agendamentos avulsos** por cartão seguem o seguinte fluxo:
 2. **Captura:** O valor autorizado é capturado após o prazo de **24 horas** da autorização (ou após a conclusão confirmada da sessão, o que ocorrer primeiro);
 3. **Repasse:** O repasse ao Profissional é processado após a captura, observados os prazos operacionais do Mercado Pago.
 
-**Exceção — pacotes presenciais (Cláusula 7.5):** cada ciclo de cobrança do pacote presencial é **cobrado diretamente** no cartão salvo, sem a etapa de pré-autorização — não há bloqueio prévio seguido de captura; o valor é debitado de uma vez no momento da cobrança do ciclo.
+Este mesmo fluxo de autorização e captura se aplica também a cada sessão individual de um pacote de **sessões avulsas** (Cláusula 7.5), já que cada sessão é cobrada como um agendamento avulso no momento em que é marcada.
+
+**Exceção — pacote de horário fixo semanal (Cláusula 7.5) e renovação de ficha de consultoria (Cláusula 8.1):** cada ciclo de cobrança do pacote de horário fixo, e cada cobrança de renovação de ficha, é **cobrado diretamente** no cartão salvo, sem a etapa de pré-autorização — não há bloqueio prévio seguido de captura; o valor é debitado de uma vez no momento da cobrança.
 
 Para pagamentos com cartão de crédito acima de R$ 1.000,00 (mil reais), o Aplicativo pode exigir autenticação adicional via **3D Secure (3DS)** como medida de segurança antifraude.
 
@@ -394,6 +403,9 @@ A consultoria e os planos de treino online são tratados como um **produto de el
 | Aluno cancela **após** a entrega da primeira ficha | **Sem reembolso** — o produto já foi elaborado e entregue |
 | Profissional não entrega dentro do prazo de **48 (quarenta e oito) horas** | Reembolso integral automático ao Aluno |
 | Profissional cancela unilateralmente antes da entrega | Reembolso integral ao Aluno + penalidades ao Profissional (item 19.2) |
+| Ficha vencida sem renovação por **7 (sete) dias** (Cláusula 8.2) | Contrato encerrado automaticamente, sem reembolso das fichas já entregues |
+
+**Contestação de entrega:** o Aluno pode contestar a entrega de **qualquer ficha** do contrato — não apenas a primeira — dentro do prazo de **48 (quarenta e oito) horas** a contar da entrega daquela ficha específica, caso entenda que o conteúdo entregue não corresponde ao contratado. Cada ficha admite uma contestação própria; o valor em disputa é o correspondente à cobrança daquela entrega (a inicial ou a renovação, conforme o caso). A contestação abre um caso de análise pela Muvify, que pode resultar em reembolso, caso procedente.
 
 ### 10.4 Prazo de Processamento dos Reembolsos
 
