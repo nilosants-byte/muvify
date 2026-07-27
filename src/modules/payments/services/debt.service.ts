@@ -3,7 +3,7 @@ import { CardToken, Payment } from "mercadopago";
 import { mp } from "../../../config/mercadopago";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
-import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { platformFeeAmount } from "../../../shared/utils/platform-fee";
 import { NotificationService } from "../../notifications/services/notification.service";
 
@@ -106,7 +106,7 @@ export class DebtService {
     }
 
     const provider = debt.provider;
-    const providerAccessToken = provider ? await resolveProviderMpAccessToken(provider.id) : null;
+    const providerAccessToken = provider ? await requireProviderMpAccessToken(provider.id) : null;
 
     const tokenResult = await mpCardToken.create({
       body: { customer_id: client.mpCustomerId, card_id: selectedCard.mpCardId }

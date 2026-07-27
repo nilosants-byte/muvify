@@ -4,6 +4,7 @@ import { Payment, CardToken, PaymentRefund } from "mercadopago";
 import { prisma } from "../src/config/prisma";
 import { ConsultancyService } from "../src/modules/consultancy/services/consultancy.service";
 import { PresentialPackageService } from "../src/modules/presential-packages/services/presential-package.service";
+import { encryptSensitiveText } from "../src/shared/utils/encryption";
 
 // Frente 5 do roteiro de seguranca de pagamentos: quando a metade de
 // consultoria de um combo e estornada automaticamente por falta de entrega
@@ -104,6 +105,7 @@ describe("Combo — aviso e opção do aluno quando a consultoria é estornada a
         experienceYears: 3,
         priceCents: 30000,
         mpAccountId: "999888777",
+        mpAccessToken: encryptSensitiveText("fake_access_token"),
         crefValidationStatus: "APPROVED"
       }
     });

@@ -5,6 +5,7 @@ import { Payment, CardToken } from "mercadopago";
 import { app } from "../src/app";
 import { prisma } from "../src/config/prisma";
 import { ConsultancyService } from "../src/modules/consultancy/services/consultancy.service";
+import { encryptSensitiveText } from "../src/shared/utils/encryption";
 
 // Liberdade de configuracao de ofertas — Frente B: duracao flexivel da
 // consultoria + fichas com validade e cobranca a cada renovacao. Cobre
@@ -247,6 +248,7 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
         experienceYears: 3,
         priceCents: 15000,
         mpAccountId: "999888777",
+        mpAccessToken: encryptSensitiveText("fake_access_token"),
         crefValidationStatus: "APPROVED"
       }
     });

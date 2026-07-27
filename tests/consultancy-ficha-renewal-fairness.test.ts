@@ -4,6 +4,7 @@ import { Payment, CardToken } from "mercadopago";
 import { ConsultancyContractStatus, ConsultancyPaymentStatus, ConsultancyRequestStatus } from "@prisma/client";
 import { prisma } from "../src/config/prisma";
 import { ConsultancyService } from "../src/modules/consultancy/services/consultancy.service";
+import { encryptSensitiveText } from "../src/shared/utils/encryption";
 
 // Raio-X de pagamentos (27/07/2026) — Lote 4: renovação de ficha justa e
 // transparente. Cobre: contestação por renovação específica (não só a
@@ -76,6 +77,7 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
         experienceYears: 3,
         priceCents: 15000,
         mpAccountId: "555444333",
+        mpAccessToken: encryptSensitiveText("fake_access_token"),
         crefValidationStatus: "APPROVED"
       }
     });

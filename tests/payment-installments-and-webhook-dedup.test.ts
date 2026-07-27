@@ -9,6 +9,7 @@ import { prisma } from "../src/config/prisma";
 import { env } from "../src/config/env";
 import { PresentialPackageService } from "../src/modules/presential-packages/services/presential-package.service";
 import { NotificationService } from "../src/modules/notifications/services/notification.service";
+import { encryptSensitiveText } from "../src/shared/utils/encryption";
 
 // Raio-X de pagamentos (27/07/2026) — Lote 6: parcelamento real no pacote
 // presencial (só ciclos elegíveis) e notificação de webhook não duplicada em
@@ -98,6 +99,7 @@ describe("Parcelamento real do pacote presencial e dedup de webhook (Lote 6 do r
         experienceYears: 3,
         priceCents: 15000,
         mpAccountId: "444333222",
+        mpAccessToken: encryptSensitiveText("fake_access_token"),
         crefValidationStatus: "APPROVED"
       }
     });

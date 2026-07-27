@@ -18,7 +18,7 @@ import { prisma } from "../../../config/prisma";
 import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
-import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { resolveProviderMpAccessToken, requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { billingCycleDurationDays } from "../../../shared/utils/consultancy-validity";
 import { resolveMaxInstallments } from "../../../shared/utils/offer-installments";
 import { NotificationService } from "../../notifications/services/notification.service";
@@ -486,7 +486,18 @@ export class PresentialPackageService {
     const periodStart = opts.isFirstCycle ? new Date() : pkg.nextBillingAt ?? new Date();
     const periodEnd = addCycles(periodStart, pkg.billingCycle, 1);
 
-    const providerAccessToken = await resolveProviderMpAccessToken(pkg.providerId);
+    // Raio-X de pagamentos, Rodada 2, Lote 1: nunca cobra sem split
+    // resolvido. Na 1a cobrança (compra interativa, cliente esperando na
+    // tela) falha alto e claro antes de tentar. Numa renovação via cron
+    // (sem cliente na tela), não faz sentido lançar — pula a tentativa de
+    // cobrança sem split e trata como ciclo falho (mesmo caminho de
+    // pagamento recusado), notificando o profissional pra reconectar em vez
+    // do aviso genérico de "pagamento recusado".
+    const providerAccessToken = opts.isFirstCycle
+      ? await requireProviderMpAccessToken(pkg.providerId)
+      : await resolveProviderMpAccessToken(pkg.providerId);
+    const providerTokenMissing = !providerAccessToken;
+
     const split =
       providerAccessToken && pkg.provider.mpAccountId
         ? {
@@ -501,9 +512,9 @@ export class PresentialPackageService {
       cycleIndex: String(cycleIndex)
     };
 
-    let mpPay: Awaited<ReturnType<Payment["create"]>>;
+    let mpPay: Awaited<ReturnType<Payment["create"]>> | null = null;
 
-    if (pkg.paymentMethod === ConsultancyPaymentMethod.PIX) {
+    if (!providerTokenMissing && pkg.paymentMethod === ConsultancyPaymentMethod.PIX) {
       const pixExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       const nameParts = pkg.client.name.split(" ");
       mpPay = await mpPaymentClient.create({
@@ -522,10 +533,10 @@ export class PresentialPackageService {
         },
         requestOptions: {
           idempotencyKey: `presential-package:${pkg.id}:cycle:${cycleIndex}:attempt:${pkg.consecutiveFailedCycles}`,
-          ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+          ...{ accessToken: providerAccessToken as string }
         }
       });
-    } else {
+    } else if (!providerTokenMissing) {
       const cardData = await resolveClientCardForBilling(pkg.clientId);
       const tokenResult = await mpCardTokenClient.create({
         body: { customer_id: cardData.mpCustomerId, card_id: cardData.mpCardId }
@@ -542,7 +553,7 @@ export class PresentialPackageService {
         },
         requestOptions: {
           idempotencyKey: `presential-package:${pkg.id}:cycle:${cycleIndex}:attempt:${pkg.consecutiveFailedCycles}`,
-          ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+          ...{ accessToken: providerAccessToken as string }
         }
       });
       if (!pkg.billingCardId) {
@@ -553,10 +564,10 @@ export class PresentialPackageService {
       }
     }
 
-    const mpStatus = mpPay.status;
-    const mpPayId = String(mpPay.id);
+    const mpStatus = mpPay?.status ?? "provider_disconnected";
+    const mpPayId = mpPay ? String(mpPay.id) : null;
 
-    if (mpStatus === "approved") {
+    if (mpStatus === "approved" && mpPayId) {
       await this.activateCycle(pkg.id, cycleIndex, periodStart, periodEnd, mpPayId, pkg.cycleAmountCents);
       await notificationService.sendToUsers([pkg.provider.userId], {
         preferenceType: "PAYMENTS",
@@ -567,7 +578,7 @@ export class PresentialPackageService {
       return { status: "CAPTURED" as const };
     }
 
-    if (pkg.paymentMethod === ConsultancyPaymentMethod.PIX && (mpStatus === "pending" || mpStatus === "in_process")) {
+    if (mpPay && pkg.paymentMethod === ConsultancyPaymentMethod.PIX && (mpStatus === "pending" || mpStatus === "in_process")) {
       const pixPayload = extractMpPixData(mpPay);
       await prisma.presentialPackage.update({
         where: { id: pkg.id },
@@ -605,7 +616,9 @@ export class PresentialPackageService {
       data: {
         status: shouldCancel ? PresentialPackageStatus.CANCELLED : PresentialPackageStatus.PAST_DUE,
         consecutiveFailedCycles: failedCount,
-        lastBillingFailureReason: `Pagamento recusado (${mpStatus}).`,
+        lastBillingFailureReason: providerTokenMissing
+          ? "Conexão do profissional com o Mercado Pago precisa ser reconectada."
+          : `Pagamento recusado (${mpStatus}).`,
         cancelledAt: shouldCancel ? new Date() : null,
         nextBillingAt: shouldCancel ? pkg.nextBillingAt : new Date(Date.now() + CARD_RETRY_THROTTLE_MS)
       }
@@ -615,15 +628,23 @@ export class PresentialPackageService {
       title: shouldCancel ? "Pacote presencial cancelado" : "Não conseguimos cobrar seu cartão",
       body: shouldCancel
         ? "Seu pacote presencial foi cancelado após várias tentativas de cobrança sem sucesso."
-        : "Atualize seu cartão para manter seus agendamentos ativos.",
+        : providerTokenMissing
+          ? "Aguardando o profissional resolver uma pendência com o Mercado Pago para renovar seu pacote."
+          : "Atualize seu cartão para manter seus agendamentos ativos.",
       data: { type: "PRESENTIAL_PACKAGE_RENEWAL_FAILED", packageId: pkg.id, cycleIndex }
     });
     await notificationService.sendToUsers([pkg.provider.userId], {
       preferenceType: "PAYMENTS",
-      title: shouldCancel ? "Pacote presencial cancelado" : "Pagamento de aluno pendente",
+      title: shouldCancel
+        ? "Pacote presencial cancelado"
+        : providerTokenMissing
+          ? "Reconecte sua conta Mercado Pago"
+          : "Pagamento de aluno pendente",
       body: shouldCancel
         ? `O pacote de ${pkg.client.name} foi cancelado por falta de pagamento.`
-        : `${pkg.client.name} está com pagamento pendente - agendamentos futuros pausados até normalizar.`,
+        : providerTokenMissing
+          ? `Não conseguimos cobrar o ciclo de ${pkg.client.name} porque sua conexão com o Mercado Pago precisa ser refeita. Acesse Recebimentos para reconectar.`
+          : `${pkg.client.name} está com pagamento pendente - agendamentos futuros pausados até normalizar.`,
       data: { type: "PRESENTIAL_PACKAGE_RENEWAL_FAILED", packageId: pkg.id, cycleIndex }
     });
 
@@ -1469,18 +1490,17 @@ export class PresentialPackageService {
     paymentMethod: ConsultancyPaymentMethod,
     amountCents: number
   ) {
-    const providerAccessToken = await resolveProviderMpAccessToken(providerId);
+    const providerAccessToken = await requireProviderMpAccessToken(providerId);
     const provider = await prisma.providerProfile.findUniqueOrThrow({
       where: { id: providerId },
       select: { mpAccountId: true }
     });
-    const split =
-      providerAccessToken && provider.mpAccountId
-        ? {
-            collector: { id: Number(provider.mpAccountId) },
-            marketplace_fee: platformFeeAmount(amountCents) / 100
-          }
-        : {};
+    const split = provider.mpAccountId
+      ? {
+          collector: { id: Number(provider.mpAccountId) },
+          marketplace_fee: platformFeeAmount(amountCents) / 100
+        }
+      : {};
     const metadata = { domain: "COMBO_CONSULTANCY", contractId };
 
     let mpPay: Awaited<ReturnType<Payment["create"]>>;
@@ -1508,7 +1528,7 @@ export class PresentialPackageService {
         },
         requestOptions: {
           idempotencyKey: `combo:${contractId}:consultancy:pix`,
-          ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+          ...{ accessToken: providerAccessToken }
         }
       });
     } else {
@@ -1531,7 +1551,7 @@ export class PresentialPackageService {
         },
         requestOptions: {
           idempotencyKey: `combo:${contractId}:consultancy:card`,
-          ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+          ...{ accessToken: providerAccessToken }
         }
       });
     }

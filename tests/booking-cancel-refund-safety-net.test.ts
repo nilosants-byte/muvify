@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
-import { PaymentRefund } from "mercadopago";
+import { Payment, PaymentRefund } from "mercadopago";
 import { PaymentStatus, BookingStatus } from "@prisma/client";
 import { prisma } from "../src/config/prisma";
 import { BookingService } from "../src/modules/bookings/services/booking.service";
@@ -123,6 +123,65 @@ describe("Rede de seguranca de estorno — cancelPaymentForBooking (Lote 1 do ra
 
     return booking;
   }
+
+  async function createAuthorizedBooking(daysFromNow = 2) {
+    const scheduledAt = new Date();
+    scheduledAt.setDate(scheduledAt.getDate() + daysFromNow);
+    scheduledAt.setHours(14, 0, 0, 0);
+    const booking = await bookingService.create(
+      clientId,
+      providerId,
+      categoryId,
+      scheduledAt.toISOString(),
+      undefined,
+      "CREDIT_CARD" as any
+    );
+    bookingIds.push(booking.id);
+
+    // Pre-autorizado (hold no cartao), ainda nao capturado.
+    await prisma.payment.update({
+      where: { bookingId: booking.id },
+      data: { status: PaymentStatus.AUTHORIZED, mpPaymentId: `mp_${uid("pay")}`, authorizedAt: new Date() }
+    });
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: BookingStatus.CONFIRMED } });
+
+    return booking;
+  }
+
+  it("quando o cancelamento da pre-autorizacao (AUTHORIZED, ainda nao capturado) falha na MP, cria DisputeCase em vez de lancar excecao", async () => {
+    // Raio-X Rodada 2, Lote 1: antes desta correcao, so o ramo CAPTURED
+    // (estorno) tinha essa rede de seguranca — o ramo AUTHORIZED (hold nao
+    // liberado) so tinha console.error, deixando o pagamento travado sem
+    // rastro.
+    vi.spyOn(Payment.prototype, "cancel").mockRejectedValueOnce(new Error("MP indisponivel"));
+
+    const booking = await createAuthorizedBooking(10);
+
+    await expect(paymentService.cancelPaymentForBooking(booking.id)).resolves.toBeUndefined();
+
+    const payment = await prisma.payment.findUniqueOrThrow({ where: { bookingId: booking.id } });
+    // Nao marca CANCELED — o hold pode ainda estar ativo no gateway, o
+    // estado local nao deve mentir sobre isso.
+    expect(payment.status).toBe(PaymentStatus.AUTHORIZED);
+
+    const dispute = await prisma.disputeCase.findFirst({ where: { bookingId: booking.id, type: "REFUND_FAILED" } });
+    expect(dispute).not.toBeNull();
+    expect(dispute?.clientId).toBe(clientId);
+    expect(dispute?.providerId).toBe(providerId);
+  });
+
+  it("quando o cancelamento da pre-autorizacao funciona, marca CANCELED normalmente e nao cria disputa", async () => {
+    vi.spyOn(Payment.prototype, "cancel").mockResolvedValueOnce({} as any);
+
+    const booking = await createAuthorizedBooking(11);
+    await paymentService.cancelPaymentForBooking(booking.id);
+
+    const payment = await prisma.payment.findUniqueOrThrow({ where: { bookingId: booking.id } });
+    expect(payment.status).toBe(PaymentStatus.CANCELED);
+
+    const dispute = await prisma.disputeCase.findFirst({ where: { bookingId: booking.id, type: "REFUND_FAILED" } });
+    expect(dispute).toBeNull();
+  });
 
   it("quando o estorno da MP falha, cria um DisputeCase em vez de lancar excecao", async () => {
     vi.spyOn(PaymentRefund.prototype, "create").mockRejectedValueOnce(new Error("MP indisponivel"));

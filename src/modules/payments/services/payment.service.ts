@@ -17,7 +17,7 @@ import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { encryptSensitiveText, decryptSensitiveText } from "../../../shared/utils/encryption";
-import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
 
@@ -596,8 +596,8 @@ export class PaymentService {
     return this.toPublicBookingPayment(updated);
   }
 
-  private async resolveProviderAccessToken(providerId: string): Promise<string | null> {
-    return resolveProviderMpAccessToken(providerId);
+  private async resolveProviderAccessToken(providerId: string): Promise<string> {
+    return requireProviderMpAccessToken(providerId);
   }
 
   async createProviderOnboardingLink(userId: string, returnUrl?: string, refreshUrl?: string) {
@@ -845,48 +845,57 @@ export class PaymentService {
       });
 
       const pixExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const providerAccessToken = await this.resolveProviderAccessToken(payment.booking.provider.id);
-      const providerNetCents  = providerSplitAmount(payment.amountCents);
-      const platformFeeCents  = platformFeeAmount(payment.amountCents);
+      try {
+        const providerAccessToken = await this.resolveProviderAccessToken(payment.booking.provider.id);
+        const providerNetCents  = providerSplitAmount(payment.amountCents);
+        const platformFeeCents  = platformFeeAmount(payment.amountCents);
 
-      mpPay = await mpPayment.create({
-        body: {
-          transaction_amount: payment.amountCents / 100,
-          payment_method_id: "pix",
-          date_of_expiration: pixExpiresAt,
-          payer: {
-            email: payment.booking.client.email,
-            first_name: payment.booking.client.name.split(" ")[0],
-            last_name: payment.booking.client.name.split(" ").slice(1).join(" ") || undefined
+        mpPay = await mpPayment.create({
+          body: {
+            transaction_amount: payment.amountCents / 100,
+            payment_method_id: "pix",
+            date_of_expiration: pixExpiresAt,
+            payer: {
+              email: payment.booking.client.email,
+              first_name: payment.booking.client.name.split(" ")[0],
+              last_name: payment.booking.client.name.split(" ").slice(1).join(" ") || undefined
+            },
+            description: `Agendamento #${payment.bookingId}`,
+            metadata: {
+              bookingId: payment.bookingId,
+              paymentId: payment.id,
+              paymentMethod: PaymentMethod.PIX
+            },
+            ...(payment.booking.provider.mpAccountId
+              ? {
+                  collector: { id: Number(payment.booking.provider.mpAccountId) },
+                  marketplace_fee: platformFeeCents / 100,
+                }
+              : {})
           },
-          description: `Agendamento #${payment.bookingId}`,
-          metadata: {
-            bookingId: payment.bookingId,
-            paymentId: payment.id,
-            paymentMethod: PaymentMethod.PIX
-          },
-          ...(providerAccessToken && payment.booking.provider.mpAccountId
-            ? {
-                collector: { id: Number(payment.booking.provider.mpAccountId) },
-                marketplace_fee: platformFeeCents / 100,
-              }
-            : {})
-        },
-        requestOptions: {
-          idempotencyKey: `booking:${payment.bookingId}:pix:${payment.attempts + 1}`,
-          ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
-        }
-      });
+          requestOptions: {
+            idempotencyKey: `booking:${payment.bookingId}:pix:${payment.attempts + 1}`,
+            ...{ accessToken: providerAccessToken }
+          }
+        });
 
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          mpPaymentId: String(mpPay.id),
-          providerAmountCents: providerNetCents,
-          platformFeeCents,
-          failureReason: null
-        }
-      });
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: {
+            mpPaymentId: String(mpPay.id),
+            providerAmountCents: providerNetCents,
+            platformFeeCents,
+            failureReason: null
+          }
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Falha ao gerar cobrança PIX";
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { status: PaymentStatus.FAILED, failureReason: message }
+        });
+        throw error;
+      }
     }
 
     if (mpPay.status === MP_STATUS_APPROVED) {
@@ -1030,7 +1039,7 @@ export class PaymentService {
             bookingId: payment.bookingId,
             paymentId: payment.id
           },
-          ...(providerAccessToken && payment.booking.provider.mpAccountId
+          ...(payment.booking.provider.mpAccountId
             ? {
                 collector: { id: Number(payment.booking.provider.mpAccountId) },
                 marketplace_fee: platformFeeCents / 100,
@@ -1039,7 +1048,7 @@ export class PaymentService {
         },
         requestOptions: {
           idempotencyKey: `booking:${payment.bookingId}:auth:${payment.attempts + 1}`,
-          ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+          ...{ accessToken: providerAccessToken }
         }
       });
 
@@ -1176,7 +1185,47 @@ export class PaymentService {
 
     // Cancel authorized (not yet captured) payment
     if (payment.status === PaymentStatus.AUTHORIZED) {
-      await mpPayment.cancel({ id: payment.mpPaymentId });
+      try {
+        await mpPayment.cancel({ id: payment.mpPaymentId });
+      } catch (error) {
+        // Raio-X de pagamentos, Rodada 2, Lote 1: mesmo princípio do ramo
+        // CAPTURED acima — nunca deixar essa exceção subir (o agendamento
+        // precisa terminar cancelado do mesmo jeito). O hold no cartão do
+        // cliente pode não ter sido liberado no gateway; abre disputa pra
+        // revisão manual em vez de falhar em silêncio (console.error).
+        console.error("cancelPaymentForBooking: cancelamento de pré-autorização falhou (MP error):", {
+          bookingId,
+          paymentId: payment.id,
+          error
+        });
+        const booking = await prisma.booking.findUnique({
+          where: { id: bookingId },
+          select: { clientId: true, providerId: true }
+        });
+        if (booking) {
+          await prisma.disputeCase.create({
+            data: {
+              type: "REFUND_FAILED",
+              clientId: booking.clientId,
+              providerId: booking.providerId,
+              amountCents: payment.amountCents,
+              mpPaymentId: payment.mpPaymentId,
+              bookingId,
+              contextNote: "Cancelamento de pré-autorização (hold no cartão) falhou ao cancelar agendamento presencial — pagamento nunca foi capturado."
+            }
+          });
+        }
+        await this.notifyBookingUsers(bookingId, {
+          title: "Cancelamento pendente de revisão",
+          body: "Não conseguimos confirmar a liberação do valor pré-autorizado — nossa equipe já foi avisada e vai resolver manualmente.",
+          data: { type: "PAYMENT_REFUND_FAILED" }
+        });
+        // Não marca o Payment como CANCELED — o hold pode ainda estar ativo
+        // no gateway, e mentir sobre o estado local atrapalharia qualquer
+        // tentativa de resolução manual depois (mesmo princípio do ramo
+        // CAPTURED acima, que também não atualiza o status em caso de falha).
+        return;
+      }
     }
 
     await prisma.payment.update({

@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
 import { prisma } from "../src/config/prisma";
 import { ConsultancyService } from "../src/modules/consultancy/services/consultancy.service";
+import { encryptSensitiveText } from "../src/shared/utils/encryption";
 
 // Frente 3a do roteiro de seguranca de pagamentos: pagamento de consultoria no
 // cartao vira reserva (capture:false) no aceite, com cobranca de verdade so
@@ -79,6 +80,7 @@ describe("Consultoria — reserva no cartão e captura na entrega", () => {
         experienceYears: 3,
         priceCents: 20000,
         mpAccountId: "999888777",
+        mpAccessToken: encryptSensitiveText("fake_access_token"),
         crefValidationStatus: "APPROVED"
       }
     });

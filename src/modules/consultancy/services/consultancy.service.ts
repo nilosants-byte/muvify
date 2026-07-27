@@ -18,7 +18,7 @@ import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
-import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
 import { supportsInstallments, resolveMaxInstallments } from "../../../shared/utils/offer-installments";
 import { NotificationService } from "../../notifications/services/notification.service";
@@ -257,14 +257,13 @@ export class ConsultancyService {
       where: { id: input.providerId },
       select: { mpAccountId: true }
     });
-    const providerAccessToken = await resolveProviderMpAccessToken(input.providerId);
-    const split =
-      providerAccessToken && provider?.mpAccountId
-        ? {
-            collector: { id: Number(provider.mpAccountId) },
-            marketplace_fee: platformFeeAmount(input.amountCents) / 100
-          }
-        : {};
+    const providerAccessToken = await requireProviderMpAccessToken(input.providerId);
+    const split = provider?.mpAccountId
+      ? {
+          collector: { id: Number(provider.mpAccountId) },
+          marketplace_fee: platformFeeAmount(input.amountCents) / 100
+        }
+      : {};
 
     const metadata = {
       domain: "CONSULTANCY",
@@ -293,7 +292,7 @@ export class ConsultancyService {
         },
         requestOptions: {
           idempotencyKey: `consultancy:${input.requestId}:pix`,
-          ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+          ...{ accessToken: providerAccessToken }
         }
       });
     }
@@ -328,7 +327,7 @@ export class ConsultancyService {
       },
       requestOptions: {
         idempotencyKey: `consultancy:${input.requestId}:card`,
-        ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+        ...{ accessToken: providerAccessToken }
       }
     });
   }
@@ -362,29 +361,20 @@ export class ConsultancyService {
 
     const provider = await prisma.providerProfile.findUnique({
       where: { id: input.providerId },
-      select: { mpAccountId: true, mpTokenInvalidatedAt: true }
+      select: { mpAccountId: true }
     });
-    // Raio-X de pagamentos, Lote 5: se a conexão do profissional JÁ FOI
-    // marcada como quebrada (refreshProviderMpTokens não conseguiu
-    // renovar), falha explicitamente com uma mensagem que aponta pro
-    // problema real — em vez de deixar a cobrança seguir sem repasse (ou,
-    // pior, o aluno receber uma mensagem que parece culpa do cartão dele).
-    // Não bloqueia o caso mais amplo de "token não resolveu por qualquer
-    // outro motivo" — esse ainda cai no fallback sem split existente.
-    if (provider?.mpTokenInvalidatedAt) {
-      throw new AppError(
-        "Não foi possível cobrar a renovação — a conexão deste profissional com o Mercado Pago precisa ser refeita. Peça para ele reconectar a conta em Recebimentos.",
-        StatusCodes.BAD_REQUEST
-      );
-    }
-    const providerAccessToken = await resolveProviderMpAccessToken(input.providerId);
-    const split =
-      providerAccessToken && provider?.mpAccountId
-        ? {
-            collector: { id: Number(provider.mpAccountId) },
-            marketplace_fee: platformFeeAmount(input.amountCents) / 100
-          }
-        : {};
+    // Raio-X de pagamentos, Rodada 2, Lote 1: requireProviderMpAccessToken
+    // agora cobre esse caso centralizadamente (token invalidado ou nunca
+    // resolvido) — antes só o subcaso de token já explicitamente invalidado
+    // tinha essa guarda aqui, deixando o caso mais amplo cair no fallback
+    // sem split.
+    const providerAccessToken = await requireProviderMpAccessToken(input.providerId);
+    const split = provider?.mpAccountId
+      ? {
+          collector: { id: Number(provider.mpAccountId) },
+          marketplace_fee: platformFeeAmount(input.amountCents) / 100
+        }
+      : {};
 
     const tokenResult = await mpCardTokenClient.create({
       body: { customer_id: paymentData.mpCustomerId, card_id: paymentData.mpCardId }
@@ -402,7 +392,7 @@ export class ConsultancyService {
       },
       requestOptions: {
         idempotencyKey: `consultancy:${input.contractId}:ficha-renewal:${input.renewalIndex}`,
-        ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+        ...{ accessToken: providerAccessToken }
       }
     });
 
