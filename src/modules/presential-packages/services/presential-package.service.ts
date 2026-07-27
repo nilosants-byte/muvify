@@ -20,6 +20,7 @@ import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { billingCycleDurationDays } from "../../../shared/utils/consultancy-validity";
+import { resolveMaxInstallments } from "../../../shared/utils/offer-installments";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
 import { haversineKm } from "../../../shared/utils/geo";
@@ -59,6 +60,7 @@ export type PurchasePresentialPackageInput = {
   sessionLocation?: string;
   clientLatitude?: number;
   clientLongitude?: number;
+  installments?: number;
 };
 
 function offerEffectivePriceCents(offer: {
@@ -233,6 +235,54 @@ async function resolveSessionLocationForPackage(
 }
 
 export class PresentialPackageService {
+  // Raio-X de pagamentos, Lote 6: parcelamento real no cartão, reaproveitado
+  // por purchasePackage e purchaseCombo (as duas rotas cujo pacote pode
+  // acabar cobrado via chargeCycle - a única cobrança que é "de uma vez só"
+  // e por isso pode ser dividida em parcelas).
+  private resolveChargeCycleInstallments(params: {
+    requestedInstallments: number;
+    appliesToChargeCycle: boolean;
+    paymentMethod: ConsultancyPaymentMethod;
+    billingCycle: OfferBillingCycle;
+    maxCreditInstallments: number;
+    amountCents: number;
+  }): number {
+    const { requestedInstallments, appliesToChargeCycle, paymentMethod, billingCycle, maxCreditInstallments, amountCents } = params;
+
+    if (!appliesToChargeCycle) {
+      if (requestedInstallments !== 1) {
+        throw new AppError(
+          "Este modo de pacote cobra sessão por sessão — parcelamento não se aplica.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+      return 1;
+    }
+
+    if (paymentMethod !== ConsultancyPaymentMethod.CREDIT_CARD) {
+      if (requestedInstallments !== 1) {
+        throw new AppError("Parcelamento acima de 1x é permitido apenas em cartão de crédito.", StatusCodes.BAD_REQUEST);
+      }
+      return 1;
+    }
+
+    const maxAllowedInstallments = resolveMaxInstallments(billingCycle, maxCreditInstallments);
+    if (requestedInstallments > maxAllowedInstallments) {
+      throw new AppError(
+        `Parcelamento acima do permitido para este pacote. Máximo: ${maxAllowedInstallments}x.`,
+        StatusCodes.BAD_REQUEST
+      );
+    }
+    if (requestedInstallments > 1 && amountCents / requestedInstallments < 500) {
+      const maxAllowed = Math.floor(amountCents / 500);
+      throw new AppError(
+        `O valor deste pacote não permite ${requestedInstallments}x. Cada parcela deve ser de no mínimo R$ 5,00. Máximo permitido: ${maxAllowed}x.`,
+        StatusCodes.UNPROCESSABLE_ENTITY
+      );
+    }
+    return requestedInstallments;
+  }
+
   async purchasePackage(clientId: string, input: PurchasePresentialPackageInput) {
     await debtService.assertNoOutstandingDebt(clientId);
 
@@ -335,6 +385,20 @@ export class PresentialPackageService {
       input.clientLongitude
     );
 
+    // Raio-X de pagamentos, Lote 6: parcelamento real só se aplica ao modelo
+    // de cobrança por ciclo (chargeCycle) — horário fixo em cartão cobra
+    // cada sessão individualmente (activateCardFixedPeriod), então nunca
+    // chega a esse charge; parcelar aí não faria sentido mesmo (não existe
+    // valor "de uma vez só" pra dividir).
+    const resolvedInstallments = this.resolveChargeCycleInstallments({
+      requestedInstallments: input.installments ?? 1,
+      appliesToChargeCycle: !isCardFixedRecurring && offer.presentialPackageMode !== PresentialPackageMode.FLEXIBLE_CREDITS,
+      paymentMethod: input.paymentMethod,
+      billingCycle: offer.billingCycle,
+      maxCreditInstallments: offer.maxCreditInstallments,
+      amountCents: cycleAmountCents
+    });
+
     const pkg = await prisma.presentialPackage.create({
       data: {
         providerId: offer.providerId,
@@ -353,7 +417,8 @@ export class PresentialPackageService {
         clientLongitude: resolvedLocation.clientLongitude,
         hasFixedTerm: offer.presentialHasFixedTerm,
         totalCycles: offer.presentialHasFixedTerm ? offer.presentialTotalCycles : null,
-        billingCardId
+        billingCardId,
+        paymentInstallments: resolvedInstallments
       }
     });
 
@@ -469,7 +534,7 @@ export class PresentialPackageService {
         body: {
           transaction_amount: pkg.cycleAmountCents / 100,
           token: String(tokenResult.id),
-          installments: 1,
+          installments: pkg.paymentInstallments,
           payer: { type: "customer", id: cardData.mpCustomerId, email: cardData.clientEmail },
           description: `Pacote presencial - ciclo ${cycleIndex}`,
           metadata,
@@ -1268,6 +1333,18 @@ export class PresentialPackageService {
       );
     }
 
+    // Raio-X de pagamentos, Lote 6: valida o parcelamento ANTES de criar e
+    // cobrar a metade de consultoria — falha rápido, sem efeito colateral
+    // nenhum, em vez de descobrir só depois de já ter cobrado a consultoria.
+    const resolvedInstallments = this.resolveChargeCycleInstallments({
+      requestedInstallments: input.installments ?? 1,
+      appliesToChargeCycle: offer.presentialPackageMode !== PresentialPackageMode.FLEXIBLE_CREDITS,
+      paymentMethod: input.paymentMethod,
+      billingCycle: offer.billingCycle,
+      maxCreditInstallments: offer.maxCreditInstallments,
+      amountCents: offer.comboPresentialShareCents!
+    });
+
     const now = new Date();
     const deliveryDeadlineAt = new Date(
       now.getTime() + env.CONSULTANCY_DELIVERY_DEADLINE_HOURS * 60 * 60 * 1000
@@ -1355,6 +1432,7 @@ export class PresentialPackageService {
         billingCycle: offer.billingCycle,
         sessionsPerCycle,
         weeklySchedule: weeklySchedule ?? undefined,
+        paymentInstallments: resolvedInstallments,
         sessionLocation: resolvedComboLocation.sessionLocation,
         clientLatitude: resolvedComboLocation.clientLatitude,
         clientLongitude: resolvedComboLocation.clientLongitude,

@@ -864,6 +864,9 @@ export function CreateBookingScreen({ navigation, route }: Props) {
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Valor por aula: {formatCurrencyBRL(unitPriceCents / 100)}</Text>
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Aulas selecionadas: {selectedLessonsCount}</Text>
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.primary, marginTop: 4 }}>Total previsto: {formatCurrencyBRL(totalSelectedPriceCents / 100)}</Text>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, marginTop: 4, lineHeight: 16 }}>
+            Cancelamento com 2h ou mais de antecedência devolve o valor integralmente. Cancelando depois disso, o valor fica com o profissional.
+          </Text>
         </View>
 
         {/* Botão CTA V2 com safe area */}

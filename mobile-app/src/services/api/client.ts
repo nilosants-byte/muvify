@@ -3006,6 +3006,7 @@ export const presentialPackagesApi = {
       sessionLocation?: string;
       clientLatitude?: number;
       clientLongitude?: number;
+      installments?: number;
     }
   ) {
     return apiRequest<PurchasePresentialPackageResponse>("/presential-packages", {

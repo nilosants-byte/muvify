@@ -14,7 +14,8 @@ export class PresentialPackageController {
       weeklySchedule: request.body.weeklySchedule,
       sessionLocation: request.body.sessionLocation,
       clientLatitude: request.body.clientLatitude,
-      clientLongitude: request.body.clientLongitude
+      clientLongitude: request.body.clientLongitude,
+      installments: request.body.installments
     });
     return response.status(StatusCodes.CREATED).json(result);
   }

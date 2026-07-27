@@ -14,7 +14,8 @@ export const purchasePresentialPackageSchema = z.object({
     acknowledgedImmediateExecution: z.boolean().optional(),
     sessionLocation: z.string().trim().min(1).max(200).optional(),
     clientLatitude: z.number().min(-90).max(90).optional(),
-    clientLongitude: z.number().min(-180).max(180).optional()
+    clientLongitude: z.number().min(-180).max(180).optional(),
+    installments: z.number().int().min(1).max(12).optional()
   })
 });
 

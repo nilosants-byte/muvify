@@ -20,6 +20,7 @@ import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/pl
 import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
 import { resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
+import { supportsInstallments, resolveMaxInstallments } from "../../../shared/utils/offer-installments";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
@@ -97,23 +98,6 @@ function billingCycleLabel(cycle: OfferBillingCycle) {
   if (cycle === OfferBillingCycle.QUARTERLY) return "trimestral";
   if (cycle === OfferBillingCycle.SEMIANNUAL) return "semestral";
   return "anual";
-}
-
-const installmentEligibleCycles = new Set<OfferBillingCycle>([
-  OfferBillingCycle.QUARTERLY,
-  OfferBillingCycle.SEMIANNUAL,
-  OfferBillingCycle.ANNUAL
-]);
-
-function supportsInstallments(cycle: OfferBillingCycle) {
-  return installmentEligibleCycles.has(cycle);
-}
-
-function resolveMaxInstallments(cycle: OfferBillingCycle, configured: number) {
-  if (!supportsInstallments(cycle)) {
-    return 1;
-  }
-  return Math.min(Math.max(configured, 1), 12);
 }
 
 function mapConsultancyMethodToFunding(method: ConsultancyPaymentMethod) {

@@ -103,14 +103,20 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
     comboConsultancyShareCents,
     acceptsPix = true,
     acceptsCreditCard = true,
+    maxCreditInstallments = 1,
     offerServiceMode,
   } = route.params;
 
   const isFixedRecurring = presentialPackageMode === "FIXED_RECURRING";
   const isCombo = offerKind === "COMBO";
+  // Raio-X de pagamentos, Lote 6: parcelamento real só se aplica ao modelo
+  // de cobrança por ciclo — horário fixo em cartão e sessões avulsas cobram
+  // cada sessão individualmente, não tem "valor de uma vez só" pra dividir.
+  const supportsRealInstallments = !isCombo && !isFixedRecurring && presentialPackageMode !== "FLEXIBLE_CREDITS";
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [installments, setInstallments] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<ConsultancyPaymentMethod>(
     acceptsCreditCard ? "CREDIT_CARD" : "PIX"
   );
@@ -255,6 +261,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
         clientLatitude: sessionLocation === "A domicílio" ? homeAddressCoords?.lat : undefined,
         clientLongitude: sessionLocation === "A domicílio" ? homeAddressCoords?.lng : undefined,
         ...(isCombo ? { acknowledgedImmediateExecution: true } : {}),
+        ...(!isCombo && supportsRealInstallments && paymentMethod === "CREDIT_CARD" ? { installments } : {}),
       };
       if (isCombo) {
         const result = await runWithAuth((token) => presentialPackagesApi.purchaseCombo(token, body));
@@ -269,8 +276,17 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
           showToast("Combo contratado com sucesso!", "success");
           navigation.replace("MyPresentialPackages");
         } else {
+          // Raio-X de pagamentos, Lote 6: identifica qual metade especificamente
+          // não foi confirmada e informa o valor da metade que já foi, em vez
+          // de um aviso genérico "precisa de atenção" sem dizer o que aconteceu.
+          const consultancyOk = result.consultancyPayment.status === "CAPTURED" || result.consultancyPayment.status === "AUTHORIZED";
+          const presentialOk = result.presentialPayment.status === "CAPTURED";
+          const okAmountLabel = formatCurrencyBRL((consultancyOk ? comboConsultancyShareCents ?? 0 : comboPresentialShareCents ?? 0) / 100);
+          const pendingPart = !consultancyOk ? "a consultoria" : "o presencial";
           showToast(
-            "A consultoria foi processada, mas o presencial precisa de atenção - confira em 'Meus pacotes'.",
+            consultancyOk || presentialOk
+              ? `A cobrança de ${okAmountLabel} foi confirmada, mas ${pendingPart} ainda precisa de atenção — confira em "Meus pacotes" para ver o que fazer.`
+              : "Não conseguimos confirmar o combo — nenhuma cobrança foi efetivada. Tente novamente.",
             "info"
           );
           navigation.replace("MyPresentialPackages");
@@ -570,6 +586,22 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
                   Nenhum cartão configurado - toque para adicionar antes de continuar.
                 </Text>
               </TouchableOpacity>
+            ) : null}
+            {paymentMethod === "CREDIT_CARD" && supportsRealInstallments && maxCreditInstallments > 1 ? (
+              <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                {Array.from({ length: maxCreditInstallments }, (_, i) => i + 1).map((n) => {
+                  const active = installments === n;
+                  return (
+                    <TouchableOpacity
+                      key={n}
+                      onPress={() => setInstallments(n)}
+                      style={{ height: 30, paddingHorizontal: 10, borderRadius: S.chipR, backgroundColor: active ? theme.primarySubtle : "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: active ? theme.primarySubtleBorder : theme.border, alignItems: "center", justifyContent: "center" }}
+                    >
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: active ? theme.primary : theme.text2 }}>{n}x</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             ) : null}
           </View>
 

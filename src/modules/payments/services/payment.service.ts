@@ -1536,15 +1536,21 @@ export class PaymentService {
       const newStatus = mpStatus === MP_STATUS_CANCELLED ? PaymentStatus.CANCELED : PaymentStatus.FAILED;
 
       if (payment) {
-        await prisma.payment.update({
-          where: { id: payment.id },
+        // Raio-X de pagamentos, Lote 6: mesma proteção contra reenvio de
+        // webhook já usada no caminho de sucesso — sem isso, cada reenvio
+        // do mesmo aviso de recusa/cancelamento (comum e esperado do MP)
+        // reenviava a notificação de novo, mesmo sem nada ter mudado.
+        const updatedPayment = await prisma.payment.updateMany({
+          where: { id: payment.id, status: { not: newStatus } },
           data: { status: newStatus, failureReason: String(mpPay.status_detail ?? mpStatus) }
         });
-        await this.notifyBookingUsers(payment.bookingId, {
-          title: newStatus === PaymentStatus.CANCELED ? "Pagamento cancelado" : "Falha no pagamento",
-          body: "Não foi possível confirmar o pagamento deste agendamento.",
-          data: { type: "PAYMENT_AUTH_FAILED" }
-        });
+        if (updatedPayment.count > 0) {
+          await this.notifyBookingUsers(payment.bookingId, {
+            title: newStatus === PaymentStatus.CANCELED ? "Pagamento cancelado" : "Falha no pagamento",
+            body: "Não foi possível confirmar o pagamento deste agendamento.",
+            data: { type: "PAYMENT_AUTH_FAILED" }
+          });
+        }
       }
 
       if (consultancyContract) {
@@ -1603,14 +1609,18 @@ export class PaymentService {
         select: { id: true }
       });
 
+      // Raio-X de pagamentos, Lote 6: a criação do DisputeCase já era
+      // idempotente (não duplica), mas a notificação disparava a cada
+      // reenvio do mesmo webhook (comum e esperado do MP) — agora só
+      // notifica na primeira vez que esse chargeback é visto.
       if (payment) {
-        this.notifyBookingUsers(payment.bookingId, {
-          title: "Contestação de pagamento aberta",
-          body: "Uma contestação foi aberta para um pagamento deste agendamento.",
-          data: { type: "PAYMENT_DISPUTED" }
-        }).catch((error) => console.error("Dispute notification failed:", error));
-
         if (!existingDisputeCase) {
+          this.notifyBookingUsers(payment.bookingId, {
+            title: "Contestação de pagamento aberta",
+            body: "Uma contestação foi aberta para um pagamento deste agendamento.",
+            data: { type: "PAYMENT_DISPUTED" }
+          }).catch((error) => console.error("Dispute notification failed:", error));
+
           await prisma.disputeCase.create({
             data: {
               type: "CHARGEBACK",
@@ -1623,19 +1633,19 @@ export class PaymentService {
           });
         }
       } else if (consultancyContract) {
-        notificationService
-          .sendToUsers(
-            [consultancyContract.clientId, consultancyContract.provider.userId],
-            {
-              preferenceType: "PAYMENTS",
-              title: "Contestação de pagamento aberta",
-              body: "Uma contestação foi aberta para um pagamento desta consultoria.",
-              data: { type: "PAYMENT_DISPUTED", contractId: consultancyContract.id }
-            }
-          )
-          .catch((error) => console.error("Dispute notification failed:", error));
-
         if (!existingDisputeCase) {
+          notificationService
+            .sendToUsers(
+              [consultancyContract.clientId, consultancyContract.provider.userId],
+              {
+                preferenceType: "PAYMENTS",
+                title: "Contestação de pagamento aberta",
+                body: "Uma contestação foi aberta para um pagamento desta consultoria.",
+                data: { type: "PAYMENT_DISPUTED", contractId: consultancyContract.id }
+              }
+            )
+            .catch((error) => console.error("Dispute notification failed:", error));
+
           await prisma.disputeCase.create({
             data: {
               type: "CHARGEBACK",
@@ -1658,7 +1668,7 @@ export class PaymentService {
           }
         });
 
-        if (cycle) {
+        if (cycle && !existingDisputeCase) {
           notificationService
             .sendToUsers([cycle.package.clientId, cycle.package.provider.userId], {
               preferenceType: "PAYMENTS",
@@ -1668,19 +1678,17 @@ export class PaymentService {
             })
             .catch((error) => console.error("Dispute notification failed:", error));
 
-          if (!existingDisputeCase) {
-            await prisma.disputeCase.create({
-              data: {
-                type: "CHARGEBACK",
-                clientId: cycle.package.clientId,
-                providerId: cycle.package.providerId,
-                amountCents: cycle.amountCents ?? 0,
-                mpPaymentId: String(mpPay.id),
-                presentialPackageId: cycle.packageId,
-                presentialPackageCycleId: cycle.id
-              }
-            });
-          }
+          await prisma.disputeCase.create({
+            data: {
+              type: "CHARGEBACK",
+              clientId: cycle.package.clientId,
+              providerId: cycle.package.providerId,
+              amountCents: cycle.amountCents ?? 0,
+              mpPaymentId: String(mpPay.id),
+              presentialPackageId: cycle.packageId,
+              presentialPackageCycleId: cycle.id
+            }
+          });
         }
       }
     }

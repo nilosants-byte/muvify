@@ -977,6 +977,12 @@ model PresentialPackage {
   nextBillingAt             DateTime?
   consecutiveFailedCycles   Int       @default(0)
   billingCardId             String?
+  // Raio-X de pagamentos, Lote 6: parcelamento real no cartão (só se aplica
+  // a ciclos elegíveis - trimestral/semestral/anual, ver
+  // shared/utils/offer-installments.ts). Guardado no pacote pra cada
+  // cobrança de ciclo seguinte (chargeCycle, disparado depois via cron)
+  // usar o mesmo número escolhido pelo cliente na compra.
+  paymentInstallments       Int       @default(1)
   creditsRemainingThisCycle Int       @default(0)
   lastBillingFailureReason  String?
 
