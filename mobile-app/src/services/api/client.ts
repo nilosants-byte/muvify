@@ -1599,7 +1599,8 @@ export type AdminDisputeCaseType =
   | "CHARGEBACK"
   | "REFUND_FAILED"
   | "DELIVERY_CONTESTED"
-  | "AUTO_CAPTURE_CONTESTED";
+  | "AUTO_CAPTURE_CONTESTED"
+  | "CAPTURE_FAILED";
 export type AdminDisputeCaseStatus = "OPEN" | "RESOLVED";
 export type AdminDisputeCaseResolution = "REFUNDED" | "DENIED";
 

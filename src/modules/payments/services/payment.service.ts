@@ -1205,6 +1205,44 @@ export class PaymentService {
     return this.capturePaymentForBooking(bookingId);
   }
 
+  // Igual a captureIfAuthorizedForBooking, mas nunca deixa a falha passar em
+  // silêncio: usado nos pontos em que a cobrança acontece sem ninguém
+  // presente pra tentar de novo na hora (cliente cancelou em cima da hora,
+  // relato de falta resolvido automaticamente) — se a captura falhar, o
+  // profissional ficaria sem receber por um serviço que já aconteceu, sem
+  // que ninguém soubesse. Cria um caso de disputa (mesmo padrão do reembolso
+  // que falha) em vez de engolir o erro.
+  async captureIfAuthorizedForBookingOrDispute(bookingId: string, contextNote: string) {
+    try {
+      return await this.captureIfAuthorizedForBooking(bookingId);
+    } catch (error) {
+      console.error("captureIfAuthorizedForBookingOrDispute: captura falhou (MP error):", { bookingId, error });
+      const [payment, booking] = await Promise.all([
+        prisma.payment.findUnique({ where: { bookingId } }),
+        prisma.booking.findUnique({ where: { id: bookingId }, select: { clientId: true, providerId: true } })
+      ]);
+      if (payment && booking) {
+        await prisma.disputeCase.create({
+          data: {
+            type: "CAPTURE_FAILED",
+            clientId: booking.clientId,
+            providerId: booking.providerId,
+            amountCents: payment.amountCents,
+            mpPaymentId: payment.mpPaymentId,
+            bookingId,
+            contextNote
+          }
+        });
+      }
+      await this.notifyBookingUsers(bookingId, {
+        title: "Cobrança pendente de revisão",
+        body: "Não conseguimos confirmar a cobrança automaticamente — nossa equipe já foi avisada e vai resolver manualmente.",
+        data: { type: "PAYMENT_CAPTURE_FAILED" }
+      });
+      return null;
+    }
+  }
+
   async autoCaptureSingleConfirmation(referenceDate = new Date()) {
     const threshold = new Date(
       referenceDate.getTime() - env.AUTO_CAPTURE_CONFIRMATION_HOURS * 60 * 60 * 1000
@@ -1224,15 +1262,28 @@ export class PaymentService {
 
     const CONCURRENCY = 10;
     for (let i = 0; i < bookings.length; i += CONCURRENCY) {
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         bookings.slice(i, i + CONCURRENCY).map(async (booking) => {
+          // Captura ANTES de marcar concluído — se a cobrança falhar, o
+          // agendamento continua CONFIRMED (a própria consulta acima já
+          // filtra por AUTHORIZED, então a próxima rodada do job tenta de
+          // novo sozinha); antes, o agendamento era marcado concluído
+          // primeiro e uma falha de captura ficava completamente invisível.
+          await this.capturePaymentForBooking(booking.id);
           await prisma.booking.update({
             where: { id: booking.id },
             data: { status: BookingStatus.COMPLETED, completedAt: referenceDate }
           });
-          await this.capturePaymentForBooking(booking.id);
         })
       );
+      results.forEach((result, idx) => {
+        if (result.status === "rejected") {
+          console.error(
+            "autoCaptureSingleConfirmation: falha ao capturar/concluir agendamento:",
+            { bookingId: bookings[i + idx]?.id, error: result.reason }
+          );
+        }
+      });
     }
   }
 

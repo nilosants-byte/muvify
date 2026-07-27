@@ -501,6 +501,7 @@ enum DisputeCaseType {
   REFUND_FAILED
   DELIVERY_CONTESTED
   AUTO_CAPTURE_CONTESTED
+  CAPTURE_FAILED
 }
 
 enum DisputeCaseStatus {

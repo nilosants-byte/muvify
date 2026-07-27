@@ -1091,7 +1091,10 @@ export class BookingService {
       if (isProviderCancelling || hoursUntilSession >= 2) {
         await paymentService.cancelPaymentForBooking(bookingId);
       } else {
-        await paymentService.captureIfAuthorizedForBooking(bookingId).catch(() => null);
+        await paymentService.captureIfAuthorizedForBookingOrDispute(
+          bookingId,
+          "Cliente cancelou com menos de 2h de antecedência (profissional deveria ficar com o valor) e a cobrança falhou."
+        );
       }
     }
 
@@ -1158,11 +1161,26 @@ export class BookingService {
         select: { method: true, status: true }
       });
 
-      if (payment?.method === PaymentMethod.PIX && payment.status !== PaymentStatus.CAPTURED) {
-        throw new AppError(
-          "Pagamento via PIX ainda não foi concluído. Finalize o pagamento para concluir o agendamento.",
-          StatusCodes.BAD_REQUEST
-        );
+      if (payment?.method === PaymentMethod.PIX) {
+        if (payment.status !== PaymentStatus.CAPTURED) {
+          throw new AppError(
+            "Pagamento via PIX ainda não foi concluído. Finalize o pagamento para concluir o agendamento.",
+            StatusCodes.BAD_REQUEST
+          );
+        }
+      } else if (payment) {
+        // Cartão: a cobrança definitiva acontece agora, ANTES de qualquer
+        // gravação no banco — nunca deixamos o agendamento fechar como
+        // concluído sem o dinheiro resolvido (mesmo espírito do Pix acima).
+        // Se a captura falhar, a exceção sobe e nada é salvo — quem estava
+        // confirmando pode tentar de novo depois de resolver o pagamento.
+        if (payment.status !== PaymentStatus.AUTHORIZED && payment.status !== PaymentStatus.CAPTURED) {
+          throw new AppError(
+            "O pagamento deste agendamento ainda não foi autorizado. Peça para o cliente verificar o cartão antes de concluir.",
+            StatusCodes.BAD_REQUEST
+          );
+        }
+        await paymentService.captureIfAuthorizedForBooking(bookingId);
       }
     }
 
@@ -1209,8 +1227,8 @@ export class BookingService {
     });
 
     if (bothConfirmed) {
-      await paymentService.captureIfAuthorizedForBooking(bookingId);
-
+      // A captura (cartão) já foi feita mais acima, antes de qualquer
+      // gravação — aqui só o que depende do agendamento já estar concluído.
       const {
         onWorkoutCompleted,
         onFirstBookingCompleted,
@@ -1516,7 +1534,10 @@ export class BookingService {
       const clientAtFault = report.reportedUserId === report.booking.clientId;
       try {
         if (clientAtFault) {
-          await paymentService.captureIfAuthorizedForBooking(report.bookingId).catch(() => null);
+          await paymentService.captureIfAuthorizedForBookingOrDispute(
+            report.bookingId,
+            "Relato de falta não contestado (cliente faltou) e a cobrança do valor da sessão falhou."
+          );
         } else {
           await paymentService.cancelPaymentForBooking(report.bookingId);
         }

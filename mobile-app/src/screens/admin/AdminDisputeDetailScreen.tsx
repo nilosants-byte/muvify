@@ -19,7 +19,8 @@ const TYPE_LABEL: Record<AdminDisputeCaseType, string> = {
   CHARGEBACK: "Contestação bancária (chargeback)",
   REFUND_FAILED: "Falha no reembolso automático",
   DELIVERY_CONTESTED: "Entrega de ficha contestada",
-  AUTO_CAPTURE_CONTESTED: "Contestação pós-cobrança automática"
+  AUTO_CAPTURE_CONTESTED: "Contestação pós-cobrança automática",
+  CAPTURE_FAILED: "Falha na cobrança de uma sessão concluída"
 };
 
 function formatCents(amountCents: number) {
