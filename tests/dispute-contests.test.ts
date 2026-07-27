@@ -103,7 +103,7 @@ describe("Contestações — entrega de consultoria e captura automática", () =
         clientDecisionAt: new Date()
       }
     });
-    return prisma.consultancyContract.create({
+    const contract = await prisma.consultancyContract.create({
       data: {
         requestId: request.id,
         providerId,
@@ -119,6 +119,20 @@ describe("Contestações — entrega de consultoria e captura automática", () =
         deliveredAt
       }
     });
+    // contestDelivery agora usa a ficha (TrainingPlan) mais recente do
+    // contrato pra calcular o prazo de 48h, não mais contract.deliveredAt
+    // diretamente — precisa existir uma ficha entregue com o mesmo horário.
+    await prisma.trainingPlan.create({
+      data: {
+        providerId,
+        contractId: contract.id,
+        title: "Ficha de teste",
+        isPrebuilt: false,
+        isActive: true,
+        createdAt: deliveredAt
+      }
+    });
+    return contract;
   }
 
   it("contesta a entrega dentro das 48h e cria um caso de disputa DELIVERY_CONTESTED", async () => {

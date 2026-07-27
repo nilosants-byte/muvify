@@ -2334,64 +2334,106 @@ export class ConsultancyService {
     // cobra de novo (mesmo valor combinado na assinatura) - sem ficha nova,
     // sem cobranca nova. Cobra ANTES de salvar (fail-loud, mesmo principio
     // da primeira entrega) - se a cobranca falhar, a entrega inteira falha.
+    let renewalMpPaymentId: string | null = null;
+    // Raio-X de pagamentos, Lote 4: trava leve por contrato ao redor de
+    // "contar fichas -> cobrar renovação -> criar a ficha nova". Sem isso,
+    // duas solicitações de entrega quase simultâneas podiam ler a mesma
+    // contagem de fichas e cada uma cobrar (mesma idempotencyKey, MP cobra
+    // só uma vez) e criar sua própria ficha nova (2 fichas pro
+    // profissional, 1 cobrança só). Implementado como update condicional
+    // atômico (mesmo idioma já usado em capturePaymentForBooking pra
+    // idempotência) em vez de trava consultiva do Postgres — advisory lock
+    // não é seguro com o pool de conexões do Prisma, porque quem pede e
+    // quem libera a trava podem cair em conexões diferentes. Expira
+    // sozinha em 30s (nunca prende o contrato pra sempre se o processo
+    // cair no meio). Entregas sequenciais normais nunca disputam a trava,
+    // porque a anterior já libera antes da próxima começar.
     if (!isFirstDelivery) {
-      const existingPlansCount = await prisma.trainingPlan.count({ where: { contractId: contract.id } });
-      await this.chargeFichaRenewal({
-        contractId: contract.id,
-        providerId: provider.id,
-        clientId: contract.client.id,
-        paymentMethod: contract.paymentMethod!,
-        amountCents: contract.paymentAmountCents,
-        renewalIndex: existingPlansCount
+      const staleThreshold = new Date(now.getTime() - 30_000);
+      const claimed = await prisma.consultancyContract.updateMany({
+        where: {
+          id: contract.id,
+          OR: [{ renewalDeliveryLockedAt: null }, { renewalDeliveryLockedAt: { lt: staleThreshold } }]
+        },
+        data: { renewalDeliveryLockedAt: now }
       });
+      if (claimed.count === 0) {
+        throw new AppError(
+          "Já existe uma entrega em andamento para este contrato. Aguarde alguns segundos e tente novamente.",
+          StatusCodes.CONFLICT
+        );
+      }
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const normalizedExercises = await this.normalizePlanExercises(provider.id, input.exercises, tx);
-
-      const plan = await tx.trainingPlan.create({
-        data: {
-          providerId: provider.id,
+    let result: { plan: Awaited<ReturnType<typeof prisma.trainingPlan.create>>; contract: Prisma.ConsultancyContractGetPayload<{ include: { offer: true } }> };
+    try {
+      if (!isFirstDelivery) {
+        const existingPlansCount = await prisma.trainingPlan.count({ where: { contractId: contract.id } });
+        const renewalPayment = await this.chargeFichaRenewal({
           contractId: contract.id,
-          title: input.title,
-          description: input.description,
-          isPrebuilt: false,
-          isActive: true,
-          validUntil: planValidUntil,
-          exercises: {
-            create: normalizedExercises
+          providerId: provider.id,
+          clientId: contract.client.id,
+          paymentMethod: contract.paymentMethod!,
+          amountCents: contract.paymentAmountCents,
+          renewalIndex: existingPlansCount
+        });
+        renewalMpPaymentId = String(renewalPayment.id);
+      }
+
+      result = await prisma.$transaction(async (tx) => {
+        const normalizedExercises = await this.normalizePlanExercises(provider.id, input.exercises, tx);
+
+        const plan = await tx.trainingPlan.create({
+          data: {
+            providerId: provider.id,
+            contractId: contract.id,
+            title: input.title,
+            description: input.description,
+            isPrebuilt: false,
+            isActive: true,
+            validUntil: planValidUntil,
+            renewalMpPaymentId,
+            exercises: {
+              create: normalizedExercises
+            }
+          },
+          include: {
+            exercises: {
+              orderBy: { sortOrder: "asc" },
+              include: { exercise: true }
+            }
           }
-        },
-        include: {
-          exercises: {
-            orderBy: { sortOrder: "asc" },
-            include: { exercise: true }
-          }
-        }
+        });
+
+        const updatedContract = isFirstDelivery
+          ? await tx.consultancyContract.update({
+              where: { id: contract.id },
+              data: {
+                status: ConsultancyContractStatus.DELIVERED,
+                deliveredAt: now,
+                ...(shouldCaptureNow
+                  ? { paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: now }
+                  : {})
+              },
+              include: { offer: true }
+            })
+          : await tx.consultancyContract.findUniqueOrThrow({
+              where: { id: contract.id },
+              include: { offer: true }
+            });
+
+        return {
+          plan,
+          contract: updatedContract
+        };
       });
-
-      const updatedContract = isFirstDelivery
-        ? await tx.consultancyContract.update({
-            where: { id: contract.id },
-            data: {
-              status: ConsultancyContractStatus.DELIVERED,
-              deliveredAt: now,
-              ...(shouldCaptureNow
-                ? { paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: now }
-                : {})
-            },
-            include: { offer: true }
-          })
-        : await tx.consultancyContract.findUniqueOrThrow({
-            where: { id: contract.id },
-            include: { offer: true }
-          });
-
-      return {
-        plan,
-        contract: updatedContract
-      };
-    });
+    } finally {
+      if (!isFirstDelivery) {
+        await prisma.consultancyContract
+          .update({ where: { id: contract.id }, data: { renewalDeliveryLockedAt: null } })
+          .catch((error) => console.error("Falha ao liberar trava de entrega de renovação:", error));
+      }
+    }
 
     const planValidUntilLabel = planValidUntil.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
     const chargedAmountLabel = (contract.paymentAmountCents / 100).toFixed(2).replace(".", ",");
@@ -2422,9 +2464,16 @@ export class ConsultancyService {
     return result;
   }
 
-  // Mesmo prazo simétrico da entrega (48h): se a primeira ficha entregue for
-  // claramente inadequada (ex.: vazia, só pra travar o prazo de entrega), o
-  // aluno tem essa janela pra contestar antes que o pagamento fique definitivo.
+  // Mesmo prazo simétrico da entrega (48h): se a ficha entregue for
+  // claramente inadequada (ex.: vazia, só pra travar o prazo), o aluno tem
+  // essa janela pra contestar antes que o pagamento fique definitivo.
+  //
+  // Raio-X de pagamentos, Lote 4: passou a contestar a ENTREGA MAIS RECENTE
+  // (a ficha atual), não mais só a primeira — antes, o prazo de 48h e o
+  // limite de "uma contestação por contrato" eram fixados na 1ª entrega,
+  // então uma renovação de ficha ruim (já cobrada de verdade) 5 meses
+  // depois não tinha como ser contestada. Cada ficha (TrainingPlan) agora
+  // tem sua própria janela e seu próprio limite de contestação.
   async contestDelivery(clientId: string, contractId: string, reason?: string) {
     const contract = await prisma.consultancyContract.findUnique({
       where: { id: contractId },
@@ -2439,18 +2488,26 @@ export class ConsultancyService {
       throw new AppError("Este contrato ainda não teve a primeira ficha entregue.", StatusCodes.BAD_REQUEST);
     }
 
+    const latestPlan = await prisma.trainingPlan.findFirst({
+      where: { contractId: contract.id },
+      orderBy: { createdAt: "desc" }
+    });
+    if (!latestPlan) {
+      throw new AppError("Nenhuma ficha entregue para contestar.", StatusCodes.BAD_REQUEST);
+    }
+
     const deadline = new Date(
-      contract.deliveredAt.getTime() + env.CONSULTANCY_DELIVERY_DEADLINE_HOURS * 60 * 60 * 1000
+      latestPlan.createdAt.getTime() + env.CONSULTANCY_DELIVERY_DEADLINE_HOURS * 60 * 60 * 1000
     );
     if (new Date() > deadline) {
       throw new AppError("O prazo para contestar a entrega já passou.", StatusCodes.BAD_REQUEST);
     }
 
     const existing = await prisma.disputeCase.findFirst({
-      where: { consultancyContractId: contract.id, type: "DELIVERY_CONTESTED" }
+      where: { trainingPlanId: latestPlan.id, type: "DELIVERY_CONTESTED" }
     });
     if (existing) {
-      throw new AppError("Você já contestou a entrega deste contrato.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Você já contestou esta entrega.", StatusCodes.BAD_REQUEST);
     }
 
     const disputeCase = await prisma.disputeCase.create({
@@ -2459,8 +2516,9 @@ export class ConsultancyService {
         clientId: contract.clientId,
         providerId: contract.providerId,
         amountCents: contract.paymentAmountCents,
-        mpPaymentId: contract.mpPaymentId,
+        mpPaymentId: latestPlan.renewalMpPaymentId ?? contract.mpPaymentId,
         consultancyContractId: contract.id,
+        trainingPlanId: latestPlan.id,
         contextNote: reason?.trim() || null
       }
     });
@@ -2837,6 +2895,54 @@ export class ConsultancyService {
     }
   }
 
+  // Raio-X de pagamentos, Lote 4: diferente de sessão avulsa e pacote
+  // presencial (que desistem sozinhos de um Pix não confirmado em 26h), a
+  // consultoria não tinha esse mecanismo — se o aluno pagasse por Pix e a
+  // confirmação da MP nunca chegasse, o contrato ficava "aguardando
+  // pagamento" pra sempre, sem nenhuma saída dentro do app (aceitar a
+  // proposta de novo só devolvia o mesmo contrato travado). Ao expirar,
+  // devolve a solicitação pro estado RESPONDED — o aluno consegue aceitar
+  // de novo pelo fluxo normal, o que gera um Pix novo.
+  async expireStalePendingPixConsultancyContracts(referenceDate = new Date()) {
+    const threshold = new Date(referenceDate.getTime() - 26 * 60 * 60 * 1000);
+    const stale = await prisma.consultancyContract.findMany({
+      where: {
+        status: ConsultancyContractStatus.PENDING_PAYMENT,
+        paymentStatus: ConsultancyPaymentStatus.PENDING,
+        paymentMethod: ConsultancyPaymentMethod.PIX,
+        createdAt: { lte: threshold }
+      },
+      include: { provider: { select: { userId: true } } },
+      take: 200
+    });
+
+    for (const contract of stale) {
+      await prisma.$transaction([
+        prisma.consultancyContract.update({
+          where: { id: contract.id },
+          data: { paymentStatus: ConsultancyPaymentStatus.FAILED }
+        }),
+        prisma.consultancyRequest.updateMany({
+          where: { id: contract.requestId, status: ConsultancyRequestStatus.ACCEPTED },
+          data: { status: ConsultancyRequestStatus.RESPONDED }
+        })
+      ]);
+
+      void notificationService.sendToUsers([contract.clientId], {
+        preferenceType: "CONSULTANCY",
+        title: "Pix da consultoria expirou",
+        body: "O Pix expirou sem confirmação de pagamento. Aceite a proposta novamente para gerar um novo Pix.",
+        data: { type: "CONSULTANCY_PIX_EXPIRED", contractId: contract.id }
+      });
+      void notificationService.sendToUsers([contract.provider.userId], {
+        preferenceType: "CONSULTANCY",
+        title: "Pix do aluno expirou",
+        body: "O Pix de uma consultoria expirou sem confirmação de pagamento.",
+        data: { type: "CONSULTANCY_PIX_EXPIRED", contractId: contract.id }
+      });
+    }
+  }
+
   async sendConsultancyExpiryReminders(referenceDate = new Date()) {
     const hourMs = 60 * 60 * 1000;
     const windowMs = 5 * 60 * 1000;
@@ -2950,7 +3056,15 @@ export class ConsultancyService {
       select: {
         id: true,
         createdAt: true,
-        contract: { select: { id: true, status: true, clientId: true, provider: { select: { userId: true } } } }
+        contract: {
+          select: {
+            id: true,
+            status: true,
+            clientId: true,
+            paymentAmountCents: true,
+            provider: { select: { userId: true } }
+          }
+        }
       }
     });
 
@@ -2969,11 +3083,15 @@ export class ConsultancyService {
         })
         .catch((e) => console.error("Ficha expiry-soon reminder (provider) failed:", e));
 
+      // Raio-X de pagamentos, Lote 4: o aluno precisa saber, com
+      // antecedência, que a renovação vai cobrar de novo — não só "vai
+      // receber uma ficha nova".
+      const renewalAmountLabel = (plan.contract.paymentAmountCents / 100).toFixed(2).replace(".", ",");
       void notificationService
         .sendToUsers([plan.contract.clientId], {
           preferenceType: "CONSULTANCY",
           title: "Sua ficha está perto de vencer",
-          body: "Seu personal vai te enviar uma ficha atualizada em breve.",
+          body: `Seu personal vai te enviar uma ficha atualizada em breve — a renovação cobra R$ ${renewalAmountLabel} no seu cartão salvo.`,
           data: { type: "CONSULTANCY_FICHA_EXPIRING_SOON", contractId: plan.contract.id }
         })
         .catch((e) => console.error("Ficha expiry-soon reminder (client) failed:", e));
@@ -3015,6 +3133,89 @@ export class ConsultancyService {
           data: { type: "CONSULTANCY_FICHA_EXPIRED", contractId: plan.contract.id }
         })
         .catch((e) => console.error("Ficha expired notice (client) failed:", e));
+    }
+  }
+
+  // Raio-X de pagamentos, Lote 4: quando a ficha vence e ninguém age (nem o
+  // profissional entrega nova, nem o aluno cancela), a consultoria ficava
+  // "pendurada" pra sempre, sem nenhuma consequência real — diferente da 1ª
+  // entrega, que tem prazo de 48h e estorno automático. Só se aplica a
+  // ofertas com fichaValidityDays configurado (que esperam renovação
+  // periódica) — uma consultoria sem essa configuração não tem essa
+  // dinâmica de "vencimento de ficha" no mesmo sentido.
+  async escalateExpiredFichaContracts(referenceDate = new Date()) {
+    const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
+    const ESCALATION_THROTTLE_MS = 24 * 60 * 60 * 1000;
+
+    const stale = await prisma.trainingPlan.findMany({
+      where: {
+        contractId: { not: null },
+        expiredNoticeSentAt: { not: null },
+        validUntil: { lt: referenceDate }
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        validUntil: true,
+        lastEscalationSentAt: true,
+        contract: {
+          select: {
+            id: true,
+            status: true,
+            clientId: true,
+            offer: { select: { fichaValidityDays: true } },
+            provider: { select: { userId: true } }
+          }
+        }
+      }
+    });
+
+    for (const plan of stale) {
+      if (!plan.contract || plan.contract.status !== ConsultancyContractStatus.DELIVERED) continue;
+      if (!plan.contract.offer.fichaValidityDays) continue;
+
+      const newerCount = await prisma.trainingPlan.count({
+        where: { contractId: plan.contract.id, createdAt: { gt: plan.createdAt } }
+      });
+      if (newerCount > 0) continue;
+
+      const autoCancelDeadline = new Date(plan.validUntil!.getTime() + GRACE_PERIOD_MS);
+      if (referenceDate >= autoCancelDeadline) {
+        await prisma.consultancyContract.update({
+          where: { id: plan.contract.id },
+          data: { status: ConsultancyContractStatus.CANCELLED }
+        });
+        void notificationService.sendToUsers([plan.contract.clientId, plan.contract.provider.userId], {
+          preferenceType: "CONSULTANCY",
+          title: "Consultoria encerrada automaticamente",
+          body: "A ficha venceu há 7 dias e nenhuma renovação foi entregue — a consultoria foi encerrada automaticamente.",
+          data: { type: "CONSULTANCY_AUTO_CANCELLED", contractId: plan.contract.id }
+        });
+        continue;
+      }
+
+      if (plan.lastEscalationSentAt && referenceDate.getTime() - plan.lastEscalationSentAt.getTime() < ESCALATION_THROTTLE_MS) {
+        continue;
+      }
+      await prisma.trainingPlan.update({ where: { id: plan.id }, data: { lastEscalationSentAt: referenceDate } });
+
+      void notificationService
+        .sendToUsers([plan.contract.provider.userId], {
+          preferenceType: "CONSULTANCY",
+          title: "Pendência: ficha de aluno vencida",
+          body: "A ficha de um dos seus alunos está vencida — entregue uma renovação para continuar recebendo por essa consultoria. Sem ação em 7 dias, ela é encerrada automaticamente.",
+          data: { type: "CONSULTANCY_FICHA_EXPIRED_ESCALATION", contractId: plan.contract.id }
+        })
+        .catch((e) => console.error("Ficha escalation (provider) failed:", e));
+
+      void notificationService
+        .sendToUsers([plan.contract.clientId], {
+          preferenceType: "CONSULTANCY",
+          title: "Sua ficha continua vencida",
+          body: "Peça ao seu personal para renovar sua ficha de treino, ou encerre a consultoria quando preferir.",
+          data: { type: "CONSULTANCY_FICHA_EXPIRED_ESCALATION", contractId: plan.contract.id }
+        })
+        .catch((e) => console.error("Ficha escalation (client) failed:", e));
     }
   }
 

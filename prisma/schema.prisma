@@ -532,6 +532,7 @@ model DisputeCase {
   consultancyContractId    String?
   presentialPackageId      String?
   presentialPackageCycleId String?
+  trainingPlanId           String?
   noShowReportId           String?                @unique
   resolution               DisputeCaseResolution?
   resolvedAmountCents      Int?
@@ -547,6 +548,7 @@ model DisputeCase {
   consultancyContract    ConsultancyContract?    @relation(fields: [consultancyContractId], references: [id], onDelete: SetNull)
   presentialPackage      PresentialPackage?      @relation(fields: [presentialPackageId], references: [id], onDelete: SetNull)
   presentialPackageCycle PresentialPackageCycle? @relation(fields: [presentialPackageCycleId], references: [id], onDelete: SetNull)
+  trainingPlan           TrainingPlan?           @relation(fields: [trainingPlanId], references: [id], onDelete: SetNull)
   noShowReport           NoShowReport?           @relation(fields: [noShowReportId], references: [id], onDelete: SetNull)
   resolvedByAdmin        User?                   @relation("DisputeCaseResolvedBy", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
   debtRecords            DebtRecord[]
@@ -1036,12 +1038,23 @@ model TrainingPlan {
   // do job periodico.
   expiryReminderSentAt DateTime?
   expiredNoticeSentAt  DateTime?
+  // Raio-X de pagamentos, Lote 4: quando a ficha vence e ninguem age (so pra
+  // ofertas com renovacao esperada - fichaValidityDays configurado), controla
+  // o throttle dos avisos escalonados (1x por dia) ate o encerramento
+  // automatico apos 7 dias.
+  lastEscalationSentAt DateTime?
+  // Raio-X de pagamentos, Lote 4: id do pagamento no Mercado Pago que cobrou
+  // ESSA renovacao especifica (null na 1a ficha, cuja cobranca ja fica em
+  // ConsultancyContract.mpPaymentId) - permite contestar/reembolsar a
+  // renovacao certa, nao sempre a cobranca original do contrato.
+  renewalMpPaymentId String?
   createdAt   DateTime                 @default(now())
   updatedAt   DateTime                 @updatedAt
   provider    ProviderProfile          @relation(fields: [providerId], references: [id], onDelete: Cascade)
   contract    ConsultancyContract?     @relation(fields: [contractId], references: [id], onDelete: SetNull)
   exercises   TrainingPlanExercise[]
   completions TrainingPlanCompletion[]
+  disputeCases DisputeCase[]
 
   @@index([providerId, isPrebuilt, isActive])
   @@index([contractId])
@@ -1143,6 +1156,13 @@ model ConsultancyContract {
   expiry24hSentAt         DateTime?
   expiry6hSentAt          DateTime?
   expiryNoticeSentAt      DateTime?
+  // Raio-X de pagamentos, Lote 4: trava leve contra duas entregas de
+  // renovação de ficha quase simultâneas pro mesmo contrato (evita cobrar
+  // e criar ficha duplicada) - via update condicional atômico, não trava
+  // consultiva do Postgres (advisory lock não é seguro com o pool de
+  // conexões do Prisma: quem pede e quem libera podem cair em conexões
+  // diferentes). Expira sozinha em 30s caso o processo caia no meio.
+  renewalDeliveryLockedAt DateTime?
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   request                 ConsultancyRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)

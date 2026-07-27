@@ -535,6 +535,11 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
                 <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3, marginTop: 2 }}>
                   {kindLabel} · {formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}
                 </Text>
+                {offer.fichaValidityDays ? (
+                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, marginTop: 2 }}>
+                    Cada ficha vale {offer.fichaValidityDays} dias — a renovação cobra o mesmo valor de novo, automaticamente.
+                  </Text>
+                ) : null}
               </View>
             );
           })}

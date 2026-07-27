@@ -46,7 +46,9 @@ export function startReminderJob() {
           bookingService.sendSessionReminders(),
           consultancyService.sendConsultancyExpiryReminders(),
           consultancyService.expireStaleConsultancyRequests(),
+          consultancyService.expireStalePendingPixConsultancyContracts(),
           consultancyService.sendFichaExpiryReminders(),
+          consultancyService.escalateExpiredFichaContracts(),
           presentialPackageService.sendFlexibleSessionPackExpiryReminders(),
         ]),
         new Promise<never>((_, reject) =>

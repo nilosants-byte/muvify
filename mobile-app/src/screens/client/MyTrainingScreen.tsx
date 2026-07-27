@@ -906,6 +906,12 @@ export function MyTrainingScreen({ navigation }: Props) {
                     })()}
                     <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, lineHeight: 16 }}>
                       Depois de aceitar, o profissional tem até 48h para entregar sua ficha de treino. Você pode desistir e ser reembolsado integralmente a qualquer momento antes da entrega.
+                      {req.quotedOffer?.fichaValidityDays
+                        ? ` Cada ficha vale ${req.quotedOffer.fichaValidityDays} dias — a cada renovação, você será cobrado de novo, automaticamente, o mesmo valor (${formatCurrencyBRL(req.quotedOffer.priceCents / 100)}).`
+                        : ""}
+                      {req.quotedOffer?.fichaValidityDays && (paymentByRequestId[req.id] ?? (req.quotedOffer?.acceptsCreditCard ?? true ? "CREDIT_CARD" : "PIX")) === "PIX"
+                        ? " Pagando por Pix agora, você vai precisar cadastrar um cartão antes da primeira renovação — a renovação não pode ser cobrada por Pix."
+                        : ""}
                     </Text>
                     <TouchableOpacity
                       onPress={() => setConsentByRequestId((c) => ({ ...c, [req.id]: !c[req.id] }))}
