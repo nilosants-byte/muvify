@@ -955,6 +955,7 @@ model PresentialPackage {
   totalCycles           Int?
   validFrom             DateTime?
   validUntil            DateTime?
+  expiryReminderSentAt  DateTime?
   cancelledAt           DateTime?
   // Local de atendimento das sessoes geradas pelo pacote - decidido uma vez
   // na compra (igual ao weeklySchedule) e aplicado a cada sessao gerada.

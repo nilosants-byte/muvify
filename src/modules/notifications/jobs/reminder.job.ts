@@ -3,9 +3,11 @@ import { prisma } from "../../../config/prisma";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { BookingService } from "../../bookings/services/booking.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
+import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
 
 const bookingService = new BookingService();
 const consultancyService = new ConsultancyService();
+const presentialPackageService = new PresentialPackageService();
 
 let timer: NodeJS.Timeout | null = null;
 let running = false;
@@ -45,6 +47,7 @@ export function startReminderJob() {
           consultancyService.sendConsultancyExpiryReminders(),
           consultancyService.expireStaleConsultancyRequests(),
           consultancyService.sendFichaExpiryReminders(),
+          presentialPackageService.sendFlexibleSessionPackExpiryReminders(),
         ]),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("Reminder job timeout after 120s")), JOB_TIMEOUT_MS)

@@ -919,6 +919,58 @@ export class PresentialPackageService {
     return true;
   }
 
+  // Pacote de sessoes avulsas (FLEXIBLE_CREDITS): avisa 3 dias antes da
+  // validade acabar, e marca EXPIRED quando passa - sem isso, o pacote
+  // ficava aparecendo como "ativo" pra sempre mesmo depois de vencido,
+  // e o cliente so descobria na hora de tentar agendar (ver raio-x de
+  // pagamentos, Lote 3). Mesmo padrao do lembrete de ficha de consultoria.
+  async sendFlexibleSessionPackExpiryReminders(referenceDate = new Date()) {
+    const soon = new Date(referenceDate.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+    const expiringSoon = await prisma.presentialPackage.findMany({
+      where: {
+        mode: PresentialPackageMode.FLEXIBLE_CREDITS,
+        status: PresentialPackageStatus.ACTIVE,
+        validUntil: { gte: referenceDate, lte: soon },
+        expiryReminderSentAt: null
+      }
+    });
+    for (const pkg of expiringSoon) {
+      await notificationService.sendToUsers([pkg.clientId], {
+        preferenceType: "PAYMENTS",
+        title: "Seu pacote de sessões está vencendo",
+        body: `Seu pacote com ${pkg.creditsRemainingThisCycle} sessão(ões) restante(s) vence em breve — agende antes que a validade acabe.`,
+        data: { type: "PRESENTIAL_PACKAGE_EXPIRING", packageId: pkg.id }
+      });
+      await prisma.presentialPackage.update({
+        where: { id: pkg.id },
+        data: { expiryReminderSentAt: new Date() }
+      });
+    }
+
+    const expired = await prisma.presentialPackage.findMany({
+      where: {
+        mode: PresentialPackageMode.FLEXIBLE_CREDITS,
+        status: PresentialPackageStatus.ACTIVE,
+        validUntil: { lt: referenceDate }
+      }
+    });
+    for (const pkg of expired) {
+      await prisma.presentialPackage.update({
+        where: { id: pkg.id },
+        data: { status: PresentialPackageStatus.EXPIRED }
+      });
+      await notificationService.sendToUsers([pkg.clientId], {
+        preferenceType: "PAYMENTS",
+        title: "Seu pacote de sessões venceu",
+        body: pkg.creditsRemainingThisCycle > 0
+          ? `Seu pacote venceu com ${pkg.creditsRemainingThisCycle} sessão(ões) ainda não usada(s).`
+          : "Seu pacote de sessões venceu.",
+        data: { type: "PRESENTIAL_PACKAGE_EXPIRED", packageId: pkg.id }
+      });
+    }
+  }
+
   // Cancelar a assinatura e 100% local (nunca existe uma cobranca "em
   // aberto" na MP pra revogar - so paramos de gerar cobrancas futuras).
   // Sessoes ja geradas no ciclo atual (ja pago) continuam valendo - so o
@@ -973,9 +1025,13 @@ export class PresentialPackageService {
     if (isCardFixedRecurring || isFlexibleSessionPack) {
       // Nada foi pago adiantado — não existe "último ciclo" pra reembolsar.
       // Cancela as sessões futuras já geradas (cada uma libera sua própria
-      // reserva ou estorna, se já tiver sido capturada) — não importa quem
-      // cancelou, o resultado é o mesmo: nada é cobrado por serviço que não
-      // vai mais acontecer.
+      // reserva ou estorna, se já tiver sido capturada). Mesma regra das 2h
+      // já usada no cancelamento de sessão avulsa: se foi o profissional quem
+      // cancelou o pacote, o cliente nunca perde dinheiro; se foi o cliente
+      // quem cancelou e uma sessão específica está a menos de 2h, essa sessão
+      // é cobrada normalmente (o profissional já reservou aquele horário) —
+      // sem essa checagem, cancelar o pacote inteiro seria um jeito de
+      // burlar a proteção que já existe pra sessão avulsa isolada.
       const { PaymentService } = await import("../../payments/services/payment.service");
       const paymentService = new PaymentService();
       const futureSessions = await prisma.booking.findMany({
@@ -984,10 +1040,18 @@ export class PresentialPackageService {
           status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
           scheduledAt: { gt: new Date() }
         },
-        select: { id: true }
+        select: { id: true, scheduledAt: true }
       });
       for (const session of futureSessions) {
-        await paymentService.cancelPaymentForBooking(session.id);
+        const hoursUntilSession = (session.scheduledAt.getTime() - Date.now()) / (60 * 60 * 1000);
+        if (isProvider || hoursUntilSession >= 2) {
+          await paymentService.cancelPaymentForBooking(session.id);
+        } else {
+          await paymentService.captureIfAuthorizedForBookingOrDispute(
+            session.id,
+            "Cliente cancelou o pacote presencial com uma sessão a menos de 2h — profissional mantém o valor desta sessão."
+          );
+        }
         await prisma.booking.update({ where: { id: session.id }, data: { status: BookingStatus.CANCELLED } });
         releasedFutureSessions += 1;
       }
@@ -1016,6 +1080,18 @@ export class PresentialPackageService {
           });
         }
       }
+      // O ciclo já foi pago de uma vez (Pix) e as sessões da semana já tinham
+      // sido geradas de graça a partir dele — se o profissional cancela no
+      // meio do ciclo, essas sessões futuras não podem continuar
+      // "confirmadas" como se nada tivesse mudado.
+      await prisma.booking.updateMany({
+        where: {
+          packageId: pkg.id,
+          status: BookingStatus.CONFIRMED,
+          scheduledAt: { gt: new Date() }
+        },
+        data: { status: BookingStatus.CANCELLED }
+      });
     }
 
     await notificationService.sendToUsers([pkg.clientId], {

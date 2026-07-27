@@ -45,9 +45,15 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
 
   function handleCancel() {
     if (!pkg) return;
+    const isCardFixedRecurringCancel = pkg.mode === "FIXED_RECURRING" && pkg.paymentMethod === "CREDIT_CARD";
+    const isFlexibleSessionPackCancel = pkg.mode === "FLEXIBLE_CREDITS";
+    const cancelMessage =
+      isCardFixedRecurringCancel || isFlexibleSessionPackCancel
+        ? "Nenhuma sessão futura já marcada será cobrada, mas ela será desmarcada imediatamente — inclusive se estiver bem próxima. Deseja cancelar?"
+        : "Isso para as próximas cobranças - o ciclo já pago continua valendo até o fim. Deseja cancelar?";
     Alert.alert(
       "Cancelar pacote",
-      "Isso para as próximas cobranças - o ciclo já pago continua valendo até o fim. Deseja cancelar?",
+      cancelMessage,
       [
         { text: "Voltar", style: "cancel" },
         {
