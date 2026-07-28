@@ -4,6 +4,7 @@ import { Payment, CardToken } from "mercadopago";
 import { PresentialPackageService } from "../src/modules/presential-packages/services/presential-package.service";
 import { prisma } from "../src/config/prisma";
 import { encryptSensitiveText } from "../src/shared/utils/encryption";
+import * as platformFeeModule from "../src/shared/utils/platform-fee";
 
 // Raio-X de pagamentos, Rodada 3, Lote 7: achado grave #2 que ficou de fora
 // do plano original da Rodada 3 — duplo clique em comprar um pacote
@@ -188,5 +189,67 @@ describe("Duplo clique em compra de pacote/combo não gera cobrança duplicada (
     // nunca 4 (o que aconteceria se as duas requisições concorrentes
     // tivessem passado pela reserva).
     expect(paymentCreateSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("purchaseCombo: se a criação do contrato de consultoria falhar depois de reservar o pacote, cancela o pacote órfão automaticamente", async () => {
+    const offer = await prisma.providerServiceOffer.create({
+      data: {
+        providerId,
+        kind: "COMBO",
+        title: `Combo ${uid("offer")}`,
+        billingCycle: "MONTHLY",
+        priceCents: 90000,
+        presentialPackageMode: "FLEXIBLE_CREDITS",
+        presentialSessionsPerCycle: 4,
+        presentialHasFixedTerm: true,
+        presentialTotalCycles: 1,
+        acceptsCreditCard: true,
+        comboPresentialShareCents: 60000,
+        comboConsultancyShareCents: 30000,
+        comboPresentialDaysPerWeek: 2,
+        comboOnlineDaysPerWeek: 3
+      }
+    });
+    offerIds.push(offer.id);
+
+    // providerSplitAmount só é chamado na criação do contrato de
+    // consultoria (a reserva do pacote em modo FLEXIBLE_CREDITS não calcula
+    // split nenhum) — ponto de injeção preciso pra simular a falha
+    // exatamente onde ela deixava o pacote órfão, sem mexer na 1ª transação.
+    const splitSpy = vi
+      .spyOn(platformFeeModule, "providerSplitAmount")
+      .mockImplementationOnce(() => {
+        throw new Error("falha simulada de conexão");
+      });
+
+    await expect(
+      packageService.purchaseCombo(clientId, {
+        offerId: offer.id,
+        categoryId,
+        paymentMethod: "CREDIT_CARD" as any,
+        acknowledgedImmediateExecution: true
+      })
+    ).rejects.toThrow();
+
+    expect(splitSpy).toHaveBeenCalledTimes(1);
+
+    // O pacote reservado antes da falha não pode continuar como fantasma —
+    // senão o guard de "já existe um pacote ativo" bloqueia pra sempre.
+    const orphaned = await prisma.presentialPackage.findFirst({ where: { clientId, offerId: offer.id } });
+    expect(orphaned).not.toBeNull();
+    expect(orphaned!.status).toBe("CANCELLED");
+    packageIds.push(orphaned!.id);
+
+    // Uma nova tentativa (sem o mock de falha) precisa funcionar de cara.
+    vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_test2" } as any);
+    vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: 8200, status: "approved" } as any);
+    const retry = await packageService.purchaseCombo(clientId, {
+      offerId: offer.id,
+      categoryId,
+      paymentMethod: "CREDIT_CARD" as any,
+      acknowledgedImmediateExecution: true
+    });
+    packageIds.push(retry.package.id);
+    contractIds.push((retry.contract as { id: string }).id);
   });
 });

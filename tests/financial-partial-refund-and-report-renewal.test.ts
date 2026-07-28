@@ -132,9 +132,22 @@ describe("Financeiro — reembolso parcial nos repasses e renovação de ficha n
     const tx = payouts.payments.find((p) => p.bookingId === booking.id);
     expect(tx).toBeDefined();
     expect(tx?.status).toBe("PARTIALLY_REFUNDED");
-    // (10000 - 4000) / 10000 = 60% restante -> 9000 * 0.6 = 5400
+    // (10000 - 4000) / 10000 = 60% restante -> 9000 * 0.6 = 5400, 1000 * 0.6 = 600
     expect(tx?.providerAmountCents).toBe(5400);
     expect(payouts.availableCents).toBeGreaterThanOrEqual(5400);
+
+    // Raio-X de pagamentos, Rodada 4, Lote 1: a comissão também precisa ser
+    // proporcional ao estorno — senão bruto − comissão ≠ líquido.
+    expect(tx?.platformFeeCents).toBe(600);
+    expect(tx?.refundedAmountCents).toBe(4000);
+    expect(tx!.amountCents).toBe(tx!.platformFeeCents + tx!.providerAmountCents + tx!.refundedAmountCents);
+
+    const csv = await financialService.exportTransactionsCsv(providerUserId);
+    const csvLines = csv.split("\n");
+    expect(csvLines[0]).toBe("data,tipo,metodo,status,valor_bruto,comissao_plataforma,valor_liquido,valor_estornado_cliente");
+    const csvLine = csvLines.find((line) => line.includes("6.00") && line.includes("54.00"));
+    expect(csvLine).toBeDefined();
+    expect(csvLine).toContain("40.00");
   });
 
   it("getReport soma a renovação de ficha no mês (mesmo conserto que getDashboard/getPayouts já tinham)", async () => {

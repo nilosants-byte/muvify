@@ -885,7 +885,11 @@ export class FinancialService {
   // de 50 linhas da tela (Rodada 3, Lote 6).
   async exportTransactionsCsv(userId: string): Promise<string> {
     const data = await this.buildPayoutsData(userId, 2000);
-    const header = "data,tipo,metodo,status,valor_bruto,comissao_plataforma,valor_liquido";
+    // Raio-X de pagamentos, Rodada 4, Lote 1: valor_bruto continua sendo o
+    // valor original cobrado (fato histórico, nunca muda) — a coluna
+    // valor_estornado_cliente fecha a conta completa em caso de estorno
+    // parcial: bruto = comissão + líquido + estornado.
+    const header = "data,tipo,metodo,status,valor_bruto,comissao_plataforma,valor_liquido,valor_estornado_cliente";
     const typeLabel: Record<string, string> = {
       PRESENTIAL: "Sessão avulsa",
       CONSULTANCY: "Consultoria",
@@ -902,7 +906,8 @@ export class FinancialService {
         escapeCsv(p.status),
         (p.amountCents / 100).toFixed(2),
         (p.platformFeeCents / 100).toFixed(2),
-        (p.providerAmountCents / 100).toFixed(2)
+        (p.providerAmountCents / 100).toFixed(2),
+        (p.refundedAmountCents / 100).toFixed(2)
       ].join(",");
     });
     return [header, ...rows].join("\n");
@@ -993,18 +998,25 @@ export class FinancialService {
       })
     ]);
 
+    // Raio-X de pagamentos, Rodada 4, Lote 1: netFor já reduzia o líquido do
+    // profissional proporcionalmente ao estorno parcial, mas feeFor
+    // continuava devolvendo a comissão cheia — quebrando a identidade
+    // bruto − comissão = líquido em toda tela/CSV que mostra os dois lado a
+    // lado. As duas agora aplicam a mesma proporção.
+    const remainingRatioFor = (p: (typeof payments)[number]) => {
+      if (p.status === PaymentStatus.PARTIALLY_REFUNDED && p.refundedAmountCents && p.amountCents > 0) {
+        return Math.max(0, (p.amountCents - p.refundedAmountCents) / p.amountCents);
+      }
+      return 1;
+    };
     const netFor = (p: (typeof payments)[number]) => {
       const base = p.providerAmountCents ?? providerSplitAmount(p.amountCents);
-      // Estorno parcial reduz proporcionalmente o que sobra pro profissional
-      // (a mesma proporção provider/plataforma da captura original).
-      if (p.status === PaymentStatus.PARTIALLY_REFUNDED && p.refundedAmountCents && p.amountCents > 0) {
-        const remainingRatio = Math.max(0, (p.amountCents - p.refundedAmountCents) / p.amountCents);
-        return Math.round(base * remainingRatio);
-      }
-      return base;
+      return Math.round(base * remainingRatioFor(p));
     };
-    const feeFor = (p: (typeof payments)[number]) =>
-      p.platformFeeCents ?? platformFeeAmount(p.amountCents);
+    const feeFor = (p: (typeof payments)[number]) => {
+      const base = p.platformFeeCents ?? platformFeeAmount(p.amountCents);
+      return Math.round(base * remainingRatioFor(p));
+    };
 
     const pending  = payments.filter(p => p.status === PaymentStatus.AUTHORIZED);
     const captured = payments.filter(
@@ -1018,6 +1030,10 @@ export class FinancialService {
       amountCents:         p.amountCents,
       providerAmountCents: netFor(p),
       platformFeeCents:    feeFor(p),
+      // Estorno parcial: quanto do bruto voltou pro cliente. Junto com o
+      // líquido e a comissão (já proporcionais acima), fecha a conta
+      // completa: bruto = comissão + líquido + estornado.
+      refundedAmountCents: p.status === PaymentStatus.PARTIALLY_REFUNDED ? (p.refundedAmountCents ?? 0) : 0,
       method:              p.method as string,
       status:              p.status as string,
       capturedAt:          p.capturedAt?.toISOString() ?? null,
@@ -1031,6 +1047,7 @@ export class FinancialService {
       amountCents:         c.paymentAmountCents,
       providerAmountCents: c.providerAmountCents,
       platformFeeCents:    c.platformAmountCents,
+      refundedAmountCents: 0,
       method:              (c.paymentMethod ?? "CREDIT_CARD") as string,
       status:              "CAPTURED" as string,
       capturedAt:          (c.paymentCapturedAt ?? c.createdAt).toISOString(),
@@ -1044,6 +1061,7 @@ export class FinancialService {
       amountCents:         cycle.amountCents ?? 0,
       providerAmountCents: cycle.providerAmountCents ?? 0,
       platformFeeCents:    cycle.platformAmountCents,
+      refundedAmountCents: 0,
       method:              (cycle.package.paymentMethod ?? "CREDIT_CARD") as string,
       status:              "CAPTURED" as string,
       capturedAt:          cycle.capturedAt!.toISOString(),
@@ -1059,6 +1077,7 @@ export class FinancialService {
         amountCents:         plan.contract!.paymentAmountCents,
         providerAmountCents: plan.contract!.providerAmountCents,
         platformFeeCents:    plan.contract!.platformAmountCents,
+        refundedAmountCents: 0,
         method:              (plan.contract!.paymentMethod ?? "CREDIT_CARD") as string,
         status:              "CAPTURED" as string,
         capturedAt:          plan.createdAt.toISOString(),

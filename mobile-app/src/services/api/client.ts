@@ -2427,6 +2427,7 @@ export type FinancialPayoutItem = {
   amountCents: number;
   providerAmountCents: number;
   platformFeeCents: number;
+  refundedAmountCents: number;
   method: string;
   status: string;
   capturedAt: string | null;

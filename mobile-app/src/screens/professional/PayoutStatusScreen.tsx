@@ -543,6 +543,11 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
                     <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>
                       de {formatCurrencyBRL(p.amountCents / 100)}
                     </MvText>
+                    {isPartiallyRefunded && p.refundedAmountCents > 0 ? (
+                      <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>
+                        estornado: {formatCurrencyBRL(p.refundedAmountCents / 100)}
+                      </MvText>
+                    ) : null}
                   </View>
                 </View>
               );

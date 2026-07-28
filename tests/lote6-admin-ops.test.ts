@@ -178,7 +178,7 @@ describe("Ajustes operacionais de baixo risco (Rodada 3, Lote 6)", () => {
 
     const csv = await financialService.exportTransactionsCsv(providerUserId);
     const lines = csv.split("\n");
-    expect(lines[0]).toBe("data,tipo,metodo,status,valor_bruto,comissao_plataforma,valor_liquido");
+    expect(lines[0]).toBe("data,tipo,metodo,status,valor_bruto,comissao_plataforma,valor_liquido,valor_estornado_cliente");
     expect(lines.length).toBeGreaterThan(1);
     expect(csv).toContain("90.00");
 

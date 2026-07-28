@@ -1373,38 +1373,55 @@ export class PresentialPackageService {
       now.getTime() + env.CONSULTANCY_DELIVERY_DEADLINE_HOURS * 60 * 60 * 1000
     );
 
-    const contract = await prisma.$transaction(async (tx) => {
-      const request = await tx.consultancyRequest.create({
-        data: {
-          providerId: offer.providerId,
-          clientId,
-          status: ConsultancyRequestStatus.RESPONDED,
-          quotedOfferId: offer.id,
-          // Combo pula direto pra RESPONDED (nao ha etapa de solicitacao
-          // em aberto aguardando o profissional) - o prazo de resposta
-          // nao se aplica aqui, so precisa de um valor nao-nulo.
-          responseDeadlineAt: now,
-          respondedAt: now
-        }
+    // Raio-X de pagamentos, Rodada 4, Lote 1: se essa transação falhar
+    // (conexão caiu, deadlock, etc.) depois que o pacote presencial já foi
+    // reservado acima, o pacote ficava órfão em PENDING_PAYMENT — e o guard
+    // de "já existe um pacote ativo" bloqueava qualquer nova tentativa de
+    // compra sem o cliente saber que precisava cancelar esse registro
+    // fantasma primeiro. Cancela automaticamente o pacote recém-reservado
+    // (nada foi cobrado ainda nesse ponto) antes de relançar o erro, pra
+    // uma segunda tentativa funcionar de cara.
+    let contract: Awaited<ReturnType<typeof prisma.consultancyContract.create>>;
+    try {
+      contract = await prisma.$transaction(async (tx) => {
+        const request = await tx.consultancyRequest.create({
+          data: {
+            providerId: offer.providerId,
+            clientId,
+            status: ConsultancyRequestStatus.RESPONDED,
+            quotedOfferId: offer.id,
+            // Combo pula direto pra RESPONDED (nao ha etapa de solicitacao
+            // em aberto aguardando o profissional) - o prazo de resposta
+            // nao se aplica aqui, so precisa de um valor nao-nulo.
+            responseDeadlineAt: now,
+            respondedAt: now
+          }
+        });
+        return tx.consultancyContract.create({
+          data: {
+            requestId: request.id,
+            providerId: offer.providerId,
+            clientId,
+            offerId: offer.id,
+            status: ConsultancyContractStatus.PENDING_PAYMENT,
+            paymentMethod: input.paymentMethod,
+            paymentInstallments: 1,
+            paymentStatus: ConsultancyPaymentStatus.PENDING,
+            paymentAmountCents: offer.comboConsultancyShareCents!,
+            providerAmountCents: providerSplitAmount(offer.comboConsultancyShareCents!),
+            platformAmountCents: platformFeeAmount(offer.comboConsultancyShareCents!),
+            deliveryDeadlineAt,
+            immediateExecutionAcknowledgedAt: now
+          }
+        });
       });
-      return tx.consultancyContract.create({
-        data: {
-          requestId: request.id,
-          providerId: offer.providerId,
-          clientId,
-          offerId: offer.id,
-          status: ConsultancyContractStatus.PENDING_PAYMENT,
-          paymentMethod: input.paymentMethod,
-          paymentInstallments: 1,
-          paymentStatus: ConsultancyPaymentStatus.PENDING,
-          paymentAmountCents: offer.comboConsultancyShareCents!,
-          providerAmountCents: providerSplitAmount(offer.comboConsultancyShareCents!),
-          platformAmountCents: platformFeeAmount(offer.comboConsultancyShareCents!),
-          deliveryDeadlineAt,
-          immediateExecutionAcknowledgedAt: now
-        }
-      });
-    });
+    } catch (error) {
+      await this.cancelPackage(clientId, pkg.id).catch((cancelError) =>
+        console.error("Falha ao cancelar pacote órfão após erro na criação do contrato do combo:", cancelError)
+      );
+      const message = error instanceof Error ? error.message : "Falha ao criar o contrato de consultoria do combo.";
+      throw new AppError(message, StatusCodes.BAD_REQUEST);
+    }
 
     // Liga o pacote presencial (já reservado acima, antes de qualquer
     // cobrança) ao contrato de consultoria recém-criado.
