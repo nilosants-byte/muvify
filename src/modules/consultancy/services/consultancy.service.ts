@@ -1603,13 +1603,18 @@ export class ConsultancyService {
 
   async listClientArchivedRequests(
     clientId: string,
-    status?: "ALL" | "REFUSED" | "EXPIRED_REFUNDED" | "ARCHIVED"
+    status?: "ALL" | "REFUSED" | "EXPIRED" | "EXPIRED_REFUNDED" | "ARCHIVED"
   ) {
+    // Raio-X de pagamentos, Rodada 4, Lote 5: EXPIRED (solicitação que o
+    // profissional nunca respondeu, gravada por expireStaleConsultancyRequests)
+    // ficava fora desse filtro — a solicitação simplesmente sumia do app do
+    // aluno pra sempre, sem aparecer nem nos ativos nem nos arquivados.
     const whereStatus =
       !status || status === "ALL"
         ? {
             in: [
               ConsultancyRequestStatus.REFUSED,
+              ConsultancyRequestStatus.EXPIRED,
               ConsultancyRequestStatus.EXPIRED_REFUNDED,
               ConsultancyRequestStatus.ARCHIVED
             ]
@@ -1670,15 +1675,19 @@ export class ConsultancyService {
 
   async listProviderArchivedRequests(
     userId: string,
-    status?: "ALL" | "REFUSED" | "EXPIRED_REFUNDED" | "ARCHIVED"
+    status?: "ALL" | "REFUSED" | "EXPIRED" | "EXPIRED_REFUNDED" | "ARCHIVED"
   ) {
     const provider = await this.providerProfileByUserId(userId);
 
+    // Raio-X de pagamentos, Rodada 4, Lote 5: mesmo problema do lado do
+    // profissional — uma solicitação que ele deixou expirar sem responder
+    // sumia do próprio histórico dele também.
     const whereStatus =
       !status || status === "ALL"
         ? {
             in: [
               ConsultancyRequestStatus.REFUSED,
+              ConsultancyRequestStatus.EXPIRED,
               ConsultancyRequestStatus.EXPIRED_REFUNDED,
               ConsultancyRequestStatus.ARCHIVED
             ]

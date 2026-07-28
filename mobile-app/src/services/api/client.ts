@@ -312,6 +312,7 @@ export type ConsultancyRequest = {
     | "RESPONDED"
     | "ACCEPTED"
     | "REFUSED"
+    | "EXPIRED"
     | "EXPIRED_REFUNDED"
     | "ARCHIVED";
   quotedOfferId?: string | null;
@@ -1737,6 +1738,7 @@ export type AdminDisputeCaseDetail = AdminDisputeCaseListItem & {
     priceCents: number;
     currency: string;
     attendanceCodeValidatedAt: string | null;
+    immediateExecutionAcknowledgedAt: string | null;
     category: { name: string } | null;
     completionEvidences: Array<{
       id: string;
@@ -2658,7 +2660,7 @@ export const consultancyApi = {
   myArchivedRequests(
     token: string,
     params?: {
-      status?: "ALL" | "REFUSED" | "EXPIRED_REFUNDED" | "ARCHIVED";
+      status?: "ALL" | "REFUSED" | "EXPIRED" | "EXPIRED_REFUNDED" | "ARCHIVED";
     }
   ) {
     const query = new URLSearchParams();
@@ -2723,7 +2725,7 @@ export const consultancyApi = {
   providerArchivedRequests(
     token: string,
     params?: {
-      status?: "ALL" | "REFUSED" | "EXPIRED_REFUNDED" | "ARCHIVED";
+      status?: "ALL" | "REFUSED" | "EXPIRED" | "EXPIRED_REFUNDED" | "ARCHIVED";
     }
   ) {
     const query = new URLSearchParams();

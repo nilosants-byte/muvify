@@ -290,6 +290,12 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
                 {booking.attendanceCodeValidatedAt ? formatDateTime(booking.attendanceCodeValidatedAt) : "Não"}
               </MvText>
               <MvText variant="body4">
+                Ciência de início imediato (dispensa do prazo de arrependimento):{" "}
+                {booking.immediateExecutionAcknowledgedAt
+                  ? formatDateTime(booking.immediateExecutionAcknowledgedAt)
+                  : "Não coletada"}
+              </MvText>
+              <MvText variant="body4">
                 Selfies de comprovação enviadas: {booking.completionEvidences.length}
               </MvText>
               <MvText variant="body4">

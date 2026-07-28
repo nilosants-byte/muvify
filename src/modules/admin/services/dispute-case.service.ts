@@ -98,6 +98,12 @@ export class DisputeCaseService {
             priceCents: true,
             currency: true,
             attendanceCodeValidatedAt: true,
+            // Raio-X de pagamentos, Rodada 4, Lote 5: prova de que o cliente
+            // deu ciência expressa ao início imediato do atendimento (dispensa
+            // o prazo de arrependimento do CDC quando o agendamento é em
+            // menos de 7 dias) — a única tela onde um admin precisaria disso
+            // pra julgar uma contestação nunca mostrava esse campo.
+            immediateExecutionAcknowledgedAt: true,
             category: { select: { name: true } },
             completionEvidences: {
               select: { id: true, userId: true, mimeType: true, storageKey: true, imageBase64: true, capturedAt: true }

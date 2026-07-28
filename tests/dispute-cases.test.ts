@@ -547,6 +547,29 @@ describe("DisputeCase — fila de disputas (Fase 6)", () => {
     await prisma.trainingPlan.deleteMany({ where: { id: plan.id } });
   });
 
+  it("getCaseDetail inclui a ciência de início imediato do agendamento, quando presente (Rodada 4, Lote 5)", async () => {
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        providerId,
+        categoryId,
+        scheduledAt: new Date(Date.now() - 60 * 60 * 1000),
+        priceCents: 8000,
+        status: BookingStatus.CONFIRMED,
+        immediateExecutionAcknowledgedAt: new Date()
+      }
+    });
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "NO_SHOW_CONTESTED", clientId, providerId, amountCents: 8000, bookingId: booking.id }
+    });
+
+    const detail = await disputeCaseService.getCaseDetail(adminId, disputeCase.id);
+    expect(detail.booking?.immediateExecutionAcknowledgedAt).not.toBeNull();
+
+    await prisma.disputeCase.deleteMany({ where: { id: disputeCase.id } });
+    await prisma.booking.deleteMany({ where: { id: booking.id } });
+  });
+
   it("lista e detalha casos com o contexto do agendamento (evidências, chat e no-show)", async () => {
     const list = await disputeCaseService.listCases(adminId, "OPEN");
     expect(Array.isArray(list)).toBe(true);

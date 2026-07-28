@@ -59,7 +59,8 @@ const PAYMENT_STATUS_LABELS: Record<string, string> = {
   CAPTURED: "Capturado",
   CANCELED: "Cancelado",
   FAILED: "Falhou",
-  REFUNDED: "Reembolsado"
+  REFUNDED: "Reembolsado",
+  PARTIALLY_REFUNDED: "Estornado parcialmente"
 };
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {

@@ -14,17 +14,19 @@ import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalArchivedRequests">;
-type ArchivedFilter = "ALL" | "REFUSED" | "EXPIRED_REFUNDED" | "ARCHIVED";
+type ArchivedFilter = "ALL" | "REFUSED" | "EXPIRED" | "EXPIRED_REFUNDED" | "ARCHIVED";
 
 const filterOptions: Array<{ label: string; value: ArchivedFilter }> = [
   { label: "Todos", value: "ALL" },
   { label: "Recusados", value: "REFUSED" },
+  { label: "Sem resposta", value: "EXPIRED" },
   { label: "Expirados", value: "EXPIRED_REFUNDED" },
   { label: "Arquivados", value: "ARCHIVED" },
 ];
 
 function archivedStatusLabel(status: ConsultancyRequest["status"]) {
   if (status === "REFUSED") return "Recusado";
+  if (status === "EXPIRED") return "Expirada sem resposta";
   if (status === "EXPIRED_REFUNDED") return "Expirado/Estornado";
   if (status === "ARCHIVED") return "Arquivado";
   return status;
@@ -32,6 +34,7 @@ function archivedStatusLabel(status: ConsultancyRequest["status"]) {
 
 function variantFromStatus(status: ConsultancyRequest["status"]): "orange" | "red" | "blue" | "gray" {
   if (status === "REFUSED") return "orange";
+  if (status === "EXPIRED") return "orange";
   if (status === "EXPIRED_REFUNDED") return "red";
   if (status === "ARCHIVED") return "blue";
   return "gray";

@@ -224,7 +224,7 @@ export const deliverContractSchema = z.object({
 
 export const archivedConsultancyQuerySchema = z.object({
   query: z.object({
-    status: z.enum(["ALL", "REFUSED", "EXPIRED_REFUNDED", "ARCHIVED"]).optional()
+    status: z.enum(["ALL", "REFUSED", "EXPIRED", "EXPIRED_REFUNDED", "ARCHIVED"]).optional()
   })
 });
 
