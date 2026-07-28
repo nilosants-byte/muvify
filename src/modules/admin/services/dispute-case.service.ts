@@ -169,6 +169,46 @@ export class DisputeCaseService {
       throw new AppError("Este caso já foi resolvido.", StatusCodes.BAD_REQUEST);
     }
 
+    // Raio-X de pagamentos, Rodada 3, Lote 1: trava atômica auto-expirável
+    // (mesmo idioma de ConsultancyContract.renewalDeliveryLockedAt) contra
+    // dois admins resolvendo o mesmo caso ao mesmo tempo — sem isso, os
+    // dois passavam pela checagem "já foi resolvido?" acima antes de
+    // qualquer um confirmar, podendo gerar reembolso ou dívida duplicados.
+    const resolvingStaleThreshold = new Date(Date.now() - 30_000);
+    const claimed = await prisma.disputeCase.updateMany({
+      where: {
+        id: caseId,
+        status: DisputeCaseStatus.OPEN,
+        OR: [{ resolvingLockedAt: null }, { resolvingLockedAt: { lt: resolvingStaleThreshold } }]
+      },
+      data: { resolvingLockedAt: new Date() }
+    });
+    if (claimed.count === 0) {
+      throw new AppError(
+        "Este caso já está sendo resolvido (ou acabou de ser resolvido). Recarregue e tente novamente.",
+        StatusCodes.CONFLICT
+      );
+    }
+
+    try {
+      return await this.doResolveCase(admin, disputeCase, caseId, input, note);
+    } catch (error) {
+      await prisma.disputeCase
+        .updateMany({ where: { id: caseId }, data: { resolvingLockedAt: null } })
+        .catch((releaseError) => console.error("Falha ao liberar trava de resolução de disputa:", releaseError));
+      throw error;
+    }
+  }
+
+  private async doResolveCase(
+    admin: { id: string },
+    disputeCase: NonNullable<Awaited<ReturnType<typeof prisma.disputeCase.findUnique>>> & {
+      provider: { userId: string };
+    },
+    caseId: string,
+    input: ResolveDisputeCaseInput,
+    note: string
+  ) {
     // Raio-X de pagamentos, Rodada 2, Lote 2: RETRY_CAPTURE só se aplica a
     // casos de falha de captura — nunca houve cobrança de verdade (payment
     // fica AUTHORIZED, não CAPTURED), então reembolsar não se aplica; a

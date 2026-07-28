@@ -548,6 +548,11 @@ model DisputeCase {
   resolutionNote           String?
   resolvedByAdminId        String?
   resolvedAt               DateTime?
+  // Raio-X de pagamentos, Rodada 3, Lote 1: trava atômica auto-expirável
+  // (mesmo idioma de ConsultancyContract.renewalDeliveryLockedAt) contra
+  // dois admins resolvendo o mesmo caso ao mesmo tempo — evita reembolso
+  // ou dívida duplicados.
+  resolvingLockedAt        DateTime?
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
 

@@ -1605,8 +1605,23 @@ export class PaymentService {
         // webhook já usada no caminho de sucesso — sem isso, cada reenvio
         // do mesmo aviso de recusa/cancelamento (comum e esperado do MP)
         // reenviava a notificação de novo, mesmo sem nada ter mudado.
+        // Raio-X, Rodada 3, Lote 1: além disso, um webhook de recusa/
+        // cancelamento ATRASADO (a MP reenvia eventos fora de ordem) não
+        // pode reverter um pagamento que já foi resolvido de verdade —
+        // "not: newStatus" só bloqueava reprocessar o mesmo status, não
+        // impedia rebaixar um CAPTURED/REFUNDED pra FAILED/CANCELED.
         const updatedPayment = await prisma.payment.updateMany({
-          where: { id: payment.id, status: { not: newStatus } },
+          where: {
+            id: payment.id,
+            status: {
+              notIn: [
+                newStatus,
+                PaymentStatus.CAPTURED,
+                PaymentStatus.REFUNDED,
+                PaymentStatus.PARTIALLY_REFUNDED
+              ]
+            }
+          },
           data: { status: newStatus, failureReason: String(mpPay.status_detail ?? mpStatus) }
         });
         if (updatedPayment.count > 0) {
@@ -1619,28 +1634,39 @@ export class PaymentService {
       }
 
       if (consultancyContract) {
-        await prisma.$transaction(async (tx) => {
-          await tx.consultancyContract.update({
-            where: { id: consultancyContract.id },
+        // Mesma proteção monotônica: só reverte se o contrato ainda não
+        // tiver sido resolvido de verdade (CAPTURED/REFUNDED) por um
+        // evento mais novo que este webhook atrasado.
+        const updatedContractCount = await prisma.$transaction(async (tx) => {
+          const updated = await tx.consultancyContract.updateMany({
+            where: {
+              id: consultancyContract.id,
+              paymentStatus: { notIn: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.REFUNDED] }
+            },
             data: {
               paymentStatus: ConsultancyPaymentStatus.FAILED,
               status: ConsultancyContractStatus.PENDING_PAYMENT
             }
           });
-          await tx.consultancyRequest.update({
-            where: { id: consultancyContract.requestId },
-            data: { status: ConsultancyRequestStatus.RESPONDED, clientDecisionAt: null }
-          });
-        });
-        await notificationService.sendToUsers(
-          [consultancyContract.clientId, consultancyContract.provider.userId],
-          {
-            preferenceType: "PAYMENTS",
-            title: "Pagamento da consultoria falhou",
-            body: "Não foi possível confirmar o pagamento da consultoria.",
-            data: { type: "CONSULTANCY_PAYMENT_FAILED", contractId: consultancyContract.id }
+          if (updated.count > 0) {
+            await tx.consultancyRequest.update({
+              where: { id: consultancyContract.requestId },
+              data: { status: ConsultancyRequestStatus.RESPONDED, clientDecisionAt: null }
+            });
           }
-        );
+          return updated.count;
+        });
+        if (updatedContractCount > 0) {
+          await notificationService.sendToUsers(
+            [consultancyContract.clientId, consultancyContract.provider.userId],
+            {
+              preferenceType: "PAYMENTS",
+              title: "Pagamento da consultoria falhou",
+              body: "Não foi possível confirmar o pagamento da consultoria.",
+              data: { type: "CONSULTANCY_PAYMENT_FAILED", contractId: consultancyContract.id }
+            }
+          );
+        }
       }
     }
 
