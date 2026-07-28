@@ -6,7 +6,9 @@ export type AdminAuditAction =
   | "CREF_REJECTED"
   | "SUPPORT_TICKET_REPLIED"
   | "DATA_RETENTION_RUN"
-  | "DISPUTE_CASE_RESOLVED";
+  | "DISPUTE_CASE_RESOLVED"
+  | "USER_SUSPENDED"
+  | "USER_REACTIVATED";
 
 export async function writeAdminAuditLog(params: {
   adminId: string;

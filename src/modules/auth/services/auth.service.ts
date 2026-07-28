@@ -371,6 +371,13 @@ export class AuthService {
 
     await this.clearLoginAttempts(normalizedEmail);
 
+    if (user.suspendedAt) {
+      throw new AppError(
+        `Sua conta está suspensa. Motivo: ${user.suspensionReason ?? "não informado"}`,
+        StatusCodes.FORBIDDEN
+      );
+    }
+
     if (user.twoFactorEnabled) {
       const challengeToken = await this.twoFactorService.createChallengeToken(user.id);
       return { requiresTwoFactor: true as const, challengeToken };

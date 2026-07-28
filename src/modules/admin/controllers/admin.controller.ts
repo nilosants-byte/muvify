@@ -138,6 +138,16 @@ export class AdminController {
     return response.json(payload);
   }
 
+  async suspendUser(request: Request, response: Response) {
+    const payload = await adminService.suspendUser(request.user!.id, request.params.userId, request.body.reason);
+    return response.json(payload);
+  }
+
+  async reactivateUser(request: Request, response: Response) {
+    const payload = await adminService.reactivateUser(request.user!.id, request.params.userId);
+    return response.json(payload);
+  }
+
   async listDisputeCases(request: Request, response: Response) {
     const payload = await disputeCaseService.listCases(
       request.user!.id,

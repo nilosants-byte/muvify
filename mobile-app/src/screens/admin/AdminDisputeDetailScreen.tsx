@@ -43,6 +43,10 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
   const [clientDebtAmountText, setClientDebtAmountText] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const [suspendTarget, setSuspendTarget] = useState<"CLIENT" | "PROVIDER" | null>(null);
+  const [suspendReason, setSuspendReason] = useState("");
+  const [suspending, setSuspending] = useState(false);
+
   const detailQuery = useAuthQuery(
     queryKeys.admin.disputeCaseDetail(caseId),
     (token) => adminApi.getDisputeCaseDetail(token, caseId)
@@ -123,6 +127,44 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
     }
   }
 
+  async function submitSuspension() {
+    if (!disputeCase || !suspendTarget) return;
+
+    const trimmedReason = suspendReason.trim();
+    if (trimmedReason.length < 5) {
+      showToast("Explique o motivo da suspensão (mínimo 5 caracteres).", "error");
+      return;
+    }
+
+    const targetUserId = suspendTarget === "CLIENT" ? disputeCase.client.id : disputeCase.provider.user.id;
+
+    try {
+      setSuspending(true);
+      await runWithAuth((token) => adminApi.suspendUser(token, targetUserId, trimmedReason));
+      showToast("Usuário suspenso.", "success");
+      await detailQuery.refetch();
+      setSuspendTarget(null);
+      setSuspendReason("");
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao suspender o usuário.", navigation });
+    } finally {
+      setSuspending(false);
+    }
+  }
+
+  async function reactivate(userId: string) {
+    try {
+      setSuspending(true);
+      await runWithAuth((token) => adminApi.reactivateUser(token, userId));
+      showToast("Usuário reativado.", "success");
+      await detailQuery.refetch();
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao reativar o usuário.", navigation });
+    } finally {
+      setSuspending(false);
+    }
+  }
+
   if (detailQuery.isLoading || !disputeCase) {
     return (
       <AdminScaffold title="Detalhe do caso" navigation={navigation} currentScreen="AdminDisputes">
@@ -153,6 +195,68 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
             <MvText variant="semi2">Valor em disputa: {formatCents(disputeCase.amountCents)}</MvText>
             {disputeCase.contextNote ? (
               <MvText variant="body4" color="secondary">Motivo: {disputeCase.contextNote}</MvText>
+            ) : null}
+          </View>
+        </MvCard>
+
+        <MvCard>
+          <View style={{ gap: 10 }}>
+            <MvText variant="semi2">Ações administrativas</MvText>
+
+            {[
+              { role: "CLIENT" as const, label: "Cliente", user: disputeCase.client },
+              { role: "PROVIDER" as const, label: "Profissional", user: disputeCase.provider.user }
+            ].map(({ role, label, user }) => (
+              <View key={role} style={{ gap: 4 }}>
+                <MvText variant="body4">
+                  {label}: {user.name} {user.suspendedAt ? "— suspenso" : ""}
+                </MvText>
+                {user.suspendedAt ? (
+                  <MvButton
+                    variant="outline"
+                    label="Reativar conta"
+                    loading={suspending}
+                    onPress={() => void reactivate(user.id)}
+                  />
+                ) : (
+                  <MvButton
+                    variant={suspendTarget === role ? "danger" : "outline"}
+                    label={`Suspender ${label.toLowerCase()}`}
+                    onPress={() => setSuspendTarget(suspendTarget === role ? null : role)}
+                  />
+                )}
+              </View>
+            ))}
+
+            {suspendTarget ? (
+              <View style={{ gap: 4 }}>
+                <MvText variant="caption" color="secondary">
+                  Motivo da suspensão — o usuário verá esse texto e não conseguirá mais fazer login
+                </MvText>
+                <MvInput
+                  multiline
+                  numberOfLines={3}
+                  maxLength={500}
+                  placeholder="Explique o motivo (ex: fraude confirmada, abuso reportado)"
+                  value={suspendReason}
+                  onChangeText={setSuspendReason}
+                  style={{ textAlignVertical: "top" } as any}
+                />
+                <MvButton
+                  variant="danger"
+                  label="Confirmar suspensão"
+                  loading={suspending}
+                  onPress={() => void submitSuspension()}
+                />
+                <MvButton
+                  variant="ghost"
+                  label="Cancelar"
+                  onPress={() => {
+                    setSuspendTarget(null);
+                    setSuspendReason("");
+                  }}
+                />
+              </View>
             ) : null}
           </View>
         </MvCard>

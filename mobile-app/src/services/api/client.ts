@@ -1591,7 +1591,28 @@ export const adminApi = {
       token,
       body: input
     });
+  },
+  suspendUser(token: string, userId: string, reason: string) {
+    return apiRequest<AdminSuspendedUser>(`/admin/users/${userId}/suspend`, {
+      method: "POST",
+      token,
+      body: { reason }
+    });
+  },
+  reactivateUser(token: string, userId: string) {
+    return apiRequest<AdminSuspendedUser>(`/admin/users/${userId}/reactivate`, {
+      method: "POST",
+      token
+    });
   }
+};
+
+export type AdminSuspendedUser = {
+  id: string;
+  name: string;
+  email: string;
+  suspendedAt: string | null;
+  suspensionReason: string | null;
 };
 
 export type AdminDisputeCaseType =
@@ -1621,7 +1642,12 @@ export type AdminDisputeCaseDetail = AdminDisputeCaseListItem & {
   contextNote: string | null;
   resolutionNote: string | null;
   resolvedByAdmin: { id: string; name: string } | null;
-  provider: { id: string; displayName: string; user: { id: string; name: string; email: string } };
+  client: { id: string; name: string; email: string; suspendedAt: string | null };
+  provider: {
+    id: string;
+    displayName: string;
+    user: { id: string; name: string; email: string; suspendedAt: string | null };
+  };
   booking: {
     id: string;
     scheduledAt: string;

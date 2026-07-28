@@ -7,6 +7,7 @@ import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
 import { isAdminEmail } from "../../../shared/utils/admin-access";
 import { decryptSensitiveText, hashLookupValue } from "../../../shared/utils/encryption";
+import { resolveAccessTokenTtlSeconds, setTokenBlacklist } from "../../../shared/security/token-blacklist";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DataRetentionService } from "../../privacy/services/data-retention.service";
 
@@ -1167,5 +1168,110 @@ export class AdminService {
     });
 
     return reports.filter((r) => r.reportedUser.noShowStrikes >= minStrikes);
+  }
+
+  // ─── Suspensão de conta (Rodada 3, Lote 3) ───────────────────────────────
+  // Escopo mínimo: os Termos já prometem suspensão em caso de fraude/abuso
+  // (Cláusula 19.2) mas não existia nenhuma ação admin pra executar isso.
+  // Reaproveita o mesmo padrão de revogação usado em
+  // user.service.ts::changeMyPassword (sessões + blacklist de token).
+
+  async suspendUser(adminId: string, targetUserId: string, reason: string) {
+    const admin = await this.ensureAdminAccess(adminId);
+
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      throw new AppError("Informe o motivo da suspensão.", StatusCodes.BAD_REQUEST);
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, name: true, email: true, suspendedAt: true }
+    });
+    if (!target) {
+      throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    if (isAdminEmail(target.email)) {
+      throw new AppError("Não é possível suspender uma conta de administrador.", StatusCodes.BAD_REQUEST);
+    }
+    if (target.suspendedAt) {
+      throw new AppError("Este usuário já está suspenso.", StatusCodes.BAD_REQUEST);
+    }
+
+    const suspendedAt = new Date();
+    const updated = await prisma.user.update({
+      where: { id: target.id },
+      data: { suspendedAt, suspensionReason: trimmedReason },
+      select: { id: true, name: true, email: true, suspendedAt: true, suspensionReason: true }
+    });
+
+    await prisma.session.updateMany({
+      where: { userId: target.id, revokedAt: null },
+      data: { revokedAt: suspendedAt }
+    });
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    await setTokenBlacklist(target.id, nowSeconds, resolveAccessTokenTtlSeconds()).catch(() => {/* best effort */});
+
+    void writeAdminAuditLog({
+      adminId: admin.id,
+      action: "USER_SUSPENDED",
+      targetType: "USER",
+      targetId: target.id,
+      metadata: { reason: trimmedReason }
+    });
+
+    void this.notificationService
+      .sendToUsers([target.id], {
+        preferenceType: "SYSTEM",
+        title: "Sua conta foi suspensa",
+        body: `Sua conta foi suspensa. Motivo: ${trimmedReason}`,
+        data: { type: "ACCOUNT_SUSPENDED" }
+      })
+      .catch((error) => console.error("Falha ao notificar usuário sobre suspensão:", error));
+
+    console.info(`[ADMIN_AUDIT] userSuspended adminId=${admin.id} targetUserId=${target.id}`);
+
+    return updated;
+  }
+
+  async reactivateUser(adminId: string, targetUserId: string) {
+    const admin = await this.ensureAdminAccess(adminId);
+
+    const target = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, name: true, email: true, suspendedAt: true }
+    });
+    if (!target) {
+      throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    if (!target.suspendedAt) {
+      throw new AppError("Este usuário não está suspenso.", StatusCodes.BAD_REQUEST);
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: target.id },
+      data: { suspendedAt: null, suspensionReason: null },
+      select: { id: true, name: true, email: true, suspendedAt: true, suspensionReason: true }
+    });
+
+    void writeAdminAuditLog({
+      adminId: admin.id,
+      action: "USER_REACTIVATED",
+      targetType: "USER",
+      targetId: target.id
+    });
+
+    void this.notificationService
+      .sendToUsers([target.id], {
+        preferenceType: "SYSTEM",
+        title: "Sua conta foi reativada",
+        body: "Sua conta foi reativada e você já pode fazer login normalmente.",
+        data: { type: "ACCOUNT_REACTIVATED" }
+      })
+      .catch((error) => console.error("Falha ao notificar usuário sobre reativação:", error));
+
+    console.info(`[ADMIN_AUDIT] userReactivated adminId=${admin.id} targetUserId=${target.id}`);
+
+    return updated;
   }
 }

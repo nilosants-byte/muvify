@@ -17,8 +17,10 @@ import {
   adminLookupBookingsSchema,
   adminLookupChatsSchema,
   adminLookupCrefSchema,
+  adminReactivateUserSchema,
   adminResolveDisputeCaseSchema,
   adminRunDataRetentionSchema,
+  adminSuspendUserSchema,
   adminSupportQueueQuerySchema,
   adminSupportReplySchema,
   reviewProviderCrefSchema
@@ -98,6 +100,19 @@ adminRoutes.get("/lookup/chats", validate(adminLookupChatsSchema), adminControll
 adminRoutes.get("/lookup/bookings", validate(adminLookupBookingsSchema), adminController.lookupBookings);
 adminRoutes.get("/lookup/bookings/:bookingId", validate(adminLookupBookingDetailSchema), adminController.lookupBookingDetail);
 adminRoutes.get("/no-show-reports", adminController.listNoShowReports);
+
+adminRoutes.post(
+  "/users/:userId/suspend",
+  uploadRateLimiter,
+  validate(adminSuspendUserSchema),
+  adminController.suspendUser
+);
+adminRoutes.post(
+  "/users/:userId/reactivate",
+  uploadRateLimiter,
+  validate(adminReactivateUserSchema),
+  adminController.reactivateUser
+);
 
 adminRoutes.get(
   "/disputes",

@@ -80,9 +80,13 @@ export class DisputeCaseService {
     const disputeCase = await prisma.disputeCase.findUnique({
       where: { id: caseId },
       include: {
-        client: { select: { id: true, name: true, email: true } },
+        client: { select: { id: true, name: true, email: true, suspendedAt: true } },
         provider: {
-          select: { id: true, displayName: true, user: { select: { id: true, name: true, email: true } } }
+          select: {
+            id: true,
+            displayName: true,
+            user: { select: { id: true, name: true, email: true, suspendedAt: true } }
+          }
         },
         resolvedByAdmin: { select: { id: true, name: true } },
         booking: {

@@ -12,7 +12,7 @@ import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
 import { getCache, setCache } from "../../../shared/utils/cache";
-import { setTokenBlacklist } from "../../../shared/security/token-blacklist";
+import { resolveAccessTokenTtlSeconds, setTokenBlacklist } from "../../../shared/security/token-blacklist";
 import {
   decryptSensitiveText,
   encryptSensitiveText
@@ -301,15 +301,7 @@ export class UserService {
     });
     // Blacklistar tokens de acesso ativos
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const accessTtlSeconds = (() => {
-      const d = env.ACCESS_TOKEN_EXPIRES_IN?.trim() ?? "900";
-      const m = /^(\d+)([smhd]?)$/.exec(d);
-      if (!m) return 900;
-      const n = parseInt(m[1]!, 10);
-      const unit = m[2] ?? "s";
-      return unit === "m" ? n * 60 : unit === "h" ? n * 3600 : unit === "d" ? n * 86400 : n;
-    })();
-    await setTokenBlacklist(user.id, nowSeconds, accessTtlSeconds).catch(() => {/* best effort */});
+    await setTokenBlacklist(user.id, nowSeconds, resolveAccessTokenTtlSeconds()).catch(() => {/* best effort */});
 
     if (emailService.canSendEmail()) {
       void emailService

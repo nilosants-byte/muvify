@@ -127,9 +127,25 @@ export const adminDisputeCaseIdSchema = z.object({
 export const adminResolveDisputeCaseSchema = z.object({
   params: z.object({ caseId: z.string().uuid() }),
   body: z.object({
-    resolution: z.enum(["REFUNDED", "DENIED"]),
+    // "RETRY_CAPTURE" faltava aqui (Rodada 3, Lote 3): o schema nunca foi
+    // atualizado quando essa resolução foi criada (Rodada 2, Lote 2), então
+    // toda chamada real via API/mobile era rejeitada com 400 antes de
+    // chegar no service — só não foi pego antes porque os testes chamam
+    // disputeCaseService.resolveCase diretamente, sem passar pela validação.
+    resolution: z.enum(["REFUNDED", "DENIED", "RETRY_CAPTURE"]),
     amountCents: z.coerce.number().int().positive().optional(),
     note: z.string().trim().min(5).max(500),
     chargeClientDebtCents: z.coerce.number().int().positive().optional()
   })
+});
+
+export const adminSuspendUserSchema = z.object({
+  params: z.object({ userId: z.string().uuid() }),
+  body: z.object({
+    reason: z.string().trim().min(5).max(500)
+  })
+});
+
+export const adminReactivateUserSchema = z.object({
+  params: z.object({ userId: z.string().uuid() })
 });

@@ -267,6 +267,8 @@ model User {
   documentHash             String?
   trainingDaysPerWeek      Int                         @default(3)
   noShowStrikes            Int                         @default(0)
+  suspendedAt              DateTime?
+  suspensionReason         String?
   customerPaymentMethods   CustomerPaymentMethod[]
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
