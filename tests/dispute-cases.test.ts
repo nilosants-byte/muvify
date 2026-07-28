@@ -345,6 +345,202 @@ describe("DisputeCase — fila de disputas (Fase 6)", () => {
     await expect(disputeCaseService.getCaseDetail(clientId, disputeCase.id)).rejects.toThrow();
   });
 
+  it("admin resolve com reembolso total: sincroniza o Payment local pra REFUNDED", async () => {
+    // Raio-X de pagamentos, Rodada 2, Lote 2: antes, o Payment local ficava
+    // CAPTURED pra sempre mesmo depois do admin estornar de verdade no MP.
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        providerId,
+        categoryId,
+        scheduledAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
+        priceCents: 12000,
+        status: BookingStatus.COMPLETED
+      }
+    });
+    const mpPaymentId = `mp_${uid("sync")}`;
+    await prisma.payment.create({
+      data: {
+        bookingId: booking.id,
+        amountCents: 12000,
+        method: PaymentMethod.CREDIT_CARD,
+        status: PaymentStatus.CAPTURED,
+        mpPaymentId,
+        capturedAt: new Date()
+      }
+    });
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 12000, mpPaymentId, bookingId: booking.id }
+    });
+
+    await disputeCaseService.resolveCase(adminId, disputeCase.id, {
+      resolution: "REFUNDED",
+      note: "Estorno manual confirmado."
+    });
+
+    const payment = await prisma.payment.findUniqueOrThrow({ where: { bookingId: booking.id } });
+    expect(payment.status).toBe(PaymentStatus.REFUNDED);
+    expect(payment.refundedAmountCents).toBe(12000);
+    expect(payment.refundedAt).not.toBeNull();
+  });
+
+  it("admin resolve com reembolso parcial: sincroniza o Payment local pra PARTIALLY_REFUNDED", async () => {
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        providerId,
+        categoryId,
+        scheduledAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
+        priceCents: 10000,
+        status: BookingStatus.COMPLETED
+      }
+    });
+    const mpPaymentId = `mp_${uid("sync2")}`;
+    await prisma.payment.create({
+      data: {
+        bookingId: booking.id,
+        amountCents: 10000,
+        method: PaymentMethod.CREDIT_CARD,
+        status: PaymentStatus.CAPTURED,
+        mpPaymentId,
+        capturedAt: new Date()
+      }
+    });
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 10000, mpPaymentId, bookingId: booking.id }
+    });
+
+    await disputeCaseService.resolveCase(adminId, disputeCase.id, {
+      resolution: "REFUNDED",
+      amountCents: 4000,
+      note: "Estorno parcial acordado."
+    });
+
+    const payment = await prisma.payment.findUniqueOrThrow({ where: { bookingId: booking.id } });
+    expect(payment.status).toBe(PaymentStatus.PARTIALLY_REFUNDED);
+    expect(payment.refundedAmountCents).toBe(4000);
+  });
+
+  it("RETRY_CAPTURE: tenta capturar de novo um caso CAPTURE_FAILED e resolve como CAPTURED em caso de sucesso", async () => {
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        providerId,
+        categoryId,
+        scheduledAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
+        priceCents: 9000,
+        status: BookingStatus.COMPLETED
+      }
+    });
+    const mpPaymentId = `mp_${uid("retry")}`;
+    await prisma.payment.create({
+      data: {
+        bookingId: booking.id,
+        amountCents: 9000,
+        method: PaymentMethod.CREDIT_CARD,
+        status: PaymentStatus.AUTHORIZED,
+        mpPaymentId,
+        authorizedAt: new Date()
+      }
+    });
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "CAPTURE_FAILED", clientId, providerId, amountCents: 9000, mpPaymentId, bookingId: booking.id }
+    });
+
+    vi.spyOn(Payment.prototype, "capture").mockResolvedValueOnce({} as any);
+
+    const resolved = await disputeCaseService.resolveCase(adminId, disputeCase.id, {
+      resolution: "RETRY_CAPTURE",
+      note: "Cartão do cliente foi regularizado, tentando capturar de novo."
+    });
+
+    expect(resolved.status).toBe("RESOLVED");
+    expect(resolved.resolution).toBe("CAPTURED");
+    expect(resolved.resolvedAmountCents).toBe(9000);
+
+    const payment = await prisma.payment.findUniqueOrThrow({ where: { bookingId: booking.id } });
+    expect(payment.status).toBe(PaymentStatus.CAPTURED);
+  });
+
+  it("RETRY_CAPTURE: se a nova tentativa falhar de novo, o caso continua aberto", async () => {
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        providerId,
+        categoryId,
+        scheduledAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
+        priceCents: 7000,
+        status: BookingStatus.COMPLETED
+      }
+    });
+    const mpPaymentId = `mp_${uid("retryfail")}`;
+    await prisma.payment.create({
+      data: {
+        bookingId: booking.id,
+        amountCents: 7000,
+        method: PaymentMethod.CREDIT_CARD,
+        status: PaymentStatus.AUTHORIZED,
+        mpPaymentId,
+        authorizedAt: new Date()
+      }
+    });
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "CAPTURE_FAILED", clientId, providerId, amountCents: 7000, mpPaymentId, bookingId: booking.id }
+    });
+
+    vi.spyOn(Payment.prototype, "capture").mockRejectedValueOnce(new Error("cartão recusado de novo"));
+
+    await expect(
+      disputeCaseService.resolveCase(adminId, disputeCase.id, {
+        resolution: "RETRY_CAPTURE",
+        note: "Tentando de novo."
+      })
+    ).rejects.toThrow(/também falhou/);
+
+    const stillOpen = await prisma.disputeCase.findUniqueOrThrow({ where: { id: disputeCase.id } });
+    expect(stillOpen.status).toBe("OPEN");
+    const payment = await prisma.payment.findUniqueOrThrow({ where: { bookingId: booking.id } });
+    expect(payment.status).toBe(PaymentStatus.AUTHORIZED);
+  });
+
+  it("RETRY_CAPTURE: rejeita quando o caso não é do tipo CAPTURE_FAILED", async () => {
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 5000 }
+    });
+
+    await expect(
+      disputeCaseService.resolveCase(adminId, disputeCase.id, { resolution: "RETRY_CAPTURE", note: "teste" })
+    ).rejects.toThrow(/falha na captura/);
+  });
+
+  it("getCaseDetail inclui a ficha de treino em disputa quando o caso é vinculado a uma", async () => {
+    const plan = await prisma.trainingPlan.create({
+      data: {
+        providerId,
+        title: "Ficha de teste em disputa",
+        isPrebuilt: false
+      }
+    });
+    const disputeCase = await prisma.disputeCase.create({
+      data: {
+        type: "DELIVERY_CONTESTED",
+        clientId,
+        providerId,
+        amountCents: 5000,
+        trainingPlanId: plan.id,
+        contextNote: "O treino entregue não corresponde ao combinado."
+      }
+    });
+
+    const detail = await disputeCaseService.getCaseDetail(adminId, disputeCase.id);
+    expect(detail.trainingPlan?.id).toBe(plan.id);
+    expect(detail.trainingPlan?.title).toBe("Ficha de teste em disputa");
+    expect(detail.contextNote).toBe("O treino entregue não corresponde ao combinado.");
+
+    await prisma.disputeCase.deleteMany({ where: { id: disputeCase.id } });
+    await prisma.trainingPlan.deleteMany({ where: { id: plan.id } });
+  });
+
   it("lista e detalha casos com o contexto do agendamento (evidências, chat e no-show)", async () => {
     const list = await disputeCaseService.listCases(adminId, "OPEN");
     expect(Array.isArray(list)).toBe(true);

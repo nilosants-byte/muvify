@@ -36,7 +36,7 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
   const { theme } = useMvTheme();
   const { runWithAuth, showToast } = useAppState();
 
-  const [decision, setDecision] = useState<"REFUNDED" | "DENIED" | null>(null);
+  const [decision, setDecision] = useState<"REFUNDED" | "DENIED" | "RETRY_CAPTURE" | null>(null);
   const [amountText, setAmountText] = useState("");
   const [note, setNote] = useState("");
   const [chargeClientDebt, setChargeClientDebt] = useState(false);
@@ -151,6 +151,9 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
               Profissional: {disputeCase.provider.displayName} ({disputeCase.provider.user.email})
             </MvText>
             <MvText variant="semi2">Valor em disputa: {formatCents(disputeCase.amountCents)}</MvText>
+            {disputeCase.contextNote ? (
+              <MvText variant="body4" color="secondary">Motivo: {disputeCase.contextNote}</MvText>
+            ) : null}
           </View>
         </MvCard>
 
@@ -202,6 +205,21 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
           </MvCard>
         ) : null}
 
+        {disputeCase.trainingPlan ? (
+          <MvCard>
+            <View style={{ gap: 6 }}>
+              <MvText variant="semi2">Ficha de treino em disputa</MvText>
+              <MvText variant="body4">Título: {disputeCase.trainingPlan.title}</MvText>
+              <MvText variant="body4" color="secondary">
+                Entregue em: {formatDateTime(disputeCase.trainingPlan.createdAt)}
+              </MvText>
+              {!disputeCase.trainingPlan.isActive ? (
+                <MvText variant="body4" color="secondary">Esta ficha não é mais a ativa do contrato.</MvText>
+              ) : null}
+            </View>
+          </MvCard>
+        ) : null}
+
         {presentialPackage ? (
           <MvCard>
             <View style={{ gap: 6 }}>
@@ -221,7 +239,11 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
             <View style={{ gap: 6 }}>
               <MvText variant="semi2">Decisão já registrada</MvText>
               <MvText variant="body4">
-                {disputeCase.resolution === "REFUNDED" ? "Cliente reembolsado" : "Reembolso negado"}
+                {disputeCase.resolution === "REFUNDED"
+                  ? "Cliente reembolsado"
+                  : disputeCase.resolution === "CAPTURED"
+                    ? "Cobrança capturada com sucesso"
+                    : "Reembolso negado"}
                 {disputeCase.resolvedAmountCents ? ` — ${formatCents(disputeCase.resolvedAmountCents)}` : ""}
               </MvText>
               <MvText variant="body4">Motivo: {disputeCase.resolutionNote}</MvText>
@@ -237,13 +259,22 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
           <MvCard>
             <View style={{ gap: 10 }}>
               <MvText variant="semi2">Decidir este caso</MvText>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <MvButton
-                  variant={decision === "REFUNDED" ? "primary" : "outline"}
-                  label="Reembolsar"
-                  onPress={() => setDecision("REFUNDED")}
-                  style={{ flex: 1 }}
-                />
+              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                {disputeCase.type === "CAPTURE_FAILED" ? (
+                  <MvButton
+                    variant={decision === "RETRY_CAPTURE" ? "primary" : "outline"}
+                    label="Tentar capturar de novo"
+                    onPress={() => setDecision("RETRY_CAPTURE")}
+                    style={{ flex: 1 }}
+                  />
+                ) : (
+                  <MvButton
+                    variant={decision === "REFUNDED" ? "primary" : "outline"}
+                    label="Reembolsar"
+                    onPress={() => setDecision("REFUNDED")}
+                    style={{ flex: 1 }}
+                  />
+                )}
                 <MvButton
                   variant={decision === "DENIED" ? "danger" : "outline"}
                   label="Negar reembolso"
@@ -305,7 +336,13 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
                   <MvText variant="caption" color="secondary">{note.length}/500</MvText>
                   <MvButton
                     variant={decision === "DENIED" ? "danger" : "primary"}
-                    label={decision === "REFUNDED" ? "Confirmar reembolso" : "Confirmar negativa"}
+                    label={
+                      decision === "REFUNDED"
+                        ? "Confirmar reembolso"
+                        : decision === "RETRY_CAPTURE"
+                          ? "Confirmar nova tentativa de captura"
+                          : "Confirmar negativa"
+                    }
                     loading={submitting}
                     onPress={() => void submitResolution()}
                   />

@@ -39,6 +39,7 @@ enum PaymentStatus {
   CANCELED
   FAILED
   REFUNDED
+  PARTIALLY_REFUNDED
 }
 
 enum PaymentMethod {
@@ -519,6 +520,7 @@ enum DisputeCaseStatus {
 enum DisputeCaseResolution {
   REFUNDED
   DENIED
+  CAPTURED
 }
 
 // Fila unica de casos que precisam de julgamento humano (nao dava pra
@@ -718,6 +720,7 @@ model Payment {
   capturedAt          DateTime?
   canceledAt          DateTime?
   refundedAt          DateTime?
+  refundedAmountCents Int?
   failureReason       String?
   attempts            Int           @default(0)
   createdAt           DateTime      @default(now())

@@ -117,7 +117,12 @@ export function AdminDisputesScreen({ navigation }: Props) {
               <MvText variant="semi3">Valor em disputa: {formatCents(item.amountCents)}</MvText>
               {item.status === "RESOLVED" ? (
                 <MvText variant="body4" color="secondary">
-                  Decisão: {item.resolution === "REFUNDED" ? "Reembolsado" : "Reembolso negado"}
+                  Decisão:{" "}
+                  {item.resolution === "REFUNDED"
+                    ? "Reembolsado"
+                    : item.resolution === "CAPTURED"
+                      ? "Cobrança capturada"
+                      : "Reembolso negado"}
                   {item.resolvedAmountCents ? ` — ${formatCents(item.resolvedAmountCents)}` : ""}
                 </MvText>
               ) : null}

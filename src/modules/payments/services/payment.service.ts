@@ -60,6 +60,7 @@ const MP_STATUS_REJECTED = "rejected";
 const MP_STATUS_CANCELLED = "cancelled";
 const MP_STATUS_REFUNDED = "refunded";
 const MP_STATUS_IN_PROCESS = "in_process";
+const MP_STATUS_IN_MEDIATION = "in_mediation";
 const MP_OAUTH_STATE_TTL_MS = 15 * 60 * 1000;
 const MP_HTTP_TIMEOUT_MS = 10000;
 
@@ -1486,7 +1487,7 @@ export class PaymentService {
     const payment = await prisma.payment.findFirst({
       where: { mpPaymentId: String(mpPay.id) },
       select: {
-        id: true, bookingId: true, status: true,
+        id: true, bookingId: true, status: true, amountCents: true,
         booking: { select: { clientId: true, providerId: true, priceCents: true } }
       }
     });
@@ -1630,9 +1631,32 @@ export class PaymentService {
 
     if (mpStatus === MP_STATUS_REFUNDED) {
       if (payment) {
+        // Raio-X de pagamentos, Rodada 2, Lote 2: reembolso parcial (valor
+        // devolvido menor que o total cobrado) não é mais tratado igual a
+        // reembolso total — o MP informa o valor já devolvido acumulado em
+        // transaction_amount_refunded a cada notificação de reembolso.
+        const refundedAmountReais = (mpPay as { transaction_amount_refunded?: number }).transaction_amount_refunded;
+        const refundedAmountCents =
+          refundedAmountReais != null && refundedAmountReais > 0
+            ? Math.round(refundedAmountReais * 100)
+            : payment.amountCents;
+        const isPartial = refundedAmountCents < payment.amountCents;
+
         await prisma.payment.updateMany({
-          where: { id: payment.id, status: { not: PaymentStatus.REFUNDED } },
-          data: { status: PaymentStatus.REFUNDED, refundedAt: new Date() }
+          // refundedAmountCents muda a cada notificação (parcial -> parcial
+          // maior -> total) — comparar por ele em vez de status permite
+          // processar reembolsos parciais sucessivos sem reprocessar o
+          // mesmo valor duas vezes. NULL nunca bate com "not: X" em SQL, por
+          // isso o OR explícito pro primeiro reembolso (campo ainda null).
+          where: {
+            id: payment.id,
+            OR: [{ refundedAmountCents: null }, { refundedAmountCents: { not: refundedAmountCents } }]
+          },
+          data: {
+            status: isPartial ? PaymentStatus.PARTIALLY_REFUNDED : PaymentStatus.REFUNDED,
+            refundedAt: new Date(),
+            refundedAmountCents
+          }
         });
       }
       if (consultancyContract) {
@@ -1640,6 +1664,38 @@ export class PaymentService {
           where: { id: consultancyContract.id, paymentStatus: { not: ConsultancyPaymentStatus.REFUNDED } },
           data: { paymentStatus: ConsultancyPaymentStatus.REFUNDED }
         });
+      }
+    }
+
+    if (mpStatus === MP_STATUS_IN_MEDIATION) {
+      // Raio-X de pagamentos, Rodada 2, Lote 2: antes esse status não caia
+      // em nenhum branch — sumia sem log nem aviso, até (ou se) virar um
+      // chargeback de verdade. Fase de mediação ainda pode ser resolvida
+      // sem virar contestação — por isso só regista e avisa, sem criar
+      // DisputeCase nem mudar o status do pagamento.
+      void writeAuditLog({
+        paymentId: payment?.id ?? null,
+        consultancyContractId: consultancyContract?.id ?? null,
+        fromStatus: payment?.status ?? null,
+        toStatus: "IN_MEDIATION",
+        triggeredBy: "mp_webhook:in_mediation",
+        metadata: { mpPaymentId: String(mpPay.id) }
+      });
+      if (payment) {
+        this.notifyBookingUsers(payment.bookingId, {
+          title: "Pagamento em mediação",
+          body: "O Mercado Pago abriu uma mediação para um pagamento deste agendamento. Nossa equipe está acompanhando.",
+          data: { type: "PAYMENT_IN_MEDIATION" }
+        }).catch((error) => console.error("In-mediation notification failed:", error));
+      } else if (consultancyContract) {
+        notificationService
+          .sendToUsers([consultancyContract.clientId, consultancyContract.provider.userId], {
+            preferenceType: "PAYMENTS",
+            title: "Pagamento em mediação",
+            body: "O Mercado Pago abriu uma mediação para um pagamento desta consultoria. Nossa equipe está acompanhando.",
+            data: { type: "PAYMENT_IN_MEDIATION", contractId: consultancyContract.id }
+          })
+          .catch((error) => console.error("In-mediation notification failed:", error));
       }
     }
 

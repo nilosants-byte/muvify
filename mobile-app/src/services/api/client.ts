@@ -1581,7 +1581,7 @@ export const adminApi = {
     token: string,
     caseId: string,
     input: {
-      resolution: "REFUNDED" | "DENIED";
+      resolution: "REFUNDED" | "DENIED" | "RETRY_CAPTURE";
       amountCents?: number;
       note: string;
       chargeClientDebtCents?: number;
@@ -1603,7 +1603,7 @@ export type AdminDisputeCaseType =
   | "AUTO_CAPTURE_CONTESTED"
   | "CAPTURE_FAILED";
 export type AdminDisputeCaseStatus = "OPEN" | "RESOLVED";
-export type AdminDisputeCaseResolution = "REFUNDED" | "DENIED";
+export type AdminDisputeCaseResolution = "REFUNDED" | "DENIED" | "CAPTURED";
 
 export type AdminDisputeCaseListItem = {
   id: string;
@@ -1619,6 +1619,7 @@ export type AdminDisputeCaseListItem = {
 };
 
 export type AdminDisputeCaseDetail = AdminDisputeCaseListItem & {
+  contextNote: string | null;
   resolutionNote: string | null;
   resolvedByAdmin: { id: string; name: string } | null;
   provider: { id: string; displayName: string; user: { id: string; name: string; email: string } };
@@ -1678,6 +1679,12 @@ export type AdminDisputeCaseDetail = AdminDisputeCaseListItem & {
     contestedAt: string | null;
     reportedUserId: string;
     reportedByUserId: string;
+  } | null;
+  trainingPlan: {
+    id: string;
+    title: string;
+    createdAt: string;
+    isActive: boolean;
   } | null;
 };
 

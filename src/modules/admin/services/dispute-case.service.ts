@@ -1,4 +1,4 @@
-import { DisputeCaseResolution, DisputeCaseStatus } from "@prisma/client";
+import { DisputeCaseResolution, DisputeCaseStatus, PaymentStatus, ConsultancyPaymentStatus } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { PaymentRefund } from "mercadopago";
 import { mp } from "../../../config/mercadopago";
@@ -7,11 +7,16 @@ import { AppError } from "../../../shared/errors/app-error";
 import { isAdminEmail } from "../../../shared/utils/admin-access";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { NotificationService } from "../../notifications/services/notification.service";
+import { PaymentService } from "../../payments/services/payment.service";
 
 const mpRefund = new PaymentRefund(mp);
 
 type ResolveDisputeCaseInput = {
-  resolution: "REFUNDED" | "DENIED";
+  // Raio-X de pagamentos, Rodada 2, Lote 2: RETRY_CAPTURE só se aplica a
+  // casos type=CAPTURE_FAILED — tenta capturar de novo o pagamento que
+  // nunca chegou a ser cobrado (reembolsar não faz sentido aqui, pois nunca
+  // houve cobrança pra devolver).
+  resolution: "REFUNDED" | "DENIED" | "RETRY_CAPTURE";
   amountCents?: number;
   note: string;
   // So aplicavel quando resolution === "DENIED": registra que o aluno ja
@@ -30,6 +35,7 @@ function formatCents(amountCents: number) {
 // viaja verbatim na notificacao pras duas partes (cliente e profissional).
 export class DisputeCaseService {
   private notificationService = new NotificationService();
+  private paymentService = new PaymentService();
 
   private async ensureAdminAccess(adminUserId: string) {
     const admin = await prisma.user.findUnique({
@@ -125,6 +131,14 @@ export class DisputeCaseService {
             reportedUserId: true,
             reportedByUserId: true
           }
+        },
+        // Raio-X de pagamentos, Rodada 2, Lote 2: sem isso, o admin decidia
+        // uma contestação de ficha (DELIVERY_CONTESTED) sem ver qual ficha
+        // era nem quando foi entregue — só "oferta X, valor Y", igual pra
+        // ficha #1 ou #12. contextNote (motivo do aluno) já vinha pelo
+        // include padrão do Prisma, mas o app nunca exibia.
+        trainingPlan: {
+          select: { id: true, title: true, createdAt: true, isActive: true }
         }
       }
     });
@@ -155,6 +169,31 @@ export class DisputeCaseService {
       throw new AppError("Este caso já foi resolvido.", StatusCodes.BAD_REQUEST);
     }
 
+    // Raio-X de pagamentos, Rodada 2, Lote 2: RETRY_CAPTURE só se aplica a
+    // casos de falha de captura — nunca houve cobrança de verdade (payment
+    // fica AUTHORIZED, não CAPTURED), então reembolsar não se aplica; a
+    // ação certa é tentar capturar de novo.
+    if (input.resolution === "RETRY_CAPTURE") {
+      if (disputeCase.type !== "CAPTURE_FAILED") {
+        throw new AppError(
+          "Tentar capturar de novo só se aplica a casos de falha na captura de um pagamento.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+      if (!disputeCase.bookingId) {
+        throw new AppError("Este caso não tem um agendamento vinculado para capturar.", StatusCodes.BAD_REQUEST);
+      }
+      try {
+        await this.paymentService.capturePaymentForBooking(disputeCase.bookingId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Falha desconhecida";
+        throw new AppError(
+          `A nova tentativa de captura também falhou (${message}). O caso continua em aberto.`,
+          StatusCodes.BAD_REQUEST
+        );
+      }
+    }
+
     let resolvedAmountCents: number | null = null;
 
     if (input.resolution === "REFUNDED") {
@@ -174,6 +213,12 @@ export class DisputeCaseService {
       resolvedAmountCents = amountCents;
     }
 
+    if (input.resolution === "RETRY_CAPTURE") {
+      // Representa o valor do caso como resolvido (capturado), pro histórico
+      // e pra notificação — não é um reembolso, mas usa o mesmo campo.
+      resolvedAmountCents = disputeCase.amountCents;
+    }
+
     let clientDebtCents: number | null = null;
     if (input.resolution === "DENIED" && input.chargeClientDebtCents !== undefined) {
       if (!Number.isInteger(input.chargeClientDebtCents) || input.chargeClientDebtCents <= 0) {
@@ -183,13 +228,15 @@ export class DisputeCaseService {
     }
 
     const resolvedAt = new Date();
+    const storedResolution: DisputeCaseResolution =
+      input.resolution === "RETRY_CAPTURE" ? "CAPTURED" : input.resolution;
 
     const updated = await prisma.$transaction(async (tx) => {
       const resolvedCase = await tx.disputeCase.update({
         where: { id: caseId },
         data: {
           status: DisputeCaseStatus.RESOLVED,
-          resolution: input.resolution as DisputeCaseResolution,
+          resolution: storedResolution,
           resolvedAmountCents,
           resolutionNote: note,
           resolvedByAdminId: admin.id,
@@ -208,7 +255,7 @@ export class DisputeCaseService {
       // (reembolso so existe pra pagamento capturado - pre-autorizacao usa
       // cancelamento, nao reembolso), entao o personal ja recebeu esse
       // valor: a divida nasce automatica aqui, sem acao extra do admin.
-      if (resolvedAmountCents !== null) {
+      if (input.resolution === "REFUNDED" && resolvedAmountCents !== null) {
         await tx.debtRecord.create({
           data: {
             disputeCaseId: caseId,
@@ -219,6 +266,30 @@ export class DisputeCaseService {
             status: "NOTIFIED"
           }
         });
+
+        // Raio-X de pagamentos, Rodada 2, Lote 2: antes o Payment/contrato
+        // local nunca era atualizado ao resolver a disputa — o admin
+        // estornava de verdade no Mercado Pago, mas o registro local
+        // continuava CAPTURED, contaminando qualquer relatório/tela que
+        // leia esse status depois. Pacote presencial (cycle) ainda não tem
+        // um campo de status equivalente por ciclo — fica de fora por ora.
+        const isFullRefund = resolvedAmountCents === disputeCase.amountCents;
+        if (disputeCase.bookingId) {
+          await tx.payment.updateMany({
+            where: { bookingId: disputeCase.bookingId },
+            data: {
+              status: isFullRefund ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED,
+              refundedAt: resolvedAt,
+              refundedAmountCents: resolvedAmountCents
+            }
+          });
+        }
+        if (disputeCase.consultancyContractId) {
+          await tx.consultancyContract.updateMany({
+            where: { id: disputeCase.consultancyContractId },
+            data: { paymentStatus: ConsultancyPaymentStatus.REFUNDED }
+          });
+        }
       }
 
       if (clientDebtCents !== null) {
@@ -248,14 +319,18 @@ export class DisputeCaseService {
     const clientMessage =
       input.resolution === "REFUNDED"
         ? `Seu caso foi resolvido: você foi reembolsado em R$ ${formatCents(resolvedAmountCents!)}. Motivo: ${note}`
-        : clientDebtCents !== null
-          ? `Seu caso foi resolvido: o reembolso não foi aprovado. Motivo: ${note} Além disso, foi identificado que você já havia recebido R$ ${formatCents(clientDebtCents)} indevidamente antes desta disputa — enquanto essa pendência não for regularizada, novas compras ficarão bloqueadas.`
-          : `Seu caso foi resolvido: o reembolso não foi aprovado. Motivo: ${note}`;
+        : input.resolution === "RETRY_CAPTURE"
+          ? `Seu caso foi resolvido: a cobrança pendente foi confirmada com sucesso. Motivo: ${note}`
+          : clientDebtCents !== null
+            ? `Seu caso foi resolvido: o reembolso não foi aprovado. Motivo: ${note} Além disso, foi identificado que você já havia recebido R$ ${formatCents(clientDebtCents)} indevidamente antes desta disputa — enquanto essa pendência não for regularizada, novas compras ficarão bloqueadas.`
+            : `Seu caso foi resolvido: o reembolso não foi aprovado. Motivo: ${note}`;
 
     const providerMessage =
       input.resolution === "REFUNDED"
         ? `O caso foi resolvido: o cliente foi reembolsado em R$ ${formatCents(resolvedAmountCents!)}. Motivo: ${note} Esse valor será descontado do seu próximo repasse.`
-        : `O caso foi resolvido: o pedido de reembolso do cliente não foi aprovado. Motivo: ${note}`;
+        : input.resolution === "RETRY_CAPTURE"
+          ? `O caso foi resolvido: a cobrança pendente foi confirmada com sucesso e o repasse segue normalmente. Motivo: ${note}`
+          : `O caso foi resolvido: o pedido de reembolso do cliente não foi aprovado. Motivo: ${note}`;
 
     void this.notificationService
       .sendToUsers([disputeCase.clientId], {
