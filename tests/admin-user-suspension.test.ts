@@ -78,11 +78,26 @@ describe("Suspensao de conta pelo admin (Rodada 3, Lote 3)", () => {
     });
     providerId = providerProfile.id;
 
+    // O e-mail admin de teste e compartilhado entre varios arquivos (so existe
+    // 1 na allowlist) e os arquivos rodam em paralelo — registrar direto pode
+    // colidir com outro arquivo criando a mesma conta ao mesmo tempo. Se isso
+    // acontecer, so reaproveita a conta ja criada (mesma senha em todos os
+    // arquivos) em vez de falhar.
+    const adminReg = await request(app)
+      .post("/api/auth/register")
+      .send({
+        name: "Susp Admin",
+        email: env.ADMIN_ALLOWED_EMAILS[0],
+        password: PASSWORD,
+        phone: `11${Date.now().toString().slice(-9)}${Math.floor(Math.random() * 10)}`,
+        termsVersion: "2026.05",
+        consentAccepted: true
+      });
+    adminId = adminReg.body.user?.id ?? (await prisma.user.findUniqueOrThrow({ where: { email: env.ADMIN_ALLOWED_EMAILS[0] } })).id;
+
     // O role efetivo ADMIN so e calculado no login se o e-mail estiver na
     // allowlist E o e-mail estiver verificado — por isso o findUnique+update
     // direto (registro comum nao verifica e-mail automaticamente).
-    const admin = await registerUser("susp_admin", "Susp Admin", undefined, env.ADMIN_ALLOWED_EMAILS[0]);
-    adminId = admin.userId;
     await prisma.user.update({ where: { id: adminId }, data: { emailVerifiedAt: new Date() } });
     const adminLogin = await request(app)
       .post("/api/auth/login")
@@ -95,11 +110,15 @@ describe("Suspensao de conta pelo admin (Rodada 3, Lote 3)", () => {
     await prisma.payment.deleteMany({ where: { booking: { id: { in: bookingIds } } } });
     await prisma.booking.deleteMany({ where: { id: { in: bookingIds } } });
     await prisma.providerProfile.deleteMany({ where: { id: providerId } });
-    await prisma.session.deleteMany({ where: { userId: { in: [clientId, providerUserId, adminId] } } });
+    await prisma.session.deleteMany({ where: { userId: { in: [clientId, providerUserId] } } });
     // writeAdminAuditLog e fire-and-forget (void) — apaga por ultimo pra nao
     // disputar com uma escrita ainda em andamento (mesmo cuidado do Lote 1).
     await prisma.adminAuditLog.deleteMany({ where: { adminId } });
-    await prisma.user.deleteMany({ where: { id: { in: [clientId, providerUserId, adminId] } } });
+    // Nao apaga a conta admin: o e-mail e compartilhado com outros arquivos
+    // de teste rodando em paralelo (dispute-cases.test.ts,
+    // webhook-order-and-dispute-race.test.ts, debt-records.test.ts) — apagar
+    // aqui pode derrubar um desses arquivos no meio do proprio teste.
+    await prisma.user.deleteMany({ where: { id: { in: [clientId, providerUserId] } } });
     await prisma.serviceCategory.deleteMany({ where: { id: categoryId } });
     await prisma.$disconnect();
   });

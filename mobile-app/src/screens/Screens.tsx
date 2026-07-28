@@ -104,6 +104,7 @@ function paymentStatusLabel(status: PaymentStatusResponse["status"]) {
     CAPTURED: "Capturado",
     CANCELED: "Cancelado",
     REFUNDED: "Estornado",
+    PARTIALLY_REFUNDED: "Estornado parcialmente",
     FAILED: "Falhou"
   };
   return map[status] ?? status;
@@ -112,7 +113,7 @@ function paymentStatusLabel(status: PaymentStatusResponse["status"]) {
 function paymentStatusTone(status: PaymentStatusResponse["status"]) {
   if (status === "CAPTURED") return "success" as const;
   if (status === "FAILED" || status === "CANCELED") return "danger" as const;
-  if (status === "REFUNDED") return "warning" as const;
+  if (status === "REFUNDED" || status === "PARTIALLY_REFUNDED") return "warning" as const;
   return "default" as const;
 }
 

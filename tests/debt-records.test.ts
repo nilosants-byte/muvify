@@ -94,15 +94,20 @@ describe("DebtRecord — pendências financeiras entre disputa e cobrança (Fren
     });
     providerId = provider.id;
 
-    const admin = await prisma.user.create({
-      data: {
-        name: "Debt Admin",
-        email: env.ADMIN_ALLOWED_EMAILS[0],
-        password: "x",
-        phone: `11${Date.now().toString().slice(-9)}3`,
-        role: "CLIENT"
-      }
-    });
+    // O e-mail admin e compartilhado com outros arquivos de teste rodando em
+    // paralelo (so existe 1 na allowlist) — se outro arquivo ja criou a
+    // conta primeiro, reaproveita em vez de colidir (P2002).
+    const admin = await prisma.user
+      .create({
+        data: {
+          name: "Debt Admin",
+          email: env.ADMIN_ALLOWED_EMAILS[0],
+          password: "x",
+          phone: `11${Date.now().toString().slice(-9)}3`,
+          role: "CLIENT"
+        }
+      })
+      .catch(() => prisma.user.findUniqueOrThrow({ where: { email: env.ADMIN_ALLOWED_EMAILS[0] } }));
     adminId = admin.id;
   });
 
@@ -112,7 +117,10 @@ describe("DebtRecord — pendências financeiras entre disputa e cobrança (Fren
     await prisma.disputeCase.deleteMany({ where: { clientId } });
     await prisma.customerPaymentMethod.deleteMany({ where: { userId: clientId } });
     await prisma.providerProfile.deleteMany({ where: { id: providerId } });
-    await prisma.user.deleteMany({ where: { id: { in: [clientId, providerUserId, adminId] } } });
+    // Nao apaga a conta admin: o e-mail e compartilhado com outros arquivos
+    // de teste rodando em paralelo — apagar aqui pode derrubar outro arquivo
+    // no meio do proprio teste.
+    await prisma.user.deleteMany({ where: { id: { in: [clientId, providerUserId] } } });
     await prisma.serviceCategory.deleteMany({ where: { id: categoryId } });
     await prisma.$disconnect();
     vi.restoreAllMocks();

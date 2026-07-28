@@ -248,7 +248,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   const appPayments = useMemo(() => {
     const all = txQuery.data?.payouts?.payments ?? [];
     return all.filter((p) => {
-      if (p.status !== "CAPTURED") return false;
+      if (p.status !== "CAPTURED" && p.status !== "PARTIALLY_REFUNDED") return false;
       const d = new Date(p.capturedAt ?? p.scheduledAt ?? Date.now());
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       return key === selectedMonth;

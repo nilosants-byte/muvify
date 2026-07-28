@@ -39,6 +39,7 @@ function paymentBadge(status: PaymentStatusResponse["status"]): { label: string;
   if (status === "CAPTURED") return { label: "Capturado", variant: "green" };
   if (status === "CANCELED" || status === "FAILED") return { label: "Falhou/Cancelado", variant: "red" };
   if (status === "REFUNDED") return { label: "Estornado", variant: "orange" };
+  if (status === "PARTIALLY_REFUNDED") return { label: "Estornado parcialmente", variant: "orange" };
   if (status === "AUTHORIZED") return { label: "Pré-autorizado", variant: "blue" };
   if (status === "AUTHORIZING") return { label: "Autorizando", variant: "blue" };
   return { label: "Pré-autorização pendente", variant: "orange" };

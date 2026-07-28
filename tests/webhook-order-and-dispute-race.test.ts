@@ -78,8 +78,11 @@ describe("Webhook fora de ordem e corrida em resolveCase (Rodada 3, Lote 1)", ()
     const provider = await registerUser("wo_provider", "WO Provider", "PROVIDER");
     providerUserId = provider.userId;
 
-    const admin = await registerUser("wo_admin", "WO Admin", undefined, env.ADMIN_ALLOWED_EMAILS[0]);
-    adminId = admin.userId;
+    // O e-mail admin e compartilhado com outros arquivos de teste rodando em
+    // paralelo (so existe 1 na allowlist) — se outro arquivo ja registrou
+    // primeiro, reaproveita a conta existente em vez de falhar.
+    const adminReg = await registerUser("wo_admin", "WO Admin", undefined, env.ADMIN_ALLOWED_EMAILS[0]).catch(() => null);
+    adminId = adminReg?.userId ?? (await prisma.user.findUniqueOrThrow({ where: { email: env.ADMIN_ALLOWED_EMAILS[0] } })).id;
 
     const providerProfile = await prisma.providerProfile.create({
       data: {
@@ -107,12 +110,15 @@ describe("Webhook fora de ordem e corrida em resolveCase (Rodada 3, Lote 1)", ()
     await prisma.payment.deleteMany({ where: { booking: { id: { in: bookingIds } } } });
     await prisma.booking.deleteMany({ where: { id: { in: bookingIds } } });
     await prisma.providerProfile.deleteMany({ where: { id: providerId } });
-    await prisma.session.deleteMany({ where: { userId: { in: [clientId, providerUserId, adminId] } } });
+    await prisma.session.deleteMany({ where: { userId: { in: [clientId, providerUserId] } } });
     // writeAdminAuditLog é fire-and-forget (void) em resolveCase — a escrita
     // pode ainda estar em andamento quando os testes terminam, então limpa
     // por último (não no início) e ignora se ainda não houver nada a apagar.
     await prisma.adminAuditLog.deleteMany({ where: { adminId } });
-    await prisma.user.deleteMany({ where: { id: { in: [clientId, providerUserId, adminId] } } });
+    // Não apaga a conta admin: o e-mail é compartilhado com outros arquivos
+    // de teste rodando em paralelo — apagar aqui pode derrubar outro arquivo
+    // no meio do próprio teste.
+    await prisma.user.deleteMany({ where: { id: { in: [clientId, providerUserId] } } });
     await prisma.serviceCategory.deleteMany({ where: { id: categoryId } });
     await prisma.$disconnect();
   });

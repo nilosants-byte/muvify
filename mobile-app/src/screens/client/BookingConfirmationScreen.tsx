@@ -33,6 +33,7 @@ function paymentLabel(status?: PaymentStatusResponse["status"]) {
     CAPTURED: "Capturado",
     CANCELED: "Cancelado",
     REFUNDED: "Estornado",
+    PARTIALLY_REFUNDED: "Estornado parcialmente",
     FAILED: "Falha",
   };
   return map[status];
@@ -41,6 +42,7 @@ function paymentLabel(status?: PaymentStatusResponse["status"]) {
 function paymentVariant(status?: PaymentStatusResponse["status"]): "green" | "orange" | "red" | "blue" | "gray" {
   if (!status) return "gray";
   if (status === "CAPTURED") return "green";
+  if (status === "PARTIALLY_REFUNDED") return "orange";
   if (status === "FAILED" || status === "CANCELED" || status === "REFUNDED") return "red";
   return "orange";
 }

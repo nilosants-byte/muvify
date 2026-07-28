@@ -19,6 +19,7 @@ type Props = NativeStackScreenProps<ProfessionalStackParamList, "BookingPaymentS
 function paymentBadge(status: PaymentStatusResponse["status"]): { label: string; variant: "green" | "orange" | "red" | "blue" | "gray" } {
   if (status === "CAPTURED") return { label: "Capturado", variant: "green" };
   if (status === "REFUNDED") return { label: "Estornado", variant: "orange" };
+  if (status === "PARTIALLY_REFUNDED") return { label: "Estornado parcialmente", variant: "orange" };
   if (status === "CANCELED" || status === "FAILED") return { label: "Cancelado/Falhou", variant: "red" };
   if (status === "AUTHORIZED") return { label: "Autorizado", variant: "blue" };
   if (status === "AUTHORIZING") return { label: "Autorizando", variant: "blue" };

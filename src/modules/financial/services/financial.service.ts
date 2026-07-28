@@ -829,7 +829,7 @@ export class FinancialService {
       const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const { from, to } = monthBounds(month);
 
-      const [incomes, expenses, classes, appBookings, appContracts, appPackageCycles] = await Promise.all([
+      const [incomes, expenses, classes, appBookings, appContracts, appPackageCycles, renewalPlans] = await Promise.all([
         getEffectiveIncomes(provider.id, month),
         getEffectiveExpenses(provider.id, month),
         prisma.financialClassSession.count({
@@ -846,14 +846,24 @@ export class FinancialService {
         prisma.presentialPackageCycle.aggregate({
           where: { package: { providerId: provider.id }, capturedAt: { gte: from, lte: to } },
           _sum: { amountCents: true }
+        }),
+        // Raio-X de pagamentos, Rodada 3, Lote 4: getReport ficou de fora do
+        // conserto que getDashboard/getPayouts já receberam na Rodada 2 —
+        // renovações de ficha (2ª ficha em diante) somem do relatório anual.
+        prisma.trainingPlan.findMany({
+          where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: from, lte: to } },
+          select: { contract: { select: { paymentAmountCents: true } } },
+          take: 2000
         })
       ]);
 
-      const rev    = incomes.reduce((s, i) => s + i.amountCents, 0);
+      const rev       = incomes.reduce((s, i) => s + i.amountCents, 0);
+      const renewalRev = renewalPlans.reduce((s, p) => s + (p.contract?.paymentAmountCents ?? 0), 0);
       const appRev =
         (appBookings._sum.priceCents ?? 0)
         + (appContracts._sum.paymentAmountCents ?? 0)
-        + (appPackageCycles._sum.amountCents ?? 0);
+        + (appPackageCycles._sum.amountCents ?? 0)
+        + renewalRev;
       const exp    = expenses.reduce((s, e) => s + e.amountCents, 0);
       result.push({ month, revenueCents: rev, appRevenueCents: appRev, expensesCents: exp, netCents: rev + appRev - exp, classes });
     }
@@ -874,7 +884,11 @@ export class FinancialService {
       prisma.payment.findMany({
         where: {
           booking: { providerId: provider.id },
-          status: { in: [PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED] }
+          // Raio-X de pagamentos, Rodada 3, Lote 4: PARTIALLY_REFUNDED sumia
+          // inteiro da lista de repasses — o profissional perdia de vista o
+          // valor que ainda tinha direito a receber depois de uma disputa
+          // resolvida com estorno parcial.
+          status: { in: [PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED, PaymentStatus.PARTIALLY_REFUNDED] }
         },
         select: {
           id: true,
@@ -882,6 +896,7 @@ export class FinancialService {
           amountCents: true,
           providerAmountCents: true,
           platformFeeCents: true,
+          refundedAmountCents: true,
           method: true,
           status: true,
           capturedAt: true,
@@ -947,13 +962,23 @@ export class FinancialService {
       })
     ]);
 
-    const netFor = (p: (typeof payments)[number]) =>
-      p.providerAmountCents ?? providerSplitAmount(p.amountCents);
+    const netFor = (p: (typeof payments)[number]) => {
+      const base = p.providerAmountCents ?? providerSplitAmount(p.amountCents);
+      // Estorno parcial reduz proporcionalmente o que sobra pro profissional
+      // (a mesma proporção provider/plataforma da captura original).
+      if (p.status === PaymentStatus.PARTIALLY_REFUNDED && p.refundedAmountCents && p.amountCents > 0) {
+        const remainingRatio = Math.max(0, (p.amountCents - p.refundedAmountCents) / p.amountCents);
+        return Math.round(base * remainingRatio);
+      }
+      return base;
+    };
     const feeFor = (p: (typeof payments)[number]) =>
       p.platformFeeCents ?? platformFeeAmount(p.amountCents);
 
     const pending  = payments.filter(p => p.status === PaymentStatus.AUTHORIZED);
-    const captured = payments.filter(p => p.status === PaymentStatus.CAPTURED);
+    const captured = payments.filter(
+      p => p.status === PaymentStatus.CAPTURED || p.status === PaymentStatus.PARTIALLY_REFUNDED
+    );
 
     const bookingTransactions = payments.map(p => ({
       id:                  p.id,

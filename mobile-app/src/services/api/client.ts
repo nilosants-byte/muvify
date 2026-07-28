@@ -916,6 +916,7 @@ export type PaymentStatusResponse = {
     | "CAPTURED"
     | "CANCELED"
     | "REFUNDED"
+    | "PARTIALLY_REFUNDED"
     | "FAILED";
   amountCents: number;
   currency: string;

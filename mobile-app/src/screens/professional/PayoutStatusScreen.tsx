@@ -513,6 +513,7 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
             </View>
             {payouts.payments.slice(0, 5).map((p) => {
               const isCaptured = p.status === "CAPTURED";
+              const isPartiallyRefunded = p.status === "PARTIALLY_REFUNDED";
               const date = new Date(p.capturedAt ?? p.scheduledAt ?? Date.now());
               const dateStr = date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" });
               const methodLabel = p.method === "PIX" ? "PIX" : p.method.includes("CREDIT") ? "Cartão crédito" : p.method.includes("DEBIT") ? "Cartão débito" : "Cartão";
@@ -527,11 +528,13 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
               return (
                 <View key={p.id} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.border }}>
                   <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isCaptured ? theme.primarySubtle : theme.warningSubtle, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
-                    <Ionicons name={isCaptured ? "checkmark-circle-outline" : "time-outline"} size={16} color={isCaptured ? theme.textGreen : theme.warning} />
+                    <Ionicons name={isCaptured ? "checkmark-circle-outline" : isPartiallyRefunded ? "arrow-undo-outline" : "time-outline"} size={16} color={isCaptured ? theme.textGreen : theme.warning} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <MvText variant="semi3" style={{ fontSize: 12 }}>{typeLabel} · {methodLabel}</MvText>
-                    <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>{dateStr} · {isCaptured ? "Concluído" : "Aguardando captura"}</MvText>
+                    <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>
+                      {dateStr} · {isPartiallyRefunded ? "Estornado parcialmente" : isCaptured ? "Concluído" : "Aguardando captura"}
+                    </MvText>
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
                     <MvText variant="semi3" style={{ fontSize: 13, color: isCaptured ? theme.textGreen : theme.warning }}>

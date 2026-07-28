@@ -89,8 +89,11 @@ describe("DisputeCase — fila de disputas (Fase 6)", () => {
     // Nao precisa de e-mail verificado: DisputeCaseService.ensureAdminAccess
     // so confere se o e-mail esta na allowlist (ADMIN_ALLOWED_EMAILS), nao
     // depende do role efetivo calculado no login/JWT.
-    const admin = await registerUser("dc_admin", "DC Admin", undefined, env.ADMIN_ALLOWED_EMAILS[0]);
-    adminId = admin.userId;
+    // O e-mail admin e compartilhado com outros arquivos de teste rodando em
+    // paralelo (so existe 1 na allowlist) — se outro arquivo ja registrou
+    // primeiro, reaproveita a conta existente em vez de falhar.
+    const adminReg = await registerUser("dc_admin", "DC Admin", undefined, env.ADMIN_ALLOWED_EMAILS[0]).catch(() => null);
+    adminId = adminReg?.userId ?? (await prisma.user.findUniqueOrThrow({ where: { email: env.ADMIN_ALLOWED_EMAILS[0] } })).id;
 
     const profile = await request(app)
       .post("/api/providers/profile")
@@ -113,8 +116,11 @@ describe("DisputeCase — fila de disputas (Fase 6)", () => {
     await prisma.booking.deleteMany({ where: { clientId } });
     await prisma.providerCategory.deleteMany({ where: { providerId } });
     await prisma.providerProfile.deleteMany({ where: { id: providerId } });
-    await prisma.session.deleteMany({ where: { userId: { in: [clientId, providerUserId, adminId] } } });
-    await prisma.user.deleteMany({ where: { id: { in: [clientId, providerUserId, adminId] } } });
+    await prisma.session.deleteMany({ where: { userId: { in: [clientId, providerUserId] } } });
+    // Nao apaga a conta admin: o e-mail e compartilhado com outros arquivos
+    // de teste rodando em paralelo — apagar aqui pode derrubar outro arquivo
+    // no meio do proprio teste.
+    await prisma.user.deleteMany({ where: { id: { in: [clientId, providerUserId] } } });
     await prisma.serviceCategory.deleteMany({ where: { id: categoryId } });
     await prisma.$disconnect();
     vi.restoreAllMocks();

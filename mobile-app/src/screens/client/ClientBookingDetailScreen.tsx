@@ -66,6 +66,7 @@ function paymentLabel(status?: PaymentStatusResponse["status"]) {
     CAPTURED: "Capturado",
     CANCELED: "Cancelado",
     REFUNDED: "Estornado",
+    PARTIALLY_REFUNDED: "Estornado parcialmente",
     FAILED: "Falha",
   };
   return m[status];
