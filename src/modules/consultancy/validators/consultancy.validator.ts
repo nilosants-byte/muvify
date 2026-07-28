@@ -58,7 +58,6 @@ export const createProviderOfferSchema = z.object({
     acceptsPix: z.boolean().optional().default(true),
     acceptsDebitCard: z.boolean().optional().default(true),
     acceptsCreditCard: z.boolean().optional().default(true),
-    maxCreditInstallments: z.number().int().min(1).max(12).optional().default(1),
     isActive: z.boolean().optional().default(true),
     // Pacote presencial (so PRESENTIAL/COMBO) - assinatura cobrada em ciclos
     presentialPackageMode: presentialPackageModeSchema.optional(),
@@ -91,7 +90,6 @@ export const updateProviderOfferSchema = z.object({
     acceptsPix: z.boolean().optional(),
     acceptsDebitCard: z.boolean().optional(),
     acceptsCreditCard: z.boolean().optional(),
-    maxCreditInstallments: z.number().int().min(1).max(12).optional(),
     isActive: z.boolean().optional(),
     presentialPackageMode: presentialPackageModeSchema.nullable().optional(),
     presentialHasFixedTerm: z.boolean().optional(),
@@ -176,7 +174,6 @@ export const decideConsultancyRequestSchema = z.object({
     .object({
       decision: z.enum(["ACCEPT", "REFUSE"]),
       paymentMethod: z.enum(["CREDIT_CARD", "DEBIT_CARD", "PIX"]).optional(),
-      installments: z.number().int().min(1).max(12).optional(),
       acknowledgedImmediateExecution: z.boolean().optional()
     })
     .superRefine((value, ctx) => {
@@ -193,22 +190,6 @@ export const decideConsultancyRequestSchema = z.object({
           code: z.ZodIssueCode.custom,
           path: ["acknowledgedImmediateExecution"],
           message: "É necessário confirmar a ciência sobre o início imediato do atendimento para aceitar a proposta."
-        });
-      }
-
-      if (value.decision === "REFUSE" && typeof value.installments !== "undefined") {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["installments"],
-          message: "Parcelamento não se aplica quando a proposta e recusada."
-        });
-      }
-
-      if (value.paymentMethod && value.paymentMethod !== "CREDIT_CARD" && value.installments && value.installments > 1) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["installments"],
-          message: "Parcelamento acima de 1x só é permitido para cartao de credito."
         });
       }
     })

@@ -20,7 +20,6 @@ import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/pl
 import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
 import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
-import { supportsInstallments, resolveMaxInstallments } from "../../../shared/utils/offer-installments";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
@@ -50,7 +49,6 @@ type OfferInput = {
   acceptsPix?: boolean;
   acceptsDebitCard?: boolean;
   acceptsCreditCard?: boolean;
-  maxCreditInstallments?: number;
   isActive?: boolean;
   presentialPackageMode?: PresentialPackageMode | null;
   presentialHasFixedTerm?: boolean;
@@ -248,7 +246,6 @@ export class ConsultancyService {
     clientId: string;
     paymentMethod: ConsultancyPaymentMethod;
     amountCents: number;
-    installments: number;
   }) {
     const paymentData = await this.resolveClientPaymentData(input.clientId, input.paymentMethod);
     const nameParts = paymentData.clientName.split(" ");
@@ -270,8 +267,7 @@ export class ConsultancyService {
       requestId: input.requestId,
       contractId: input.contractId,
       clientId: input.clientId,
-      consultancyPaymentMethod: input.paymentMethod,
-      installments: String(input.installments)
+      consultancyPaymentMethod: input.paymentMethod
     };
 
     if (input.paymentMethod === ConsultancyPaymentMethod.PIX) {
@@ -310,11 +306,14 @@ export class ConsultancyService {
     // cobrança de verdade só acontece quando o profissional entrega a primeira
     // ficha (ver deliverContract); se ele não entregar em 48h, a reserva é
     // liberada sem nunca ter sido cobrada (ver autoRefundExpiredContracts).
+    // Raio-X de pagamentos, Rodada 2, Lote 3: cobrança sempre em 1x — cobrar
+    // por unidade entregue (ficha por ficha) já divide o valor no tempo com
+    // mais segurança que parcelamento em cartão; ver decisão no plano.
     return mpPaymentClient.create({
       body: {
         transaction_amount: input.amountCents / 100,
         token: String(tokenResult.id),
-        installments: input.installments,
+        installments: 1,
         payer: {
           type: "customer",
           id: paymentData.mpCustomerId,
@@ -448,7 +447,6 @@ export class ConsultancyService {
       acceptsPix: boolean;
       acceptsDebitCard: boolean;
       acceptsCreditCard: boolean;
-      maxCreditInstallments: number;
     }
   >(offer: T) {
     const isPromotionActive = this.isOfferPromotionActive(offer);
@@ -468,11 +466,7 @@ export class ConsultancyService {
       paymentConfig: {
         acceptsPix: offer.acceptsPix,
         acceptsDebitCard: offer.acceptsDebitCard,
-        acceptsCreditCard: offer.acceptsCreditCard,
-        maxCreditInstallments: resolveMaxInstallments(
-          offer.billingCycle,
-          offer.maxCreditInstallments
-        )
+        acceptsCreditCard: offer.acceptsCreditCard
       },
       basePriceChangeLockedUntil
     };
@@ -601,34 +595,6 @@ export class ConsultancyService {
         "Selecione ao menos um método de pagamento aceito para a oferta.",
         StatusCodes.BAD_REQUEST
       );
-    }
-
-    if (!acceptsCreditCard && (input.maxCreditInstallments ?? 1) > 1) {
-      throw new AppError(
-        "Parcelamento acima de 1x exige cartao de credito habilitado.",
-        StatusCodes.BAD_REQUEST
-      );
-    }
-
-    if (acceptsCreditCard && (input.maxCreditInstallments ?? 1) > 1) {
-      const cycle = input.billingCycle;
-      if (!supportsInstallments(cycle)) {
-        throw new AppError(
-          "Parcelamento em cartao de credito e permitido apenas para ciclos trimestral, semestral ou anual.",
-          StatusCodes.BAD_REQUEST
-        );
-      }
-
-      const maxInstallments = resolveMaxInstallments(cycle, input.maxCreditInstallments ?? 1);
-      const minInstallmentCents = 500; // R$ 5,00 — mínimo exigido pelo Mercado Pago por parcela
-      if (input.priceCents / maxInstallments < minInstallmentCents) {
-        const maxAllowed = Math.floor(input.priceCents / minInstallmentCents);
-        throw new AppError(
-          `O valor da oferta (R$ ${(input.priceCents / 100).toFixed(2)}) não permite ${maxInstallments}x. ` +
-            `Cada parcela deve ser de no mínimo R$ 5,00. Máximo permitido para este valor: ${maxAllowed}x.`,
-          StatusCodes.UNPROCESSABLE_ENTITY
-        );
-      }
     }
 
     // Pacote presencial (assinatura cobrada em ciclos) - so PRESENTIAL/COMBO
@@ -863,11 +829,7 @@ export class ConsultancyService {
       paymentConfig: {
         acceptsPix: offer.acceptsPix,
         acceptsDebitCard: offer.acceptsDebitCard,
-        acceptsCreditCard: offer.acceptsCreditCard,
-        maxCreditInstallments: resolveMaxInstallments(
-          offer.billingCycle,
-          offer.maxCreditInstallments
-        )
+        acceptsCreditCard: offer.acceptsCreditCard
       }
       }));
   }
@@ -1049,9 +1011,6 @@ export class ConsultancyService {
     const acceptsPix = input.acceptsPix ?? true;
     const acceptsDebitCard = input.acceptsDebitCard ?? true;
     const acceptsCreditCard = input.acceptsCreditCard ?? true;
-    const maxCreditInstallments = acceptsCreditCard
-      ? resolveMaxInstallments(input.billingCycle, input.maxCreditInstallments ?? 1)
-      : 1;
 
     const created = await prisma.providerServiceOffer.create({
       data: {
@@ -1077,7 +1036,6 @@ export class ConsultancyService {
         acceptsPix,
         acceptsDebitCard,
         acceptsCreditCard,
-        maxCreditInstallments,
         isActive: input.isActive ?? true,
         presentialPackageMode:
           input.kind === ServiceOfferKind.PRESENTIAL || input.kind === ServiceOfferKind.COMBO
@@ -1139,10 +1097,6 @@ export class ConsultancyService {
       typeof input.acceptsCreditCard === "boolean"
         ? input.acceptsCreditCard
         : offer.acceptsCreditCard;
-    const nextMaxCreditInstallments =
-      typeof input.maxCreditInstallments === "number"
-        ? input.maxCreditInstallments
-        : offer.maxCreditInstallments;
     const nextPresentialPackageMode =
       typeof input.presentialPackageMode === "undefined"
         ? offer.presentialPackageMode
@@ -1190,7 +1144,6 @@ export class ConsultancyService {
         acceptsPix: nextAcceptsPix,
         acceptsDebitCard: nextAcceptsDebitCard,
         acceptsCreditCard: nextAcceptsCreditCard,
-        maxCreditInstallments: nextMaxCreditInstallments,
         isActive: input.isActive ?? offer.isActive,
         presentialPackageMode: nextPresentialPackageMode,
         presentialHasFixedTerm: nextPresentialHasFixedTerm,
@@ -1234,10 +1187,6 @@ export class ConsultancyService {
         StatusCodes.BAD_REQUEST
       );
     }
-
-    const resolvedMaxCreditInstallments = nextAcceptsCreditCard
-      ? resolveMaxInstallments(input.billingCycle ?? offer.billingCycle, nextMaxCreditInstallments)
-      : 1;
 
     const updated = await prisma.providerServiceOffer.update({
       where: { id: offerId },
@@ -1292,12 +1241,6 @@ export class ConsultancyService {
         acceptsPix: input.acceptsPix,
         acceptsDebitCard: input.acceptsDebitCard,
         acceptsCreditCard: input.acceptsCreditCard,
-        maxCreditInstallments:
-          typeof input.maxCreditInstallments === "undefined" &&
-          typeof input.acceptsCreditCard === "undefined" &&
-          typeof input.billingCycle === "undefined"
-            ? undefined
-            : resolvedMaxCreditInstallments,
         isActive: input.isActive,
         presentialPackageMode:
           nextKind === ServiceOfferKind.PRESENTIAL || nextKind === ServiceOfferKind.COMBO
@@ -1848,7 +1791,6 @@ export class ConsultancyService {
     input: {
       decision: "ACCEPT" | "REFUSE";
       paymentMethod?: ConsultancyPaymentMethod;
-      installments?: number;
       acknowledgedImmediateExecution?: boolean;
     }
   ) {
@@ -1946,7 +1888,6 @@ export class ConsultancyService {
     }
 
     const selectedMethod = input.paymentMethod ?? ConsultancyPaymentMethod.CREDIT_CARD;
-    const requestedInstallments = input.installments ?? 1;
     const quotedOffer = request.quotedOffer;
 
     if (selectedMethod === ConsultancyPaymentMethod.PIX && !quotedOffer.acceptsPix) {
@@ -1976,41 +1917,12 @@ export class ConsultancyService {
       );
     }
 
-    let resolvedInstallments = 1;
-    if (selectedMethod === ConsultancyPaymentMethod.CREDIT_CARD) {
-      const maxAllowedInstallments = resolveMaxInstallments(
-        quotedOffer.billingCycle,
-        quotedOffer.maxCreditInstallments
-      );
-      if (requestedInstallments > maxAllowedInstallments) {
-        throw new AppError(
-          `Parcelamento acima do permitido para este serviço. Maximo: ${maxAllowedInstallments}x.`,
-          StatusCodes.BAD_REQUEST
-        );
-      }
-      resolvedInstallments = requestedInstallments;
-    } else if (requestedInstallments !== 1) {
-      throw new AppError(
-        "Parcelamento acima de 1x e permitido apenas em cartao de credito.",
-        StatusCodes.BAD_REQUEST
-      );
-    }
-
     const paymentAmountCents = this.offerEffectivePriceCents({
       isPromotion: request.quotedOffer.isPromotion,
       promotionPriceCents: request.quotedOffer.promotionPriceCents,
       promotionEndsAt: request.quotedOffer.promotionEndsAt,
       priceCents: request.quotedOffer.priceCents
     });
-
-    // Mínimo de R$ 5,00 por parcela exigido pelo Mercado Pago
-    if (resolvedInstallments > 1 && paymentAmountCents / resolvedInstallments < 500) {
-      const maxAllowed = Math.floor(paymentAmountCents / 500);
-      throw new AppError(
-        `Cada parcela deve ser de no mínimo R$ 5,00. Máximo permitido para este valor: ${maxAllowed}x.`,
-        StatusCodes.UNPROCESSABLE_ENTITY
-      );
-    }
 
     const now = new Date();
     const deliveryDeadlineAt = new Date(
@@ -2051,7 +1963,7 @@ export class ConsultancyService {
           offerId: request.quotedOffer!.id,
           status: ConsultancyContractStatus.PENDING_PAYMENT,
           paymentMethod: selectedMethod,
-          paymentInstallments: resolvedInstallments,
+          paymentInstallments: 1,
           paymentStatus: ConsultancyPaymentStatus.PENDING,
           paymentAmountCents,
           providerAmountCents: providerAmountFrom(paymentAmountCents),
@@ -2078,8 +1990,7 @@ export class ConsultancyService {
         providerId: request.providerId,
         clientId,
         paymentMethod: selectedMethod,
-        amountCents: paymentAmountCents,
-        installments: resolvedInstallments
+        amountCents: paymentAmountCents
       });
     } catch (error) {
       await prisma.$transaction(async (tx) => {

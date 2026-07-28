@@ -11,9 +11,11 @@ import { PresentialPackageService } from "../src/modules/presential-packages/ser
 import { NotificationService } from "../src/modules/notifications/services/notification.service";
 import { encryptSensitiveText } from "../src/shared/utils/encryption";
 
-// Raio-X de pagamentos (27/07/2026) — Lote 6: parcelamento real no pacote
-// presencial (só ciclos elegíveis) e notificação de webhook não duplicada em
-// reenvio (recusado/cancelado e chargeback).
+// Notificação de webhook não duplicada em reenvio (recusado/cancelado), do
+// Lote 6 do raio-x original. Os testes de parcelamento que viviam aqui foram
+// removidos na Rodada 2, Lote 3: cobrar por unidade entregue (sessão, ficha,
+// ciclo) já divide o valor no tempo com mais segurança que financiamento em
+// cartão — parcelamento deixou de existir como conceito no app.
 
 const packageService = new PresentialPackageService();
 
@@ -47,7 +49,7 @@ const offerIds: string[] = [];
 const packageIds: string[] = [];
 const bookingIds: string[] = [];
 
-describe("Parcelamento real do pacote presencial e dedup de webhook (Lote 6 do raio-x)", () => {
+describe("Webhook de pagamento recusado não notifica duas vezes em reenvio", () => {
   beforeAll(async () => {
     await prisma.$connect();
 
@@ -128,34 +130,7 @@ describe("Parcelamento real do pacote presencial e dedup de webhook (Lote 6 do r
     await prisma.$disconnect();
   });
 
-  // Parcelamento real só se aplica quando a cobrança é "de uma vez só"
-  // (chargeCycle) — a compra avulsa de um pacote FIXED_RECURRING em cartão
-  // cobra por sessão (activateCardFixedPeriod), então quem realmente
-  // exercita esse caminho é a metade presencial do COMBO, que sempre usa
-  // chargeCycle independente da forma de pagamento.
-  async function makeComboOffer(billingCycle: "MONTHLY" | "QUARTERLY" | "SEMIANNUAL", maxCreditInstallments: number) {
-    const offer = await prisma.providerServiceOffer.create({
-      data: {
-        providerId,
-        kind: "COMBO",
-        title: `Combo ${uid("offer")}`,
-        billingCycle,
-        priceCents: 90000,
-        presentialPackageMode: "FIXED_RECURRING",
-        presentialSessionsPerCycle: 4,
-        acceptsCreditCard: true,
-        maxCreditInstallments,
-        comboPresentialShareCents: 60000,
-        comboConsultancyShareCents: 30000,
-        comboPresentialDaysPerWeek: 2,
-        comboOnlineDaysPerWeek: 3
-      }
-    });
-    offerIds.push(offer.id);
-    return offer;
-  }
-
-  async function makeStandalonePackage(billingCycle: "MONTHLY" | "QUARTERLY" | "SEMIANNUAL", paymentInstallments: number) {
+  async function makeStandalonePackage(billingCycle: "MONTHLY" | "QUARTERLY" | "SEMIANNUAL") {
     const offer = await prisma.providerServiceOffer.create({
       data: {
         providerId,
@@ -180,64 +155,21 @@ describe("Parcelamento real do pacote presencial e dedup de webhook (Lote 6 do r
         paymentMethod: "CREDIT_CARD",
         cycleAmountCents: 90000,
         billingCycle,
-        sessionsPerCycle: 4,
-        paymentInstallments
+        sessionsPerCycle: 4
       }
     });
     packageIds.push(pkg.id);
     return pkg;
   }
 
-  it("chargeCycle aplica o parcelamento persistido no pacote na cobrança real", async () => {
+  it("chargeCycle sempre cobra em 1x, mesmo pacote configurado em ciclo elegível para parcelamento (feature removida)", async () => {
     vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: 9101, status: "approved" } as any);
 
-    const pkg = await makeStandalonePackage("QUARTERLY", 3);
+    const pkg = await makeStandalonePackage("QUARTERLY");
     await packageService.chargeCycle(pkg.id, { isFirstCycle: true });
 
     expect(Payment.prototype.create).toHaveBeenLastCalledWith(
-      expect.objectContaining({ body: expect.objectContaining({ installments: 3 }) })
-    );
-  });
-
-  it("rejeita parcelamento acima do máximo configurado pela oferta", async () => {
-    const offer = await makeComboOffer("QUARTERLY", 3);
-    await expect(
-      packageService.purchaseCombo(clientId, {
-        offerId: offer.id,
-        categoryId,
-        paymentMethod: "CREDIT_CARD" as any,
-        weeklySchedule: [{ weekday: 1, time: "08:00" }],
-        acknowledgedImmediateExecution: true,
-        installments: 6
-      })
-    ).rejects.toThrow(/[Mm]áximo/);
-  });
-
-  it("rejeita parcelamento acima de 1x em ciclo não elegível (mensal), mesmo com maxCreditInstallments configurado", async () => {
-    const offer = await makeComboOffer("MONTHLY", 12);
-    await expect(
-      packageService.purchaseCombo(clientId, {
-        offerId: offer.id,
-        categoryId,
-        paymentMethod: "CREDIT_CARD" as any,
-        weeklySchedule: [{ weekday: 1, time: "08:00" }],
-        acknowledgedImmediateExecution: true,
-        installments: 2
-      })
-    ).rejects.toThrow(/[Mm]áximo/);
-  });
-
-  it("uma segunda cobrança de ciclo (renovação) reaplica o mesmo parcelamento persistido no pacote", async () => {
-    const createSpy = vi.spyOn(Payment.prototype, "create")
-      .mockResolvedValueOnce({ id: 9201, status: "approved" } as any)
-      .mockResolvedValueOnce({ id: 9202, status: "approved" } as any);
-
-    const pkg = await makeStandalonePackage("SEMIANNUAL", 4);
-    await packageService.chargeCycle(pkg.id, { isFirstCycle: true });
-    await packageService.chargeCycle(pkg.id, { isFirstCycle: false });
-
-    expect(createSpy).toHaveBeenLastCalledWith(
-      expect.objectContaining({ body: expect.objectContaining({ installments: 4 }) })
+      expect.objectContaining({ body: expect.objectContaining({ installments: 1 }) })
     );
   });
 

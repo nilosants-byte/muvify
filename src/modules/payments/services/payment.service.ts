@@ -1672,8 +1672,12 @@ export class PaymentService {
       // em nenhum branch — sumia sem log nem aviso, até (ou se) virar um
       // chargeback de verdade. Fase de mediação ainda pode ser resolvida
       // sem virar contestação — por isso só regista e avisa, sem criar
-      // DisputeCase nem mudar o status do pagamento.
-      void writeAuditLog({
+      // DisputeCase nem mudar o status do pagamento. Aguarda a escrita (ao
+      // contrário do padrão fire-and-forget usado no ramo de chargeback)
+      // porque este é o único rastro desse evento — sem outro efeito
+      // colateral (dispute, mudança de status) pra garantir que o evento
+      // não passou batido.
+      await writeAuditLog({
         paymentId: payment?.id ?? null,
         consultancyContractId: consultancyContract?.id ?? null,
         fromStatus: payment?.status ?? null,

@@ -255,7 +255,6 @@ export type ProviderServiceOffer = {
   acceptsPix?: boolean;
   acceptsDebitCard?: boolean;
   acceptsCreditCard?: boolean;
-  maxCreditInstallments?: number;
   // Consultoria (ONLINE_CONSULTANCY/SPECIALIZED/metade online do COMBO):
   // validade padrão (em dias) de cada ficha entregue — a cada renovação, a
   // ficha nova é cobrada de novo no mesmo valor da oferta.
@@ -2578,7 +2577,6 @@ export const consultancyApi = {
     body: {
       decision: "ACCEPT" | "REFUSE";
       paymentMethod?: ConsultancyPaymentMethod;
-      installments?: number;
       acknowledgedImmediateExecution?: boolean;
     }
   ) {
@@ -2677,7 +2675,6 @@ export const consultancyApi = {
       acceptsPix?: boolean;
       acceptsDebitCard?: boolean;
       acceptsCreditCard?: boolean;
-      maxCreditInstallments?: number;
       fichaValidityDays?: number;
       offerServiceMode?: ProviderServiceMode;
     }
@@ -2711,7 +2708,6 @@ export const consultancyApi = {
       acceptsPix?: boolean;
       acceptsDebitCard?: boolean;
       acceptsCreditCard?: boolean;
-      maxCreditInstallments?: number;
       fichaValidityDays?: number | null;
       offerServiceMode?: ProviderServiceMode | null;
     }
@@ -3013,7 +3009,6 @@ export const presentialPackagesApi = {
       sessionLocation?: string;
       clientLatitude?: number;
       clientLongitude?: number;
-      installments?: number;
     }
   ) {
     return apiRequest<PurchasePresentialPackageResponse>("/presential-packages", {

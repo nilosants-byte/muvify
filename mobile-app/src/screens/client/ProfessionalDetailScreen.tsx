@@ -185,7 +185,6 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
       comboConsultancyShareCents: offer.comboConsultancyShareCents ?? null,
       acceptsPix: offer.acceptsPix ?? true,
       acceptsCreditCard: offer.acceptsCreditCard ?? true,
-      maxCreditInstallments: offer.maxCreditInstallments ?? 1,
       offerServiceMode: offer.offerServiceMode ?? null,
     });
   }

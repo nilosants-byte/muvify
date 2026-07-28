@@ -81,14 +81,6 @@ function cycleLabel(cycle: OfferBillingCycle) {
   return cycleOptions.find((item) => item.value === cycle)?.label ?? cycle;
 }
 
-// Espelha installmentEligibleCycles/supportsInstallments do backend
-// (consultancy.service.ts) — parcelamento só é aceito pelo Mercado Pago em
-// ciclos longos o suficiente pra fazer sentido parcelar.
-const installmentEligibleCycles = new Set<OfferBillingCycle>(["QUARTERLY", "SEMIANNUAL", "ANNUAL"]);
-function supportsInstallments(cycle: OfferBillingCycle) {
-  return installmentEligibleCycles.has(cycle);
-}
-
 function packageModeLabel(mode?: PresentialPackageMode | null): string | null {
   if (mode === "FIXED_RECURRING") return "Pacote · horário fixo";
   if (mode === "FLEXIBLE_CREDITS") return "Pacote · créditos flexíveis";
@@ -155,7 +147,6 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
   const [acceptsPix, setAcceptsPix] = useState(true);
   const [acceptsDebitCard, setAcceptsDebitCard] = useState(true);
   const [acceptsCreditCard, setAcceptsCreditCard] = useState(true);
-  const [maxCreditInstallments, setMaxCreditInstallments] = useState("1");
   const [fichaValidityDays, setFichaValidityDays] = useState("");
   const [offerServiceMode, setOfferServiceMode] = useState<ProviderServiceMode | null>(null);
 
@@ -216,27 +207,12 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     return undefined;
   }, [offerKind, presentialPackageMode, presentialSessionsPerCycle, presentialHasFixedTerm, presentialTotalCycles]);
 
-  const maxCreditInstallmentsNumber = Number(maxCreditInstallments) || 1;
-
   const paymentMethodsError = useMemo(() => {
     if (!acceptsPix && !acceptsDebitCard && !acceptsCreditCard) {
       return "Selecione ao menos uma forma de pagamento aceita.";
     }
-    if (!acceptsCreditCard && maxCreditInstallmentsNumber > 1) {
-      return "Parcelamento acima de 1x exige cartão de crédito habilitado.";
-    }
-    if (acceptsCreditCard && maxCreditInstallmentsNumber > 1) {
-      if (!supportsInstallments(offerCycle)) {
-        return "Parcelamento é permitido apenas para ciclos trimestral, semestral ou anual.";
-      }
-      const minInstallmentCents = 500;
-      if (basePriceCents > 0 && basePriceCents / maxCreditInstallmentsNumber < minInstallmentCents) {
-        const maxAllowed = Math.floor(basePriceCents / minInstallmentCents);
-        return `Cada parcela deve ser de no mínimo R$ 5,00. Máximo permitido para este valor: ${maxAllowed}x.`;
-      }
-    }
     return undefined;
-  }, [acceptsPix, acceptsDebitCard, acceptsCreditCard, maxCreditInstallmentsNumber, offerCycle, basePriceCents]);
+  }, [acceptsPix, acceptsDebitCard, acceptsCreditCard]);
 
   const comboShareError = useMemo(() => {
     if (offerKind !== "COMBO" || !presentialPackageMode) return undefined;
@@ -288,7 +264,6 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     setAcceptsPix(true);
     setAcceptsDebitCard(true);
     setAcceptsCreditCard(true);
-    setMaxCreditInstallments("1");
     setFichaValidityDays("");
     setOfferServiceMode(null);
     setOfferWizardStep(0);
@@ -317,7 +292,6 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     setAcceptsPix(offer.acceptsPix ?? true);
     setAcceptsDebitCard(offer.acceptsDebitCard ?? true);
     setAcceptsCreditCard(offer.acceptsCreditCard ?? true);
-    setMaxCreditInstallments(String(offer.maxCreditInstallments ?? 1));
     setFichaValidityDays(offer.fichaValidityDays ? String(offer.fichaValidityDays) : "");
     setOfferServiceMode(offer.offerServiceMode ?? null);
     setOfferFormVisible(true);
@@ -411,7 +385,6 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
             acceptsPix,
             acceptsDebitCard,
             acceptsCreditCard,
-            maxCreditInstallments: maxCreditInstallmentsNumber,
             fichaValidityDays: offerKind !== "PRESENTIAL" && fichaValidityDays.trim() ? Number(fichaValidityDays) : null,
             offerServiceMode:
               offerKind === "PRESENTIAL" || offerKind === "COMBO" ? offerServiceMode : null,
@@ -454,7 +427,6 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
             acceptsPix,
             acceptsDebitCard,
             acceptsCreditCard,
-            maxCreditInstallments: maxCreditInstallmentsNumber,
             fichaValidityDays:
               offerKind !== "PRESENTIAL" && fichaValidityDays.trim() ? Number(fichaValidityDays) : undefined,
             offerServiceMode:
@@ -832,15 +804,6 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                       <Chip label="Débito" selected={acceptsDebitCard} onPress={() => setAcceptsDebitCard((c) => !c)} />
                       <Chip label="Crédito" selected={acceptsCreditCard} onPress={() => setAcceptsCreditCard((c) => !c)} />
                     </View>
-                    {acceptsCreditCard && supportsInstallments(offerCycle) ? (
-                      <MvInput
-                        keyboardType="numeric"
-                        label="Parcelamento máximo no crédito (1 a 12x)"
-                        placeholder="Ex: 3"
-                        value={maxCreditInstallments}
-                        onChangeText={setMaxCreditInstallments}
-                      />
-                    ) : null}
                     {paymentMethodsError ? <MvText variant="body4" color="danger">{paymentMethodsError}</MvText> : null}
 
                     <View style={{ flexDirection: "row", gap: 8 }}>
@@ -980,7 +943,6 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                       ) : null}
                       <MvText variant="caption" color="secondary">
                         Aceita: {[acceptsPix && "Pix", acceptsDebitCard && "Débito", acceptsCreditCard && "Crédito"].filter(Boolean).join(", ")}
-                        {acceptsCreditCard && maxCreditInstallmentsNumber > 1 ? ` (crédito em até ${maxCreditInstallmentsNumber}x)` : ""}
                       </MvText>
                       {offerKind !== "PRESENTIAL" && fichaValidityDays.trim() ? (
                         <MvText variant="caption" color="secondary">

@@ -49,7 +49,6 @@ export class ConsultancyController {
       acceptsPix: request.body.acceptsPix,
       acceptsDebitCard: request.body.acceptsDebitCard,
       acceptsCreditCard: request.body.acceptsCreditCard,
-      maxCreditInstallments: request.body.maxCreditInstallments,
       isActive: request.body.isActive,
       presentialPackageMode: request.body.presentialPackageMode,
       presentialHasFixedTerm: request.body.presentialHasFixedTerm,
@@ -83,7 +82,6 @@ export class ConsultancyController {
         acceptsPix: request.body.acceptsPix,
         acceptsDebitCard: request.body.acceptsDebitCard,
         acceptsCreditCard: request.body.acceptsCreditCard,
-        maxCreditInstallments: request.body.maxCreditInstallments,
         isActive: request.body.isActive,
         presentialPackageMode: request.body.presentialPackageMode,
         presentialHasFixedTerm: request.body.presentialHasFixedTerm,
@@ -190,7 +188,6 @@ export class ConsultancyController {
     const result = await consultancyService.decideRequest(request.user!.id, request.params.requestId, {
       decision: request.body.decision,
       paymentMethod: request.body.paymentMethod as ConsultancyPaymentMethod | undefined,
-      installments: request.body.installments,
       acknowledgedImmediateExecution: request.body.acknowledgedImmediateExecution
     });
     return response.json(result);
