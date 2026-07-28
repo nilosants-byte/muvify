@@ -300,26 +300,6 @@ export class PresentialPackageService {
       throw new AppError("Oferta sem quantidade de sessões por ciclo configurada.", StatusCodes.BAD_REQUEST);
     }
 
-    const existingActive = await prisma.presentialPackage.findFirst({
-      where: {
-        clientId,
-        offerId: offer.id,
-        status: {
-          in: [
-            PresentialPackageStatus.PENDING_PAYMENT,
-            PresentialPackageStatus.ACTIVE,
-            PresentialPackageStatus.PAST_DUE
-          ]
-        }
-      }
-    });
-    if (existingActive) {
-      throw new AppError(
-        "Você já possui um pacote ativo (ou pendente) para esta oferta.",
-        StatusCodes.CONFLICT
-      );
-    }
-
     // Horário fixo pago em cartão: valida o cartão do cliente já na compra
     // (falha rápido e com mensagem clara, em vez de deixar pra descobrir só
     // quando a primeira sessão tentar reservar o valor, dias depois).
@@ -337,26 +317,59 @@ export class PresentialPackageService {
       input.clientLongitude
     );
 
-    const pkg = await prisma.presentialPackage.create({
-      data: {
-        providerId: offer.providerId,
-        clientId,
-        offerId: offer.id,
-        categoryId: category.id,
-        mode: offer.presentialPackageMode,
-        status: PresentialPackageStatus.PENDING_PAYMENT,
-        paymentMethod: input.paymentMethod,
-        cycleAmountCents,
-        billingCycle: offer.billingCycle,
-        sessionsPerCycle,
-        weeklySchedule: weeklySchedule ?? undefined,
-        sessionLocation: resolvedLocation.sessionLocation,
-        clientLatitude: resolvedLocation.clientLatitude,
-        clientLongitude: resolvedLocation.clientLongitude,
-        hasFixedTerm: offer.presentialHasFixedTerm,
-        totalCycles: offer.presentialHasFixedTerm ? offer.presentialTotalCycles : null,
-        billingCardId
+    // Raio-X de pagamentos, Rodada 3, Lote 7: "já existe um pacote ativo?"
+    // rodava fora de transação, sem trava — dois cliques quase simultâneos
+    // passavam os dois pela checagem antes de qualquer um criar o pacote,
+    // e cada clique gera seu próprio idempotencyKey (chargeCycle usa
+    // pkg.id), então a MP cobrava as duas vezes de verdade. Mesmo idioma de
+    // advisory lock já usado com segurança em booking.service.ts::create —
+    // lock e liberação na mesma transação/conexão (nunca cruza chamadas
+    // separadas, que é o padrão provado inseguro com o pool do Prisma).
+    const lockKey = `presential-package:${clientId}:${offer.id}`;
+    const pkg = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+
+      const existingActive = await tx.presentialPackage.findFirst({
+        where: {
+          clientId,
+          offerId: offer.id,
+          status: {
+            in: [
+              PresentialPackageStatus.PENDING_PAYMENT,
+              PresentialPackageStatus.ACTIVE,
+              PresentialPackageStatus.PAST_DUE
+            ]
+          }
+        }
+      });
+      if (existingActive) {
+        throw new AppError(
+          "Você já possui um pacote ativo (ou pendente) para esta oferta.",
+          StatusCodes.CONFLICT
+        );
       }
+
+      return tx.presentialPackage.create({
+        data: {
+          providerId: offer.providerId,
+          clientId,
+          offerId: offer.id,
+          categoryId: category.id,
+          mode: offer.presentialPackageMode,
+          status: PresentialPackageStatus.PENDING_PAYMENT,
+          paymentMethod: input.paymentMethod,
+          cycleAmountCents,
+          billingCycle: offer.billingCycle,
+          sessionsPerCycle,
+          weeklySchedule: weeklySchedule ?? undefined,
+          sessionLocation: resolvedLocation.sessionLocation,
+          clientLatitude: resolvedLocation.clientLatitude,
+          clientLongitude: resolvedLocation.clientLongitude,
+          hasFixedTerm: offer.presentialHasFixedTerm,
+          totalCycles: offer.presentialHasFixedTerm ? offer.presentialTotalCycles : null,
+          billingCardId
+        }
+      });
     });
 
     // Horário fixo em cartão: nenhuma cobrança de ciclo — cada sessão vira
@@ -1294,25 +1307,66 @@ export class PresentialPackageService {
       throw new AppError("Oferta sem quantidade de sessões por ciclo configurada.", StatusCodes.BAD_REQUEST);
     }
 
-    const existingActive = await prisma.presentialPackage.findFirst({
-      where: {
-        clientId,
-        offerId: offer.id,
-        status: {
-          in: [
-            PresentialPackageStatus.PENDING_PAYMENT,
-            PresentialPackageStatus.ACTIVE,
-            PresentialPackageStatus.PAST_DUE
-          ]
+    const resolvedComboLocation = await resolveSessionLocationForPackage(
+      offer.provider,
+      input.sessionLocation,
+      input.clientLatitude,
+      input.clientLongitude
+    );
+
+    // Raio-X de pagamentos, Rodada 3, Lote 7: mesmo problema (e mesma
+    // correção) de purchasePackage — "já existe um combo ativo?" rodava
+    // fora de transação, sem trava, e dois cliques quase simultâneos
+    // passavam os dois antes de qualquer um reservar a vaga. Aqui a
+    // reserva precisa acontecer JÁ (criando o pacote presencial ainda sem
+    // consultancyContractId, ligado depois) porque o resto do fluxo — criar
+    // o contrato de consultoria e cobrar a parte de consultoria de verdade
+    // no Mercado Pago — só deve rodar depois que a vaga estiver garantida.
+    const lockKey = `presential-package:${clientId}:${offer.id}`;
+    const pkg = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+
+      const existingActive = await tx.presentialPackage.findFirst({
+        where: {
+          clientId,
+          offerId: offer.id,
+          status: {
+            in: [
+              PresentialPackageStatus.PENDING_PAYMENT,
+              PresentialPackageStatus.ACTIVE,
+              PresentialPackageStatus.PAST_DUE
+            ]
+          }
         }
+      });
+      if (existingActive) {
+        throw new AppError(
+          "Você já possui um combo ativo (ou pendente) para esta oferta.",
+          StatusCodes.CONFLICT
+        );
       }
+
+      return tx.presentialPackage.create({
+        data: {
+          providerId: offer.providerId,
+          clientId,
+          offerId: offer.id,
+          categoryId: category.id,
+          mode: offer.presentialPackageMode,
+          status: PresentialPackageStatus.PENDING_PAYMENT,
+          paymentMethod: input.paymentMethod,
+          cycleAmountCents: offer.comboPresentialShareCents!,
+          billingCycle: offer.billingCycle,
+          sessionsPerCycle,
+          weeklySchedule: weeklySchedule ?? undefined,
+          sessionLocation: resolvedComboLocation.sessionLocation,
+          clientLatitude: resolvedComboLocation.clientLatitude,
+          clientLongitude: resolvedComboLocation.clientLongitude,
+          hasFixedTerm: offer.presentialHasFixedTerm,
+          totalCycles: offer.presentialHasFixedTerm ? offer.presentialTotalCycles : null
+        }
+      });
     });
-    if (existingActive) {
-      throw new AppError(
-        "Você já possui um combo ativo (ou pendente) para esta oferta.",
-        StatusCodes.CONFLICT
-      );
-    }
 
     const now = new Date();
     const deliveryDeadlineAt = new Date(
@@ -1352,6 +1406,13 @@ export class PresentialPackageService {
       });
     });
 
+    // Liga o pacote presencial (já reservado acima, antes de qualquer
+    // cobrança) ao contrato de consultoria recém-criado.
+    await prisma.presentialPackage.update({
+      where: { id: pkg.id },
+      data: { consultancyContractId: contract.id }
+    });
+
     let consultancyPaymentResult:
       | { status: "CAPTURED" }
       | { status: "AUTHORIZED" }
@@ -1374,41 +1435,13 @@ export class PresentialPackageService {
       throw new AppError(message, StatusCodes.BAD_REQUEST);
     }
 
-    // Metade presencial: pacote linkado ao contrato, cobra o primeiro ciclo
-    // com o mesmo mecanismo de sempre (chargeCycle). Se essa parte falhar,
-    // a consultoria (ja cobrada acima) NAO e revertida automaticamente -
-    // devolvemos os dois resultados pro chamador deixar claro pro cliente
-    // exatamente o que foi confirmado e o que precisa ser tentado de novo,
-    // em vez de mascarar um sucesso parcial como falha total.
-    const resolvedComboLocation = await resolveSessionLocationForPackage(
-      offer.provider,
-      input.sessionLocation,
-      input.clientLatitude,
-      input.clientLongitude
-    );
-
-    const pkg = await prisma.presentialPackage.create({
-      data: {
-        providerId: offer.providerId,
-        clientId,
-        offerId: offer.id,
-        categoryId: category.id,
-        consultancyContractId: contract.id,
-        mode: offer.presentialPackageMode,
-        status: PresentialPackageStatus.PENDING_PAYMENT,
-        paymentMethod: input.paymentMethod,
-        cycleAmountCents: offer.comboPresentialShareCents!,
-        billingCycle: offer.billingCycle,
-        sessionsPerCycle,
-        weeklySchedule: weeklySchedule ?? undefined,
-        sessionLocation: resolvedComboLocation.sessionLocation,
-        clientLatitude: resolvedComboLocation.clientLatitude,
-        clientLongitude: resolvedComboLocation.clientLongitude,
-        hasFixedTerm: offer.presentialHasFixedTerm,
-        totalCycles: offer.presentialHasFixedTerm ? offer.presentialTotalCycles : null
-      }
-    });
-
+    // Metade presencial: pacote já reservado e linkado ao contrato acima,
+    // agora cobra o primeiro ciclo com o mesmo mecanismo de sempre
+    // (chargeCycle). Se essa parte falhar, a consultoria (ja cobrada acima)
+    // NAO e revertida automaticamente - devolvemos os dois resultados pro
+    // chamador deixar claro pro cliente exatamente o que foi confirmado e
+    // o que precisa ser tentado de novo, em vez de mascarar um sucesso
+    // parcial como falha total.
     let presentialPaymentResult: { status: "CAPTURED" | "PENDING" | "FAILED" | "READY" } = { status: "FAILED" };
     try {
       presentialPaymentResult =
