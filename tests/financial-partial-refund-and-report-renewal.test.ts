@@ -140,7 +140,7 @@ describe("Financeiro — reembolso parcial nos repasses e renovação de ficha n
     // proporcional ao estorno — senão bruto − comissão ≠ líquido.
     expect(tx?.platformFeeCents).toBe(600);
     expect(tx?.refundedAmountCents).toBe(4000);
-    expect(tx!.amountCents).toBe(tx!.platformFeeCents + tx!.providerAmountCents + tx!.refundedAmountCents);
+    expect(tx!.amountCents).toBe((tx!.platformFeeCents ?? 0) + tx!.providerAmountCents + tx!.refundedAmountCents);
 
     const csv = await financialService.exportTransactionsCsv(providerUserId);
     const csvLines = csv.split("\n");

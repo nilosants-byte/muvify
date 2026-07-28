@@ -355,7 +355,10 @@ export class PresentialPackageService {
           clientId,
           offerId: offer.id,
           categoryId: category.id,
-          mode: offer.presentialPackageMode,
+          // Narrowing de "offer.presentialPackageMode não é null" (checado
+          // no início da função) não atravessa o closure da transação —
+          // TypeScript não retém isso pra acesso de propriedade aninhado.
+          mode: offer.presentialPackageMode!,
           status: PresentialPackageStatus.PENDING_PAYMENT,
           paymentMethod: input.paymentMethod,
           cycleAmountCents,
@@ -1352,7 +1355,9 @@ export class PresentialPackageService {
           clientId,
           offerId: offer.id,
           categoryId: category.id,
-          mode: offer.presentialPackageMode,
+          // Mesmo caso de purchasePackage: narrowing não atravessa o
+          // closure da transação.
+          mode: offer.presentialPackageMode!,
           status: PresentialPackageStatus.PENDING_PAYMENT,
           paymentMethod: input.paymentMethod,
           cycleAmountCents: offer.comboPresentialShareCents!,

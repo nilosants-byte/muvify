@@ -2663,13 +2663,22 @@ export class ConsultancyService {
   // O aluno pode desistir da consultoria a qualquer momento antes da primeira
   // ficha ser entregue — depois disso, o serviço já foi prestado e não cabe
   // mais cancelamento (ver Cláusula 8.2 dos Termos de Uso).
-  async cancelContract(clientId: string, contractId: string) {
+  // Raio-X de pagamentos, Rodada 4, Lote 2: generalizado de "só o aluno
+  // cancela" pra aceitar também o profissional — precisa disso pra encerrar
+  // com segurança os contratos ativos de um profissional que está
+  // excluindo a própria conta (mesmo padrão que cancelPackage já usava).
+  async cancelContract(userId: string, contractId: string) {
     const contract = await prisma.consultancyContract.findUnique({
       where: { id: contractId },
       include: { provider: { select: { userId: true } } }
     });
 
-    if (!contract || contract.clientId !== clientId) {
+    if (!contract) {
+      throw new AppError("Contrato não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    const isClient = contract.clientId === userId;
+    const isProvider = contract.provider.userId === userId;
+    if (!isClient && !isProvider) {
       throw new AppError("Contrato não encontrado.", StatusCodes.NOT_FOUND);
     }
 
@@ -2692,16 +2701,20 @@ export class ConsultancyService {
         data: { status: ConsultancyContractStatus.CANCELLED }
       });
 
-      void notificationService.sendToUsers([contract.provider.userId], {
-        preferenceType: "CONSULTANCY",
-        title: "Consultoria encerrada pelo aluno",
-        body: "O aluno encerrou a consultoria em andamento. Nenhuma ficha nova será cobrada.",
-        data: { type: "CONSULTANCY_ENDED_BY_CLIENT", contractId: contract.id }
-      });
+      if (!isProvider) {
+        void notificationService.sendToUsers([contract.provider.userId], {
+          preferenceType: "CONSULTANCY",
+          title: "Consultoria encerrada pelo aluno",
+          body: "O aluno encerrou a consultoria em andamento. Nenhuma ficha nova será cobrada.",
+          data: { type: "CONSULTANCY_ENDED_BY_CLIENT", contractId: contract.id }
+        });
+      }
       void notificationService.sendToUsers([contract.clientId], {
         preferenceType: "CONSULTANCY",
         title: "Consultoria encerrada",
-        body: "Sua consultoria foi encerrada. As fichas já recebidas continuam disponíveis em Seu Treino.",
+        body: isProvider
+          ? "Seu profissional encerrou a consultoria em andamento. Nenhuma ficha nova será cobrada."
+          : "Sua consultoria foi encerrada. As fichas já recebidas continuam disponíveis em Seu Treino.",
         data: { type: "CONSULTANCY_ENDED_BY_CLIENT", contractId: contract.id }
       });
 
@@ -2772,20 +2785,24 @@ export class ConsultancyService {
       }
     });
 
-    void notificationService.sendToUsers([contract.provider.userId], {
-      preferenceType: "CONSULTANCY",
-      title: "Consultoria cancelada pelo aluno",
-      body: "O aluno cancelou a consultoria antes da entrega da primeira ficha.",
-      data: { type: "CONSULTANCY_CANCELLED_BY_CLIENT", contractId: contract.id }
-    });
+    if (!isProvider) {
+      void notificationService.sendToUsers([contract.provider.userId], {
+        preferenceType: "CONSULTANCY",
+        title: "Consultoria cancelada pelo aluno",
+        body: "O aluno cancelou a consultoria antes da entrega da primeira ficha.",
+        data: { type: "CONSULTANCY_CANCELLED_BY_CLIENT", contractId: contract.id }
+      });
+    }
     void notificationService.sendToUsers([contract.clientId], {
       preferenceType: "CONSULTANCY",
       title: "Consultoria cancelada",
-      body: isHoldOnly
-        ? "Sua consultoria foi cancelada. O valor reservado no cartão nunca chegou a ser cobrado."
-        : gatewaySucceeded
-          ? "Sua consultoria foi cancelada e o valor foi estornado."
-          : "Sua consultoria foi cancelada. Houve uma falha ao processar o reembolso — nossa equipe já foi avisada e vai resolver manualmente.",
+      body: isProvider
+        ? "Seu profissional cancelou esta consultoria. Qualquer valor já cobrado será estornado."
+        : isHoldOnly
+          ? "Sua consultoria foi cancelada. O valor reservado no cartão nunca chegou a ser cobrado."
+          : gatewaySucceeded
+            ? "Sua consultoria foi cancelada e o valor foi estornado."
+            : "Sua consultoria foi cancelada. Houve uma falha ao processar o reembolso — nossa equipe já foi avisada e vai resolver manualmente.",
       data: { type: "CONSULTANCY_CANCELLED_BY_CLIENT", contractId: contract.id }
     });
 

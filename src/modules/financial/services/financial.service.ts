@@ -905,7 +905,7 @@ export class FinancialService {
         escapeCsv(p.method),
         escapeCsv(p.status),
         (p.amountCents / 100).toFixed(2),
-        (p.platformFeeCents / 100).toFixed(2),
+        ((p.platformFeeCents ?? 0) / 100).toFixed(2),
         (p.providerAmountCents / 100).toFixed(2),
         (p.refundedAmountCents / 100).toFixed(2)
       ].join(",");

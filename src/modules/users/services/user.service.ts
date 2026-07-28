@@ -20,6 +20,17 @@ import {
 import { resolveEffectiveUserRole } from "../../../shared/utils/admin-access";
 import { compareHash, hashValue } from "../../../shared/utils/hash";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
+import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
+import { ConsultancyService } from "../../consultancy/services/consultancy.service";
+
+const presentialPackageService = new PresentialPackageService();
+const consultancyService = new ConsultancyService();
+
+const ACTIVE_PACKAGE_STATUSES = ["PENDING_PAYMENT", "ACTIVE", "PAST_DUE"] as const;
+const ACTIVE_CONTRACT_STATUSES = ["PENDING_PAYMENT", "ACTIVE", "DELIVERED"] as const;
+// cancelContract só aceita ACTIVE/DELIVERED (PENDING_PAYMENT ainda não tem
+// nada cobrado de verdade — resolve sozinho via webhook/expiração).
+const CANCELLABLE_CONTRACT_STATUSES = ["ACTIVE", "DELIVERED"] as const;
 
 type UpdateMeInput = {
   name?: string;
@@ -532,6 +543,100 @@ export class UserService {
       throw new AppError("Senha incorreta. Confirme sua senha para excluir a conta.", StatusCodes.UNAUTHORIZED);
     }
 
+    // Raio-X de pagamentos, Rodada 4, Lote 2: deleteMe não verificava nada
+    // antes de anonimizar — um cliente com dívida em aberto (a mesma que já
+    // bloqueia novas compras) podia simplesmente excluir a conta pra
+    // escapar dela. Mesmo princípio pro lado profissional: dívida e disputa
+    // aberta também bloqueiam, porque saem do controle de qualquer
+    // reconciliação depois que a conta some.
+    const providerProfileForCheck = await prisma.providerProfile.findUnique({
+      where: { userId },
+      select: { id: true }
+    });
+
+    const [
+      clientDebt,
+      clientDispute,
+      clientPackage,
+      clientContract,
+      providerDebt,
+      providerDispute
+    ] = await Promise.all([
+      prisma.debtRecord.findFirst({
+        where: { clientId: userId, debtorType: "CLIENT", status: { in: ["PENDING", "NOTIFIED"] } }
+      }),
+      prisma.disputeCase.findFirst({ where: { clientId: userId, status: "OPEN" } }),
+      prisma.presentialPackage.findFirst({
+        where: { clientId: userId, status: { in: [...ACTIVE_PACKAGE_STATUSES] } }
+      }),
+      prisma.consultancyContract.findFirst({
+        where: { clientId: userId, status: { in: [...ACTIVE_CONTRACT_STATUSES] } }
+      }),
+      providerProfileForCheck
+        ? prisma.debtRecord.findFirst({
+            where: { providerId: providerProfileForCheck.id, debtorType: "PROVIDER", status: { in: ["PENDING", "NOTIFIED"] } }
+          })
+        : null,
+      providerProfileForCheck
+        ? prisma.disputeCase.findFirst({ where: { providerId: providerProfileForCheck.id, status: "OPEN" } })
+        : null
+    ]);
+
+    if (clientDebt || providerDebt) {
+      throw new AppError(
+        "Você tem uma pendência financeira em aberto. Regularize antes de excluir sua conta.",
+        StatusCodes.CONFLICT
+      );
+    }
+    if (clientDispute || providerDispute) {
+      throw new AppError(
+        "Você tem um caso em julgamento aguardando decisão. Aguarde a resolução antes de excluir sua conta.",
+        StatusCodes.CONFLICT
+      );
+    }
+    if (clientPackage) {
+      throw new AppError(
+        "Você tem um pacote presencial ativo. Cancele-o em Meus Pacotes antes de excluir sua conta.",
+        StatusCodes.CONFLICT
+      );
+    }
+    if (clientContract) {
+      throw new AppError(
+        "Você tem uma consultoria ativa. Cancele-a antes de excluir sua conta.",
+        StatusCodes.CONFLICT
+      );
+    }
+
+    // Profissional: relacionamentos ativos que ELE tem com alunos não
+    // bloqueiam a exclusão (forçar encerrar aluno por aluno antes de sair
+    // seria desproporcional) — em vez disso, são encerrados automaticamente
+    // aqui, com o mesmo mecanismo de cancelamento (e aviso/reembolso) já
+    // usado quando qualquer uma das partes cancela manualmente. Roda ANTES
+    // da transação principal porque envolve chamada de rede pro Mercado
+    // Pago (nunca dentro de uma transação Prisma).
+    if (providerProfileForCheck) {
+      const [activePackages, activeContracts] = await Promise.all([
+        prisma.presentialPackage.findMany({
+          where: { providerId: providerProfileForCheck.id, status: { in: [...ACTIVE_PACKAGE_STATUSES] } },
+          select: { id: true }
+        }),
+        prisma.consultancyContract.findMany({
+          where: { providerId: providerProfileForCheck.id, status: { in: [...CANCELLABLE_CONTRACT_STATUSES] } },
+          select: { id: true }
+        })
+      ]);
+      for (const pkg of activePackages) {
+        await presentialPackageService.cancelPackage(userId, pkg.id).catch((error) =>
+          console.error(`Falha ao cancelar pacote ${pkg.id} na exclusão de conta do profissional ${userId}:`, error)
+        );
+      }
+      for (const contract of activeContracts) {
+        await consultancyService.cancelContract(userId, contract.id).catch((error) =>
+          console.error(`Falha ao cancelar contrato ${contract.id} na exclusão de conta do profissional ${userId}:`, error)
+        );
+      }
+    }
+
     const anonymizedEmail = `deleted_${userId}@removed.invalid`;
     const newPassword = await hashValue(randomUUID());
 
@@ -597,7 +702,13 @@ export class UserService {
           data: {
             displayName: "Personal removido", bio: "", photoUrl: null, presentationVideoUrl: null,
             latitude: null, longitude: null, fixedLocations: Prisma.DbNull, excludedLocations: Prisma.DbNull,
-            crefNumber: null, crefDocumentUrl: null, credentialDocuments: Prisma.DbNull
+            crefNumber: null, crefDocumentUrl: null, credentialDocuments: Prisma.DbNull,
+            // Raio-X de pagamentos, Rodada 4, Lote 2: sem isso, cobranças
+            // recorrentes (renovação de ficha, ciclo de pacote) continuavam
+            // sendo capturadas e repassadas pra uma conta já excluída — os
+            // relacionamentos ativos já foram encerrados acima, mas limpa o
+            // token de qualquer forma como segunda camada de segurança.
+            mpAccessToken: null, mpRefreshToken: null, mpAccountId: null, mpTokenInvalidatedAt: new Date()
           }
         });
       }
