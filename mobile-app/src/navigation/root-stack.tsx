@@ -17,6 +17,7 @@ import { AdminDisputeDetailScreen } from "../screens/admin/AdminDisputeDetailScr
 import { AdminDisputesScreen } from "../screens/admin/AdminDisputesScreen";
 import { AdminUserSearchScreen } from "../screens/admin/AdminUserSearchScreen";
 import { AdminNoShowReportsScreen } from "../screens/admin/AdminNoShowReportsScreen";
+import { AdminDataRetentionScreen } from "../screens/admin/AdminDataRetentionScreen";
 import { AdminExercisesScreen } from "../screens/admin/AdminExercisesScreen";
 import { AdminHomeScreen } from "../screens/admin/AdminHomeScreen";
 import { AdminSupportScreen } from "../screens/admin/AdminSupportScreen";
@@ -615,6 +616,11 @@ export function RootNavigator() {
             <AdminStack.Screen
               name="AdminNoShowReports"
               component={AdminNoShowReportsScreen as React.ComponentType<any>}
+              options={{ headerShown: false }}
+            />
+            <AdminStack.Screen
+              name="AdminDataRetention"
+              component={AdminDataRetentionScreen as React.ComponentType<any>}
               options={{ headerShown: false }}
             />
           </AdminStack.Navigator>

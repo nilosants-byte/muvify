@@ -1616,6 +1616,38 @@ export const adminApi = {
       token
     });
   },
+  setLegalHold(token: string, userId: string, until: string, reason: string) {
+    return apiRequest<AdminLegalHoldResult>(`/admin/users/${userId}/legal-hold`, {
+      method: "POST",
+      token,
+      body: { until, reason }
+    });
+  },
+  clearLegalHold(token: string, userId: string) {
+    return apiRequest<AdminLegalHoldResult>(`/admin/users/${userId}/legal-hold`, {
+      method: "DELETE",
+      token
+    });
+  },
+  exportUserData(token: string, userId: string) {
+    return apiRequest<Record<string, unknown>>(`/admin/users/${userId}/export-data`, {
+      method: "POST",
+      token
+    });
+  },
+  listDataRetentionRuns(token: string, take?: number) {
+    const query = new URLSearchParams();
+    if (take) query.set("take", String(take));
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<AdminDataRetentionRun[]>(`/admin/data-retention/runs${suffix}`, { token });
+  },
+  runDataRetention(token: string, params: { dryRun: boolean }) {
+    return apiRequest<AdminDataRetentionRun>(`/admin/data-retention/run`, {
+      method: "POST",
+      token,
+      body: params
+    });
+  },
   searchUsers(token: string, q: string) {
     return apiRequest<AdminUserSearchResult[]>(`/admin/users/search?q=${encodeURIComponent(q)}`, { token });
   },
@@ -1707,6 +1739,8 @@ export type AdminUserDetail = {
   suspensionReason: string | null;
   noShowStrikes: number;
   createdAt: string;
+  legalHoldUntil: string | null;
+  legalHoldReason: string | null;
   provider: {
     id: string;
     displayName: string;
@@ -1717,6 +1751,27 @@ export type AdminUserDetail = {
   clientDisputes: AdminUserDetailDispute[];
   providerDebts: AdminUserDetailDebt[];
   providerDisputes: AdminUserDetailDispute[];
+};
+
+export type AdminLegalHoldResult = {
+  id: string;
+  name: string;
+  email: string;
+  legalHoldUntil: string | null;
+  legalHoldReason: string | null;
+};
+
+export type AdminDataRetentionRun = {
+  id: string;
+  dryRun: boolean;
+  status: "SUCCESS" | "FAILED";
+  triggeredBy: string;
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+  errorMessage: string | null;
+  summary: unknown;
+  createdAt: string;
 };
 
 export type AdminDisputeCaseType =

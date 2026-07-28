@@ -130,6 +130,7 @@ export const queryKeys = {
     disputeCaseDetail: (caseId: string) => ["admin", "disputeCaseDetail", caseId] as const,
     debts: (params?: object) => ["admin", "debts", params] as const,
     noShowReports: (params?: object) => ["admin", "noShowReports", params] as const,
+    dataRetentionRuns: (params?: object) => ["admin", "dataRetentionRuns", params] as const,
   },
 
   // ── Exercícios ─────────────────────────────────────────────────────────────

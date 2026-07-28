@@ -150,6 +150,22 @@ export const adminReactivateUserSchema = z.object({
   params: z.object({ userId: z.string().uuid() })
 });
 
+export const adminSetLegalHoldSchema = z.object({
+  params: z.object({ userId: z.string().uuid() }),
+  body: z.object({
+    until: z.string().trim().min(10).max(40),
+    reason: z.string().trim().min(5).max(500)
+  })
+});
+
+export const adminClearLegalHoldSchema = z.object({
+  params: z.object({ userId: z.string().uuid() })
+});
+
+export const adminExportUserDataSchema = z.object({
+  params: z.object({ userId: z.string().uuid() })
+});
+
 export const adminSearchUsersSchema = z.object({
   query: z.object({
     q: z.string().trim().min(3).max(200)

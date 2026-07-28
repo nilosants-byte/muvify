@@ -45,10 +45,11 @@ export function startDataRetentionJob() {
         return;
       }
 
+      const legalHoldUserIds = await retentionService.resolveLegalHoldUserIds(parseLegalHoldUserIds());
       const result = await retentionService.run({
         dryRun: env.DATA_RETENTION_DRY_RUN,
         triggeredBy: "SYSTEM_SCHEDULED_JOB",
-        legalHoldUserIds: parseLegalHoldUserIds()
+        legalHoldUserIds
       });
 
       console.log(

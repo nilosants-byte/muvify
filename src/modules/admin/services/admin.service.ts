@@ -10,6 +10,7 @@ import { decryptSensitiveText, hashLookupValue } from "../../../shared/utils/enc
 import { resolveAccessTokenTtlSeconds, setTokenBlacklist } from "../../../shared/security/token-blacklist";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DataRetentionService } from "../../privacy/services/data-retention.service";
+import { UserService } from "../../users/services/user.service";
 
 type DashboardInput = {
   month?: number;
@@ -256,6 +257,7 @@ export class AdminService {
   private emailService = new EmailService();
   private notificationService = new NotificationService();
   private dataRetentionService = new DataRetentionService();
+  private userService = new UserService();
 
   private async ensureAdminAccess(adminUserId: string) {
     const admin = await prisma.user.findUnique({
@@ -568,10 +570,13 @@ export class AdminService {
       input.triggeredBy?.trim() ||
       `ADMIN_MANUAL:${admin.email.toLowerCase()}`;
 
-    // input.legalHoldUserIds tem precedência sobre a env var
-    const legalHoldUserIds = (input.legalHoldUserIds?.length ?? 0) > 0
+    // input.legalHoldUserIds (se informado) some à env var e ao legal hold
+    // persistido por usuário (User.legalHoldUntil) — nenhuma fonte substitui
+    // a outra.
+    const baseLegalHoldUserIds = (input.legalHoldUserIds?.length ?? 0) > 0
       ? input.legalHoldUserIds!
       : this.parseLegalHoldUserIds();
+    const legalHoldUserIds = await this.dataRetentionService.resolveLegalHoldUserIds(baseLegalHoldUserIds);
 
     const result = await this.dataRetentionService.run({
       dryRun,
@@ -1335,6 +1340,99 @@ export class AdminService {
     return updated;
   }
 
+  // ─── Legal hold por usuário (Rodada 4, Lote 9) ───────────────────────────
+  // Antes só existia a env var DATA_RETENTION_LEGAL_HOLD_USER_IDS — mudar
+  // exigia editar variável de ambiente e redeployar. Persistido no próprio
+  // usuário, o job automático de retenção passa a respeitar isso de
+  // imediato (ver DataRetentionService.resolveLegalHoldUserIds).
+  async setLegalHold(adminId: string, targetUserId: string, untilIso: string, reason: string) {
+    const admin = await this.ensureAdminAccess(adminId);
+
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      throw new AppError("Informe o motivo do legal hold.", StatusCodes.BAD_REQUEST);
+    }
+    const until = new Date(untilIso);
+    if (Number.isNaN(until.getTime()) || until <= new Date()) {
+      throw new AppError("Data de término do legal hold inválida.", StatusCodes.BAD_REQUEST);
+    }
+
+    const target = await prisma.user.findUnique({ where: { id: targetUserId }, select: { id: true } });
+    if (!target) {
+      throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: target.id },
+      data: { legalHoldUntil: until, legalHoldReason: trimmedReason },
+      select: { id: true, name: true, email: true, legalHoldUntil: true, legalHoldReason: true }
+    });
+
+    void writeAdminAuditLog({
+      adminId: admin.id,
+      action: "USER_LEGAL_HOLD_SET",
+      targetType: "USER",
+      targetId: target.id,
+      metadata: { reason: trimmedReason, until: until.toISOString() }
+    });
+
+    return updated;
+  }
+
+  async clearLegalHold(adminId: string, targetUserId: string) {
+    const admin = await this.ensureAdminAccess(adminId);
+
+    const target = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, legalHoldUntil: true }
+    });
+    if (!target) {
+      throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    if (!target.legalHoldUntil) {
+      throw new AppError("Este usuário não está sob legal hold.", StatusCodes.BAD_REQUEST);
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: target.id },
+      data: { legalHoldUntil: null, legalHoldReason: null },
+      select: { id: true, name: true, email: true, legalHoldUntil: true, legalHoldReason: true }
+    });
+
+    void writeAdminAuditLog({
+      adminId: admin.id,
+      action: "USER_LEGAL_HOLD_CLEARED",
+      targetType: "USER",
+      targetId: target.id
+    });
+
+    return updated;
+  }
+
+  // Reaproveita userService.exportMyData (já genérico em qualquer userId) —
+  // até então só existia o autoatendimento (o próprio usuário exportando os
+  // próprios dados); não havia como um admin gerar essa exportação em nome
+  // de alguém que pediu por outro canal (e-mail, suporte).
+  async exportUserData(adminId: string, targetUserId: string) {
+    const admin = await this.ensureAdminAccess(adminId);
+
+    const target = await prisma.user.findUnique({ where: { id: targetUserId }, select: { id: true } });
+    if (!target) {
+      throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    const data = await this.userService.exportMyData(targetUserId);
+
+    void writeAdminAuditLog({
+      adminId: admin.id,
+      action: "ADMIN_USER_DATA_EXPORTED",
+      targetType: "USER",
+      targetId: targetUserId
+    });
+
+    return data;
+  }
+
   // Raio-X de pagamentos, Rodada 4, Lote 3: não existia nenhuma tela pra
   // buscar um usuário por nome/e-mail e ver tudo relacionado a ele num
   // lugar só — a única busca disponível exigia CPF, e suspender só era
@@ -1391,6 +1489,8 @@ export class AdminService {
         suspensionReason: true,
         noShowStrikes: true,
         createdAt: true,
+        legalHoldUntil: true,
+        legalHoldReason: true,
         providerProfile: {
           select: { id: true, displayName: true, crefValidationStatus: true, mpAccountId: true }
         }
@@ -1442,6 +1542,8 @@ export class AdminService {
       suspensionReason: user.suspensionReason,
       noShowStrikes: user.noShowStrikes,
       createdAt: user.createdAt,
+      legalHoldUntil: user.legalHoldUntil,
+      legalHoldReason: user.legalHoldReason,
       provider: user.providerProfile
         ? {
             id: user.providerProfile.id,

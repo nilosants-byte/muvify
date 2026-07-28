@@ -35,6 +35,12 @@ export function AdminUserSearchScreen({ navigation }: Props) {
   const [showSuspendForm, setShowSuspendForm] = useState(false);
   const [suspendReason, setSuspendReason] = useState("");
 
+  const [settingHold, setSettingHold] = useState(false);
+  const [showHoldForm, setShowHoldForm] = useState(false);
+  const [holdDays, setHoldDays] = useState(90);
+  const [holdReason, setHoldReason] = useState("");
+  const [exporting, setExporting] = useState(false);
+
   async function search() {
     const trimmed = query.trim();
     if (trimmed.length < 3) {
@@ -101,6 +107,62 @@ export function AdminUserSearchScreen({ navigation }: Props) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao reativar o usuário.", navigation });
     } finally {
       setSuspending(false);
+    }
+  }
+
+  // Raio-X de pagamentos, Rodada 4, Lote 9: legal hold persistido por
+  // usuário — o job automático de retenção passa a respeitar isso sem
+  // precisar de deploy nenhum (antes só existia a env var).
+  async function submitLegalHold() {
+    if (!detail) return;
+    const trimmedReason = holdReason.trim();
+    if (trimmedReason.length < 5) {
+      showToast("Explique o motivo do legal hold (mínimo 5 caracteres).", "error");
+      return;
+    }
+    if (!holdDays || holdDays < 1) {
+      showToast("Informe quantos dias o hold deve durar.", "error");
+      return;
+    }
+    try {
+      setSettingHold(true);
+      const until = new Date(Date.now() + holdDays * 24 * 60 * 60 * 1000).toISOString();
+      await runWithAuth((token) => adminApi.setLegalHold(token, detail.id, until, trimmedReason));
+      showToast("Legal hold aplicado.", "success");
+      setShowHoldForm(false);
+      setHoldReason("");
+      await openUser(detail.id);
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao aplicar o legal hold.", navigation });
+    } finally {
+      setSettingHold(false);
+    }
+  }
+
+  async function clearHold() {
+    if (!detail) return;
+    try {
+      setSettingHold(true);
+      await runWithAuth((token) => adminApi.clearLegalHold(token, detail.id));
+      showToast("Legal hold removido.", "success");
+      await openUser(detail.id);
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao remover o legal hold.", navigation });
+    } finally {
+      setSettingHold(false);
+    }
+  }
+
+  async function exportData() {
+    if (!detail) return;
+    try {
+      setExporting(true);
+      await runWithAuth((token) => adminApi.exportUserData(token, detail.id));
+      showToast("Exportação gerada e registrada em log de auditoria.", "success");
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao exportar dados do usuário.", navigation });
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -179,6 +241,11 @@ export function AdminUserSearchScreen({ navigation }: Props) {
                     Suspenso em {formatDate(detail.suspendedAt)} — {detail.suspensionReason}
                   </MvText>
                 ) : null}
+                {detail.legalHoldUntil ? (
+                  <MvText variant="body4" color="secondary">
+                    Legal hold até {formatDate(detail.legalHoldUntil)} — {detail.legalHoldReason}
+                  </MvText>
+                ) : null}
               </View>
             </MvCard>
 
@@ -237,6 +304,41 @@ export function AdminUserSearchScreen({ navigation }: Props) {
                 ) : (
                   <MvButton variant="danger" label="Suspender conta" onPress={() => setShowSuspendForm(true)} />
                 )}
+
+                {detail.legalHoldUntil ? (
+                  <MvButton variant="outline" label="Remover legal hold" loading={settingHold} onPress={() => void clearHold()} />
+                ) : showHoldForm ? (
+                  <View style={{ gap: 4 }}>
+                    <MvText variant="caption" color="secondary">
+                      Legal hold impede que os dados desse usuário sejam apagados/anonimizados pela retenção automática
+                    </MvText>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {[30, 90, 365].map((days) => (
+                        <MvButton
+                          key={days}
+                          variant={holdDays === days ? "primary" : "ghost"}
+                          label={`${days}d`}
+                          onPress={() => setHoldDays(days)}
+                        />
+                      ))}
+                    </View>
+                    <MvInput
+                      multiline
+                      numberOfLines={3}
+                      maxLength={500}
+                      placeholder="Motivo (ex: processo judicial em curso, número do processo)"
+                      value={holdReason}
+                      onChangeText={setHoldReason}
+                      style={{ textAlignVertical: "top" } as any}
+                    />
+                    <MvButton variant="primary" label="Aplicar legal hold" loading={settingHold} onPress={() => void submitLegalHold()} />
+                    <MvButton variant="ghost" label="Cancelar" onPress={() => { setShowHoldForm(false); setHoldReason(""); }} />
+                  </View>
+                ) : (
+                  <MvButton variant="outline" label="Aplicar legal hold" onPress={() => setShowHoldForm(true)} />
+                )}
+
+                <MvButton variant="ghost" label="Exportar dados deste usuário" loading={exporting} onPress={() => void exportData()} />
               </View>
             </MvCard>
           </>

@@ -150,6 +150,26 @@ export class AdminController {
     return response.json(payload);
   }
 
+  async setLegalHold(request: Request, response: Response) {
+    const payload = await adminService.setLegalHold(
+      request.user!.id,
+      request.params.userId,
+      request.body.until,
+      request.body.reason
+    );
+    return response.json(payload);
+  }
+
+  async clearLegalHold(request: Request, response: Response) {
+    const payload = await adminService.clearLegalHold(request.user!.id, request.params.userId);
+    return response.json(payload);
+  }
+
+  async exportUserData(request: Request, response: Response) {
+    const payload = await adminService.exportUserData(request.user!.id, request.params.userId);
+    return response.json(payload);
+  }
+
   async searchUsers(request: Request, response: Response) {
     const payload = await adminService.searchUsers(request.user!.id, String(request.query.q ?? ""));
     return response.json(payload);

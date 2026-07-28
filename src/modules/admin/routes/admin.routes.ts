@@ -8,10 +8,12 @@ import { AdminController } from "../controllers/admin.controller";
 import {
   adminChatAuditSessionMessagesSchema,
   adminChatAuditSessionsQuerySchema,
+  adminClearLegalHoldSchema,
   adminCrefQueueQuerySchema,
   adminDataRetentionRunsQuerySchema,
   adminDashboardOverviewSchema,
   adminDisputeCaseIdSchema,
+  adminExportUserDataSchema,
   adminListDebtsQuerySchema,
   adminListNoShowReportsSchema,
   adminListDisputeCasesQuerySchema,
@@ -23,6 +25,7 @@ import {
   adminResolveDisputeCaseSchema,
   adminRunDataRetentionSchema,
   adminSearchUsersSchema,
+  adminSetLegalHoldSchema,
   adminSuspendUserSchema,
   adminSupportQueueQuerySchema,
   adminSupportReplySchema,
@@ -121,6 +124,24 @@ adminRoutes.post(
   uploadRateLimiter,
   validate(adminReactivateUserSchema),
   adminController.reactivateUser
+);
+adminRoutes.post(
+  "/users/:userId/legal-hold",
+  uploadRateLimiter,
+  validate(adminSetLegalHoldSchema),
+  adminController.setLegalHold
+);
+adminRoutes.delete(
+  "/users/:userId/legal-hold",
+  uploadRateLimiter,
+  validate(adminClearLegalHoldSchema),
+  adminController.clearLegalHold
+);
+adminRoutes.post(
+  "/users/:userId/export-data",
+  uploadRateLimiter,
+  validate(adminExportUserDataSchema),
+  adminController.exportUserData
 );
 
 adminRoutes.get(

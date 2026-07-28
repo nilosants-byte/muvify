@@ -63,6 +63,19 @@ type DataRetentionRunResult = {
 export class DataRetentionService {
   private legalHoldUserIds: string[] = [];
 
+  // Raio-X de pagamentos, Rodada 4, Lote 9: legal hold persistido por usuário
+  // (User.legalHoldUntil) some ao que já vinha da env var — antes só a env
+  // var existia, então mudar exigia editar variável de ambiente e
+  // redeployar; agora um admin consegue segurar a retenção de um usuário
+  // específico direto pelo app, sem depender de deploy.
+  async resolveLegalHoldUserIds(extraIds: string[] = [], now = new Date()): Promise<string[]> {
+    const held = await prisma.user.findMany({
+      where: { legalHoldUntil: { gt: now } },
+      select: { id: true }
+    });
+    return Array.from(new Set([...extraIds, ...held.map((u) => u.id)]));
+  }
+
   async run(input: DataRetentionRunInput): Promise<DataRetentionRunResult> {
     const now = input.now ?? new Date();
     const startedAt = new Date();

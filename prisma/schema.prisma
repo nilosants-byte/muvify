@@ -269,6 +269,13 @@ model User {
   noShowStrikes            Int                         @default(0)
   suspendedAt              DateTime?
   suspensionReason         String?
+  // Raio-X de pagamentos, Rodada 4, Lote 9: legal hold (retenção de dados por
+  // obrigação legal, ex: processo judicial em curso) era só variável de
+  // ambiente fixa — mudar exigia editar env var e redeployar. Agora
+  // persistido por usuário; o job automático de retenção passa a consultar
+  // isso além da env var (que continua valendo como fallback/lista extra).
+  legalHoldUntil           DateTime?
+  legalHoldReason          String?
   customerPaymentMethods   CustomerPaymentMethod[]
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
