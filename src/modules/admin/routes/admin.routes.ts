@@ -13,6 +13,7 @@ import {
   adminDashboardOverviewSchema,
   adminDisputeCaseIdSchema,
   adminListDebtsQuerySchema,
+  adminListNoShowReportsSchema,
   adminListDisputeCasesQuerySchema,
   adminLookupBookingDetailSchema,
   adminLookupBookingsSchema,
@@ -103,7 +104,11 @@ adminRoutes.get("/lookup/cref", validate(adminLookupCrefSchema), adminController
 adminRoutes.get("/lookup/chats", validate(adminLookupChatsSchema), adminController.lookupChats);
 adminRoutes.get("/lookup/bookings", validate(adminLookupBookingsSchema), adminController.lookupBookings);
 adminRoutes.get("/lookup/bookings/:bookingId", validate(adminLookupBookingDetailSchema), adminController.lookupBookingDetail);
-adminRoutes.get("/no-show-reports", adminController.listNoShowReports);
+adminRoutes.get(
+  "/no-show-reports",
+  validate(adminListNoShowReportsSchema),
+  adminController.listNoShowReports
+);
 
 adminRoutes.post(
   "/users/:userId/suspend",

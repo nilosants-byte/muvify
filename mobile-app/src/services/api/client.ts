@@ -1626,7 +1626,21 @@ export const adminApi = {
       token,
       body: { reason }
     });
+  },
+  listNoShowReports(token: string, minStrikes?: number) {
+    const query = new URLSearchParams();
+    if (minStrikes) query.set("minStrikes", String(minStrikes));
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<AdminNoShowReport[]>(`/admin/no-show-reports${suffix}`, { token });
   }
+};
+
+export type AdminNoShowReport = {
+  id: string;
+  bookingId: string;
+  createdAt: string;
+  reportedUser: { id: string; name: string; email: string; role: "CLIENT" | "PROVIDER"; noShowStrikes: number };
+  reportedByUser: { id: string; name: string; email: string };
 };
 
 export type AdminDebtRecord = {

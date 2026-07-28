@@ -91,6 +91,12 @@ export function AdminScaffold({
         action: () => navigation.navigate("AdminUserSearch")
       },
       {
+        key: "AdminNoShowReports" as const,
+        label: "Reincidência de falta",
+        icon: "alert-circle-outline" as const,
+        action: () => navigation.navigate("AdminNoShowReports")
+      },
+      {
         key: "toggleTheme" as const,
         label: isDark ? "Modo claro" : "Modo escuro",
         icon: (isDark ? "sunny-outline" : "moon-outline") as keyof typeof Ionicons.glyphMap,
@@ -199,7 +205,8 @@ export function AdminScaffold({
                   item.key === "AdminExercises" ||
                   item.key === "AdminDisputes" ||
                   item.key === "AdminDebts" ||
-                  item.key === "AdminUserSearch") &&
+                  item.key === "AdminUserSearch" ||
+                  item.key === "AdminNoShowReports") &&
                 item.key === currentScreen;
               return (
                 <TouchableOpacity

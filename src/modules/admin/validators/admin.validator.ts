@@ -166,6 +166,16 @@ export const adminListDebtsQuerySchema = z.object({
   })
 });
 
+// Raio-X de pagamentos, Rodada 4, Lote 7: única rota admin sem validate() —
+// minStrikes chegava como Number(query.minStrikes) direto no controller,
+// então um valor inválido virava NaN e silenciosamente filtrava a lista
+// inteira pra vazia, em vez de rejeitar a requisição.
+export const adminListNoShowReportsSchema = z.object({
+  query: z.object({
+    minStrikes: z.coerce.number().int().min(1).max(100).optional()
+  })
+});
+
 export const adminWriteOffDebtSchema = z.object({
   params: z.object({ debtId: z.string().uuid() }),
   body: z.object({

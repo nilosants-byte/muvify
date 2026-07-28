@@ -142,6 +142,7 @@ export type AdminStackParamList = {
   AdminDebts: undefined;
   AdminUserSearch: undefined;
   AdminDisputeDetail: { caseId: string };
+  AdminNoShowReports: undefined;
 };
 
 export type RootStackParamList = {
