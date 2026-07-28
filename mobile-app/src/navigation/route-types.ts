@@ -114,6 +114,7 @@ export type ProfessionalStackParamList = {
   BookingPaymentStatus: { bookingId: string };
   ProfessionalStudents: undefined;
   ProviderDebts: undefined;
+  ProviderPaymentMethod: undefined;
   FinancialStudents: undefined;
   FinancialHistory: undefined;
   FinancialGoals: undefined;

@@ -66,6 +66,7 @@ import { ProfessionalStudentAnamnesisScreen } from "../screens/professional/Prof
 import { ProfessionalStudentDetailScreen } from "../screens/professional/ProfessionalStudentDetailScreen";
 import { ProfessionalStudentsScreen } from "../screens/professional/ProfessionalStudentsScreen";
 import { ProviderDebtsScreen } from "../screens/professional/ProviderDebtsScreen";
+import { ProviderPaymentMethodScreen } from "../screens/professional/ProviderPaymentMethodScreen";
 import { ProfessionalTrainingCreationScreen } from "../screens/professional/ProfessionalTrainingCreationScreen";
 import { ProfessionalChatListScreen } from "../screens/professional/ProfessionalChatListScreen";
 import { GenericErrorScreen } from "../screens/shared/GenericErrorScreen";
@@ -495,6 +496,10 @@ export function RootNavigator() {
       <ProfessionalStack.Screen
         name="ProviderDebts"
         component={ProviderDebtsScreen as React.ComponentType<any>}
+      />
+      <ProfessionalStack.Screen
+        name="ProviderPaymentMethod"
+        component={ProviderPaymentMethodScreen as React.ComponentType<any>}
       />
       <ProfessionalStack.Screen
         name="ProfessionalStudentDetail"

@@ -14,9 +14,12 @@ export const debtRoutes = Router();
 debtRoutes.use(ensureAuthenticated);
 
 debtRoutes.get("/my", ensureRole(UserRole.CLIENT), debtController.listMyDebts);
+// Raio-X de pagamentos, Rodada 4, Lote 6: profissional também pode regularizar
+// a própria pendência ativamente agora — o service já valida que a dívida
+// pertence de fato a quem está chamando (cliente ou profissional).
 debtRoutes.post(
   "/:debtId/pay",
-  ensureRole(UserRole.CLIENT),
+  ensureRole(UserRole.CLIENT, UserRole.PROVIDER),
   uploadRateLimiter,
   validate(payDebtSchema),
   debtController.payDebt

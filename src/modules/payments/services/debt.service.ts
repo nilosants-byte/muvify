@@ -146,12 +146,27 @@ export class DebtService {
     }
   }
 
-  async payDebt(clientId: string, debtId: string) {
+  // Raio-X de pagamentos, Rodada 4, Lote 6: dívida do profissional (nasce
+  // quando uma disputa é resolvida como reembolso ao cliente, e o valor já
+  // tinha sido repassado ao profissional) nunca tinha ação de pagamento
+  // nenhuma — só o Mercado Pago tentando sozinho descontar do próximo
+  // repasse, sem nenhuma confirmação de que isso realmente aconteceu. Agora
+  // reaproveita a mesma mecânica já usada pra dívida do cliente, generalizada
+  // pros dois lados. Diferença: dívida do cliente é cobrada com o
+  // profissional como collector (marketplace split, porque o dinheiro é
+  // devido a ele); dívida do profissional vai direto pra conta da própria
+  // plataforma — é dinheiro que ele recebeu indevidamente, não um repasse.
+  async payDebt(userId: string, debtId: string) {
     const debt = await prisma.debtRecord.findUnique({
       where: { id: debtId },
       include: { provider: true }
     });
-    if (!debt || debt.debtorType !== "CLIENT" || debt.clientId !== clientId) {
+    if (!debt) {
+      throw new AppError("Pendência não encontrada.", StatusCodes.NOT_FOUND);
+    }
+    const isClientDebt = debt.debtorType === "CLIENT" && debt.clientId === userId;
+    const isProviderDebt = debt.debtorType === "PROVIDER" && debt.provider?.userId === userId;
+    if (!isClientDebt && !isProviderDebt) {
       throw new AppError("Pendência não encontrada.", StatusCodes.NOT_FOUND);
     }
     if (debt.status === "PAID") {
@@ -161,8 +176,8 @@ export class DebtService {
       throw new AppError("Esta pendência não está mais em aberto.", StatusCodes.BAD_REQUEST);
     }
 
-    const client = await prisma.user.findUnique({
-      where: { id: clientId },
+    const debtor = await prisma.user.findUnique({
+      where: { id: userId },
       include: {
         customerPaymentMethods: {
           where: { isActive: true, funding: "CREDIT" },
@@ -170,19 +185,19 @@ export class DebtService {
         }
       }
     });
-    if (!client?.mpCustomerId) {
-      throw new AppError("Cliente sem cadastro de pagamento configurado.", StatusCodes.BAD_REQUEST);
+    if (!debtor?.mpCustomerId) {
+      throw new AppError("Cadastro de pagamento não configurado.", StatusCodes.BAD_REQUEST);
     }
-    const selectedCard = client.customerPaymentMethods[0];
+    const selectedCard = debtor.customerPaymentMethods[0];
     if (!selectedCard) {
       throw new AppError("Nenhum cartão de crédito ativo encontrado para pagamento.", StatusCodes.BAD_REQUEST);
     }
 
-    const provider = debt.provider;
+    const provider = isClientDebt ? debt.provider : null;
     const providerAccessToken = provider ? await requireProviderMpAccessToken(provider.id) : null;
 
     const tokenResult = await mpCardToken.create({
-      body: { customer_id: client.mpCustomerId, card_id: selectedCard.mpCardId }
+      body: { customer_id: debtor.mpCustomerId, card_id: selectedCard.mpCardId }
     });
     const cardToken = String(tokenResult.id);
     const platformFeeCents = platformFeeAmount(debt.amountCents);
@@ -192,7 +207,7 @@ export class DebtService {
         transaction_amount: debt.amountCents / 100,
         token: cardToken,
         installments: 1,
-        payer: { type: "customer", id: client.mpCustomerId, email: client.email },
+        payer: { type: "customer", id: debtor.mpCustomerId, email: debtor.email },
         description: `Regularização de pendência — caso ${debt.disputeCaseId}`,
         capture: true,
         metadata: { debtRecordId: debt.id, disputeCaseId: debt.disputeCaseId },
@@ -218,7 +233,7 @@ export class DebtService {
       data: { status: "PAID", mpPaymentId: String(mpPay.id), paidAt: new Date() }
     });
 
-    if (provider) {
+    if (isClientDebt && provider) {
       void notificationService
         .sendToUsers([provider.userId], {
           preferenceType: "PAYMENTS",

@@ -76,10 +76,23 @@ describe("DebtRecord — pendências financeiras entre disputa e cobrança (Fren
         email: `${uid("debt_provider")}@test.com`,
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}2`,
-        role: "PROVIDER"
+        role: "PROVIDER",
+        mpCustomerId: "cus_test_debt_provider"
       }
     });
     providerUserId = providerUser.id;
+
+    await prisma.customerPaymentMethod.create({
+      data: {
+        userId: providerUserId,
+        mpCustomerId: "cus_test_debt_provider",
+        mpCardId: `card_${uid("p")}`,
+        nickname: "Cartão do profissional",
+        brand: "visa",
+        last4: "1111",
+        funding: "CREDIT"
+      }
+    });
 
     const provider = await prisma.providerProfile.create({
       data: {
@@ -115,7 +128,7 @@ describe("DebtRecord — pendências financeiras entre disputa e cobrança (Fren
     await prisma.debtRecord.deleteMany({ where: { OR: [{ clientId }, { providerId }] } });
     await prisma.adminAuditLog.deleteMany({ where: { adminId } });
     await prisma.disputeCase.deleteMany({ where: { clientId } });
-    await prisma.customerPaymentMethod.deleteMany({ where: { userId: clientId } });
+    await prisma.customerPaymentMethod.deleteMany({ where: { userId: { in: [clientId, providerUserId] } } });
     await prisma.providerProfile.deleteMany({ where: { id: providerId } });
     // Nao apaga a conta admin: o e-mail e compartilhado com outros arquivos
     // de teste rodando em paralelo — apagar aqui pode derrubar outro arquivo
@@ -314,6 +327,66 @@ describe("DebtRecord — pendências financeiras entre disputa e cobrança (Fren
     });
 
     await expect(debtService.payDebt("outro-cliente-qualquer", debt.id)).rejects.toThrow();
+
+    await prisma.debtRecord.delete({ where: { id: debt.id } });
+    await prisma.disputeCase.delete({ where: { id: disputeCase.id } });
+  });
+
+  it("profissional consegue pagar a própria dívida ativamente, sem split de marketplace (Rodada 4, Lote 6)", async () => {
+    vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_test_provider" } as any);
+    const paymentCreateSpy = vi.spyOn(Payment.prototype, "create").mockResolvedValue({
+      id: 888,
+      status: "approved"
+    } as any);
+
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "CHARGEBACK", clientId, providerId, amountCents: 6000, mpPaymentId: `mp_${uid("prov_pay")}` }
+    });
+    const debt = await prisma.debtRecord.create({
+      data: {
+        disputeCaseId: disputeCase.id,
+        debtorType: "PROVIDER",
+        providerId,
+        amountCents: 4000,
+        reason: "teste de pagamento do profissional",
+        status: "NOTIFIED"
+      }
+    });
+
+    const paid = await debtService.payDebt(providerUserId, debt.id);
+
+    expect(paid.status).toBe("PAID");
+    expect(paid.mpPaymentId).toBe("888");
+    expect(paid.paidAt).not.toBeNull();
+    // Dívida do profissional é dinheiro que ele já recebeu indevidamente —
+    // vai direto pra conta da própria plataforma, sem collector nem
+    // marketplace_fee (diferente da dívida do cliente, cobrada em nome do
+    // profissional).
+    const callBody = paymentCreateSpy.mock.calls[0][0].body as Record<string, unknown>;
+    expect(callBody.collector).toBeUndefined();
+    expect(callBody.marketplace_fee).toBeUndefined();
+    expect(callBody.transaction_amount).toBe(40);
+
+    await prisma.debtRecord.delete({ where: { id: debt.id } });
+    await prisma.disputeCase.delete({ where: { id: disputeCase.id } });
+  });
+
+  it("rejeita profissional tentando pagar dívida de outro profissional", async () => {
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "CHARGEBACK", clientId, providerId, amountCents: 5000, mpPaymentId: `mp_${uid("prov_reject")}` }
+    });
+    const debt = await prisma.debtRecord.create({
+      data: {
+        disputeCaseId: disputeCase.id,
+        debtorType: "PROVIDER",
+        providerId,
+        amountCents: 3000,
+        reason: "teste",
+        status: "NOTIFIED"
+      }
+    });
+
+    await expect(debtService.payDebt("outro-profissional-qualquer", debt.id)).rejects.toThrow();
 
     await prisma.debtRecord.delete({ where: { id: debt.id } });
     await prisma.disputeCase.delete({ where: { id: disputeCase.id } });
