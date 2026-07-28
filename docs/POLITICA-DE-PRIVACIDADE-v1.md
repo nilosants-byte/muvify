@@ -478,9 +478,16 @@ Se você tem ciência de que um menor forneceu dados ao Muvify sem autorização
 - A geolocalização do Profissional é armazenada permanentemente no perfil e zerada (null) ao excluir a conta.
 - A geolocalização do Aluno durante a busca **não é armazenada persistentemente** — é utilizada apenas para cálculo em tempo real.
 
-### 13.3 Sem rastreamento em segundo plano
+### 13.3 Localização em segundo plano (Profissional, opcional)
 
-O Aplicativo **não coleta dados de localização em segundo plano** (background). A localização é solicitada somente quando o usuário está ativamente utilizando a função de busca ou configurando o perfil.
+O Profissional pode **ativar, de forma opcional**, o compartilhamento contínuo da sua localização — inclusive com o aplicativo em segundo plano — para manter sua posição atualizada no mapa de busca dos Alunos. Essa função:
+
+- é **desativada por padrão** e só é ligada por ação explícita do Profissional, que pode desligá-la a qualquer momento;
+- exige autorização específica do sistema operacional do aparelho para localização em segundo plano, solicitada no momento da ativação;
+- exibe uma notificação persistente enquanto estiver ativa, informando que a localização está sendo compartilhada;
+- é usada **exclusivamente** para atualizar a posição exibida aos Alunos na busca por distância (Cláusula 13.1) — não é compartilhada com terceiros nem usada para nenhuma outra finalidade.
+
+A geolocalização do Aluno **nunca** é coletada em segundo plano — segue integralmente a Cláusula 13.1 (somente durante o uso ativo da busca). A retenção da localização do Profissional segue a Cláusula 13.2.
 
 ---
 
