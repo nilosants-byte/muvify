@@ -424,8 +424,31 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
-        {/* ── CTA CONTA MP (quando conta não configurada) ── */}
-        {!account?.hasAccount ? (
+        {/* ── CTA CONTA MP (quando conta não configurada, ou conexão perdida) ──
+            Raio-X de pagamentos, Rodada 4, Lote 10: needsReconnect já existia
+            na resposta da API e já era mostrado em ConnectPayoutAccountScreen,
+            mas a tela financeira principal (a que o profissional realmente
+            acompanha no dia a dia) nunca lia esse campo — vendas paradas
+            passavam despercebidas até ele entrar na tela de conexão por
+            acaso. */}
+        {account?.hasAccount && account?.needsReconnect ? (
+          <PressableScale
+            onPress={() => navigation.navigate("ConnectPayoutAccount")}
+            style={{
+              flexDirection: "row", alignItems: "center", gap: 10,
+              borderRadius: 14, padding: 14,
+              backgroundColor: theme.warningSubtle,
+              borderWidth: 1, borderColor: theme.warningSubtleBorder,
+            }}
+          >
+            <Ionicons name="alert-circle-outline" size={20} color={theme.warning} />
+            <View style={{ flex: 1 }}>
+              <MvText variant="semi3" style={{ color: theme.warning }}>Reconexão necessária — vendas pausadas</MvText>
+              <MvText variant="body4" color="secondary">Perdemos a conexão com sua conta Mercado Pago. Suas vendas não estão sendo processadas até você reconectar.</MvText>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={theme.warning} />
+          </PressableScale>
+        ) : !account?.hasAccount ? (
           <PressableScale
             onPress={() => navigation.navigate("ConnectPayoutAccount")}
             style={{
@@ -463,6 +486,13 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
           <MvText variant="body4" color="secondary">
             Bruto {formatCurrencyBRL(estimatedGross)} · Comissão {formatCurrencyBRL(commission)}
             {pendingNet > 0 ? ` · ${formatCurrencyBRL(pendingNet)} a caminho` : ""}
+          </MvText>
+          {/* Raio-X de pagamentos, Rodada 4, Lote 10: esse valor é uma
+              estimativa somada dos registros locais — não é o saldo de
+              verdade da conta Mercado Pago, que pode diferir por causa de
+              taxas, prazos de liberação ou repasses já feitos fora daqui. */}
+          <MvText variant="caption" color="tertiary" style={{ textAlign: "center", maxWidth: 280 }}>
+            Estimativa com base nos registros do app — o valor exato pode diferir do saldo real na sua conta Mercado Pago.
           </MvText>
           <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
             <MvBadge label={account?.hasAccount ? "Conta ativa" : "Conta pendente"} variant={account?.hasAccount ? "green" : "orange"} />

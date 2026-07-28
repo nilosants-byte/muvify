@@ -2825,6 +2825,46 @@ export class ConsultancyService {
     return updated;
   }
 
+  // Raio-X de pagamentos, Rodada 4, Lote 10: só existia o aviso de quando o
+  // prazo de resposta já tinha vencido — nenhum lembrete antes disso, ao
+  // contrário do padrão já usado pra confirmação de agendamento avulso
+  // (Rodada 4, Lote 4). Só o profissional é avisado aqui — é ele quem
+  // precisa agir; o aluno só é avisado quando de fato expira.
+  async sendConsultancyResponseReminders(referenceDate = new Date()) {
+    const reminderWindowMs = 6 * 60 * 60 * 1000;
+    const dueSoon = await prisma.consultancyRequest.findMany({
+      where: {
+        status: ConsultancyRequestStatus.OPEN,
+        responseReminderSentAt: null,
+        responseDeadlineAt: {
+          gt: referenceDate,
+          lte: new Date(referenceDate.getTime() + reminderWindowMs)
+        }
+      },
+      select: { id: true, provider: { select: { userId: true } } },
+      take: 200
+    });
+
+    if (dueSoon.length === 0) {
+      return;
+    }
+
+    await prisma.consultancyRequest.updateMany({
+      where: { id: { in: dueSoon.map((r) => r.id) }, responseReminderSentAt: null },
+      data: { responseReminderSentAt: referenceDate }
+    });
+    for (const request of dueSoon) {
+      void notificationService
+        .sendToUsers([request.provider.userId], {
+          preferenceType: "CONSULTANCY",
+          title: "Responda uma solicitação de consultoria",
+          body: "Você tem uma solicitação de consultoria aguardando resposta — o prazo está acabando.",
+          data: { type: "CONSULTANCY_REQUEST_RESPONSE_DUE_SOON", requestId: request.id }
+        })
+        .catch((e) => console.error("Consultancy response reminder failed:", e));
+    }
+  }
+
   // Se o profissional nunca responder uma solicitação em aberto dentro do prazo,
   // ela expira sozinha — o aluno não fica esperando indefinidamente por alguém
   // que, na prática, não deu a atenção devida ao pedido.

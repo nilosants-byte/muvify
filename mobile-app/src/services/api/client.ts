@@ -879,6 +879,17 @@ export type ProviderStudentManagementDetail = {
     comboContracts: number;
   };
   presentialHistory: unknown[];
+  presentialPackages: Array<{
+    id: string;
+    status: "PENDING_PAYMENT" | "ACTIVE" | "PAST_DUE" | "CANCELLED" | "EXPIRED";
+    mode: string;
+    cycleAmountCents: number;
+    sessionsPerCycle: number;
+    creditsRemainingThisCycle: number;
+    validUntil: string | null;
+    createdAt: string;
+    offer: { title: string };
+  }>;
   consultancyContracts: Array<{
     id: string;
     status: string;

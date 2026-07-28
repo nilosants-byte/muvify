@@ -743,6 +743,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
             onNavigateProfile={() => navigation.navigate("ProfessionalProfileEditor" as never)}
             onNavigateAvailability={() => navigation.navigate("AvailabilityManager" as never)}
             onNavigateCref={() => navigation.navigate("ProfessionalCredentials" as never)}
+            onNavigateMercadoPago={() => navigation.navigate("ConnectPayoutAccount" as never)}
           />
 
           {/* ── BANNER: PERFIL INCOMPLETO ── */}

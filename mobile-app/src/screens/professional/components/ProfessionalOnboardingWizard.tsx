@@ -37,15 +37,27 @@ const STEPS: Step[] = [
     description: "Valide suas credenciais para desbloquear todos os recursos.",
     actionLabel: "Enviar CREF",
   },
+  // Raio-X de pagamentos, Rodada 4, Lote 10: conectar o Mercado Pago já era
+  // pré-requisito silencioso pra aparecer na busca (booking.service.ts exige
+  // provider.mpAccountId) — sem isso, tudo o resto do onboarding fica sem
+  // sentido, porque o profissional nunca recebe agendamento nenhum.
+  {
+    id: "mercadopago",
+    icon: "card-outline",
+    title: "Conecte seu Mercado Pago",
+    description: "Sem isso você não recebe pelos seus atendimentos, mesmo com o resto do perfil pronto.",
+    actionLabel: "Conectar Mercado Pago",
+  },
 ];
 
 interface Props {
   onNavigateProfile: () => void;
   onNavigateAvailability: () => void;
   onNavigateCref: () => void;
+  onNavigateMercadoPago: () => void;
 }
 
-export function ProfessionalOnboardingWizard({ onNavigateProfile, onNavigateAvailability, onNavigateCref }: Props) {
+export function ProfessionalOnboardingWizard({ onNavigateProfile, onNavigateAvailability, onNavigateCref, onNavigateMercadoPago }: Props) {
   const { theme } = useMvTheme();
   const [visible, setVisible] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
@@ -67,7 +79,8 @@ export function ProfessionalOnboardingWizard({ onNavigateProfile, onNavigateAvai
     if (step.id === "profile") onNavigateProfile();
     else if (step.id === "availability") onNavigateAvailability();
     else if (step.id === "cref") onNavigateCref();
-  }, [currentStep, onNavigateCref, onNavigateAvailability, onNavigateProfile]);
+    else if (step.id === "mercadopago") onNavigateMercadoPago();
+  }, [currentStep, onNavigateCref, onNavigateAvailability, onNavigateProfile, onNavigateMercadoPago]);
 
   const advance = useCallback(() => {
     if (currentStep < STEPS.length - 1) {

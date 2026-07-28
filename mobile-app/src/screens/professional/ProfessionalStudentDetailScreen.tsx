@@ -1,11 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
-import { Booking, bookingsApi, ProviderStudentManagementDetail, providersApi } from "../../services/api/client";
+import {
+  Booking,
+  bookingsApi,
+  consultancyApi,
+  presentialPackagesApi,
+  ProviderStudentManagementDetail,
+  providersApi
+} from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar, MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText } from "../../components/mv";
@@ -181,6 +188,64 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
       });
     }
   }, [studentDetailQuery.error, showToast, navigation]);
+
+  // Raio-X de pagamentos, Rodada 4, Lote 10: cancelContract/cancelPackage já
+  // aceitavam o profissional como parte legítima desde a Rodada 4, Lote 2
+  // (isClient || isProvider) — só faltava a UI pra usar isso.
+  const [cancellingContractId, setCancellingContractId] = useState<string | null>(null);
+  const [cancellingPackageId, setCancellingPackageId] = useState<string | null>(null);
+
+  function confirmCancelContract(contractId: string) {
+    Alert.alert(
+      "Cancelar consultoria",
+      "O aluno será avisado e qualquer valor já cobrado será estornado. Quer continuar?",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Cancelar consultoria",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setCancellingContractId(contractId);
+              await runWithAuth((token) => consultancyApi.cancelContract(token, contractId));
+              showToast("Consultoria cancelada.", "success");
+              void studentDetailQuery.refetch();
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Falha ao cancelar a consultoria." });
+            } finally {
+              setCancellingContractId(null);
+            }
+          }
+        }
+      ]
+    );
+  }
+
+  function confirmCancelPackage(packageId: string) {
+    Alert.alert(
+      "Cancelar pacote presencial",
+      "O aluno será avisado e as sessões futuras ainda não cobradas serão liberadas. Quer continuar?",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Cancelar pacote",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setCancellingPackageId(packageId);
+              await runWithAuth((token) => presentialPackagesApi.cancel(token, packageId));
+              showToast("Pacote cancelado.", "success");
+              void studentDetailQuery.refetch();
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Falha ao cancelar o pacote." });
+            } finally {
+              setCancellingPackageId(null);
+            }
+          }
+        }
+      ]
+    );
+  }
 
   const answers = detail?.anamnesis?.answers;
   const isAnamnesisComplete = detail?.anamnesis?.status === "COMPLETED";
@@ -487,9 +552,69 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                             </MvText>
                           </TouchableOpacity>
                         ) : null}
+
+                        {contract.status === "ACTIVE" || contract.status === "DELIVERED" ? (
+                          <TouchableOpacity
+                            disabled={cancellingContractId === contract.id}
+                            onPress={() => confirmCancelContract(contract.id)}
+                            style={{ marginTop: 4 }}
+                          >
+                            <MvText variant="body4" style={{ color: theme.danger }}>
+                              {cancellingContractId === contract.id ? "Cancelando..." : "Cancelar consultoria"}
+                            </MvText>
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
                     );
                   })}
+                </View>
+              </MvCard>
+            ) : null}
+
+            {detail.presentialPackages.length > 0 ? (
+              <MvCard>
+                <MvText variant="semi2" style={{ marginBottom: 8 }}>
+                  Pacotes presenciais
+                </MvText>
+                <View style={{ gap: 8 }}>
+                  {detail.presentialPackages.map((pkg) => (
+                    <View
+                      key={pkg.id}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        borderRadius: 10,
+                        padding: 10,
+                        backgroundColor: theme.inputBg,
+                        gap: 4,
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <MvText variant="body4" style={{ flex: 1 }} numberOfLines={1}>
+                          {pkg.offer.title}
+                        </MvText>
+                        <MvBadge
+                          label={pkg.status === "ACTIVE" ? "Ativo" : pkg.status === "PAST_DUE" ? "Pagamento pendente" : pkg.status === "CANCELLED" ? "Cancelado" : pkg.status === "EXPIRED" ? "Expirado" : "Aguardando pagamento"}
+                          variant={pkg.status === "ACTIVE" ? "green" : pkg.status === "PAST_DUE" ? "orange" : "gray"}
+                        />
+                      </View>
+                      <MvText variant="caption" color="secondary">
+                        Contratado em {formatDate(pkg.createdAt)}
+                        {pkg.validUntil ? ` · válido até ${formatDate(pkg.validUntil)}` : ""}
+                      </MvText>
+                      {pkg.status === "ACTIVE" ? (
+                        <TouchableOpacity
+                          disabled={cancellingPackageId === pkg.id}
+                          onPress={() => confirmCancelPackage(pkg.id)}
+                          style={{ marginTop: 2 }}
+                        >
+                          <MvText variant="body4" style={{ color: theme.danger }}>
+                            {cancellingPackageId === pkg.id ? "Cancelando..." : "Cancelar pacote"}
+                          </MvText>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ))}
                 </View>
               </MvCard>
             ) : null}

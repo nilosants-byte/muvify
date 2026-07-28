@@ -46,6 +46,7 @@ export function startReminderJob() {
           bookingService.sendSessionReminders(),
           bookingService.sendBookingConfirmationReminders(),
           consultancyService.sendConsultancyExpiryReminders(),
+          consultancyService.sendConsultancyResponseReminders(),
           consultancyService.expireStaleConsultancyRequests(),
           consultancyService.expireStalePendingPixConsultancyContracts(),
           consultancyService.sendFichaExpiryReminders(),

@@ -1155,6 +1155,10 @@ model ConsultancyRequest {
   status               ConsultancyRequestStatus @default(OPEN)
   quotedOfferId        String?
   responseDeadlineAt   DateTime
+  // Raio-X de pagamentos, Rodada 4, Lote 10: só existia o aviso de expiração
+  // (depois que já venceu) — nenhum lembrete antes disso, ao contrário do
+  // padrão já usado pra confirmação de agendamento avulso (Rodada 4, Lote 4).
+  responseReminderSentAt DateTime?
   respondedAt          DateTime?
   clientDecisionAt     DateTime?
   createdAt            DateTime                 @default(now())

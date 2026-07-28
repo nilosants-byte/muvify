@@ -12,7 +12,10 @@ export type AdminAuditAction =
   | "DEBT_WRITTEN_OFF"
   | "EXERCISE_PREBUILT_CREATED"
   | "EXERCISE_PREBUILT_UPDATED"
-  | "EXERCISE_PREBUILT_DELETED";
+  | "EXERCISE_PREBUILT_DELETED"
+  | "USER_LEGAL_HOLD_SET"
+  | "USER_LEGAL_HOLD_CLEARED"
+  | "ADMIN_USER_DATA_EXPORTED";
 
 export async function writeAdminAuditLog(params: {
   adminId: string;
