@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ActivityIndicator, Alert,
+  ActivityIndicator, Alert, Share,
   ScrollView, StatusBar, TouchableOpacity, View,
 } from "react-native";
 import { PressableScale } from "../../components/polish/PressableScale";
@@ -217,6 +217,19 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   const [period, setPeriod] = useState<Period>(6);
   const [selectedMonth, setSelectedMonth] = useState(now);
   const [txFilter, setTxFilter] = useState<TxFilter>("all");
+  const [exportingCsv, setExportingCsv] = useState(false);
+
+  async function exportTransactionsCsv() {
+    try {
+      setExportingCsv(true);
+      const csv = await runWithAuth((token) => financialApi.exportTransactionsCsv(token));
+      await Share.share({ message: csv, title: "Transações financeiras" });
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao exportar transações.", navigation });
+    } finally {
+      setExportingCsv(false);
+    }
+  }
   const [saving, setSaving] = useState(false);
 
   const reportQuery = useAuthQuery(
@@ -507,7 +520,15 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <ProfessionalScreenHeader title="Extrato" onBack={() => navigation.goBack()} />
+      <ProfessionalScreenHeader
+        title="Extrato"
+        onBack={() => navigation.goBack()}
+        action={{
+          icon: "share-outline",
+          label: exportingCsv ? "Exportando..." : "CSV",
+          onPress: () => { if (!exportingCsv) void exportTransactionsCsv(); }
+        }}
+      />
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Period selector */}
@@ -659,7 +680,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
                 ? (tx.item.student?.name ?? null)
                 : tx.type === "expense"
                 ? catLabel[tx.item.category]
-                : null;
+                : `Comissão: ${fmtCents(tx.item.platformFeeCents)}`;
 
               return (
                 <MvCard key={`${tx.type}-${id}`}>

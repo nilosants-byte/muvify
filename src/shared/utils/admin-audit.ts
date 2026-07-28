@@ -8,7 +8,11 @@ export type AdminAuditAction =
   | "DATA_RETENTION_RUN"
   | "DISPUTE_CASE_RESOLVED"
   | "USER_SUSPENDED"
-  | "USER_REACTIVATED";
+  | "USER_REACTIVATED"
+  | "DEBT_WRITTEN_OFF"
+  | "EXERCISE_PREBUILT_CREATED"
+  | "EXERCISE_PREBUILT_UPDATED"
+  | "EXERCISE_PREBUILT_DELETED";
 
 export async function writeAdminAuditLog(params: {
   adminId: string;

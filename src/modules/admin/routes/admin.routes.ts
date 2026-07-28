@@ -12,6 +12,7 @@ import {
   adminDataRetentionRunsQuerySchema,
   adminDashboardOverviewSchema,
   adminDisputeCaseIdSchema,
+  adminListDebtsQuerySchema,
   adminListDisputeCasesQuerySchema,
   adminLookupBookingDetailSchema,
   adminLookupBookingsSchema,
@@ -23,6 +24,7 @@ import {
   adminSuspendUserSchema,
   adminSupportQueueQuerySchema,
   adminSupportReplySchema,
+  adminWriteOffDebtSchema,
   reviewProviderCrefSchema
 } from "../validators/admin.validator";
 import {
@@ -112,6 +114,18 @@ adminRoutes.post(
   uploadRateLimiter,
   validate(adminReactivateUserSchema),
   adminController.reactivateUser
+);
+
+adminRoutes.get(
+  "/debts",
+  validate(adminListDebtsQuerySchema),
+  adminController.listDebts
+);
+adminRoutes.post(
+  "/debts/:debtId/write-off",
+  uploadRateLimiter,
+  validate(adminWriteOffDebtSchema),
+  adminController.writeOffDebt
 );
 
 adminRoutes.get(

@@ -12,6 +12,7 @@ import {
   ServiceOfferKind
 } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
+import * as Sentry from "@sentry/node";
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
@@ -823,6 +824,7 @@ export class PresentialPackageService {
         await this.chargeCycle(candidate.id, { isFirstCycle: false });
       } catch (error) {
         console.error(`[presential-package] chargeDueCycles falhou para ${candidate.id}:`, error);
+        Sentry.captureException(error, { tags: { area: "presential-package" }, extra: { packageId: candidate.id, phase: "charge_due_cycles" } });
       }
     }
   }
@@ -857,6 +859,7 @@ export class PresentialPackageService {
         await this.activateCardFixedPeriod(candidate.id, { isFirstPeriod: false });
       } catch (error) {
         console.error(`[presential-package] generateDueCardFixedPeriods falhou para ${candidate.id}:`, error);
+        Sentry.captureException(error, { tags: { area: "presential-package" }, extra: { packageId: candidate.id, phase: "generate_due_card_fixed_periods" } });
       }
     }
   }
@@ -1100,6 +1103,7 @@ export class PresentialPackageService {
           await mpRefundClient.create({ payment_id: lastCycle.mpPaymentId, body: {} });
         } catch (error) {
           console.error(`[presential-package] refund do ciclo ${lastCycle.id} falhou:`, error);
+          Sentry.captureException(error, { tags: { area: "presential-package" }, extra: { cycleId: lastCycle.id, phase: "cycle_refund_failed" } });
           refundFailed = true;
           await prisma.disputeCase.create({
             data: {

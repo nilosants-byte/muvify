@@ -30,6 +30,7 @@ financialRoutes.get("/dashboard",    ...auth, validate(dashboardQuerySchema), ct
 financialRoutes.get("/report",       ...auth, validate(dashboardQuerySchema), ctrl.report);
 financialRoutes.get("/app-clients",  ...auth, validate(listByMonthSchema),   ctrl.listAppClients);
 financialRoutes.get("/payouts",      ...auth, ctrl.payouts);
+financialRoutes.get("/transactions/export", ...auth, ctrl.exportTransactionsCsv);
 
 financialRoutes.get("/students", ...auth, ctrl.listStudents);
 financialRoutes.post("/students", ...auth, validate(createStudentSchema), ctrl.createStudent);

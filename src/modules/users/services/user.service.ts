@@ -553,7 +553,16 @@ export class UserService {
       await tx.clientAnamnesis.deleteMany({ where: { clientId: userId } });
       await tx.bookingMessage.updateMany({ where: { senderId: userId }, data: { content: "[Mensagem removida]", senderId: null } });
       await tx.completionEvidence.deleteMany({ where: { userId } });
-      await tx.supportTicket.updateMany({ where: { userId }, data: { subject: "Conta removida", message: "Conteudo removido por solicitacao do usuario." } });
+      // Raio-X de pagamentos, Rodada 3, Lote 6: a Política de Privacidade
+      // promete reter o conteúdo de tickets de suporte por 5 anos pra defesa
+      // de direitos (Cláusula de retenção) — anonimizar na hora, só porque a
+      // conta foi excluída, quebrava essa promessa pra qualquer ticket ainda
+      // dentro do prazo. O job periódico de retenção
+      // (DataRetentionService::cleanupSupportTickets) já é o único
+      // responsável por anonimizar tickets, e só faz isso quando o ticket
+      // realmente passa dos 5 anos — independente da conta ainda existir ou
+      // já ter sido excluída. O usuário já fica anonimizado na própria
+      // tabela User logo abaixo; o ticket não precisa de nenhuma ação aqui.
       await tx.follow.deleteMany({ where: { OR: [{ followerId: userId }, { followingId: userId }] } });
       await tx.feedPost.deleteMany({ where: { userId } });
       await tx.review.updateMany({ where: { userId }, data: { comment: null } });

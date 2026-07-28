@@ -15,6 +15,13 @@ export class FinancialController {
     return res.json(data);
   }
 
+  async exportTransactionsCsv(req: Request, res: Response) {
+    const csv = await service.exportTransactionsCsv(req.user!.id);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="transacoes-${new Date().toISOString().slice(0, 10)}.csv"`);
+    return res.send(csv);
+  }
+
   // Students
   async listStudents(req: Request, res: Response) {
     const data = await service.listStudents(req.user!.id);

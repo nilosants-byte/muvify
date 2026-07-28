@@ -347,7 +347,9 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
                   ? "Cliente reembolsado"
                   : disputeCase.resolution === "CAPTURED"
                     ? "Cobrança capturada com sucesso"
-                    : "Reembolso negado"}
+                    : disputeCase.type === "CAPTURE_FAILED"
+                      ? "Mantido sem cobrar"
+                      : "Reembolso negado"}
                 {disputeCase.resolvedAmountCents ? ` — ${formatCents(disputeCase.resolvedAmountCents)}` : ""}
               </MvText>
               <MvText variant="body4">Motivo: {disputeCase.resolutionNote}</MvText>
@@ -381,7 +383,7 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
                 )}
                 <MvButton
                   variant={decision === "DENIED" ? "danger" : "outline"}
-                  label="Negar reembolso"
+                  label={disputeCase.type === "CAPTURE_FAILED" ? "Manter sem cobrar" : "Negar reembolso"}
                   onPress={() => setDecision("DENIED")}
                   style={{ flex: 1 }}
                 />
@@ -445,7 +447,9 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
                         ? "Confirmar reembolso"
                         : decision === "RETRY_CAPTURE"
                           ? "Confirmar nova tentativa de captura"
-                          : "Confirmar negativa"
+                          : disputeCase.type === "CAPTURE_FAILED"
+                            ? "Confirmar sem cobrar"
+                            : "Confirmar negativa"
                     }
                     loading={submitting}
                     onPress={() => void submitResolution()}

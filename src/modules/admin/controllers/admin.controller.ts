@@ -1,15 +1,17 @@
-import { DisputeCaseStatus } from "@prisma/client";
+import { DebtRecordStatus, DisputeCaseStatus } from "@prisma/client";
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { AdminService } from "../services/admin.service";
 import { DisputeCaseService } from "../services/dispute-case.service";
 import { ProviderService } from "../../providers/services/provider.service";
 import { ExerciseService } from "../../exercises/services/exercise.service";
+import { DebtService } from "../../payments/services/debt.service";
 
 const adminService = new AdminService();
 const disputeCaseService = new DisputeCaseService();
 const providerService = new ProviderService();
 const exerciseService = new ExerciseService();
+const debtService = new DebtService();
 
 export class AdminController {
   async dashboardOverview(request: Request, response: Response) {
@@ -148,6 +150,19 @@ export class AdminController {
     return response.json(payload);
   }
 
+  async listDebts(request: Request, response: Response) {
+    const payload = await debtService.listAllDebts(
+      request.user!.id,
+      request.query.status as DebtRecordStatus | undefined
+    );
+    return response.json(payload);
+  }
+
+  async writeOffDebt(request: Request, response: Response) {
+    const payload = await debtService.writeOffDebt(request.user!.id, request.params.debtId, request.body.reason);
+    return response.json(payload);
+  }
+
   async listDisputeCases(request: Request, response: Response) {
     const payload = await disputeCaseService.listCases(
       request.user!.id,
@@ -174,7 +189,7 @@ export class AdminController {
 
   async createPrebuiltExercise(request: Request, response: Response) {
     const { name, category, description, defaultRepetitionsSets, defaultRestLabel, mediaUrl, mediaType } = request.body;
-    const exercise = await exerciseService.createPrebuilt({
+    const exercise = await exerciseService.createPrebuilt(request.user!.id, {
       name, category, description, defaultRepetitionsSets, defaultRestLabel, mediaUrl, mediaType,
     });
     return response.status(StatusCodes.CREATED).json(exercise);
@@ -183,14 +198,14 @@ export class AdminController {
   async updatePrebuiltExercise(request: Request, response: Response) {
     const { exerciseId } = request.params;
     const { name, category, description, defaultRepetitionsSets, defaultRestLabel, mediaUrl, mediaType } = request.body;
-    const exercise = await exerciseService.updatePrebuilt(exerciseId, {
+    const exercise = await exerciseService.updatePrebuilt(request.user!.id, exerciseId, {
       name, category, description, defaultRepetitionsSets, defaultRestLabel, mediaUrl, mediaType,
     });
     return response.json(exercise);
   }
 
   async deletePrebuiltExercise(request: Request, response: Response) {
-    await exerciseService.deletePrebuilt(request.params.exerciseId);
+    await exerciseService.deletePrebuilt(request.user!.id, request.params.exerciseId);
     return response.status(StatusCodes.NO_CONTENT).send();
   }
 }

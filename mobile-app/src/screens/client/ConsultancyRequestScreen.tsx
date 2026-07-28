@@ -96,7 +96,7 @@ export function ConsultancyRequestScreen({ route, navigation }: Props) {
       }));
       Alert.alert(
         "Solicitação enviada!",
-        "O profissional responderá em até 24h.\n\nVocê receberá uma notificação quando ele enviar uma proposta.\n\nAcompanhe em Treinos → aba Pendentes.",
+        "O profissional responderá em até 48h.\n\nVocê receberá uma notificação quando ele enviar uma proposta.\n\nAcompanhe em Treinos → aba Pendentes.",
         [{ text: "Entendi", onPress: () => navigation.goBack() }]
       );
     } catch (error) {
@@ -225,7 +225,7 @@ export function ConsultancyRequestScreen({ route, navigation }: Props) {
           <View style={{ gap: 6 }}>
             {[
               "O personal recebe sua solicitação e monta uma proposta personalizada.",
-              "Você receberá uma notificação quando ele responder (geralmente em até 24h).",
+              "Você receberá uma notificação quando ele responder (geralmente em até 48h).",
               "Para aceitar ou recusar, vá em Treinos → aba Pendentes.",
             ].map((step, i) => (
               <View key={i} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>

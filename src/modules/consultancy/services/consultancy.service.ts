@@ -12,6 +12,7 @@
   UserRole
 } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
+import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { mp } from "../../../config/mercadopago";
@@ -2247,31 +2248,6 @@ export class ConsultancyService {
     // cair no meio). Entregas sequenciais normais nunca disputam a trava,
     // porque a anterior já libera antes da próxima começar.
     if (!isFirstDelivery) {
-      // Raio-X de pagamentos, Rodada 2, Lote 4: sem essa checagem, o
-      // profissional podia entregar (e cobrar) a ficha N+1 enquanto a
-      // contestação da ficha N ainda estava pendente de julgamento do
-      // admin — o aluno acabava pagando duas vezes por um período em
-      // disputa. Escopo é só a ficha MAIS RECENTE (mesma convenção de
-      // contestDelivery) — uma contestação antiga já superada por
-      // entregas seguintes não deve travar o contrato pra sempre.
-      const latestPlan = await prisma.trainingPlan.findFirst({
-        where: { contractId: contract.id },
-        orderBy: { createdAt: "desc" },
-        select: { id: true }
-      });
-      const openContest = latestPlan
-        ? await prisma.disputeCase.findFirst({
-            where: { trainingPlanId: latestPlan.id, type: "DELIVERY_CONTESTED", status: "OPEN" },
-            select: { id: true }
-          })
-        : null;
-      if (openContest) {
-        throw new AppError(
-          "Existe uma contestação em aberto para a ficha mais recente deste contrato. Aguarde a resolução antes de entregar uma nova ficha.",
-          StatusCodes.CONFLICT
-        );
-      }
-
       const staleThreshold = new Date(now.getTime() - 30_000);
       const claimed = await prisma.consultancyContract.updateMany({
         where: {
@@ -2291,6 +2267,35 @@ export class ConsultancyService {
     let result: { plan: Awaited<ReturnType<typeof prisma.trainingPlan.create>>; contract: Prisma.ConsultancyContractGetPayload<{ include: { offer: true } }> };
     try {
       if (!isFirstDelivery) {
+        // Raio-X de pagamentos, Rodada 2, Lote 4 (movido pra dentro da trava
+        // na Rodada 3, Lote 6): sem essa checagem, o profissional podia
+        // entregar (e cobrar) a ficha N+1 enquanto a contestação da ficha N
+        // ainda estava pendente de julgamento do admin — o aluno acabava
+        // pagando duas vezes por um período em disputa. Escopo é só a ficha
+        // MAIS RECENTE (mesma convenção de contestDelivery) — uma
+        // contestação antiga já superada por entregas seguintes não deve
+        // travar o contrato pra sempre. Precisa rodar DEPOIS de reivindicar
+        // a trava acima (não antes): checar e só depois travar deixava uma
+        // janela onde uma contestação aberta bem nesse intervalo não era
+        // vista, e a entrega passava mesmo assim (TOCTOU).
+        const latestPlan = await prisma.trainingPlan.findFirst({
+          where: { contractId: contract.id },
+          orderBy: { createdAt: "desc" },
+          select: { id: true }
+        });
+        const openContest = latestPlan
+          ? await prisma.disputeCase.findFirst({
+              where: { trainingPlanId: latestPlan.id, type: "DELIVERY_CONTESTED", status: "OPEN" },
+              select: { id: true }
+            })
+          : null;
+        if (openContest) {
+          throw new AppError(
+            "Existe uma contestação em aberto para a ficha mais recente deste contrato. Aguarde a resolução antes de entregar uma nova ficha.",
+            StatusCodes.CONFLICT
+          );
+        }
+
         const existingPlansCount = await prisma.trainingPlan.count({ where: { contractId: contract.id } });
         const renewalPayment = await this.chargeFichaRenewal({
           contractId: contract.id,
@@ -2724,6 +2729,9 @@ export class ConsultancyService {
           isHoldOnly ? "Consultancy client cancel hold failed (MP error):" : "Consultancy client cancel refund failed (MP error):",
           { contractId: contract.id, error }
         );
+        if (!isHoldOnly) {
+          Sentry.captureException(error, { tags: { area: "consultancy" }, extra: { contractId: contract.id, phase: "client_cancel_refund_failed" } });
+        }
         gatewaySucceeded = false;
         // Falha ao liberar reserva não precisa de disputa (nada foi cobrado,
         // a reserva expira sozinha em 5 dias) — só falha ao estornar dinheiro
@@ -3220,6 +3228,9 @@ export class ConsultancyService {
             isHoldOnly ? "Consultancy hold cancel failed (MP error):" : "Consultancy refund failed (MP error):",
             { contractId: contract.id, error }
           );
+          if (!isHoldOnly) {
+            Sentry.captureException(error, { tags: { area: "consultancy" }, extra: { contractId: contract.id, phase: "auto_refund_expired_failed" } });
+          }
           gatewaySucceeded = false;
           refundReason = isHoldOnly
             ? "Prazo expirado sem entrega. Falha ao cancelar a reserva no gateway — expira sozinha em até 5 dias."

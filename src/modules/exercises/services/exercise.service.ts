@@ -3,6 +3,7 @@ import { StatusCodes } from "http-status-codes";
 import { ENABLE_VIDEO_UPLOAD } from "../../../config/features";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
+import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 
 type CreateExerciseInput = {
   providerId: string;
@@ -124,7 +125,7 @@ export class ExerciseService {
     });
   }
 
-  async createPrebuilt(input: {
+  async createPrebuilt(adminId: string, input: {
     name: string;
     category: string;
     description?: string;
@@ -133,7 +134,7 @@ export class ExerciseService {
     mediaUrl?: string;
     mediaType?: ExerciseMediaType;
   }) {
-    return prisma.exercise.create({
+    const created = await prisma.exercise.create({
       data: {
         providerId: null,
         name: input.name.trim(),
@@ -146,9 +147,21 @@ export class ExerciseService {
         isPrebuilt: true,
       },
     });
+
+    // Raio-X de pagamentos, Rodada 3, Lote 6: unica acao admin sensivel
+    // (afeta o catalogo visto por todos os profissionais) sem audit log.
+    void writeAdminAuditLog({
+      adminId,
+      action: "EXERCISE_PREBUILT_CREATED",
+      targetType: "EXERCISE",
+      targetId: created.id,
+      metadata: { name: created.name, category: created.category }
+    });
+
+    return created;
   }
 
-  async updatePrebuilt(exerciseId: string, input: {
+  async updatePrebuilt(adminId: string, exerciseId: string, input: {
     name?: string;
     category?: string;
     description?: string;
@@ -161,7 +174,7 @@ export class ExerciseService {
     if (!exercise) throw new AppError("Exercício não encontrado.", StatusCodes.NOT_FOUND);
     if (!exercise.isPrebuilt) throw new AppError("Exercício não é pré-montado.", StatusCodes.BAD_REQUEST);
 
-    return prisma.exercise.update({
+    const updated = await prisma.exercise.update({
       where: { id: exerciseId },
       data: {
         ...(input.name !== undefined ? { name: input.name.trim() } : {}),
@@ -173,13 +186,30 @@ export class ExerciseService {
         ...(input.mediaType !== undefined ? { mediaType: input.mediaType || null } : {}),
       },
     });
+
+    void writeAdminAuditLog({
+      adminId,
+      action: "EXERCISE_PREBUILT_UPDATED",
+      targetType: "EXERCISE",
+      targetId: exerciseId
+    });
+
+    return updated;
   }
 
-  async deletePrebuilt(exerciseId: string) {
+  async deletePrebuilt(adminId: string, exerciseId: string) {
     const exercise = await prisma.exercise.findUnique({ where: { id: exerciseId } });
     if (!exercise) throw new AppError("Exercício não encontrado.", StatusCodes.NOT_FOUND);
     if (!exercise.isPrebuilt) throw new AppError("Exercício não é pré-montado.", StatusCodes.BAD_REQUEST);
     await prisma.exercise.delete({ where: { id: exerciseId } });
+
+    void writeAdminAuditLog({
+      adminId,
+      action: "EXERCISE_PREBUILT_DELETED",
+      targetType: "EXERCISE",
+      targetId: exerciseId,
+      metadata: { name: exercise.name, category: exercise.category }
+    });
   }
 
   async delete(exerciseId: string, providerId: string) {

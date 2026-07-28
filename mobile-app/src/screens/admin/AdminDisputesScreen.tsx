@@ -122,7 +122,9 @@ export function AdminDisputesScreen({ navigation }: Props) {
                     ? "Reembolsado"
                     : item.resolution === "CAPTURED"
                       ? "Cobrança capturada"
-                      : "Reembolso negado"}
+                      : item.type === "CAPTURE_FAILED"
+                        ? "Mantido sem cobrar"
+                        : "Reembolso negado"}
                   {item.resolvedAmountCents ? ` — ${formatCents(item.resolvedAmountCents)}` : ""}
                 </MvText>
               ) : null}

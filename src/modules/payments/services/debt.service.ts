@@ -1,8 +1,11 @@
+import { DebtRecordStatus } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { CardToken, Payment } from "mercadopago";
 import { mp } from "../../../config/mercadopago";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
+import { isAdminEmail } from "../../../shared/utils/admin-access";
+import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { platformFeeAmount } from "../../../shared/utils/platform-fee";
 import { NotificationService } from "../../notifications/services/notification.service";
@@ -23,6 +26,76 @@ function formatCents(amountCents: number) {
 // visibilidade, porque o proprio Mercado Pago ja tenta recuperar sozinho do
 // proximo repasse dele.
 export class DebtService {
+  private async ensureAdminAccess(adminUserId: string) {
+    const admin = await prisma.user.findUnique({
+      where: { id: adminUserId },
+      select: { id: true, email: true }
+    });
+    if (!admin || !isAdminEmail(admin.email)) {
+      throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
+    }
+    return admin;
+  }
+
+  // Raio-X de pagamentos, Rodada 3, Lote 6: o admin não tinha nenhuma visão
+  // agregada de dívidas — só existiam listagens por cliente/profissional
+  // (listMyDebts/listProviderDebts), nenhuma pra operação em conjunto.
+  async listAllDebts(adminId: string, status?: DebtRecordStatus) {
+    await this.ensureAdminAccess(adminId);
+    return prisma.debtRecord.findMany({
+      where: status ? { status } : undefined,
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      select: {
+        id: true,
+        debtorType: true,
+        amountCents: true,
+        reason: true,
+        status: true,
+        paidAt: true,
+        createdAt: true,
+        disputeCase: { select: { id: true, type: true } },
+        client: { select: { id: true, name: true, email: true } },
+        provider: { select: { id: true, displayName: true, user: { select: { email: true } } } }
+      }
+    });
+  }
+
+  // O enum já previa WRITTEN_OFF (dívida incobrável) mas nada nunca setava
+  // esse status — o admin não tinha como dar baixa numa dívida que decidiu
+  // não cobrar mais (ex: valor irrisório, cliente/profissional sumiu).
+  async writeOffDebt(adminId: string, debtId: string, reason: string) {
+    const admin = await this.ensureAdminAccess(adminId);
+
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      throw new AppError("Informe o motivo da baixa.", StatusCodes.BAD_REQUEST);
+    }
+
+    const debt = await prisma.debtRecord.findUnique({ where: { id: debtId } });
+    if (!debt) {
+      throw new AppError("Pendência não encontrada.", StatusCodes.NOT_FOUND);
+    }
+    if (debt.status !== "PENDING" && debt.status !== "NOTIFIED") {
+      throw new AppError("Esta pendência não está mais em aberto.", StatusCodes.BAD_REQUEST);
+    }
+
+    const updated = await prisma.debtRecord.update({
+      where: { id: debtId },
+      data: { status: "WRITTEN_OFF" }
+    });
+
+    void writeAdminAuditLog({
+      adminId: admin.id,
+      action: "DEBT_WRITTEN_OFF",
+      targetType: "DEBT_RECORD",
+      targetId: debtId,
+      metadata: { reason: trimmedReason, amountCents: debt.amountCents }
+    });
+
+    return updated;
+  }
+
   async listMyDebts(clientId: string) {
     return prisma.debtRecord.findMany({
       where: { clientId, debtorType: "CLIENT" },

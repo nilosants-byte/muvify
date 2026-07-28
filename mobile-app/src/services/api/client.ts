@@ -1605,7 +1605,33 @@ export const adminApi = {
       method: "POST",
       token
     });
+  },
+  listDebts(token: string, params?: { status?: DebtRecordStatus }) {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<AdminDebtRecord[]>(`/admin/debts${suffix}`, { token });
+  },
+  writeOffDebt(token: string, debtId: string, reason: string) {
+    return apiRequest<AdminDebtRecord>(`/admin/debts/${debtId}/write-off`, {
+      method: "POST",
+      token,
+      body: { reason }
+    });
   }
+};
+
+export type AdminDebtRecord = {
+  id: string;
+  debtorType: "CLIENT" | "PROVIDER";
+  amountCents: number;
+  reason: string;
+  status: DebtRecordStatus;
+  paidAt: string | null;
+  createdAt: string;
+  disputeCase: { id: string; type: AdminDisputeCaseType } | null;
+  client: { id: string; name: string; email: string } | null;
+  provider: { id: string; displayName: string; user: { email: string } } | null;
 };
 
 export type AdminSuspendedUser = {
@@ -2447,6 +2473,9 @@ export const financialApi = {
   },
   payouts(token: string) {
     return apiRequest<FinancialPayouts>("/financial/payouts", { token });
+  },
+  exportTransactionsCsv(token: string) {
+    return apiRequest<string>("/financial/transactions/export", { token });
   },
   listAppClients(token: string, month?: string) {
     const q = month ? `?month=${month}` : "";

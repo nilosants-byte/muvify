@@ -878,6 +878,37 @@ export class FinancialService {
   }
 
   async getPayouts(userId: string) {
+    return this.buildPayoutsData(userId, 50);
+  }
+
+  // CSV de exportação usa os mesmos dados de getPayouts, só que sem o teto
+  // de 50 linhas da tela (Rodada 3, Lote 6).
+  async exportTransactionsCsv(userId: string): Promise<string> {
+    const data = await this.buildPayoutsData(userId, 2000);
+    const header = "data,tipo,metodo,status,valor_bruto,comissao_plataforma,valor_liquido";
+    const typeLabel: Record<string, string> = {
+      PRESENTIAL: "Sessão avulsa",
+      CONSULTANCY: "Consultoria",
+      PRESENTIAL_PACKAGE: "Pacote presencial",
+      CONSULTANCY_RENEWAL: "Renovação de ficha"
+    };
+    const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const rows = data.payments.map((p) => {
+      const date = p.capturedAt ?? p.scheduledAt ?? "";
+      return [
+        escapeCsv(date),
+        escapeCsv(typeLabel[p.type] ?? p.type),
+        escapeCsv(p.method),
+        escapeCsv(p.status),
+        (p.amountCents / 100).toFixed(2),
+        (p.platformFeeCents / 100).toFixed(2),
+        (p.providerAmountCents / 100).toFixed(2)
+      ].join(",");
+    });
+    return [header, ...rows].join("\n");
+  }
+
+  private async buildPayoutsData(userId: string, take: number) {
     const provider = await getProviderByUserId(userId);
 
     const [payments, contracts, packageCycles, renewalPlans] = await Promise.all([
@@ -903,7 +934,7 @@ export class FinancialService {
           booking: { select: { scheduledAt: true } }
         },
         orderBy: { capturedAt: "desc" },
-        take: 50
+        take
       }),
       // consultoria nao tem etapa de pre-autorizacao separada: so entra aqui quando ja capturada
       prisma.consultancyContract.findMany({
@@ -921,7 +952,7 @@ export class FinancialService {
           createdAt: true
         },
         orderBy: { paymentCapturedAt: "desc" },
-        take: 50
+        take
       }),
       // ciclos de pacote presencial ja tem o split pronto (providerAmountCents/
       // platformAmountCents gravados no instante da captura) - nao recalcula.
@@ -939,7 +970,7 @@ export class FinancialService {
           package: { select: { paymentMethod: true } }
         },
         orderBy: { capturedAt: "desc" },
-        take: 50
+        take
       }),
       // Raio-X de pagamentos, Rodada 2, Lote 4: renovações de ficha (2ª ficha
       // em diante) somem da lista de repasses — só a 1ª cobrança do contrato
@@ -958,7 +989,7 @@ export class FinancialService {
           }
         },
         orderBy: { createdAt: "desc" },
-        take: 50
+        take
       })
     ]);
 
@@ -1036,7 +1067,7 @@ export class FinancialService {
 
     const transactions = [...bookingTransactions, ...contractTransactions, ...packageCycleTransactions, ...renewalTransactions]
       .sort((a, b) => (b.capturedAt ?? "").localeCompare(a.capturedAt ?? ""))
-      .slice(0, 50);
+      .slice(0, take);
 
     return {
       pendingCents:   pending.reduce((s, p)  => s + netFor(p), 0),

@@ -128,6 +128,7 @@ export const queryKeys = {
     lookupBookingDetail: (id: string) => ["admin", "lookupBookingDetail", id] as const,
     disputeCases: (params?: object) => ["admin", "disputeCases", params] as const,
     disputeCaseDetail: (caseId: string) => ["admin", "disputeCaseDetail", caseId] as const,
+    debts: (params?: object) => ["admin", "debts", params] as const,
   },
 
   // ── Exercícios ─────────────────────────────────────────────────────────────

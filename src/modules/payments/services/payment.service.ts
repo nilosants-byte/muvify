@@ -10,6 +10,7 @@
 } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { createHmac, timingSafeEqual } from "crypto";
+import * as Sentry from "@sentry/node";
 import { Customer, CustomerCard, CardToken, Payment, PaymentRefund } from "mercadopago";
 import { mp } from "../../../config/mercadopago";
 import { env } from "../../../config/env";
@@ -1145,6 +1146,7 @@ export class PaymentService {
         // disputa pra revisão manual, igual ao padrão já usado em
         // consultancy.service.ts e no cancelamento de pacote presencial.
         console.error("cancelPaymentForBooking: estorno falhou (MP error):", { bookingId, paymentId: payment.id, error });
+        Sentry.captureException(error, { tags: { area: "payments" }, extra: { bookingId, paymentId: payment.id, phase: "refund_failed" } });
         const booking = await prisma.booking.findUnique({
           where: { id: bookingId },
           select: { clientId: true, providerId: true }
@@ -1199,6 +1201,7 @@ export class PaymentService {
           paymentId: payment.id,
           error
         });
+        Sentry.captureException(error, { tags: { area: "payments" }, extra: { bookingId, paymentId: payment.id, phase: "preauth_cancel_failed" } });
         const booking = await prisma.booking.findUnique({
           where: { id: bookingId },
           select: { clientId: true, providerId: true }
@@ -1295,6 +1298,7 @@ export class PaymentService {
       return await this.captureIfAuthorizedForBooking(bookingId);
     } catch (error) {
       console.error("captureIfAuthorizedForBookingOrDispute: captura falhou (MP error):", { bookingId, error });
+      Sentry.captureException(error, { tags: { area: "payments" }, extra: { bookingId, phase: "capture_failed" } });
       const [payment, booking] = await Promise.all([
         prisma.payment.findUnique({ where: { bookingId } }),
         prisma.booking.findUnique({ where: { id: bookingId }, select: { clientId: true, providerId: true } })
