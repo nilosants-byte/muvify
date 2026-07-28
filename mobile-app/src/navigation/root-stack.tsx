@@ -15,6 +15,7 @@ import { AdminConsultasScreen } from "../screens/admin/AdminConsultasScreen";
 import { AdminDebtsScreen } from "../screens/admin/AdminDebtsScreen";
 import { AdminDisputeDetailScreen } from "../screens/admin/AdminDisputeDetailScreen";
 import { AdminDisputesScreen } from "../screens/admin/AdminDisputesScreen";
+import { AdminUserSearchScreen } from "../screens/admin/AdminUserSearchScreen";
 import { AdminExercisesScreen } from "../screens/admin/AdminExercisesScreen";
 import { AdminHomeScreen } from "../screens/admin/AdminHomeScreen";
 import { AdminSupportScreen } from "../screens/admin/AdminSupportScreen";
@@ -598,6 +599,11 @@ export function RootNavigator() {
             <AdminStack.Screen
               name="AdminDebts"
               component={AdminDebtsScreen as React.ComponentType<any>}
+              options={{ headerShown: false }}
+            />
+            <AdminStack.Screen
+              name="AdminUserSearch"
+              component={AdminUserSearchScreen as React.ComponentType<any>}
               options={{ headerShown: false }}
             />
           </AdminStack.Navigator>

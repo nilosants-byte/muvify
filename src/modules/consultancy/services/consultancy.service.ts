@@ -1805,7 +1805,8 @@ export class ConsultancyService {
             onlineConsultancySetting: true,
             user: {
               select: {
-                id: true
+                id: true,
+                suspendedAt: true
               }
             }
           }
@@ -1844,6 +1845,12 @@ export class ConsultancyService {
       });
 
       return { request: updated, contract: null };
+    }
+
+    // Raio-X de pagamentos, Rodada 4, Lote 3: suspensão precisa bloquear
+    // novo negócio entrando pra essa conta, não só o próprio login dele.
+    if (request.provider.user.suspendedAt) {
+      throw new AppError("Este profissional não está disponível para novas contratações no momento.", StatusCodes.BAD_REQUEST);
     }
 
     await debtService.assertNoOutstandingDebt(clientId);

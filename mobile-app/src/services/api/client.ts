@@ -1606,6 +1606,12 @@ export const adminApi = {
       token
     });
   },
+  searchUsers(token: string, q: string) {
+    return apiRequest<AdminUserSearchResult[]>(`/admin/users/search?q=${encodeURIComponent(q)}`, { token });
+  },
+  getUserDetail(token: string, userId: string) {
+    return apiRequest<AdminUserDetail>(`/admin/users/${userId}`, { token });
+  },
   listDebts(token: string, params?: { status?: DebtRecordStatus }) {
     const query = new URLSearchParams();
     if (params?.status) query.set("status", params.status);
@@ -1640,6 +1646,53 @@ export type AdminSuspendedUser = {
   email: string;
   suspendedAt: string | null;
   suspensionReason: string | null;
+};
+
+export type AdminUserSearchResult = {
+  id: string;
+  name: string;
+  email: string;
+  role: "CLIENT" | "PROVIDER" | "ADMIN";
+  suspendedAt: string | null;
+  createdAt: string;
+  isProvider: boolean;
+};
+
+export type AdminUserDetailDebt = {
+  id: string;
+  amountCents: number;
+  reason: string;
+  status: DebtRecordStatus;
+  createdAt: string;
+};
+
+export type AdminUserDetailDispute = {
+  id: string;
+  type: string;
+  status: "OPEN" | "RESOLVED";
+  amountCents: number;
+  createdAt: string;
+};
+
+export type AdminUserDetail = {
+  id: string;
+  name: string;
+  email: string;
+  role: "CLIENT" | "PROVIDER" | "ADMIN";
+  suspendedAt: string | null;
+  suspensionReason: string | null;
+  noShowStrikes: number;
+  createdAt: string;
+  provider: {
+    id: string;
+    displayName: string;
+    crefValidationStatus: string;
+    mpConnected: boolean;
+  } | null;
+  clientDebts: AdminUserDetailDebt[];
+  clientDisputes: AdminUserDetailDispute[];
+  providerDebts: AdminUserDetailDebt[];
+  providerDisputes: AdminUserDetailDispute[];
 };
 
 export type AdminDisputeCaseType =

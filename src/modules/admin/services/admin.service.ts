@@ -1274,4 +1274,126 @@ export class AdminService {
 
     return updated;
   }
+
+  // Raio-X de pagamentos, Rodada 4, Lote 3: não existia nenhuma tela pra
+  // buscar um usuário por nome/e-mail e ver tudo relacionado a ele num
+  // lugar só — a única busca disponível exigia CPF, e suspender só era
+  // possível a partir do detalhe de uma disputa já aberta.
+  async searchUsers(adminId: string, query: string) {
+    await this.ensureAdminAccess(adminId);
+    const q = query.trim();
+    if (q.length < 3) {
+      throw new AppError("Digite pelo menos 3 caracteres para buscar.", StatusCodes.BAD_REQUEST);
+    }
+
+    const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { name: { contains: q, mode: "insensitive" } },
+          { email: { contains: q, mode: "insensitive" } }
+        ]
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        suspendedAt: true,
+        createdAt: true,
+        providerProfile: { select: { id: true } }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 30
+    });
+
+    return users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      suspendedAt: u.suspendedAt,
+      createdAt: u.createdAt,
+      isProvider: Boolean(u.providerProfile)
+    }));
+  }
+
+  async getUserDetail(adminId: string, userId: string) {
+    await this.ensureAdminAccess(adminId);
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        suspendedAt: true,
+        suspensionReason: true,
+        noShowStrikes: true,
+        createdAt: true,
+        providerProfile: {
+          select: { id: true, displayName: true, crefValidationStatus: true, mpAccountId: true }
+        }
+      }
+    });
+    if (!user) {
+      throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    const providerId = user.providerProfile?.id ?? null;
+
+    const [clientDebts, clientDisputes, providerDebts, providerDisputes] = await Promise.all([
+      prisma.debtRecord.findMany({
+        where: { clientId: userId, debtorType: "CLIENT" },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: { id: true, amountCents: true, reason: true, status: true, createdAt: true }
+      }),
+      prisma.disputeCase.findMany({
+        where: { clientId: userId },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: { id: true, type: true, status: true, amountCents: true, createdAt: true }
+      }),
+      providerId
+        ? prisma.debtRecord.findMany({
+            where: { providerId, debtorType: "PROVIDER" },
+            orderBy: { createdAt: "desc" },
+            take: 20,
+            select: { id: true, amountCents: true, reason: true, status: true, createdAt: true }
+          })
+        : Promise.resolve([]),
+      providerId
+        ? prisma.disputeCase.findMany({
+            where: { providerId },
+            orderBy: { createdAt: "desc" },
+            take: 20,
+            select: { id: true, type: true, status: true, amountCents: true, createdAt: true }
+          })
+        : Promise.resolve([])
+    ]);
+
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      suspendedAt: user.suspendedAt,
+      suspensionReason: user.suspensionReason,
+      noShowStrikes: user.noShowStrikes,
+      createdAt: user.createdAt,
+      provider: user.providerProfile
+        ? {
+            id: user.providerProfile.id,
+            displayName: user.providerProfile.displayName,
+            crefValidationStatus: user.providerProfile.crefValidationStatus,
+            mpConnected: Boolean(user.providerProfile.mpAccountId)
+          }
+        : null,
+      clientDebts,
+      clientDisputes,
+      providerDebts,
+      providerDisputes
+    };
+  }
 }

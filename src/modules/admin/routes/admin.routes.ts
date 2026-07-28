@@ -21,9 +21,11 @@ import {
   adminReactivateUserSchema,
   adminResolveDisputeCaseSchema,
   adminRunDataRetentionSchema,
+  adminSearchUsersSchema,
   adminSuspendUserSchema,
   adminSupportQueueQuerySchema,
   adminSupportReplySchema,
+  adminUserDetailSchema,
   adminWriteOffDebtSchema,
   reviewProviderCrefSchema
 } from "../validators/admin.validator";
@@ -114,6 +116,17 @@ adminRoutes.post(
   uploadRateLimiter,
   validate(adminReactivateUserSchema),
   adminController.reactivateUser
+);
+
+adminRoutes.get(
+  "/users/search",
+  validate(adminSearchUsersSchema),
+  adminController.searchUsers
+);
+adminRoutes.get(
+  "/users/:userId",
+  validate(adminUserDetailSchema),
+  adminController.getUserDetail
 );
 
 adminRoutes.get(

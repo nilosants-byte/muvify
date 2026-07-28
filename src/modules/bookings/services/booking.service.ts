@@ -185,12 +185,21 @@ export class BookingService {
               isActive: true
             }
           },
-          categoryLinks: true
+          categoryLinks: true,
+          user: { select: { suspendedAt: true } }
         }
       });
 
       if (!provider) {
         throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
+      }
+      // Raio-X de pagamentos, Rodada 4, Lote 3: suspensão precisa bloquear
+      // novo negócio entrando pra essa conta, não só o próprio login dele.
+      if (provider.user.suspendedAt) {
+        throw new AppError(
+          "Este profissional não está disponível para novos agendamentos no momento.",
+          StatusCodes.BAD_REQUEST
+        );
       }
 
       // Piso minimo do proprio app (o profissional so pode aumentar, nunca

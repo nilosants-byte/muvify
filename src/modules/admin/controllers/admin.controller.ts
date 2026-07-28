@@ -150,6 +150,16 @@ export class AdminController {
     return response.json(payload);
   }
 
+  async searchUsers(request: Request, response: Response) {
+    const payload = await adminService.searchUsers(request.user!.id, String(request.query.q ?? ""));
+    return response.json(payload);
+  }
+
+  async getUserDetail(request: Request, response: Response) {
+    const payload = await adminService.getUserDetail(request.user!.id, request.params.userId);
+    return response.json(payload);
+  }
+
   async listDebts(request: Request, response: Response) {
     const payload = await debtService.listAllDebts(
       request.user!.id,

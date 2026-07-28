@@ -240,7 +240,7 @@ export class PresentialPackageService {
 
     const offer = await prisma.providerServiceOffer.findFirst({
       where: { id: input.offerId, isActive: true },
-      include: { provider: true }
+      include: { provider: { include: { user: { select: { suspendedAt: true } } } } }
     });
     if (!offer) {
       throw new AppError("Oferta não encontrada ou indisponível.", StatusCodes.NOT_FOUND);
@@ -250,6 +250,9 @@ export class PresentialPackageService {
     }
     if (offer.provider.userId === clientId) {
       throw new AppError("Você não pode comprar seu próprio pacote.", StatusCodes.UNPROCESSABLE_ENTITY);
+    }
+    if (offer.provider.user.suspendedAt) {
+      throw new AppError("Este profissional não está disponível para novas compras no momento.", StatusCodes.BAD_REQUEST);
     }
     if (!offer.provider.mpAccountId) {
       throw new AppError(
@@ -1243,7 +1246,7 @@ export class PresentialPackageService {
 
     const offer = await prisma.providerServiceOffer.findFirst({
       where: { id: input.offerId, isActive: true },
-      include: { provider: true }
+      include: { provider: { include: { user: { select: { suspendedAt: true } } } } }
     });
     if (!offer) {
       throw new AppError("Oferta não encontrada ou indisponível.", StatusCodes.NOT_FOUND);
@@ -1259,6 +1262,9 @@ export class PresentialPackageService {
     }
     if (offer.provider.userId === clientId) {
       throw new AppError("Você não pode comprar seu próprio pacote.", StatusCodes.UNPROCESSABLE_ENTITY);
+    }
+    if (offer.provider.user.suspendedAt) {
+      throw new AppError("Este profissional não está disponível para novas compras no momento.", StatusCodes.BAD_REQUEST);
     }
     if (input.acknowledgedImmediateExecution !== true) {
       // Mesma base legal do fluxo de consultoria avulsa (art. 49 do CDC) — a

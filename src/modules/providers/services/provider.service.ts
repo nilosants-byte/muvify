@@ -912,6 +912,10 @@ export class ProviderService {
     const where: Prisma.ProviderProfileWhereInput = {
       crefValidationStatus: CrefValidationStatus.APPROVED,
       mpAccountId: { not: null },
+      // Raio-X de pagamentos, Rodada 4, Lote 3: suspensão só bloqueava o
+      // próprio login do profissional — ele continuava pesquisável e podia
+      // receber novos agendamentos/compras normalmente.
+      user: { suspendedAt: null },
       averageRating: filters.minRating ? { gte: filters.minRating } : undefined,
       ...(filters.q ? {
         OR: [

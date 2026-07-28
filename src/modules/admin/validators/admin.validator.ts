@@ -150,6 +150,16 @@ export const adminReactivateUserSchema = z.object({
   params: z.object({ userId: z.string().uuid() })
 });
 
+export const adminSearchUsersSchema = z.object({
+  query: z.object({
+    q: z.string().trim().min(3).max(200)
+  })
+});
+
+export const adminUserDetailSchema = z.object({
+  params: z.object({ userId: z.string().uuid() })
+});
+
 export const adminListDebtsQuerySchema = z.object({
   query: z.object({
     status: z.enum(["PENDING", "NOTIFIED", "PAID", "WRITTEN_OFF"]).optional()
