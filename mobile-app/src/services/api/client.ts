@@ -486,6 +486,14 @@ export type AdminDashboardOverview = {
       usersCount: number;
     }>;
   };
+  attentionNeeded: {
+    revenueThisMonthCents: number;
+    openDisputesCount: number;
+    pendingDebtsCount: number;
+    pendingDebtsAmountCents: number;
+    crefInReviewCount: number;
+    openTicketsCount: number;
+  };
 };
 
 export type AdminCrefQueueItem = ProviderCredentials & {

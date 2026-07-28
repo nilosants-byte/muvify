@@ -1,4 +1,4 @@
-﻿import { Prisma, SupportTicketStatus, UserRole } from "@prisma/client";
+﻿import { BookingStatus, ConsultancyPaymentStatus, CrefValidationStatus, DisputeCaseStatus, Prisma, SupportTicketStatus, UserRole } from "@prisma/client";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
@@ -406,6 +406,58 @@ export class AdminService {
       }
     });
 
+    // Raio-X de pagamentos, Rodada 4, Lote 8: painel geral só mostrava
+    // contagem de usuários e ranking de agendamentos — sem faturamento,
+    // disputas abertas, dívidas em aberto, CREFs pendentes ou tickets sem
+    // resposta. Bloco "o que precisa da sua atenção hoje": mesma soma de
+    // receita realizada pelo app já usada em financial.service.ts (bookings
+    // completados + consultorias capturadas + ciclos de pacote + renovações
+    // de ficha), agora agregada pra toda a plataforma em vez de por
+    // profissional — sem gráficos novos, só números com link direto pra cada fila.
+    const [
+      completedBookingsAgg,
+      capturedContractsAgg,
+      capturedPackageCyclesAgg,
+      renewalPlansThisMonth,
+      openDisputesCount,
+      pendingDebtsAgg,
+      crefInReviewCount,
+      openTicketsCount
+    ] = await Promise.all([
+      prisma.booking.aggregate({
+        where: { status: BookingStatus.COMPLETED, scheduledAt: { gte: start, lt: end } },
+        _sum: { priceCents: true }
+      }),
+      prisma.consultancyContract.aggregate({
+        where: { paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: { gte: start, lt: end } },
+        _sum: { paymentAmountCents: true }
+      }),
+      prisma.presentialPackageCycle.aggregate({
+        where: { capturedAt: { gte: start, lt: end } },
+        _sum: { amountCents: true }
+      }),
+      prisma.trainingPlan.findMany({
+        where: { renewalMpPaymentId: { not: null }, createdAt: { gte: start, lt: end } },
+        select: { contract: { select: { paymentAmountCents: true } } },
+        take: 10000
+      }),
+      prisma.disputeCase.count({ where: { status: DisputeCaseStatus.OPEN } }),
+      prisma.debtRecord.aggregate({
+        where: { status: { in: ["PENDING", "NOTIFIED"] } },
+        _sum: { amountCents: true },
+        _count: true
+      }),
+      prisma.providerProfile.count({ where: { crefValidationStatus: CrefValidationStatus.IN_REVIEW } }),
+      prisma.supportTicket.count({ where: { status: SupportTicketStatus.OPEN } })
+    ]);
+
+    const renewalRevenueThisMonth = renewalPlansThisMonth.reduce((s, p) => s + (p.contract?.paymentAmountCents ?? 0), 0);
+    const platformRevenueCents =
+      (completedBookingsAgg._sum.priceCents ?? 0) +
+      (capturedContractsAgg._sum.paymentAmountCents ?? 0) +
+      (capturedPackageCyclesAgg._sum.amountCents ?? 0) +
+      renewalRevenueThisMonth;
+
     return {
       summary: {
         activeUsers: activeUsersRows.length,
@@ -423,6 +475,14 @@ export class AdminService {
         year,
         total: usersCreatedInMonth.length,
         data: perDay
+      },
+      attentionNeeded: {
+        revenueThisMonthCents: platformRevenueCents,
+        openDisputesCount,
+        pendingDebtsCount: pendingDebtsAgg._count,
+        pendingDebtsAmountCents: pendingDebtsAgg._sum.amountCents ?? 0,
+        crefInReviewCount,
+        openTicketsCount
       }
     };
   }

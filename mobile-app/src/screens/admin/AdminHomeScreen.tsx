@@ -8,6 +8,7 @@ import { AdminScaffold } from "./AdminScaffold";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
+import { formatCurrencyBRL } from "../../utils/formatters";
 
 const MONTH_LABELS = [
   "Jan",
@@ -101,6 +102,54 @@ export function AdminHomeScreen({ navigation }: Props) {
             <MvText variant="semi2">{monthLabel}</MvText>
             <TouchableOpacity onPress={nextMonth} disabled={year === new Date().getFullYear() && month === new Date().getMonth() + 1} accessibilityRole="button" accessibilityLabel="Próximo mês">
               <MvText variant="semi3" color={year === new Date().getFullYear() && month === new Date().getMonth() + 1 ? "tertiary" : "secondary"}>Próximo mês {">"}</MvText>
+            </TouchableOpacity>
+          </View>
+        </MvCard>
+
+        {/* Raio-X de pagamentos, Rodada 4, Lote 8: painel só mostrava contagem
+            de usuários e ranking de agendamentos — nada de faturamento, filas
+            de disputa/dívida/CREF/suporte num lugar só. */}
+        <MvCard>
+          <MvText variant="semi2">O que precisa da sua atenção hoje</MvText>
+          <MvText variant="caption" color="secondary" style={{ marginTop: 2 }}>
+            Faturamento realizado pelo app em {monthLabel}
+          </MvText>
+          <MvText variant="h2" style={{ marginTop: 2 }}>
+            {formatCurrencyBRL((overview?.attentionNeeded?.revenueThisMonthCents ?? 0) / 100)}
+          </MvText>
+
+          <View style={{ gap: 4, marginTop: 12 }}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AdminDisputes")}
+              style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderTopWidth: 1, borderTopColor: theme.border }}
+            >
+              <MvText variant="body3">Disputas abertas</MvText>
+              <MvText variant="semi3" color={(overview?.attentionNeeded?.openDisputesCount ?? 0) > 0 ? "danger" : "secondary"}>
+                {overview?.attentionNeeded?.openDisputesCount ?? 0}
+              </MvText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AdminDebts")}
+              style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderTopWidth: 1, borderTopColor: theme.border }}
+            >
+              <MvText variant="body3">Dívidas em aberto</MvText>
+              <MvText variant="semi3">
+                {overview?.attentionNeeded?.pendingDebtsCount ?? 0} · {formatCurrencyBRL((overview?.attentionNeeded?.pendingDebtsAmountCents ?? 0) / 100)}
+              </MvText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AdminCrefValidation")}
+              style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderTopWidth: 1, borderTopColor: theme.border }}
+            >
+              <MvText variant="body3">CREFs em análise</MvText>
+              <MvText variant="semi3">{overview?.attentionNeeded?.crefInReviewCount ?? 0}</MvText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AdminSupport")}
+              style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderTopWidth: 1, borderTopColor: theme.border }}
+            >
+              <MvText variant="body3">Tickets de suporte abertos</MvText>
+              <MvText variant="semi3">{overview?.attentionNeeded?.openTicketsCount ?? 0}</MvText>
             </TouchableOpacity>
           </View>
         </MvCard>
