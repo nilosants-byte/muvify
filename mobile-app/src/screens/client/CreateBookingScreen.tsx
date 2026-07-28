@@ -358,6 +358,15 @@ export function CreateBookingScreen({ navigation, route }: Props) {
       return;
     }
 
+    // Raio-X de pagamentos, Rodada 2, Lote 5: pacote de sessões avulsas tem
+    // saldo limitado — sem esse bloqueio, o aluno podia selecionar mais
+    // datas do que sessões restantes e só descobria na hora de confirmar
+    // (falha parcial, algumas datas aceitas e outras rejeitadas).
+    if (packageSessionsRemainingFromRoute != null && selectedDateKeys.length >= packageSessionsRemainingFromRoute) {
+      showToast(`Você só tem ${packageSessionsRemainingFromRoute} sessão(ões) restante(s) neste pacote.`, "info");
+      return;
+    }
+
     const slots = scheduleByDate[isoDate] ?? [];
     setSelectedDateKeys((current) => [...current, isoDate].sort((a, b) => a.localeCompare(b)));
     if (slots.length === 1) {

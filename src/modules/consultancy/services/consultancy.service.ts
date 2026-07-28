@@ -3108,11 +3108,28 @@ export class ConsultancyService {
           where: { id: plan.contract.id },
           data: { status: ConsultancyContractStatus.CANCELLED }
         });
+
+        // Raio-X de pagamentos, Rodada 2, Lote 5: mesmo padrão já usado em
+        // autoRefundExpiredContracts — se este contrato é a metade de
+        // consultoria de um combo, a metade presencial continua ativa e
+        // sendo cobrada normalmente; o aluno precisa saber disso, em vez de
+        // uma notificação genérica que soa como "tudo acabou".
+        const linkedPackage = await prisma.presentialPackage.findFirst({
+          where: { consultancyContractId: plan.contract.id },
+          select: { id: true, status: true }
+        });
+        const isComboHalf =
+          linkedPackage !== null && linkedPackage.status !== "CANCELLED" && linkedPackage.status !== "EXPIRED";
+
         void notificationService.sendToUsers([plan.contract.clientId, plan.contract.provider.userId], {
           preferenceType: "CONSULTANCY",
-          title: "Consultoria encerrada automaticamente",
-          body: "A ficha venceu há 7 dias e nenhuma renovação foi entregue — a consultoria foi encerrada automaticamente.",
-          data: { type: "CONSULTANCY_AUTO_CANCELLED", contractId: plan.contract.id }
+          title: isComboHalf ? "Consultoria do seu combo foi encerrada" : "Consultoria encerrada automaticamente",
+          body: isComboHalf
+            ? "A ficha venceu há 7 dias e nenhuma renovação foi entregue — a consultoria foi encerrada automaticamente. Isso afeta só a parte de consultoria do combo — a parte presencial continua normalmente, sendo cobrada como sempre."
+            : "A ficha venceu há 7 dias e nenhuma renovação foi entregue — a consultoria foi encerrada automaticamente.",
+          data: isComboHalf
+            ? { type: "COMBO_CONSULTANCY_AUTO_CANCELLED", contractId: plan.contract.id, packageId: linkedPackage!.id }
+            : { type: "CONSULTANCY_AUTO_CANCELLED", contractId: plan.contract.id }
         });
         continue;
       }

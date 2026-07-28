@@ -1214,6 +1214,13 @@ export class PresentialPackageService {
   // (ja "respondida e aceita" - nao ha negociacao pra combo comprado
   // direto) e cobra com a mesma logica de split ja usada em todo o resto.
   async purchaseCombo(clientId: string, input: PurchasePresentialPackageInput) {
+    // Raio-X de pagamentos, Rodada 2, Lote 5: purchaseCombo era o único
+    // fluxo de compra sem essa checagem — um cliente com pendência
+    // financeira em aberto (ex: reembolso que falhou e virou dívida)
+    // conseguia comprar um combo normalmente, furando a trava anti-calote
+    // que já existe em purchasePackage, booking avulso e consultoria.
+    await debtService.assertNoOutstandingDebt(clientId);
+
     const offer = await prisma.providerServiceOffer.findFirst({
       where: { id: input.offerId, isActive: true },
       include: { provider: true }
