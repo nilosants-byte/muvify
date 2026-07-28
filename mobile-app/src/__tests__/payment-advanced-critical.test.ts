@@ -100,8 +100,9 @@ describe("Status de pagamento — todos os estados", () => {
     mockFetch.mockReturnValueOnce(jsonResponse(buildPaymentStatus(status)));
 
     const result = await paymentsApi.bookingPayment(TOKEN, "booking-001");
-    expect(result.status).toBe(status);
-    expect(result.bookingId).toBe("booking-001");
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe(status);
+    expect(result!.bookingId).toBe("booking-001");
   });
 
   it("retorna failureReason quando pagamento falha", async () => {
@@ -112,8 +113,9 @@ describe("Status de pagamento — todos os estados", () => {
     mockFetch.mockReturnValueOnce(jsonResponse(failedPayment));
 
     const result = await paymentsApi.bookingPayment(TOKEN, "booking-001");
-    expect(result.status).toBe("FAILED");
-    expect(result.failureReason).toBe("Cartão sem limite disponível");
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe("FAILED");
+    expect(result!.failureReason).toBe("Cartão sem limite disponível");
   });
 });
 

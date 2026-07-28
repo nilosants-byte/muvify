@@ -1385,10 +1385,25 @@ export class PaymentService {
         }
       }
     });
-    if (!payment) throw new AppError("Pagamento não encontrado.", StatusCodes.NOT_FOUND);
-    const canRead = payment.booking.clientId === userId || payment.booking.provider.userId === userId;
+    if (payment) {
+      const canRead = payment.booking.clientId === userId || payment.booking.provider.userId === userId;
+      if (!canRead) throw new AppError("Sem permissao para visualizar este pagamento.", StatusCodes.FORBIDDEN);
+      return this.toPublicBookingPayment(payment);
+    }
+
+    // Raio-X de pagamentos, Rodada 2, Lote 4: bookings gerados por
+    // activateCycle (sessões de pacote de horário fixo) nunca têm um
+    // Payment próprio — o ciclo inteiro já foi cobrado de uma vez. Ausência
+    // de Payment não é um erro aqui, é o estado esperado; devolve null em
+    // vez de 404 pra não derrubar a tela de detalhe desses agendamentos.
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { clientId: true, provider: { select: { userId: true } } }
+    });
+    if (!booking) throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
+    const canRead = booking.clientId === userId || booking.provider.userId === userId;
     if (!canRead) throw new AppError("Sem permissao para visualizar este pagamento.", StatusCodes.FORBIDDEN);
-    return this.toPublicBookingPayment(payment);
+    return null;
   }
 
   async processWebhookEvent(

@@ -95,7 +95,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
       pixFailCountRef.current = 0;
       setPixPollError(false);
       setPayment(paymentStatus);
-      if (paymentStatus.status === "CAPTURED") hapticPaymentSuccess();
+      if (paymentStatus?.status === "CAPTURED") hapticPaymentSuccess();
     } catch {
       pixFailCountRef.current += 1;
       if (pixFailCountRef.current >= 3) setPixPollError(true);

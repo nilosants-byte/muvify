@@ -215,13 +215,22 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
     const contract = await makeActiveContract(offer.id);
 
     await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 1", exercises: [] });
-    await consultancyService.contestDelivery(clientId, contract.id, "Ficha 1 estava ruim");
+    const disputeOnFicha1 = await consultancyService.contestDelivery(clientId, contract.id, "Ficha 1 estava ruim");
 
     // Duplo clique bloquearia a 2a ficha se entregue nos primeiros 10s — força
     // o relógio pra frente ajustando createdAt da 1a ficha manualmente.
     await prisma.trainingPlan.updateMany({
       where: { contractId: contract.id },
       data: { createdAt: new Date(Date.now() - 15_000) }
+    });
+
+    // Raio-X Rodada 2, Lote 4: entregar (e cobrar) a próxima ficha enquanto a
+    // contestação da ficha mais recente ainda está em aberto passou a ser
+    // bloqueado — resolve a disputa da ficha 1 antes de entregar a ficha 2,
+    // simulando o admin já ter julgado o caso.
+    await prisma.disputeCase.update({
+      where: { id: disputeOnFicha1.id },
+      data: { status: "RESOLVED", resolution: "DENIED", resolutionNote: "Julgado improcedente.", resolvedAt: new Date() }
     });
 
     vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: 3002, status: "approved" } as any);

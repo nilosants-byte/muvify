@@ -640,7 +640,15 @@ export function FinancialHistoryScreen({ navigation }: Props) {
                 ? tx.item.description
                 : tx.type === "expense"
                 ? tx.item.description
-                : `${tx.item.type === "CONSULTANCY" ? "Consultoria" : "Sessão"} via app · ${methodLabel(tx.item.method)}`;
+                : `${
+                    tx.item.type === "CONSULTANCY"
+                      ? "Consultoria"
+                      : tx.item.type === "CONSULTANCY_RENEWAL"
+                        ? "Renovação de ficha"
+                        : tx.item.type === "PRESENTIAL_PACKAGE"
+                          ? "Pacote presencial"
+                          : "Sessão"
+                  } via app · ${methodLabel(tx.item.method)}`;
               const amount = tx.type === "income"
                 ? tx.item.amountCents
                 : tx.type === "expense"

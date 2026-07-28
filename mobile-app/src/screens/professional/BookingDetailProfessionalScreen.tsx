@@ -71,7 +71,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
         paymentsApi.bookingPayment(token, bookingId),
       ]);
       const found = bookings.find((item) => item.id === bookingId) ?? null;
-      return { booking: found as Booking | null, payment: paymentInfo as PaymentStatusResponse };
+      return { booking: found as Booking | null, payment: paymentInfo };
     },
   );
 

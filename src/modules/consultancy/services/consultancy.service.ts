@@ -2247,6 +2247,31 @@ export class ConsultancyService {
     // cair no meio). Entregas sequenciais normais nunca disputam a trava,
     // porque a anterior já libera antes da próxima começar.
     if (!isFirstDelivery) {
+      // Raio-X de pagamentos, Rodada 2, Lote 4: sem essa checagem, o
+      // profissional podia entregar (e cobrar) a ficha N+1 enquanto a
+      // contestação da ficha N ainda estava pendente de julgamento do
+      // admin — o aluno acabava pagando duas vezes por um período em
+      // disputa. Escopo é só a ficha MAIS RECENTE (mesma convenção de
+      // contestDelivery) — uma contestação antiga já superada por
+      // entregas seguintes não deve travar o contrato pra sempre.
+      const latestPlan = await prisma.trainingPlan.findFirst({
+        where: { contractId: contract.id },
+        orderBy: { createdAt: "desc" },
+        select: { id: true }
+      });
+      const openContest = latestPlan
+        ? await prisma.disputeCase.findFirst({
+            where: { trainingPlanId: latestPlan.id, type: "DELIVERY_CONTESTED", status: "OPEN" },
+            select: { id: true }
+          })
+        : null;
+      if (openContest) {
+        throw new AppError(
+          "Existe uma contestação em aberto para a ficha mais recente deste contrato. Aguarde a resolução antes de entregar uma nova ficha.",
+          StatusCodes.CONFLICT
+        );
+      }
+
       const staleThreshold = new Date(now.getTime() - 30_000);
       const claimed = await prisma.consultancyContract.updateMany({
         where: {

@@ -2218,7 +2218,10 @@ export const paymentsApi = {
     return apiRequest<ProviderAccountStatus>("/payments/provider/account", { token });
   },
   bookingPayment(token: string, bookingId: string) {
-    return apiRequest<PaymentStatusResponse>(`/payments/booking/${bookingId}`, { token });
+    // Raio-X Rodada 2, Lote 4: agendamentos gerados por ciclo de pacote de
+    // horário fixo (activateCycle) não têm Payment próprio — a API devolve
+    // null (200) em vez de 404 nesse caso, não é um erro.
+    return apiRequest<PaymentStatusResponse | null>(`/payments/booking/${bookingId}`, { token });
   },
   createPixCharge(token: string, bookingId: string) {
     return apiRequest<PixChargeResponse>(`/payments/booking/${bookingId}/pix/charge`, {
@@ -2365,7 +2368,7 @@ export type FinancialAppClient = {
 
 export type FinancialPayoutItem = {
   id: string;
-  type: "PRESENTIAL" | "CONSULTANCY";
+  type: "PRESENTIAL" | "CONSULTANCY" | "PRESENTIAL_PACKAGE" | "CONSULTANCY_RENEWAL";
   bookingId: string | null;
   amountCents: number;
   providerAmountCents: number;

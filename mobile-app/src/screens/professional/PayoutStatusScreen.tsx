@@ -516,7 +516,14 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
               const date = new Date(p.capturedAt ?? p.scheduledAt ?? Date.now());
               const dateStr = date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" });
               const methodLabel = p.method === "PIX" ? "PIX" : p.method.includes("CREDIT") ? "Cartão crédito" : p.method.includes("DEBIT") ? "Cartão débito" : "Cartão";
-              const typeLabel = p.type === "CONSULTANCY" ? "Consultoria" : "Sessão";
+              const typeLabel =
+                p.type === "CONSULTANCY"
+                  ? "Consultoria"
+                  : p.type === "CONSULTANCY_RENEWAL"
+                    ? "Renovação de ficha"
+                    : p.type === "PRESENTIAL_PACKAGE"
+                      ? "Pacote presencial"
+                      : "Sessão";
               return (
                 <View key={p.id} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.border }}>
                   <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isCaptured ? theme.primarySubtle : theme.warningSubtle, alignItems: "center", justifyContent: "center", marginRight: 10 }}>

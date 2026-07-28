@@ -170,7 +170,9 @@ describe("Pacote de sessões avulsas (créditos flexíveis redesenhado) — Fren
     });
     packageIds.push(pkg.id);
 
-    const scheduledAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    const scheduledAtDate = new Date(Date.now() + 48 * 60 * 60 * 1000);
+    scheduledAtDate.setHours(14, 0, 0, 0);
+    const scheduledAt = scheduledAtDate.toISOString();
     const booking = await bookingService.create(
       clientId,
       providerId,
@@ -210,7 +212,9 @@ describe("Pacote de sessões avulsas (créditos flexíveis redesenhado) — Fren
       data: { creditsRemainingThisCycle: 0 }
     });
 
-    const scheduledAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    const scheduledAtDate = new Date(Date.now() + 48 * 60 * 60 * 1000);
+    scheduledAtDate.setHours(14, 0, 0, 0);
+    const scheduledAt = scheduledAtDate.toISOString();
     await expect(
       bookingService.create(
         clientId,
@@ -264,7 +268,9 @@ describe("Pacote de sessões avulsas (créditos flexíveis redesenhado) — Fren
     });
     packageIds.push(pkg.id);
 
-    const scheduledAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+    const scheduledAtDate2 = new Date(Date.now() + 72 * 60 * 60 * 1000);
+    scheduledAtDate2.setHours(14, 0, 0, 0);
+    const scheduledAt = scheduledAtDate2.toISOString();
     const booking = await bookingService.create(
       clientId,
       providerId,

@@ -788,7 +788,14 @@ export class PresentialPackageService {
   // cuja data de cobranca ja chegou. Nao reentra num pacote que ja tem uma
   // cobranca pendente em aberto (Pix aguardando pagamento) - essa so volta
   // a ser candidata depois que expireStalePendingPixCharges liberar.
-  // Horario fixo pago em cartao NAO passa por aqui — ver generateDueCardFixedPeriods.
+  // Horario fixo pago em cartao NAO passa por aqui — ver
+  // generateDueCardFixedPeriods — EXCETO a metade presencial de um combo
+  // (consultancyContractId preenchido), que sempre usa chargeCycle desde a
+  // 1a cobranca (purchaseCombo nao tem a mesma ramificacao isCardFixedRecurring
+  // que purchasePackage tem). Raio-X Rodada 2, Lote 4: antes desse ajuste, os
+  // dois filtros eram baseados só em mode+paymentMethod (idênticos pros dois
+  // casos), então um combo trocava de motor de cobrança sozinho a partir do
+  // 2º ciclo — cobrado de uma vez no 1º, por sessão a partir do 2º.
   async chargeDueCycles() {
     const now = new Date();
     const candidates = await prisma.presentialPackage.findMany({
@@ -796,7 +803,10 @@ export class PresentialPackageService {
         status: { in: [PresentialPackageStatus.ACTIVE, PresentialPackageStatus.PAST_DUE] },
         nextBillingAt: { lte: now },
         pendingChargeMpPaymentId: null,
-        NOT: { mode: PresentialPackageMode.FIXED_RECURRING, paymentMethod: ConsultancyPaymentMethod.CREDIT_CARD }
+        OR: [
+          { NOT: { mode: PresentialPackageMode.FIXED_RECURRING, paymentMethod: ConsultancyPaymentMethod.CREDIT_CARD } },
+          { consultancyContractId: { not: null } }
+        ]
       },
       select: { id: true, hasFixedTerm: true, totalCycles: true, nextCycleIndex: true }
     });
@@ -820,6 +830,8 @@ export class PresentialPackageService {
   // Job periodico (payment-jobs.ts): gera o proximo periodo de sessoes dos
   // pacotes de horario fixo pagos em cartao — sem cobrar nada aqui, cada
   // sessao gerada ja nasce com sua propria reserva (ver activateCardFixedPeriod).
+  // consultancyContractId: null exclui a metade presencial de combo, que
+  // segue sempre por chargeDueCycles/chargeCycle (ver comentário lá).
   async generateDueCardFixedPeriods() {
     const now = new Date();
     const candidates = await prisma.presentialPackage.findMany({
@@ -827,6 +839,7 @@ export class PresentialPackageService {
         status: PresentialPackageStatus.ACTIVE,
         mode: PresentialPackageMode.FIXED_RECURRING,
         paymentMethod: ConsultancyPaymentMethod.CREDIT_CARD,
+        consultancyContractId: null,
         nextBillingAt: { lte: now }
       },
       select: { id: true, hasFixedTerm: true, totalCycles: true, nextCycleIndex: true }

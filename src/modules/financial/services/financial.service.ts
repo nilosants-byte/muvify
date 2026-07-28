@@ -230,7 +230,9 @@ export class FinancialService {
       capturedContracts,
       lastMonthCapturedContractsAgg,
       capturedPackageCycles,
-      lastMonthCapturedPackageCyclesAgg
+      lastMonthCapturedPackageCyclesAgg,
+      renewalPlans,
+      lastMonthRenewalPlans
     ] = await Promise.all([
       getEffectiveIncomes(provider.id, m),
       getEffectiveExpenses(provider.id, m),
@@ -285,24 +287,43 @@ export class FinancialService {
       prisma.presentialPackageCycle.aggregate({
         where: { package: { providerId: provider.id }, capturedAt: { gte: lastMonthFrom, lte: lastMonthTo } },
         _sum: { amountCents: true }
+      }),
+      // Raio-X de pagamentos, Rodada 2, Lote 4: renovações de ficha (2ª ficha
+      // em diante) cobram de novo, mas a receita nunca aparecia aqui — só a
+      // 1ª cobrança do contrato (paymentAmountCents/paymentCapturedAt) era
+      // contada. renewalMpPaymentId só é preenchido em renovações de verdade,
+      // nunca na 1ª ficha (ver deliverContract).
+      prisma.trainingPlan.findMany({
+        where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: from, lte: to } },
+        select: { createdAt: true, contract: { select: { paymentAmountCents: true } } },
+        take: 2000
+      }),
+      // mês anterior: renovações de ficha
+      prisma.trainingPlan.findMany({
+        where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: lastMonthFrom, lte: lastMonthTo } },
+        select: { contract: { select: { paymentAmountCents: true } } },
+        take: 2000
       })
     ]);
 
     const appBookingRevenueCents     = completedBookings.reduce((s, b) => s + b.priceCents, 0);
     const appConsultancyRevenueCents = capturedContracts.reduce((s, c) => s + c.paymentAmountCents, 0);
     const appPackageRevenueCents     = capturedPackageCycles.reduce((s, c) => s + (c.amountCents ?? 0), 0);
-    const appRevenueCents            = appBookingRevenueCents + appConsultancyRevenueCents + appPackageRevenueCents;
+    const appRenewalRevenueCents     = renewalPlans.reduce((s, p) => s + (p.contract?.paymentAmountCents ?? 0), 0);
+    const appRevenueCents            = appBookingRevenueCents + appConsultancyRevenueCents + appPackageRevenueCents + appRenewalRevenueCents;
     const confirmedRevenueCents      = confirmedBookingsAgg._sum.priceCents ?? 0;
     const manualRevenueCents         = incomes.reduce((s, i) => s + i.amountCents, 0);
     const totalRevenueCents          = manualRevenueCents + appRevenueCents;
     const totalExpensesCents         = expenses.reduce((s, e) => s + e.amountCents, 0);
     const netProfitCents             = totalRevenueCents - totalExpensesCents;
 
+    const lastMonthRenewalRevenue    = lastMonthRenewalPlans.reduce((s, p) => s + (p.contract?.paymentAmountCents ?? 0), 0);
     const lastMonthManualRevenue     = lastMonthIncomes.reduce((s, i) => s + i.amountCents, 0);
     const lastMonthAppRevenue        =
       (lastMonthCompletedBookingsAgg._sum.priceCents ?? 0)
       + (lastMonthCapturedContractsAgg._sum.paymentAmountCents ?? 0)
-      + (lastMonthCapturedPackageCyclesAgg._sum.amountCents ?? 0);
+      + (lastMonthCapturedPackageCyclesAgg._sum.amountCents ?? 0)
+      + lastMonthRenewalRevenue;
     const lastMonthTotalRevenueCents = lastMonthManualRevenue + lastMonthAppRevenue;
     const growthPct =
       lastMonthTotalRevenueCents === 0
@@ -350,6 +371,10 @@ export class FinancialService {
       // entao aqui os dois campos estao sempre preenchidos de verdade.
       const day = cycle.capturedAt!.toISOString().slice(0, 10);
       dailyMap[day] = (dailyMap[day] ?? 0) + (cycle.amountCents ?? 0);
+    }
+    for (const p of renewalPlans) {
+      const day = p.createdAt.toISOString().slice(0, 10);
+      dailyMap[day] = (dailyMap[day] ?? 0) + (p.contract?.paymentAmountCents ?? 0);
     }
 
     return {
@@ -845,7 +870,7 @@ export class FinancialService {
   async getPayouts(userId: string) {
     const provider = await getProviderByUserId(userId);
 
-    const [payments, contracts, packageCycles] = await Promise.all([
+    const [payments, contracts, packageCycles, renewalPlans] = await Promise.all([
       prisma.payment.findMany({
         where: {
           booking: { providerId: provider.id },
@@ -900,6 +925,25 @@ export class FinancialService {
         },
         orderBy: { capturedAt: "desc" },
         take: 50
+      }),
+      // Raio-X de pagamentos, Rodada 2, Lote 4: renovações de ficha (2ª ficha
+      // em diante) somem da lista de repasses — só a 1ª cobrança do contrato
+      // (via contractTransactions acima) aparecia. Cada renovação cobra o
+      // mesmo valor do contrato original (ver chargeFichaRenewal), então o
+      // split (providerAmountCents/platformAmountCents) do contrato se
+      // aplica igual a cada renovação.
+      prisma.trainingPlan.findMany({
+        where: { providerId: provider.id, renewalMpPaymentId: { not: null } },
+        select: {
+          id: true,
+          createdAt: true,
+          renewalMpPaymentId: true,
+          contract: {
+            select: { paymentAmountCents: true, providerAmountCents: true, platformAmountCents: true, paymentMethod: true }
+          }
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50
       })
     ]);
 
@@ -950,7 +994,22 @@ export class FinancialService {
       scheduledAt:         null as string | null
     }));
 
-    const transactions = [...bookingTransactions, ...contractTransactions, ...packageCycleTransactions]
+    const renewalTransactions = renewalPlans
+      .filter((plan) => plan.contract)
+      .map((plan) => ({
+        id:                  plan.id,
+        type:                "CONSULTANCY_RENEWAL" as const,
+        bookingId:           null as string | null,
+        amountCents:         plan.contract!.paymentAmountCents,
+        providerAmountCents: plan.contract!.providerAmountCents,
+        platformFeeCents:    plan.contract!.platformAmountCents,
+        method:              (plan.contract!.paymentMethod ?? "CREDIT_CARD") as string,
+        status:              "CAPTURED" as string,
+        capturedAt:          plan.createdAt.toISOString(),
+        scheduledAt:         null as string | null
+      }));
+
+    const transactions = [...bookingTransactions, ...contractTransactions, ...packageCycleTransactions, ...renewalTransactions]
       .sort((a, b) => (b.capturedAt ?? "").localeCompare(a.capturedAt ?? ""))
       .slice(0, 50);
 
@@ -958,7 +1017,8 @@ export class FinancialService {
       pendingCents:   pending.reduce((s, p)  => s + netFor(p), 0),
       availableCents: captured.reduce((s, p) => s + netFor(p), 0)
         + contracts.reduce((s, c) => s + c.providerAmountCents, 0)
-        + packageCycles.reduce((s, c) => s + (c.providerAmountCents ?? 0), 0),
+        + packageCycles.reduce((s, c) => s + (c.providerAmountCents ?? 0), 0)
+        + renewalTransactions.reduce((s, r) => s + r.providerAmountCents, 0),
       payments: transactions
     };
   }
