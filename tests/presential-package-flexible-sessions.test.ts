@@ -184,7 +184,8 @@ describe("Pacote de sessões avulsas (créditos flexíveis redesenhado) — Fren
       undefined,
       undefined,
       undefined,
-      pkg.id
+      pkg.id,
+      true
     );
 
     expect(booking.priceCents).toBe(8000);
@@ -227,7 +228,8 @@ describe("Pacote de sessões avulsas (créditos flexíveis redesenhado) — Fren
         undefined,
         undefined,
         undefined,
-        pkg.id
+        pkg.id,
+        true
       )
     ).rejects.toThrow(/sessões/);
   });
@@ -282,7 +284,8 @@ describe("Pacote de sessões avulsas (créditos flexíveis redesenhado) — Fren
       undefined,
       undefined,
       undefined,
-      pkg.id
+      pkg.id,
+      true
     );
 
     const cancelled = await packageService.cancelPackage(clientId, pkg.id);

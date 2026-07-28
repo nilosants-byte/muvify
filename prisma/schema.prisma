@@ -457,6 +457,7 @@ model Booking {
   completedAt               DateTime?
   reminder60SentAt          DateTime?
   reminder30SentAt          DateTime?
+  immediateExecutionAcknowledgedAt DateTime?
   createdAt                 DateTime             @default(now())
   updatedAt                 DateTime             @updatedAt
   client                    User                 @relation("ClientBookings", fields: [clientId], references: [id], onDelete: Cascade)

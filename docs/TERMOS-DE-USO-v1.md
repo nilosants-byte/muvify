@@ -383,6 +383,8 @@ Para exercer o direito de arrependimento, acesse Configurações → Meus Agenda
 
 **Exceção — consultoria e planos de treino online (Cláusula 8):** ao aceitar uma proposta de consultoria, o Aluno **solicita expressamente o início imediato do atendimento** e é informado, nesse momento, de que perde o direito de arrependimento de 7 dias em relação a essa contratação, conforme permite o próprio art. 49 do CDC para serviços cuja execução é iniciada mediante consentimento expresso do consumidor. Em substituição, aplica-se a regra específica da Cláusula 10.3: o Aluno pode cancelar com reembolso integral **a qualquer momento antes da entrega da primeira ficha de treino** — sem precisar aguardar (nem ficar limitado a) o prazo de 7 dias — perdendo esse direito assim que a ficha é entregue.
 
+**Exceção — agendamento presencial marcado para menos de 7 dias:** quando o Aluno agenda uma sessão presencial (avulsa ou de pacote) para uma data com **menos de 7 dias corridos** de antecedência, a sessão pode ocorrer e se encerrar antes que o prazo de 7 dias de reflexão termine. Nesse caso, ao confirmar o agendamento o Aluno **solicita expressamente o início imediato do atendimento** e é informado de que, em substituição ao prazo de 7 dias, aplica-se a partir dali a regra específica da Cláusula 10.2 (cancelamento com 2 horas ou mais de antecedência). Agendamentos marcados para 7 dias ou mais de antecedência não são afetados por esta exceção.
+
 ### 10.2 Cancelamento de Agendamentos Presenciais
 
 | Quem cancela | Antecedência | Consequência |

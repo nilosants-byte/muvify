@@ -1974,6 +1974,7 @@ export const bookingsApi = {
       clientLatitude?: number;
       clientLongitude?: number;
       packageId?: string;
+      acknowledgedImmediateExecution?: boolean;
     }
   ) {
     return apiRequest<Booking>("/bookings", { method: "POST", token, body });

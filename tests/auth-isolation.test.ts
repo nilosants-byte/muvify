@@ -106,7 +106,7 @@ describe("auth-isolation", () => {
     const bookingRes = await request(app)
       .post("/api/bookings")
       .set("Authorization", `Bearer ${clientAToken}`)
-      .send({ providerId: providerAId, categoryId, scheduledAt, notes: "Isolamento" });
+      .send({ providerId: providerAId, categoryId, scheduledAt, notes: "Isolamento", acknowledgedImmediateExecution: true });
 
     if (bookingRes.status === 201 && bookingRes.body?.id) {
       bookingId = bookingRes.body.id;

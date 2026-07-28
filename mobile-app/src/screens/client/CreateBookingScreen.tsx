@@ -178,6 +178,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
   const hasInitialized = useRef(false);
 
   const [selectedDateKeys, setSelectedDateKeys] = useState<string[]>([]);
+  const [immediateExecutionAcknowledged, setImmediateExecutionAcknowledged] = useState(false);
   const [selectedSlotsByDate, setSelectedSlotsByDate] = useState<Record<string, string>>({});
 
   const [sessionLocation, setSessionLocation] = useState<string | null>(null);
@@ -256,6 +257,18 @@ export function CreateBookingScreen({ navigation, route }: Props) {
 
   const selectedLessonsCount = selectedDateKeys.length;
   const totalSelectedPriceCents = Math.max(0, unitPriceCents) * selectedLessonsCount;
+
+  // Raio-X de pagamentos, Rodada 3, Lote 5: agendamento pra menos de 7 dias
+  // pode ter o cancelamento resolvido (regra das 2h) antes do prazo de
+  // arrependimento do CDC terminar — exige confirmação explícita nesse caso.
+  const hasNearTermDate = useMemo(
+    () =>
+      selectedDateKeys.some((dateKey) => {
+        const daysUntil = (fromIsoDate(dateKey).getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+        return daysUntil < 7;
+      }),
+    [selectedDateKeys]
+  );
 
   const loadMonthSchedule = useCallback(
     async (month: Date, force = false) => {
@@ -443,6 +456,10 @@ export function CreateBookingScreen({ navigation, route }: Props) {
       showToast("Configure um método de pagamento antes de agendar.", "error");
       return;
     }
+    if (hasNearTermDate && !immediateExecutionAcknowledged) {
+      showToast("Confirme a ciência sobre o início imediato do atendimento para agendar com menos de 7 dias de antecedência.", "error");
+      return;
+    }
 
     try {
       setCreating(true);
@@ -467,6 +484,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
               clientLatitude: sessionLocation === "A domicílio" ? homeAddressCoords?.lat : undefined,
               clientLongitude: sessionLocation === "A domicílio" ? homeAddressCoords?.lng : undefined,
               packageId: packageIdFromRoute || undefined,
+              acknowledgedImmediateExecution: immediateExecutionAcknowledged || undefined,
             })
           );
           createdBookingIds.push(booking.id);
@@ -878,14 +896,37 @@ export function CreateBookingScreen({ navigation, route }: Props) {
           </Text>
         </View>
 
+        {hasNearTermDate ? (
+          <TouchableOpacity
+            onPress={() => setImmediateExecutionAcknowledged((current) => !current)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: immediateExecutionAcknowledged }}
+            style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad }}
+          >
+            <Ionicons
+              name={immediateExecutionAcknowledged ? "checkbox" : "square-outline"}
+              size={18}
+              color={immediateExecutionAcknowledged ? theme.primary : theme.text3}
+            />
+            <Text style={{ flex: 1, fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text2 }}>
+              Peço o início imediato do atendimento e estou ciente de que, com o agendamento marcado para menos de 7 dias, o cancelamento segue a regra de 2h acima em vez do prazo de arrependimento de 7 dias previsto no CDC.
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
         {/* Botão CTA V2 com safe area */}
         <View style={{ paddingBottom: Math.max(16, insets.bottom) }}>
           <TouchableOpacity
-            disabled={creating || !anamnesisCompleted || (selectedPaymentMethod === "CARD" && !paymentReady)}
+            disabled={
+              creating ||
+              !anamnesisCompleted ||
+              (selectedPaymentMethod === "CARD" && !paymentReady) ||
+              (hasNearTermDate && !immediateExecutionAcknowledged)
+            }
             onPress={() => { hapticCta(); void handleContinue(); }}
             style={{
               height: S.btnH, borderRadius: S.btnR,
-              backgroundColor: (!anamnesisCompleted || (selectedPaymentMethod === "CARD" && !paymentReady)) ? "rgba(36,230,109,0.4)" : theme.primary,
+              backgroundColor: (!anamnesisCompleted || (selectedPaymentMethod === "CARD" && !paymentReady) || (hasNearTermDate && !immediateExecutionAcknowledged)) ? "rgba(36,230,109,0.4)" : theme.primary,
               alignItems: "center", justifyContent: "center",
               shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
               opacity: creating ? 0.7 : 1,

@@ -110,7 +110,13 @@ describe("Rede de seguranca de estorno — cancelPaymentForBooking (Lote 1 do ra
       categoryId,
       scheduledAt.toISOString(),
       undefined,
-      "CREDIT_CARD" as any
+      "CREDIT_CARD" as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true
     );
     bookingIds.push(booking.id);
 
@@ -134,7 +140,13 @@ describe("Rede de seguranca de estorno — cancelPaymentForBooking (Lote 1 do ra
       categoryId,
       scheduledAt.toISOString(),
       undefined,
-      "CREDIT_CARD" as any
+      "CREDIT_CARD" as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true
     );
     bookingIds.push(booking.id);
 

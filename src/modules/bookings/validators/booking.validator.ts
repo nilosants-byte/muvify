@@ -12,28 +12,45 @@ const completionProofSchema = z.object({
 });
 
 export const createBookingSchema = z.object({
-  body: z.object({
-    providerId: z.string().uuid(),
-    categoryId: z.string().uuid(),
-    scheduledAt: z.string().datetime({ offset: true }).refine(
-      (d) => {
-        const date = new Date(d);
-        const max = new Date();
-        max.setFullYear(max.getFullYear() + 1);
-        return date > new Date() && date <= max;
-      },
-      { message: "Agendamento deve ser no futuro e com no maximo 1 ano de antecedencia." }
-    ),
-    offerId: z.string().uuid().optional(),
-    paymentMethod: z.enum(["CARD", "CREDIT_CARD", "DEBIT_CARD", "PIX"]).default("CREDIT_CARD"),
-    notes: z.string().trim().max(500).optional(),
-    sessionLocation: z.string().trim().max(300).optional(),
-    clientLatitude: z.number().min(-90).max(90).optional(),
-    clientLongitude: z.number().min(-180).max(180).optional(),
-    // Agendamento pago com credito de um pacote presencial (FLEXIBLE_CREDITS) -
-    // quando presente, o preco e ignorado (ja foi cobrado no ciclo).
-    packageId: z.string().uuid().optional()
-  })
+  body: z
+    .object({
+      providerId: z.string().uuid(),
+      categoryId: z.string().uuid(),
+      scheduledAt: z.string().datetime({ offset: true }).refine(
+        (d) => {
+          const date = new Date(d);
+          const max = new Date();
+          max.setFullYear(max.getFullYear() + 1);
+          return date > new Date() && date <= max;
+        },
+        { message: "Agendamento deve ser no futuro e com no maximo 1 ano de antecedencia." }
+      ),
+      offerId: z.string().uuid().optional(),
+      paymentMethod: z.enum(["CARD", "CREDIT_CARD", "DEBIT_CARD", "PIX"]).default("CREDIT_CARD"),
+      notes: z.string().trim().max(500).optional(),
+      sessionLocation: z.string().trim().max(300).optional(),
+      clientLatitude: z.number().min(-90).max(90).optional(),
+      clientLongitude: z.number().min(-180).max(180).optional(),
+      // Agendamento pago com credito de um pacote presencial (FLEXIBLE_CREDITS) -
+      // quando presente, o preco e ignorado (ja foi cobrado no ciclo).
+      packageId: z.string().uuid().optional(),
+      // Raio-X de pagamentos, Rodada 3, Lote 5: so obrigatorio quando o
+      // agendamento e pra menos de 7 dias (regra dos 2h de cancelamento
+      // pode vencer o prazo de arrependimento do CDC antes dele terminar).
+      acknowledgedImmediateExecution: z.boolean().optional()
+    })
+    .superRefine((value, ctx) => {
+      const scheduled = new Date(value.scheduledAt);
+      if (Number.isNaN(scheduled.getTime())) return;
+      const daysUntilScheduled = (scheduled.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+      if (daysUntilScheduled < 7 && value.acknowledgedImmediateExecution !== true) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Como este horário é em menos de 7 dias, é necessário confirmar a ciência sobre o início imediato do atendimento.",
+          path: ["acknowledgedImmediateExecution"]
+        });
+      }
+    })
 });
 export const updateBookingStatusSchema = z.object({
   body: z

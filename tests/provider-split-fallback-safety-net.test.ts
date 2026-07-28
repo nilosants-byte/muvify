@@ -145,7 +145,13 @@ describe("Nunca cobra sem split resolvido (Rodada 2, Lote 1 do raio-x)", () => {
       categoryId,
       scheduledAt.toISOString(),
       undefined,
-      method
+      method,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true
     );
     bookingIds.push(booking.id);
     return booking;

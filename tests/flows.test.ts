@@ -113,7 +113,7 @@ describe("flows", () => {
     const bookingResponse = await request(app)
       .post("/api/bookings")
       .set("Authorization", `Bearer ${clientToken}`)
-      .send({ providerId, categoryId, scheduledAt, notes: "Teste" });
+      .send({ providerId, categoryId, scheduledAt, notes: "Teste", acknowledgedImmediateExecution: true });
 
     if (bookingResponse.status === 201 && bookingResponse.body?.id) {
       bookingId = bookingResponse.body.id;

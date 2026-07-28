@@ -201,7 +201,7 @@ describe("DebtRecord — pendências financeiras entre disputa e cobrança (Fren
       }
     });
 
-    const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const futureDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
     await expect(
       bookingService.create(clientId, "nonexistent-provider", categoryId, futureDate)
     ).rejects.toThrow(/pendência/i);

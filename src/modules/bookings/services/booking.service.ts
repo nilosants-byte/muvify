@@ -138,11 +138,28 @@ export class BookingService {
     sessionLocation?: string,
     clientLatitude?: number,
     clientLongitude?: number,
-    packageId?: string
+    packageId?: string,
+    acknowledgedImmediateExecution?: boolean
   ) {
     const scheduleDate = new Date(scheduledAt);
     if (Number.isNaN(scheduleDate.getTime()) || scheduleDate <= new Date()) {
       throw new AppError("Data de agendamento inválida.");
+    }
+
+    // Raio-X de pagamentos, Rodada 3, Lote 5: a regra de cancelamento com
+    // menos de 2h de antecedência pode "vencer" antes do prazo de
+    // arrependimento de 7 dias do CDC (art. 49) terminar, quando o
+    // agendamento é marcado pra menos de 7 dias — o atendimento acontece e
+    // se completa antes do prazo legal de reflexão acabar. Mesmo carve-out
+    // já usado na consultoria: exige consentimento expresso ao início
+    // imediato do atendimento pra dispensar o prazo nesse caso específico.
+    // Agendamento pra 7 dias ou mais nunca esbarra nisso.
+    const daysUntilScheduled = (scheduleDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    if (daysUntilScheduled < 7 && acknowledgedImmediateExecution !== true) {
+      throw new AppError(
+        "Como este horário é em menos de 7 dias, é necessário confirmar a ciência sobre o início imediato do atendimento para agendar.",
+        StatusCodes.BAD_REQUEST
+      );
     }
 
     await debtService.assertNoOutstandingDebt(clientId);
@@ -401,7 +418,8 @@ export class BookingService {
           scheduledAt: scheduleDate,
           priceCents: bookingPriceCents,
           notes,
-          sessionLocation: sessionLocation ?? null
+          sessionLocation: sessionLocation ?? null,
+          immediateExecutionAcknowledgedAt: acknowledgedImmediateExecution === true ? new Date() : null
         },
         include: {
           category: true,
