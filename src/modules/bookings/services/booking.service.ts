@@ -418,6 +418,19 @@ export class BookingService {
           : offer.priceCents;
       }
 
+      // Raio-X de pagamentos, Rodada 4, Lote 4: até 24h pro profissional
+      // confirmar, mas nunca além de 2h antes do horário marcado (mesmo
+      // limite da regra de cancelamento) — pra sempre sobrar tempo real de
+      // cancelar e reembolsar antes da sessão, mesmo em agendamentos com
+      // pouca antecedência.
+      const confirmationNow = new Date();
+      const maxConfirmationDeadline = new Date(scheduleDate.getTime() - 2 * 60 * 60 * 1000);
+      const defaultConfirmationDeadline = new Date(confirmationNow.getTime() + 24 * 60 * 60 * 1000);
+      const confirmationDeadlineAt =
+        defaultConfirmationDeadline < maxConfirmationDeadline
+          ? defaultConfirmationDeadline
+          : maxConfirmationDeadline;
+
       const booking = await tx.booking.create({
         data: {
           clientId,
@@ -428,7 +441,8 @@ export class BookingService {
           priceCents: bookingPriceCents,
           notes,
           sessionLocation: sessionLocation ?? null,
-          immediateExecutionAcknowledgedAt: acknowledgedImmediateExecution === true ? new Date() : null
+          immediateExecutionAcknowledgedAt: acknowledgedImmediateExecution === true ? new Date() : null,
+          confirmationDeadlineAt
         },
         include: {
           category: true,
@@ -774,7 +788,86 @@ export class BookingService {
     }
   }
 
+  // Raio-X de pagamentos, Rodada 4, Lote 4: avisa o profissional quando o
+  // prazo de confirmação de um agendamento avulso está perto de vencer —
+  // mesma lógica de "due dentro da janela" usada nos lembretes de vencimento
+  // de consultoria, só que sem ponto fixo (o prazo varia por agendamento).
+  async sendBookingConfirmationReminders(referenceDate = new Date()) {
+    const reminderWindowMs = 2 * 60 * 60 * 1000;
+    const dueSoon = await prisma.booking.findMany({
+      where: {
+        status: BookingStatus.PENDING,
+        confirmationReminderSentAt: null,
+        confirmationDeadlineAt: {
+          gt: referenceDate,
+          lte: new Date(referenceDate.getTime() + reminderWindowMs)
+        }
+      },
+      select: { id: true, provider: { select: { userId: true } } }
+    });
+
+    if (dueSoon.length === 0) {
+      return;
+    }
+
+    await prisma.booking.updateMany({
+      where: { id: { in: dueSoon.map((b) => b.id) }, confirmationReminderSentAt: null },
+      data: { confirmationReminderSentAt: referenceDate }
+    });
+    for (const booking of dueSoon) {
+      void notificationService
+        .sendToUsers([booking.provider.userId], {
+          preferenceType: "BOOKINGS",
+          title: "Confirme o agendamento",
+          body: "Você tem um agendamento pendente de confirmação — o prazo está acabando.",
+          data: { type: "BOOKING_CONFIRMATION_DUE_SOON", bookingId: booking.id }
+        })
+        .catch((e) => console.error("Booking confirmation reminder failed:", e));
+    }
+  }
+
   async autoExpireStaleBookings(referenceDate = new Date()) {
+    // Raio-X de pagamentos, Rodada 4, Lote 4: PENDING que passou do prazo de
+    // confirmação mas cujo horário da sessão ainda não chegou — cancela e
+    // reembolsa antes que o cliente descubra em cima da hora que ninguém
+    // confirmou. O bloco abaixo (scheduledAt já passado) cobre o resto.
+    const expiredConfirmationDeadline = await prisma.booking.findMany({
+      where: {
+        status: BookingStatus.PENDING,
+        confirmationDeadlineAt: { lte: referenceDate },
+        scheduledAt: { gt: referenceDate }
+      },
+      select: {
+        id: true,
+        clientId: true,
+        provider: { select: { userId: true } }
+      }
+    });
+
+    const CONFIRMATION_DEADLINE_CONCURRENCY = 5;
+    for (let i = 0; i < expiredConfirmationDeadline.length; i += CONFIRMATION_DEADLINE_CONCURRENCY) {
+      await Promise.allSettled(
+        expiredConfirmationDeadline.slice(i, i + CONFIRMATION_DEADLINE_CONCURRENCY).map(async (booking) => {
+          const updated = await prisma.booking.updateMany({
+            where: { id: booking.id, status: BookingStatus.PENDING },
+            data: { status: BookingStatus.CANCELLED }
+          });
+          if (updated.count === 0) return;
+          await paymentService.cancelPaymentForBooking(booking.id).catch((err) => {
+            console.error("autoExpire confirmation deadline: cancel payment failed for booking", booking.id, err);
+          });
+          void notificationService
+            .sendToUsers([booking.clientId, booking.provider.userId], {
+              preferenceType: "BOOKINGS",
+              title: "Agendamento cancelado: prazo de confirmação vencido",
+              body: "O profissional não confirmou o agendamento dentro do prazo e o valor foi estornado.",
+              data: { type: "BOOKING_CONFIRMATION_DEADLINE_EXPIRED", bookingId: booking.id }
+            })
+            .catch((error) => console.error("Booking confirmation deadline notification failed:", error));
+        })
+      );
+    }
+
     // Cancel PENDING bookings whose scheduledAt has already passed
     const expiredPending = await prisma.booking.findMany({
       where: {

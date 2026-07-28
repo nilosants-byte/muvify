@@ -44,6 +44,7 @@ export function startReminderJob() {
       await Promise.race([
         Promise.all([
           bookingService.sendSessionReminders(),
+          bookingService.sendBookingConfirmationReminders(),
           consultancyService.sendConsultancyExpiryReminders(),
           consultancyService.expireStaleConsultancyRequests(),
           consultancyService.expireStalePendingPixConsultancyContracts(),

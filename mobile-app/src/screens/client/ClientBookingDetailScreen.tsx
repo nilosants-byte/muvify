@@ -605,6 +605,11 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: bs.color }}>{bs.label}</Text>
                 </View>
               </View>
+              {booking.status === "PENDING" && booking.confirmationDeadlineAt ? (
+                <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 6 }}>
+                  Se o profissional não confirmar até {formatBRDateTime(booking.confirmationDeadlineAt)}, o agendamento é cancelado e o valor estornado automaticamente.
+                </Text>
+              ) : null}
             </View>
           </View>
         </View>

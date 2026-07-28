@@ -458,6 +458,12 @@ model Booking {
   reminder60SentAt          DateTime?
   reminder30SentAt          DateTime?
   immediateExecutionAcknowledgedAt DateTime?
+  // Raio-X de pagamentos, Rodada 4, Lote 4: diferente de consultoria (que já
+  // tinha responseDeadlineAt desde a Rodada 1), agendamento avulso não tinha
+  // nenhum prazo pro profissional confirmar — só expirava depois que o
+  // horário da sessão já tinha passado.
+  confirmationDeadlineAt      DateTime?
+  confirmationReminderSentAt  DateTime?
   createdAt                 DateTime             @default(now())
   updatedAt                 DateTime             @updatedAt
   client                    User                 @relation("ClientBookings", fields: [clientId], references: [id], onDelete: Cascade)

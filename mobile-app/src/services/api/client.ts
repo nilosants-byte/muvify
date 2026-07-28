@@ -153,6 +153,7 @@ export type Booking = {
   clientConfirmedAt?: string | null;
   providerConfirmedAt?: string | null;
   completedAt?: string | null;
+  confirmationDeadlineAt?: string | null;
   attendanceCodeValidatedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
