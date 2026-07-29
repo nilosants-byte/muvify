@@ -58,7 +58,7 @@ function ActionRow({
 
 export function SecurityScreen({ navigation }: { navigation?: any }) {
   const { theme } = useMvTheme();
-  const { refreshSession, runWithAuth, showToast } = useAppState();
+  const { runWithAuth, showToast } = useAppState();
   const queryClient = useQueryClient();
 
   const recoveryEmailQuery = useAuthQuery(
@@ -78,10 +78,6 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
   const [recoveryModalVisible, setRecoveryModalVisible] = useState(false);
   const [recoverySaving, setRecoverySaving] = useState(false);
   const [editRecoveryEmail, setEditRecoveryEmail] = useState("");
-  const [emailModalVisible, setEmailModalVisible] = useState(false);
-  const [newAccountEmail, setNewAccountEmail] = useState("");
-  const [confirmAccountEmail, setConfirmAccountEmail] = useState("");
-  const [emailSaving, setEmailSaving] = useState(false);
 
   async function submitPasswordChange() {
     if (!currentPassword || !newPassword || !confirmNewPassword) {
@@ -146,44 +142,6 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
     }
   }
 
-  async function submitAccountEmailChange() {
-    const normalized = newAccountEmail.trim().toLowerCase();
-    const normalizedConfirm = confirmAccountEmail.trim().toLowerCase();
-
-    if (!normalized || !normalizedConfirm) {
-      showToast("Informe e confirme o novo e-mail.", "error");
-      return;
-    }
-    if (normalized !== normalizedConfirm) {
-      showToast("A confirmação do e-mail não confere.", "error");
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
-      showToast("E-mail inválido.", "error");
-      return;
-    }
-    if (accountEmail && normalized === accountEmail.toLowerCase()) {
-      showToast("O novo e-mail é igual ao e-mail atual.", "info");
-      return;
-    }
-
-    try {
-      setEmailSaving(true);
-      // TODO: mudança de email requer endpoint dedicado — funcionalidade temporariamente desabilitada
-      throw new Error("Mudança de e-mail temporariamente indisponível. Contate o suporte.");
-      await refreshSession();
-      showToast("E-mail de login atualizado.", "success");
-      setEmailModalVisible(false);
-      setNewAccountEmail("");
-      setConfirmAccountEmail("");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao atualizar e-mail de login.";
-      showToast(message, "error");
-    } finally {
-      setEmailSaving(false);
-    }
-  }
-
   return (
     <>
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -202,15 +160,16 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
               onPress={() => setPasswordModalVisible(true)}
             />
             <View style={{ height: 1, backgroundColor: theme.borderSub }} />
+            {/* Raio-X de pagamentos, Rodada 4, Lote 11: essa ação sempre lançava
+                "Mudança de e-mail temporariamente indisponível" — não existe
+                endpoint dedicado ainda. Mesmo tratamento "Em breve" já usado
+                pra 2FA, em vez de deixar o usuário preencher o formulário só
+                pra descobrir que não funciona. */}
             <ActionRow
               icon="at-outline"
               title="Alterar e-mail de login"
               subtitle={accountEmail ? `Atual: ${accountEmail}` : "Defina o e-mail usado para entrar no app"}
-              onPress={() => {
-                setNewAccountEmail("");
-                setConfirmAccountEmail("");
-                setEmailModalVisible(true);
-              }}
+              badge={{ label: "Em breve", variant: "gray" }}
             />
             <View style={{ height: 1, backgroundColor: theme.borderSub }} />
             <ActionRow
@@ -293,55 +252,6 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
                 label="Alterar senha"
                 loading={passwordSaving}
                 onPress={() => void submitPasswordChange()}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        transparent
-        animationType="fade"
-        visible={emailModalVisible}
-        onRequestClose={() => setEmailModalVisible(false)}
-      >
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "center", padding: 20 }}>
-          <Pressable
-            style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
-            onPress={() => setEmailModalVisible(false)}
-          />
-          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16, gap: 10 }}>
-            <MvText variant="semi1">Alterar e-mail de login</MvText>
-            <MvText variant="body4" color="secondary">
-              E-mail atual: {accountEmail || "não informado"}
-            </MvText>
-            <MvInput
-              label="Novo e-mail"
-              value={newAccountEmail}
-              onChangeText={setNewAccountEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-            <MvInput
-              label="Confirmar novo e-mail"
-              value={confirmAccountEmail}
-              onChangeText={setConfirmAccountEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <MvButton
-                variant="outline"
-                style={{ flex: 1 }}
-                label="Cancelar"
-                onPress={() => setEmailModalVisible(false)}
-              />
-              <MvButton
-                style={{ flex: 1 }}
-                label="Salvar e-mail"
-                loading={emailSaving}
-                onPress={() => void submitAccountEmailChange()}
               />
             </View>
           </View>

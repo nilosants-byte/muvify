@@ -647,6 +647,9 @@ export class PresentialPackageService {
           status: PresentialPackageStatus.ACTIVE,
           nextCycleIndex: cycleIndex + 1,
           nextBillingAt: periodEnd,
+          // Reseta pra que o lembrete da próxima cobrança (Rodada 4, Lote 11)
+          // dispare de novo no ciclo seguinte, e não só uma vez na vida do pacote.
+          billingReminderSentAt: null,
           consecutiveFailedCycles: 0,
           lastBillingFailureReason: null,
           pendingChargeMpPaymentId: null,
@@ -749,6 +752,9 @@ export class PresentialPackageService {
           status: PresentialPackageStatus.ACTIVE,
           nextCycleIndex: cycleIndex + 1,
           nextBillingAt: periodEnd,
+          // Reseta pra que o lembrete da próxima cobrança (Rodada 4, Lote 11)
+          // dispare de novo no ciclo seguinte, e não só uma vez na vida do pacote.
+          billingReminderSentAt: null,
           consecutiveFailedCycles: 0,
           lastBillingFailureReason: null,
           validFrom: isFirstCycle ? periodStart : pkg.validFrom,
@@ -1024,6 +1030,35 @@ export class PresentialPackageService {
           ? `Seu pacote venceu com ${pkg.creditsRemainingThisCycle} sessão(ões) ainda não usada(s).`
           : "Seu pacote de sessões venceu.",
         data: { type: "PRESENTIAL_PACKAGE_EXPIRED", packageId: pkg.id }
+      });
+    }
+  }
+
+  // Raio-X de pagamentos, Rodada 4, Lote 11: mesmo padrão do lembrete de
+  // vencimento de créditos (acima) — aqui pra avisar antes da próxima
+  // cobrança automática de um pacote recorrente (FIXED_RECURRING), que hoje
+  // só acontecia sem aviso nenhum ao cliente.
+  async sendPresentialPackageBillingReminders(referenceDate = new Date()) {
+    const soon = new Date(referenceDate.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+    const dueSoon = await prisma.presentialPackage.findMany({
+      where: {
+        mode: PresentialPackageMode.FIXED_RECURRING,
+        status: PresentialPackageStatus.ACTIVE,
+        nextBillingAt: { gte: referenceDate, lte: soon },
+        billingReminderSentAt: null
+      }
+    });
+    for (const pkg of dueSoon) {
+      await notificationService.sendToUsers([pkg.clientId], {
+        preferenceType: "PAYMENTS",
+        title: "Próxima cobrança do seu pacote está chegando",
+        body: `Sua próxima cobrança de ${(pkg.cycleAmountCents / 100).toFixed(2).replace(".", ",")} será processada em breve.`,
+        data: { type: "PRESENTIAL_PACKAGE_BILLING_DUE_SOON", packageId: pkg.id }
+      });
+      await prisma.presentialPackage.update({
+        where: { id: pkg.id },
+        data: { billingReminderSentAt: new Date() }
       });
     }
   }

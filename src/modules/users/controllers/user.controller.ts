@@ -3,8 +3,10 @@ import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../../shared/errors/app-error";
 import { verifyUserPhotoSignature } from "../../../shared/utils/user-photo-signature";
 import { UserService } from "../services/user.service";
+import { DisputeCaseService } from "../../admin/services/dispute-case.service";
 
 const userService = new UserService();
+const disputeCaseService = new DisputeCaseService();
 
 export class UserController {
   async streamPhoto(request: Request, response: Response) {
@@ -23,6 +25,11 @@ export class UserController {
     response.setHeader("Content-Length", String(buffer.length));
     response.setHeader("Cache-Control", "private, max-age=300");
     return response.status(StatusCodes.OK).send(buffer);
+  }
+
+  async myDisputes(request: Request, response: Response) {
+    const disputes = await disputeCaseService.listMyDisputes(request.user!.id);
+    return response.json(disputes);
   }
 
   async me(request: Request, response: Response) {

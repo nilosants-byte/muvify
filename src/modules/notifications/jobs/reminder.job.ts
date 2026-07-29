@@ -52,6 +52,7 @@ export function startReminderJob() {
           consultancyService.sendFichaExpiryReminders(),
           consultancyService.escalateExpiredFichaContracts(),
           presentialPackageService.sendFlexibleSessionPackExpiryReminders(),
+          presentialPackageService.sendPresentialPackageBillingReminders(),
         ]),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("Reminder job timeout after 120s")), JOB_TIMEOUT_MS)

@@ -167,6 +167,10 @@ export const queryKeys = {
     my: () => ["debts", "my"] as const,
     providerList: () => ["debts", "providerList"] as const,
   },
+  disputes: {
+    all: ["disputes"] as const,
+    mine: () => ["disputes", "mine"] as const,
+  },
 
   // ── Comunidade ─────────────────────────────────────────────────────────────
   community: {

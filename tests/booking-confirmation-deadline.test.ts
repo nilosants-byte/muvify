@@ -66,12 +66,16 @@ describe("Prazo de confirmação do agendamento avulso (Rodada 4, Lote 4)", () =
     });
     providerId = provider.id;
 
+    // Disponibilidade 24h em todos os dias — o teste de prazo limitado a 2h
+    // antes do horário marcado usa scheduledAt relativo a "agora" (não a um
+    // horário fixo), e uma janela 06:00-22:00 faria o teste falhar de forma
+    // determinística dependendo da hora do dia em que a suíte roda.
     await prisma.availability.createMany({
       data: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
         providerId,
         weekday,
-        startTime: "06:00",
-        endTime: "22:00",
+        startTime: "00:00",
+        endTime: "23:59",
         isActive: true
       }))
     });

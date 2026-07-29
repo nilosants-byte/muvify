@@ -50,6 +50,32 @@ export class DisputeCaseService {
     return admin;
   }
 
+  // Raio-X de pagamentos, Rodada 4, Lote 11: cliente não tinha nenhum lugar
+  // central pra acompanhar as próprias disputas em andamento — só o texto
+  // genérico "está em análise" em algum outro fluxo, sem histórico nem
+  // status real. Auto-atendimento (sem ensureAdminAccess): cada um só vê os
+  // próprios casos, como cliente ou como profissional.
+  async listMyDisputes(userId: string) {
+    return prisma.disputeCase.findMany({
+      where: { OR: [{ clientId: userId }, { provider: { userId } }] },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        amountCents: true,
+        resolution: true,
+        resolvedAmountCents: true,
+        resolutionNote: true,
+        createdAt: true,
+        resolvedAt: true,
+        clientId: true,
+        provider: { select: { id: true, displayName: true, userId: true } }
+      }
+    });
+  }
+
   async listCases(adminId: string, status?: DisputeCaseStatus) {
     await this.ensureAdminAccess(adminId);
     console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=listDisputeCases status=${status ?? "all"}`);

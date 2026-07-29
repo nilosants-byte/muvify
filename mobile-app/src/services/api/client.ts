@@ -1410,6 +1410,9 @@ export const userApi = {
   myAnamnesis(token: string) {
     return apiRequest<ClientAnamnesisProfile>("/users/me/anamnesis", { token });
   },
+  myDisputes(token: string) {
+    return apiRequest<MyDisputeCase[]>("/users/me/disputes", { token });
+  },
   upsertMyAnamnesis(
     token: string,
     input: {
@@ -1794,6 +1797,20 @@ export type AdminDisputeCaseType =
   | "CAPTURE_FAILED";
 export type AdminDisputeCaseStatus = "OPEN" | "RESOLVED";
 export type AdminDisputeCaseResolution = "REFUNDED" | "DENIED" | "CAPTURED";
+
+export type MyDisputeCase = {
+  id: string;
+  type: AdminDisputeCaseType;
+  status: AdminDisputeCaseStatus;
+  amountCents: number;
+  resolution: AdminDisputeCaseResolution | null;
+  resolvedAmountCents: number | null;
+  resolutionNote: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  clientId: string;
+  provider: { id: string; displayName: string; userId: string };
+};
 
 export type AdminDisputeCaseListItem = {
   id: string;

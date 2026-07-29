@@ -77,6 +77,7 @@ export type ClientStackParamList = {
   MyPresentialPackages: undefined;
   PresentialPackageDetail: { packageId: string };
   MyDebts: undefined;
+  MyDisputes: undefined;
   BookingConfirmation: {
     bookingId: string;
     bookingCount?: number;

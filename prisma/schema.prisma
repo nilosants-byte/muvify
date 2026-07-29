@@ -1009,6 +1009,11 @@ model PresentialPackage {
   paymentInstallments       Int       @default(1)
   creditsRemainingThisCycle Int       @default(0)
   lastBillingFailureReason  String?
+  // Raio-X de pagamentos, Rodada 4, Lote 11: mesmo padrão do lembrete de
+  // vencimento de créditos (sendFlexibleSessionPackExpiryReminders) — aqui
+  // pra avisar antes da próxima cobrança automática de ciclo recorrente,
+  // que hoje só acontecia sem aviso nenhum.
+  billingReminderSentAt     DateTime?
 
   // Cobranca do ciclo atual ainda nao confirmada (cartao em processamento ou Pix aguardando pagamento manual)
   pendingChargeMpPaymentId      String?   @unique

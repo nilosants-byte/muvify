@@ -33,6 +33,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import { ClientTabParamList } from "../../navigation/route-types";
 import {
+  authApi,
   bookingsApi,
   Booking,
   chatApi,
@@ -274,6 +275,22 @@ export function ClientHomeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const isLight = theme.mode === "light";
   const mapRef = useRef<import("react-native-maps").default>(null);
+
+  // Raio-X de pagamentos, Rodada 4, Lote 11: o único aviso de e-mail não
+  // verificado ficava dentro de Configurações — quem não entrasse lá por
+  // conta própria nunca via o aviso. Banner replicado aqui, no topo da home.
+  const [resendingVerificationHome, setResendingVerificationHome] = useState(false);
+  async function handleResendVerificationHome() {
+    setResendingVerificationHome(true);
+    try {
+      await runWithAuth((token) => authApi.resendVerificationEmail(token));
+      showToast("E-mail de verificação reenviado. Confira sua caixa de entrada.", "success");
+    } catch {
+      showToast("Não foi possível reenviar o e-mail agora. Tente novamente mais tarde.", "error");
+    } finally {
+      setResendingVerificationHome(false);
+    }
+  }
 
   const bookingsQuery = useAuthQuery(
     queryKeys.bookings.me(),
@@ -1225,6 +1242,29 @@ export function ClientHomeScreen({ navigation }: Props) {
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ paddingTop: 4, gap: 8 }}>
+          {!user?.emailVerifiedAt ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              disabled={resendingVerificationHome}
+              onPress={() => void handleResendVerificationHome()}
+              accessibilityRole="button"
+              accessibilityLabel="Confirmar e-mail"
+              style={{
+                flexDirection: "row", alignItems: "center", gap: 10,
+                marginHorizontal: S.px,
+                borderRadius: 12, borderWidth: 1, borderColor: C.amberBorder,
+                backgroundColor: C.amberDim,
+                paddingHorizontal: 13, paddingVertical: 10,
+              }}
+            >
+              <Ionicons name="mail-unread-outline" size={16} color={C.amber} />
+              <Text style={{ flex: 1, fontFamily: "DMSans_700Bold", fontSize: 12, color: C.amber }}>
+                {resendingVerificationHome ? "Enviando..." : "Confirme seu e-mail — toque para reenviar o link"}
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={C.amber} />
+            </TouchableOpacity>
+          ) : null}
+
           {/* Progress strip — compact single row */}
           <TouchableOpacity
             activeOpacity={0.8}

@@ -42,6 +42,7 @@ import { CreateBookingScreen } from "../screens/client/CreateBookingScreen";
 import { ForgotPasswordScreen } from "../screens/client/ForgotPasswordScreen";
 import { MyPresentialPackagesScreen } from "../screens/client/MyPresentialPackagesScreen";
 import { MyDebtsScreen } from "../screens/client/MyDebtsScreen";
+import { MyDisputesScreen } from "../screens/client/MyDisputesScreen";
 import { PresentialPackageDetailScreen } from "../screens/client/PresentialPackageDetailScreen";
 import { ProfessionalDetailScreen } from "../screens/client/ProfessionalDetailScreen";
 import { ProfessionalsListScreen } from "../screens/client/ProfessionalsListScreen";
@@ -344,6 +345,10 @@ export function RootNavigator() {
       <ClientStack.Screen
         name="MyDebts"
         component={MyDebtsScreen as React.ComponentType<any>}
+      />
+      <ClientStack.Screen
+        name="MyDisputes"
+        component={MyDisputesScreen as React.ComponentType<any>}
       />
       <ClientStack.Screen
         name="BookingConfirmation"

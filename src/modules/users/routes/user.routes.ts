@@ -64,6 +64,7 @@ userRoutes.post(
 
 userRoutes.delete("/me", uploadRateLimiter, validate(deleteMeSchema), userController.deleteMe);
 userRoutes.get("/me/data-export", uploadRateLimiter, userController.exportMyData);
+userRoutes.get("/me/disputes", userController.myDisputes);
 userRoutes.post("/me/consent", validate(recordConsentSchema), userController.recordConsent);
 userRoutes.get("/me/notifications/preferences", userController.getNotificationPreferences);
 userRoutes.put(
