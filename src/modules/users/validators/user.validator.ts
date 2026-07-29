@@ -1,5 +1,9 @@
 ﻿import { NotificationPreferenceType } from "@prisma/client";
 import { z } from "zod";
+import { isCommonPassword } from "../../../shared/utils/password-strength";
+
+const notCommonPassword = (value: string) => !isCommonPassword(value);
+const COMMON_PASSWORD_MESSAGE = "Essa senha é muito comum. Escolha uma senha mais difícil de adivinhar.";
 
 const optionalTrimmedString = z
   .string()
@@ -51,7 +55,8 @@ export const changeMyPasswordSchema = z.object({
         .string()
         .min(8)
         .max(72)
-        .regex(/^(?=.*[A-Za-z])(?=.*\d).+$/, "Senha deve conter letras e números."),
+        .regex(/^(?=.*[A-Za-z])(?=.*\d).+$/, "Senha deve conter letras e números.")
+        .refine(notCommonPassword, COMMON_PASSWORD_MESSAGE),
       confirmNewPassword: z.string().min(8).max(72)
     })
     .refine((value) => value.newPassword === value.confirmNewPassword, {

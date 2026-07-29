@@ -1,4 +1,8 @@
 ﻿import { z } from "zod";
+import { isCommonPassword } from "../../../shared/utils/password-strength";
+
+const notCommonPassword = (value: string) => !isCommonPassword(value);
+const COMMON_PASSWORD_MESSAGE = "Essa senha é muito comum. Escolha uma senha mais difícil de adivinhar.";
 
 export const registerSchema = z.object({
   body: z.object({
@@ -14,7 +18,8 @@ export const registerSchema = z.object({
       .string()
       .min(8)
       .max(72)
-      .regex(/^(?=.*[A-Za-z])(?=.*\d).+$/, "Senha deve conter letras e numeros."),
+      .regex(/^(?=.*[A-Za-z])(?=.*\d).+$/, "Senha deve conter letras e numeros.")
+      .refine(notCommonPassword, COMMON_PASSWORD_MESSAGE),
     phone: z
       .string()
       .trim()
@@ -56,5 +61,6 @@ export const resetPasswordSchema = z.object({
       .min(8)
       .max(72)
       .regex(/^(?=.*[A-Za-z])(?=.*\d).+$/, "Senha deve conter letras e numeros.")
+      .refine(notCommonPassword, COMMON_PASSWORD_MESSAGE)
   })
 });

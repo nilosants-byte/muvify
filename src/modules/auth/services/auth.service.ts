@@ -84,6 +84,20 @@ export class AuthService {
   private emailQueueService = new EmailQueueService();
   private twoFactorService = new TwoFactorService();
 
+  // Raio-X Muvify, Frente 2 (Segurança do código), Lote 2: quando o e-mail
+  // não existe, bcrypt.compare nunca rodava — diferença de tempo entre
+  // "e-mail não existe" e "senha errada" vazava existência de conta por
+  // timing, mesmo com mensagem de erro idêntica. Hash dummy fixo, gerado
+  // uma vez e cacheado, garante que o custo computacional do compare seja
+  // sempre pago, nos dois ramos.
+  private dummyPasswordHashPromise: Promise<string> | null = null;
+  private getDummyPasswordHash() {
+    if (!this.dummyPasswordHashPromise) {
+      this.dummyPasswordHashPromise = hashValue("timing-safety-dummy-password-never-used");
+    }
+    return this.dummyPasswordHashPromise;
+  }
+
   private loginAttemptsKey(email: string) {
     return `auth:login:attempts:${email}`;
   }
@@ -357,7 +371,9 @@ export class AuthService {
     const normalizedEmail = email.trim().toLowerCase();
     await this.ensureLoginNotLocked(normalizedEmail);
     const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-    const validPassword = user ? await compareHash(password, user.password) : false;
+    const validPassword = user
+      ? await compareHash(password, user.password)
+      : await compareHash(password, await this.getDummyPasswordHash()).then(() => false);
     if (!user || !validPassword) {
       const attempts = await this.registerLoginFailure(normalizedEmail);
       if (attempts >= env.LOGIN_MAX_ATTEMPTS && attempts > 0) {
@@ -531,7 +547,14 @@ export class AuthService {
       where: { email: normalizedEmail }
     });
 
+    // Raio-X Muvify, Frente 2 (Segurança do código), Lote 2: e-mail
+    // existente gera token + grava no banco + enfileira e-mail antes de
+    // responder; e-mail inexistente respondia quase imediato — a
+    // diferença de latência (não a mensagem, que já era idêntica) vazava
+    // se aquela conta existe. Paga o mesmo custo de bcrypt nos dois casos
+    // que retornam cedo, aproximando a ordem de grandeza do tempo total.
     if (!user) {
+      await compareHash("dummy-password", await this.getDummyPasswordHash());
       return genericResponse;
     }
 
@@ -540,7 +563,9 @@ export class AuthService {
     if (channel === "RECOVERY_EMAIL") {
       const recoveryEmail = decryptSensitiveText(user.recoveryEmailEncrypted);
       if (!recoveryEmail) {
-        // Sem e-mail de recuperação cadastrado — retorna mensagem genérica para não expor o estado
+        // Sem e-mail de recuperação cadastrado — retorna mensagem genérica
+        // pra não expor o estado; mesma equalização de timing do ramo acima.
+        await compareHash("dummy-password", await this.getDummyPasswordHash());
         return genericResponse;
       }
       deliveryEmail = recoveryEmail;
