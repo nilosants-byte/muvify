@@ -254,6 +254,7 @@ export class PresentialPackageService {
     if (offer.provider.user.suspendedAt) {
       throw new AppError("Este profissional não está disponível para novas compras no momento.", StatusCodes.BAD_REQUEST);
     }
+    await debtService.assertProviderNoOutstandingDebt(offer.providerId);
     if (!offer.provider.mpAccountId) {
       throw new AppError(
         "Este profissional ainda não configurou o recebimento de pagamentos.",
@@ -1308,6 +1309,7 @@ export class PresentialPackageService {
     if (offer.provider.user.suspendedAt) {
       throw new AppError("Este profissional não está disponível para novas compras no momento.", StatusCodes.BAD_REQUEST);
     }
+    await debtService.assertProviderNoOutstandingDebt(offer.providerId);
     if (input.acknowledgedImmediateExecution !== true) {
       // Mesma base legal do fluxo de consultoria avulsa (art. 49 do CDC) — a
       // metade de consultoria do combo também exige consentimento expresso

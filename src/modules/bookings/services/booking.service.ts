@@ -163,6 +163,7 @@ export class BookingService {
     }
 
     await debtService.assertNoOutstandingDebt(clientId);
+    await debtService.assertProviderNoOutstandingDebt(providerId);
 
     // Pre-compute timezone-dependent values outside the transaction to
     // minimize the time spent holding the advisory lock.
@@ -917,6 +918,8 @@ export class BookingService {
       select: {
         id: true,
         clientId: true,
+        providerId: true,
+        attendanceCodeValidatedAt: true,
         provider: { select: { userId: true } }
       }
     });
@@ -930,6 +933,41 @@ export class BookingService {
             data: { status: BookingStatus.CANCELLED }
           });
           if (updated.count === 0) return;
+
+          // Raio-X de pagamentos, Rodada 5, Lote 4 (auditoria adversarial):
+          // se o código de presença nunca foi validado, o cliente pode ter
+          // simplesmente recusado cooperar pra evitar pagar — reembolsar
+          // automaticamente e sem registro nenhum é exatamente o que esse
+          // cliente esperaria. Em vez de devolver o dinheiro sozinho, abre
+          // um caso pra um admin revisar (mesmo padrão de NO_SHOW_CONTESTED)
+          // e mantém a reserva no cartão intacta até a decisão manual.
+          if (!booking.attendanceCodeValidatedAt) {
+            const payment = await prisma.payment.findUnique({ where: { bookingId: booking.id } });
+            if (payment) {
+              await prisma.disputeCase.create({
+                data: {
+                  type: "NO_SHOW_CONTESTED",
+                  clientId: booking.clientId,
+                  providerId: booking.providerId,
+                  amountCents: payment.amountCents,
+                  mpPaymentId: payment.mpPaymentId,
+                  bookingId: booking.id,
+                  contextNote:
+                    "Sessão encerrada automaticamente 48h após o horário marcado sem que o código de presença tivesse sido validado — nenhuma das partes confirmou a conclusão. Reserva do cartão mantida até revisão manual."
+                }
+              });
+            }
+            void notificationService
+              .sendToUsers([booking.clientId, booking.provider.userId], {
+                preferenceType: "BOOKINGS",
+                title: "Agendamento encerrado sem confirmação",
+                body: "O código de presença não foi validado nesta sessão. O caso foi encaminhado para revisão manual antes de qualquer decisão sobre o pagamento.",
+                data: { type: "BOOKING_ATTENDANCE_NOT_VALIDATED", bookingId: booking.id }
+              })
+              .catch((error) => console.error("Booking attendance-not-validated notification failed:", error));
+            return;
+          }
+
           await paymentService.cancelPaymentForBooking(booking.id).catch((err) => {
             console.error("autoExpire: cancel payment failed for booking", booking.id, err);
           });
@@ -1254,6 +1292,18 @@ export class BookingService {
     if (!booking.attendanceCodeValidatedAt) {
       throw new AppError(
         "Código presencial ainda não foi validado pelo profissional. Valide o código de 6 dígitos antes de concluir.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    // Raio-X de pagamentos, Rodada 5, Lote 4 (auditoria adversarial): nada
+    // impedia concluir a sessão antes do horário marcado sequer começar —
+    // duas contas em conluio (ou a mesma pessoa) podiam liberar o código,
+    // validar e confirmar tudo antes do horário, capturando o pagamento e
+    // gamificação sem nenhum serviço prestado.
+    if (now < booking.scheduledAt) {
+      throw new AppError(
+        "Não é possível concluir o agendamento antes do horário marcado.",
         StatusCodes.BAD_REQUEST
       );
     }

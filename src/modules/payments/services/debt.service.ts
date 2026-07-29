@@ -142,8 +142,8 @@ export class DebtService {
     });
   }
 
-  // Usado no inicio dos 3 fluxos de compra (agendamento avulso, pacote
-  // presencial, aceite de proposta de consultoria) pra bloquear novas
+  // Usado no inicio dos 4 pontos de venda (agendamento avulso, pacote
+  // presencial, combo, aceite de proposta de consultoria) pra bloquear novas
   // compras enquanto o aluno tiver uma pendencia em aberto.
   async assertNoOutstandingDebt(clientId: string) {
     const outstanding = await prisma.debtRecord.findFirst({
@@ -152,6 +152,23 @@ export class DebtService {
     if (outstanding) {
       throw new AppError(
         "Você tem uma pendência financeira em aberto. Regularize antes de fazer uma nova compra.",
+        StatusCodes.PAYMENT_REQUIRED
+      );
+    }
+  }
+
+  // Raio-X de pagamentos, Rodada 5, Lote 4 (auditoria adversarial): a mesma
+  // checagem nunca existia do lado do profissional — um profissional que
+  // acumula dívida (nascida quando uma disputa é resolvida contra ele) e
+  // nunca paga continuava vendendo livremente, dependendo só da MP
+  // conseguir descontar sozinha do próximo repasse (que pode falhar).
+  async assertProviderNoOutstandingDebt(providerId: string) {
+    const outstanding = await prisma.debtRecord.findFirst({
+      where: { providerId, debtorType: "PROVIDER", status: { in: [...OUTSTANDING_STATUSES] } }
+    });
+    if (outstanding) {
+      throw new AppError(
+        "Você tem uma pendência financeira em aberto. Regularize antes de vender um novo serviço.",
         StatusCodes.PAYMENT_REQUIRED
       );
     }

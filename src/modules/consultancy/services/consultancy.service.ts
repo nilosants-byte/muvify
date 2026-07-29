@@ -1863,6 +1863,7 @@ export class ConsultancyService {
     }
 
     await debtService.assertNoOutstandingDebt(clientId);
+    await debtService.assertProviderNoOutstandingDebt(request.providerId);
 
     if (env.REQUIRE_ANAMNESIS_FOR_CONTRACTS) {
       const anamnesis = await prisma.clientAnamnesis.findUnique({
