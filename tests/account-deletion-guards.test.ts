@@ -147,6 +147,50 @@ describe("Travas de saída na exclusão de conta (Rodada 4, Lote 2)", () => {
     await expect(userService.deleteMe(clientId, PASSWORD)).rejects.toThrow(/pacote presencial ativo/i);
   });
 
+  // Raio-X de pagamentos, Rodada 5, Lote 6 (cobertura de testes): este ramo
+  // (consultoria ativa bloqueando exclusão do cliente) nunca era exercido
+  // isoladamente — só o ramo irmão (pacote presencial ativo) tinha teste.
+  it("bloqueia exclusão do cliente com consultoria ativa", async () => {
+    const clientId = await createUser("adg_client_contract");
+    cleanupUserIds.push(clientId);
+
+    const offer = await prisma.providerServiceOffer.create({
+      data: { providerId: dummyProviderId, kind: "ONLINE_CONSULTANCY", title: `Consultoria ${uid("offer")}`, billingCycle: "MONTHLY", priceCents: 20000 }
+    });
+    cleanupOfferIds.push(offer.id);
+    const request = await prisma.consultancyRequest.create({
+      data: {
+        providerId: dummyProviderId,
+        clientId,
+        status: "ACCEPTED",
+        quotedOfferId: offer.id,
+        responseDeadlineAt: new Date(),
+        respondedAt: new Date(),
+        clientDecisionAt: new Date()
+      }
+    });
+    cleanupRequestIds.push(request.id);
+    const contract = await prisma.consultancyContract.create({
+      data: {
+        requestId: request.id,
+        providerId: dummyProviderId,
+        clientId,
+        offerId: offer.id,
+        status: "ACTIVE",
+        paymentMethod: "PIX",
+        paymentStatus: "CAPTURED",
+        paymentAmountCents: 20000,
+        providerAmountCents: 18000,
+        platformAmountCents: 2000,
+        deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        immediateExecutionAcknowledgedAt: new Date()
+      }
+    });
+    cleanupContractIds.push(contract.id);
+
+    await expect(userService.deleteMe(clientId, PASSWORD)).rejects.toThrow(/consultoria ativa/i);
+  });
+
   it("permite exclusão do cliente sem nenhuma pendência", async () => {
     const clientId = await createUser("adg_client_ok");
     cleanupUserIds.push(clientId);
@@ -172,6 +216,26 @@ describe("Travas de saída na exclusão de conta (Rodada 4, Lote 2)", () => {
     cleanupDebtIds.push(debt.id);
 
     await expect(userService.deleteMe(providerUserId, PASSWORD)).rejects.toThrow(/pendência financeira/i);
+  });
+
+  // Raio-X de pagamentos, Rodada 5, Lote 6 (cobertura de testes): este ramo
+  // (disputa em julgamento bloqueando exclusão do profissional) nunca era
+  // exercido isoladamente — a mensagem é compartilhada com clientDispute,
+  // mas a query de disputa do profissional nunca tinha sido populada num
+  // teste.
+  it("bloqueia exclusão do profissional com disputa em julgamento", async () => {
+    const providerUserId = await createUser("adg_prov_dispute", "PROVIDER");
+    cleanupUserIds.push(providerUserId);
+    const provider = await prisma.providerProfile.create({
+      data: { userId: providerUserId, displayName: "Provider", bio: "x", experienceYears: 1, priceCents: 5000, crefValidationStatus: "APPROVED" }
+    });
+    cleanupProviderIds.push(provider.id);
+    const dispute = await prisma.disputeCase.create({
+      data: { type: "REFUND_FAILED", providerId: provider.id, clientId: dummyClientId, amountCents: 5000, status: "OPEN" }
+    });
+    cleanupDisputeCaseIds.push(dispute.id);
+
+    await expect(userService.deleteMe(providerUserId, PASSWORD)).rejects.toThrow(/julgamento/i);
   });
 
   it("exclusão do profissional cancela pacotes/consultorias ativas e limpa o token do Mercado Pago", async () => {

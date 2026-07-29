@@ -184,4 +184,40 @@ describe("Suspensão de conta propaga pra busca e novo negócio (Rodada 4, Lote 
     // Reativa pra não vazar estado suspenso pra outros arquivos de teste concorrentes.
     await adminService.reactivateUser(adminId, providerUserId);
   });
+
+  // Raio-X de pagamentos, Rodada 5, Lote 6 (cobertura de testes): o bloqueio
+  // de suspensão em purchaseCombo é idêntico ao de purchasePackage (testado
+  // acima), mas nunca era exercido isoladamente — se um refactor futuro
+  // tocasse só esse caminho, poderia quebrar sem detecção.
+  it("profissional suspenso não aceita compra de combo", async () => {
+    await adminService.suspendUser(adminId, providerUserId, "Fraude confirmada em análise manual.");
+
+    const comboOffer = await prisma.providerServiceOffer.create({
+      data: {
+        providerId,
+        kind: "COMBO",
+        title: `Combo ${uid("offer")}`,
+        billingCycle: "MONTHLY",
+        priceCents: 30000,
+        presentialPackageMode: "FLEXIBLE_CREDITS",
+        presentialSessionsPerCycle: 2,
+        presentialHasFixedTerm: true,
+        presentialTotalCycles: 1,
+        comboPresentialShareCents: 10000,
+        comboConsultancyShareCents: 20000
+      }
+    });
+    offerIds.push(comboOffer.id);
+
+    await expect(
+      packageService.purchaseCombo(clientId, {
+        offerId: comboOffer.id,
+        categoryId,
+        paymentMethod: "CREDIT_CARD" as any,
+        acknowledgedImmediateExecution: true
+      })
+    ).rejects.toThrow(/não está disponível/i);
+
+    await adminService.reactivateUser(adminId, providerUserId);
+  });
 });

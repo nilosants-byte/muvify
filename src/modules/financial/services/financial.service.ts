@@ -9,6 +9,7 @@ import {
   ServiceOfferKind
 } from "@prisma/client";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
+import { escapeCsv } from "../../../shared/utils/csv";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
@@ -895,16 +896,6 @@ export class FinancialService {
       CONSULTANCY: "Consultoria",
       PRESENTIAL_PACKAGE: "Pacote presencial",
       CONSULTANCY_RENEWAL: "Renovação de ficha"
-    };
-    // Raio-X de pagamentos, Rodada 4, Lote 13: hardening preventivo contra
-    // injeção de fórmula em CSV (=, +, -, @ no início de uma célula viram
-    // fórmula executável ao abrir no Excel/Sheets) — não explorável hoje (os
-    // campos exportados são todos controlados pelo sistema), mas nenhum dos
-    // valores nunca deveria começar com esses caracteres por acidente.
-    const escapeCsv = (value: string) => {
-      const needsNeutralizing = /^[=+\-@]/.test(value);
-      const safeValue = needsNeutralizing ? `'${value}` : value;
-      return `"${safeValue.replace(/"/g, '""')}"`;
     };
     const rows = data.payments.map((p) => {
       const date = p.capturedAt ?? p.scheduledAt ?? "";

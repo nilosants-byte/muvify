@@ -174,4 +174,44 @@ describe("Bundle de moderados — Admin + Segurança (Rodada 4, Lote 12)", () =>
     const stillOpen = await prisma.disputeCase.findUniqueOrThrow({ where: { id: disputeCase.id } });
     expect(stillOpen.status).toBe("OPEN");
   });
+
+  // Raio-X de pagamentos, Rodada 5, Lote 6 (cobertura de testes): o teste
+  // acima só cobria "muito acima do teto" — nem o valor exatamente no limite
+  // (deveria aceitar) nem o limite+1 (deveria rejeitar) tinham teste. Um bug
+  // de > vs >= na comparação passaria despercebido.
+  it("resolveCase: chargeClientDebtCents aceita o valor exatamente igual ao teto do caso", async () => {
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 5000 }
+    });
+    disputeCaseIds.push(disputeCase.id);
+
+    const resolved = await disputeCaseService.resolveCase(adminId, disputeCase.id, {
+      resolution: "DENIED",
+      note: "Aluno já foi reembolsado indevidamente antes, no valor exato do caso.",
+      chargeClientDebtCents: 5000
+    });
+    expect(resolved.status).toBe("RESOLVED");
+
+    const debt = await prisma.debtRecord.findFirst({ where: { disputeCaseId: disputeCase.id } });
+    expect(debt?.amountCents).toBe(5000);
+    await prisma.debtRecord.deleteMany({ where: { disputeCaseId: disputeCase.id } });
+  });
+
+  it("resolveCase: chargeClientDebtCents rejeita o valor um centavo acima do teto do caso", async () => {
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 5000 }
+    });
+    disputeCaseIds.push(disputeCase.id);
+
+    await expect(
+      disputeCaseService.resolveCase(adminId, disputeCase.id, {
+        resolution: "DENIED",
+        note: "Tentativa de cobrar 1 centavo acima do valor do caso.",
+        chargeClientDebtCents: 5001
+      })
+    ).rejects.toThrow(/inválido/i);
+
+    const stillOpen = await prisma.disputeCase.findUniqueOrThrow({ where: { id: disputeCase.id } });
+    expect(stillOpen.status).toBe("OPEN");
+  });
 });

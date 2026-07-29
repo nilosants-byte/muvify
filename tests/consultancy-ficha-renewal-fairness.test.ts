@@ -248,6 +248,34 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
     expect(disputesCount).toBe(2);
   });
 
+  it("bloqueia a renovação enquanto a contestação da ficha mais recente ainda está OPEN (Rodada 5, Lote 6 — caminho de rejeição nunca testado antes)", async () => {
+    // Raio-X de pagamentos, Rodada 5, Lote 6 (cobertura de testes): o teste
+    // acima só exercita o caminho em que a disputa já foi RESOLVED antes da
+    // renovação — o caminho de rejeição real (disputa ainda OPEN) nunca
+    // tinha nenhum teste, apesar de ser exatamente o bug de TOCTOU que a
+    // Rodada 2/3 corrigiu.
+    const offer = await makeOfferWithFichaValidity(30);
+    const contract = await makeActiveContract(offer.id);
+
+    await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 1", exercises: [] });
+    await consultancyService.contestDelivery(clientId, contract.id, "Ficha 1 estava ruim");
+
+    await prisma.trainingPlan.updateMany({
+      where: { contractId: contract.id },
+      data: { createdAt: new Date(Date.now() - 15_000) }
+    });
+
+    await expect(
+      consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 2", exercises: [] })
+    ).rejects.toThrow(/contestação em aberto/i);
+
+    const afterAttempt = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract.id } });
+    expect(afterAttempt.renewalDeliveryLockedAt).toBeNull();
+
+    const plansCount = await prisma.trainingPlan.count({ where: { contractId: contract.id } });
+    expect(plansCount).toBe(1);
+  });
+
   it("escalateExpiredFichaContracts avisa quando a ficha vence sem ação e encerra automaticamente após 7 dias", async () => {
     const offer = await makeOfferWithFichaValidity(10);
     const contractEscalating = await makeActiveContract(offer.id);
