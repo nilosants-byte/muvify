@@ -1,9 +1,7 @@
 ﻿import React from "react";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
-import { Linking } from "react-native";
 import {
   AvailabilityManagerScreen,
-  ConnectPayoutAccountScreen,
   PayoutStatusScreen,
   ProviderAgendaScreen,
   ProviderBookingDetailScreen,
@@ -107,16 +105,6 @@ describe("Fluxos criticos - profissional e recebimentos", () => {
         payoutsEnabled: true
       });
 
-    const createAccountSpy = jest.spyOn(paymentsApi, "createProviderAccount").mockResolvedValue({
-      accountId: "mp-seller-test-1",
-      onboardingUrl: "https://auth.mercadopago.com.br/authorization?client_id=test&state=mock1"
-    });
-    const onboardingSpy = jest.spyOn(paymentsApi, "createOnboardingLink").mockResolvedValue({
-      accountId: "mp-seller-test-1",
-      onboardingUrl: "https://auth.mercadopago.com.br/authorization?client_id=test&state=mock2"
-    });
-    const openUrlSpy = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
-
     const profileNavigation = { navigate: jest.fn() };
     const profileUi = render(<ProviderProfileEditScreen navigation={profileNavigation} />);
 
@@ -141,30 +129,11 @@ describe("Fluxos criticos - profissional e recebimentos", () => {
     );
     expect(showToast).toHaveBeenCalledWith("Perfil profissional salvo.", "success");
 
-    const connectNavigation = { navigate: jest.fn() };
-    const connectUi = render(<ConnectPayoutAccountScreen navigation={connectNavigation} />);
-    expect(await connectUi.findByText("Conectar recebimentos")).toBeTruthy();
-
-    fireEvent.press(connectUi.getByRole("button", { name: "Criar conta Connect" }));
-    await waitFor(() => expect(createAccountSpy).toHaveBeenCalled());
-    expect(providerStatusSpy).toHaveBeenCalled();
-
-    fireEvent.press(await connectUi.findByRole("button", { name: "Abrir onboarding" }));
-    await waitFor(() =>
-      expect(openUrlSpy).toHaveBeenCalledWith("https://auth.mercadopago.com.br/authorization?client_id=test&state=mock1")
-    );
-
-    fireEvent.press(connectUi.getByRole("button", { name: "Revalidar status" }));
-    await waitFor(() => expect(providerStatusSpy.mock.calls.length).toBeGreaterThanOrEqual(2));
-
-    fireEvent.press(connectUi.getByRole("button", { name: "Gerar link de onboarding" }));
-    await waitFor(() => expect(onboardingSpy).toHaveBeenCalled());
-
     const payoutNavigation = { navigate: jest.fn() };
     const payoutUi = render(<PayoutStatusScreen navigation={payoutNavigation} />);
     expect(await payoutUi.findByText("Status de recebimento")).toBeTruthy();
     fireEvent.press(payoutUi.getByRole("button", { name: "Atualizar" }));
-    await waitFor(() => expect(providerStatusSpy.mock.calls.length).toBeGreaterThanOrEqual(3));
+    await waitFor(() => expect(providerStatusSpy.mock.calls.length).toBeGreaterThanOrEqual(2));
   }, 25000);
 
   it("gerencia disponibilidade e fluxo de detalhe/confirmação do profissional", async () => {

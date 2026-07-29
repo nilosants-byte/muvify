@@ -896,7 +896,16 @@ export class FinancialService {
       PRESENTIAL_PACKAGE: "Pacote presencial",
       CONSULTANCY_RENEWAL: "Renovação de ficha"
     };
-    const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    // Raio-X de pagamentos, Rodada 4, Lote 13: hardening preventivo contra
+    // injeção de fórmula em CSV (=, +, -, @ no início de uma célula viram
+    // fórmula executável ao abrir no Excel/Sheets) — não explorável hoje (os
+    // campos exportados são todos controlados pelo sistema), mas nenhum dos
+    // valores nunca deveria começar com esses caracteres por acidente.
+    const escapeCsv = (value: string) => {
+      const needsNeutralizing = /^[=+\-@]/.test(value);
+      const safeValue = needsNeutralizing ? `'${value}` : value;
+      return `"${safeValue.replace(/"/g, '""')}"`;
+    };
     const rows = data.payments.map((p) => {
       const date = p.capturedAt ?? p.scheduledAt ?? "";
       return [

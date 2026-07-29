@@ -178,7 +178,9 @@ export const adminUserDetailSchema = z.object({
 
 export const adminListDebtsQuerySchema = z.object({
   query: z.object({
-    status: z.enum(["PENDING", "NOTIFIED", "PAID", "WRITTEN_OFF"]).optional()
+    status: z.enum(["PENDING", "NOTIFIED", "PAID", "WRITTEN_OFF"]).optional(),
+    skip: z.coerce.number().int().min(0).optional(),
+    take: z.coerce.number().int().min(1).max(200).optional()
   })
 });
 

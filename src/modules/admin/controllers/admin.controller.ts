@@ -183,7 +183,9 @@ export class AdminController {
   async listDebts(request: Request, response: Response) {
     const payload = await debtService.listAllDebts(
       request.user!.id,
-      request.query.status as DebtRecordStatus | undefined
+      request.query.status as DebtRecordStatus | undefined,
+      request.query.skip ? Number(request.query.skip) : undefined,
+      request.query.take ? Number(request.query.take) : undefined
     );
     return response.json(payload);
   }

@@ -40,12 +40,20 @@ export class DebtService {
   // Raio-X de pagamentos, Rodada 3, Lote 6: o admin não tinha nenhuma visão
   // agregada de dívidas — só existiam listagens por cliente/profissional
   // (listMyDebts/listProviderDebts), nenhuma pra operação em conjunto.
-  async listAllDebts(adminId: string, status?: DebtRecordStatus) {
+  //
+  // Raio-X de pagamentos, Rodada 4, Lote 13: take:200 fixo, sem nenhum
+  // indicador de "há mais" — acima desse número, dívidas mais antigas
+  // simplesmente sumiam da lista sem ninguém perceber.
+  async listAllDebts(adminId: string, status?: DebtRecordStatus, skip = 0, take = 100) {
     await this.ensureAdminAccess(adminId);
-    return prisma.debtRecord.findMany({
+    const boundedTake = Math.min(Math.max(take, 1), 200);
+    const boundedSkip = Math.max(skip, 0);
+
+    const rows = await prisma.debtRecord.findMany({
       where: status ? { status } : undefined,
       orderBy: { createdAt: "desc" },
-      take: 200,
+      skip: boundedSkip,
+      take: boundedTake + 1,
       select: {
         id: true,
         debtorType: true,
@@ -59,6 +67,9 @@ export class DebtService {
         provider: { select: { id: true, displayName: true, user: { select: { email: true } } } }
       }
     });
+
+    const hasMore = rows.length > boundedTake;
+    return { items: rows.slice(0, boundedTake), hasMore };
   }
 
   // O enum já previa WRITTEN_OFF (dívida incobrável) mas nada nunca setava

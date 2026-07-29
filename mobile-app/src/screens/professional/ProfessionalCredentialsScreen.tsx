@@ -23,6 +23,36 @@ import { queryKeys } from "../../lib/queryKeys";
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalCredentials">;
 type AttachedDoc = { name: string; uri: string; mimeType: string };
 
+// Raio-X de pagamentos, Rodada 4, Lote 13: o cooldown de 7 dias pra reenviar
+// CREF reprovado (provider.service.ts::upsertOwnCredentials) só aparecia
+// como um toast genérico de erro quando o profissional já tinha preenchido
+// tudo e tentado enviar — sem nenhum jeito de saber de antemão quanto tempo
+// falta. crefReviewedAt já vinha na resposta, só não era usado pra isso.
+const CREF_RESUBMISSION_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+function useCrefCooldown(crefReviewedAt: string | null | undefined, isRejected: boolean) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isRejected || !crefReviewedAt) return undefined;
+    const interval = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(interval);
+  }, [isRejected, crefReviewedAt]);
+
+  if (!isRejected || !crefReviewedAt) {
+    return { active: false, label: "" };
+  }
+  const availableAt = new Date(crefReviewedAt).getTime() + CREF_RESUBMISSION_COOLDOWN_MS;
+  const remainingMs = availableAt - now;
+  if (remainingMs <= 0) {
+    return { active: false, label: "" };
+  }
+  const days = Math.floor(remainingMs / (24 * 60 * 60 * 1000));
+  const hours = Math.floor((remainingMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  const label = days > 0 ? `${days}d ${hours}h` : `${hours}h`;
+  return { active: true, label };
+}
+
 // Barra de progresso de 3 etapas do CREF
 function CrefProgressBar({ status }: { status: string }) {
   const { theme } = useMvTheme();
@@ -277,6 +307,7 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
 
   const currentStatus = credentials?.crefValidationStatus ?? "PENDING";
   const isApproved = currentStatus === "APPROVED";
+  const cooldown = useCrefCooldown(credentials?.crefReviewedAt, currentStatus === "REJECTED");
   const hasFrontDoc = Boolean(frontDoc || credentials?.credentials?.[0]);
   const hasBackDoc = Boolean(backDoc || credentials?.credentials?.[1]);
   const hasOnlyOneSide = (hasFrontDoc || hasBackDoc) && !(hasFrontDoc && hasBackDoc);
@@ -359,8 +390,27 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
               <MvText variant="body4" color="secondary">Aceito: PDF, JPEG, PNG. Máximo 5MB por arquivo.</MvText>
             </MvCard>
 
+            {cooldown.active ? (
+              <View style={{
+                flexDirection: "row", alignItems: "center", gap: 10,
+                borderRadius: 12, borderWidth: 1,
+                borderColor: "rgba(239,68,68,0.30)", backgroundColor: "rgba(239,68,68,0.08)",
+                padding: 12,
+              }}>
+                <Ionicons name="time-outline" size={18} color={theme.danger} />
+                <MvText variant="body4" style={{ flex: 1, color: theme.danger, lineHeight: 18 }}>
+                  Reenvio disponível em {cooldown.label}
+                </MvText>
+              </View>
+            ) : null}
+
             {!isApproved ? (
-              <MvButton label="Salvar e enviar para análise" loading={saving} onPress={() => void handleSave()} />
+              <MvButton
+                label={cooldown.active ? `Aguarde ${cooldown.label} para reenviar` : "Salvar e enviar para análise"}
+                loading={saving}
+                disabled={cooldown.active}
+                onPress={() => void handleSave()}
+              />
             ) : null}
           </>
         )}

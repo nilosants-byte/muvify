@@ -36,14 +36,25 @@ export function AdminDebtsScreen({ navigation }: Props) {
   const [writingOffId, setWritingOffId] = useState<string | null>(null);
   const [writeOffReason, setWriteOffReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Raio-X de pagamentos, Rodada 4, Lote 13: listAllDebts era take:200 fixo,
+  // sem indicador de "há mais" — acima disso, dívidas mais antigas
+  // simplesmente somiam da lista sem ninguém perceber.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(0);
 
   const debtsQuery = useAuthQuery(
-    queryKeys.admin.debts({ status }),
-    (token) => adminApi.listDebts(token, { status })
+    queryKeys.admin.debts({ status, page }),
+    (token) => adminApi.listDebts(token, { status, skip: page * PAGE_SIZE, take: PAGE_SIZE })
   );
 
   const loading = debtsQuery.isLoading;
-  const items = debtsQuery.data ?? [];
+  const items = debtsQuery.data?.items ?? [];
+  const hasMore = debtsQuery.data?.hasMore ?? false;
+
+  function changeStatus(next: DebtRecordStatus | undefined) {
+    setStatus(next);
+    setPage(0);
+  }
 
   useEffect(() => {
     if (debtsQuery.error) {
@@ -106,7 +117,7 @@ export function AdminDebtsScreen({ navigation }: Props) {
           {([undefined, "PENDING", "NOTIFIED", "PAID", "WRITTEN_OFF"] as const).map((option) => (
             <TouchableOpacity
               key={option ?? "ALL"}
-              onPress={() => setStatus(option)}
+              onPress={() => changeStatus(option)}
               style={{
                 borderWidth: 1,
                 borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
@@ -181,6 +192,23 @@ export function AdminDebtsScreen({ navigation }: Props) {
             </MvCard>
           );
         })}
+
+        {page > 0 || hasMore ? (
+          <View style={{ flexDirection: "row", gap: 8, justifyContent: "center", marginTop: 4 }}>
+            <MvButton
+              variant="outline"
+              label="Anterior"
+              disabled={page === 0}
+              onPress={() => setPage((p) => Math.max(0, p - 1))}
+            />
+            <MvButton
+              variant="outline"
+              label="Próxima"
+              disabled={!hasMore}
+              onPress={() => setPage((p) => p + 1)}
+            />
+          </View>
+        ) : null}
       </ScrollView>
     </AdminScaffold>
   );

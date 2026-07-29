@@ -141,7 +141,7 @@ describe("Ajustes operacionais de baixo risco (Rodada 3, Lote 6)", () => {
     debtIds.push(debt.id);
 
     const list = await debtService.listAllDebts(adminId, "NOTIFIED");
-    expect(list.some((d) => d.id === debt.id)).toBe(true);
+    expect(list.items.some((d) => d.id === debt.id)).toBe(true);
 
     const writtenOff = await debtService.writeOffDebt(adminId, debt.id, "Valor irrisório, custo de cobrança maior.");
     expect(writtenOff.status).toBe("WRITTEN_OFF");

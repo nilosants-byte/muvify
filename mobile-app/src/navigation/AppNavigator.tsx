@@ -13,7 +13,6 @@ import {
   AvailabilityManagerScreen,
   BookingConfirmationScreen,
   CategoriesListScreen,
-  ConnectPayoutAccountScreen,
   CreateBookingScreen,
   CustomerBookingDetailScreen,
   CustomerBookingsScreen,
@@ -298,11 +297,6 @@ export function AppNavigator() {
   const ProviderNavigator = () => (
     <Stack.Navigator screenOptions={stackScreenOptions}>
       <Stack.Screen name="ProviderTabs" component={ProviderTabs} options={{ headerShown: false }} />
-      <Stack.Screen
-        name="ConnectPayoutAccount"
-        component={ConnectPayoutAccountScreen}
-        options={{ title: "Conectar conta de recebimento" }}
-      />
       <Stack.Screen name="ProviderBookingDetail" component={ProviderBookingDetailScreen} options={{ title: "Detalhe do agendamento" }} />
       <Stack.Screen
         name="ProviderCompleteConfirm"

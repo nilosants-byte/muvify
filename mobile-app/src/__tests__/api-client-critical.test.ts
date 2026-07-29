@@ -167,7 +167,6 @@ describe("api client - fluxos criticos", () => {
       )
       .mockResolvedValueOnce(noContentResponse())
       .mockResolvedValueOnce(noContentResponse())
-      .mockResolvedValueOnce(jsonResponse({ accountId: "acct_1", onboardingUrl: "https://onboard" }))
       .mockResolvedValueOnce(jsonResponse({ accountId: "acct_1", onboardingUrl: "https://onboard2" }))
       .mockResolvedValueOnce(jsonResponse({ hasAccount: true, accountId: "acct_1", chargesEnabled: true, payoutsEnabled: true }))
       .mockResolvedValueOnce(jsonResponse({ id: "pay_1", status: "AUTHORIZED", amountCents: 10000, currency: "BRL", bookingId: "b1" }));
@@ -184,10 +183,6 @@ describe("api client - fluxos criticos", () => {
     await paymentsApi.createCustomerSetupIntent("token");
     await paymentsApi.confirmCustomerSetupIntent("token", "seti_1");
     await paymentsApi.setupCustomer("token", "pm_1");
-    await paymentsApi.createProviderAccount("token", {
-      returnUrl: "https://app.local/return",
-      refreshUrl: "https://app.local/refresh"
-    });
     await paymentsApi.createOnboardingLink("token");
     await paymentsApi.providerStatus("token");
     await paymentsApi.bookingPayment("token", "b1");
@@ -202,12 +197,11 @@ describe("api client - fluxos criticos", () => {
       "/payments/customer/setup-intent/confirm"
     );
     expect(fetchMock.mock.calls[7][0]).toContain("/payments/customer/setup");
-    expect(fetchMock.mock.calls[8][0]).toContain("/payments/provider/account");
-    expect(fetchMock.mock.calls[9][0]).toContain(
+    expect(fetchMock.mock.calls[8][0]).toContain(
       "/payments/provider/account/onboarding-link"
     );
-    expect(fetchMock.mock.calls[10][0]).toContain("/payments/provider/account");
-    expect(fetchMock.mock.calls[11][0]).toContain("/payments/booking/b1");
+    expect(fetchMock.mock.calls[9][0]).toContain("/payments/provider/account");
+    expect(fetchMock.mock.calls[10][0]).toContain("/payments/booking/b1");
   });
 
   it("executa endpoints de notificações push", async () => {

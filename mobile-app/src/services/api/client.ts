@@ -412,7 +412,7 @@ export type MyTrainingResponse = {
     contractId: string;
     providerName: string;
     deliveryDeadlineAt: string;
-    status: "PENDING_PAYMENT" | "ACTIVE" | "DELIVERED" | "REFUNDED_EXPIRED" | "ARCHIVED";
+    status: "PENDING_PAYMENT" | "ACTIVE" | "DELIVERED" | "CANCELLED" | "REFUNDED_EXPIRED" | "ARCHIVED";
   }>;
   contracts: ConsultancyContract[];
 };
@@ -1695,11 +1695,13 @@ export const adminApi = {
   getUserDetail(token: string, userId: string) {
     return apiRequest<AdminUserDetail>(`/admin/users/${userId}`, { token });
   },
-  listDebts(token: string, params?: { status?: DebtRecordStatus }) {
+  listDebts(token: string, params?: { status?: DebtRecordStatus; skip?: number; take?: number }) {
     const query = new URLSearchParams();
     if (params?.status) query.set("status", params.status);
+    if (params?.skip) query.set("skip", String(params.skip));
+    if (params?.take) query.set("take", String(params.take));
     const suffix = query.toString() ? `?${query}` : "";
-    return apiRequest<AdminDebtRecord[]>(`/admin/debts${suffix}`, { token });
+    return apiRequest<{ items: AdminDebtRecord[]; hasMore: boolean }>(`/admin/debts${suffix}`, { token });
   },
   writeOffDebt(token: string, debtId: string, reason: string) {
     return apiRequest<AdminDebtRecord>(`/admin/debts/${debtId}/write-off`, {
@@ -2428,19 +2430,6 @@ export const paymentsApi = {
       method: "POST",
       token,
       body: { paymentMethodId }
-    });
-  },
-  createProviderAccount(
-    token: string,
-    body?: {
-      returnUrl?: string;
-      refreshUrl?: string;
-    }
-  ) {
-    return apiRequest<ProviderAccountCreate>("/payments/provider/account", {
-      method: "POST",
-      token,
-      body: body ?? {}
     });
   },
   createOnboardingLink(
