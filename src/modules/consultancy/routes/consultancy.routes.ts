@@ -69,7 +69,7 @@ consultancyRoutes.post(
 );
 consultancyRoutes.post(
   "/contracts/:contractId/cancel",
-  ensureRole(UserRole.CLIENT),
+  ensureRole(UserRole.CLIENT, UserRole.PROVIDER),
   uploadRateLimiter,
   validate(contractIdParamSchema),
   consultancyController.cancelContract

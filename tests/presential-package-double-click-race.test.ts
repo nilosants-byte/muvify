@@ -5,6 +5,7 @@ import { PresentialPackageService } from "../src/modules/presential-packages/ser
 import { prisma } from "../src/config/prisma";
 import { encryptSensitiveText } from "../src/shared/utils/encryption";
 import * as platformFeeModule from "../src/shared/utils/platform-fee";
+import { NotificationService } from "../src/modules/notifications/services/notification.service";
 
 // Raio-X de pagamentos, Rodada 3, Lote 7: achado grave #2 que ficou de fora
 // do plano original da Rodada 3 — duplo clique em comprar um pacote
@@ -221,6 +222,7 @@ describe("Duplo clique em compra de pacote/combo não gera cobrança duplicada (
       .mockImplementationOnce(() => {
         throw new Error("falha simulada de conexão");
       });
+    const notifySpy = vi.spyOn(NotificationService.prototype, "sendToUsers");
 
     await expect(
       packageService.purchaseCombo(clientId, {
@@ -239,6 +241,16 @@ describe("Duplo clique em compra de pacote/combo não gera cobrança duplicada (
     expect(orphaned).not.toBeNull();
     expect(orphaned!.status).toBe("CANCELLED");
     packageIds.push(orphaned!.id);
+
+    // Rodada 5, Lote 1: o cliente nunca recebeu confirmação de que esse
+    // pacote fantasma tinha sido criado — o cleanup automático não pode
+    // notificar "cancelado" sobre algo que, do ponto de vista dele, nunca
+    // existiu.
+    expect(notifySpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ data: expect.objectContaining({ type: "PRESENTIAL_PACKAGE_CANCELLED" }) })
+    );
+    notifySpy.mockRestore();
 
     // Uma nova tentativa (sem o mock de falha) precisa funcionar de cara.
     vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_test2" } as any);

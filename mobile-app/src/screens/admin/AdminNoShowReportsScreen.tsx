@@ -121,7 +121,7 @@ export function AdminNoShowReportsScreen({ navigation }: Props) {
               <MvText variant="body4">Relatado por: {item.reportedByUser.name}</MvText>
               <MvText variant="body4" color="secondary">Registrado em {formatDate(item.createdAt)}</MvText>
               <TouchableOpacity
-                onPress={() => navigation.navigate("AdminUserSearch")}
+                onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.reportedUser.email })}
               >
                 <MvText variant="caption" color="green">Buscar este usuário para suspender ou investigar →</MvText>
               </TouchableOpacity>

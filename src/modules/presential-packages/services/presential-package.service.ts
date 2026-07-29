@@ -1069,7 +1069,7 @@ export class PresentialPackageService {
   // proximo ciclo nao acontece. Se quem cancela e o profissional, nao e
   // culpa do cliente: reembolsa o ciclo mais recente (regra do desenho -
   // "profissional cancela, a qualquer momento -> reembolso total, sempre").
-  async cancelPackage(userId: string, packageId: string) {
+  async cancelPackage(userId: string, packageId: string, notify: boolean = true) {
     const pkg = await prisma.presentialPackage.findUnique({
       where: { id: packageId },
       include: { client: true, provider: { include: { user: true } } }
@@ -1187,28 +1187,30 @@ export class PresentialPackageService {
       });
     }
 
-    await notificationService.sendToUsers([pkg.clientId], {
-      preferenceType: "PAYMENTS",
-      title: "Pacote presencial cancelado",
-      body: isCardFixedRecurring || isFlexibleSessionPack
-        ? releasedFutureSessions > 0
-          ? `Pacote cancelado — ${releasedFutureSessions} sessão(ões) futura(s) foram desmarcadas e nenhuma delas será cobrada.`
-          : "Seu pacote presencial foi cancelado."
-        : isProvider
-          ? refundFailed
-            ? "O profissional cancelou seu pacote presencial. Houve uma falha ao processar o reembolso do ciclo mais recente — nossa equipe já foi avisada e vai resolver manualmente."
-            : "O profissional cancelou seu pacote presencial. O ciclo mais recente foi reembolsado."
-          : "Seu pacote presencial foi cancelado. As sessões já pagas neste ciclo continuam valendo.",
-      data: { type: "PRESENTIAL_PACKAGE_CANCELLED", packageId: pkg.id }
-    });
-    await notificationService.sendToUsers([pkg.provider.userId], {
-      preferenceType: "PAYMENTS",
-      title: "Pacote presencial cancelado",
-      body: isClient
-        ? `${pkg.client.name} cancelou o pacote presencial.`
-        : "Você cancelou o pacote presencial do aluno.",
-      data: { type: "PRESENTIAL_PACKAGE_CANCELLED", packageId: pkg.id }
-    });
+    if (notify) {
+      await notificationService.sendToUsers([pkg.clientId], {
+        preferenceType: "PAYMENTS",
+        title: "Pacote presencial cancelado",
+        body: isCardFixedRecurring || isFlexibleSessionPack
+          ? releasedFutureSessions > 0
+            ? `Pacote cancelado — ${releasedFutureSessions} sessão(ões) futura(s) foram desmarcadas e nenhuma delas será cobrada.`
+            : "Seu pacote presencial foi cancelado."
+          : isProvider
+            ? refundFailed
+              ? "O profissional cancelou seu pacote presencial. Houve uma falha ao processar o reembolso do ciclo mais recente — nossa equipe já foi avisada e vai resolver manualmente."
+              : "O profissional cancelou seu pacote presencial. O ciclo mais recente foi reembolsado."
+            : "Seu pacote presencial foi cancelado. As sessões já pagas neste ciclo continuam valendo.",
+        data: { type: "PRESENTIAL_PACKAGE_CANCELLED", packageId: pkg.id }
+      });
+      await notificationService.sendToUsers([pkg.provider.userId], {
+        preferenceType: "PAYMENTS",
+        title: "Pacote presencial cancelado",
+        body: isClient
+          ? `${pkg.client.name} cancelou o pacote presencial.`
+          : "Você cancelou o pacote presencial do aluno.",
+        data: { type: "PRESENTIAL_PACKAGE_CANCELLED", packageId: pkg.id }
+      });
+    }
 
     return prisma.presentialPackage.findUniqueOrThrow({ where: { id: pkg.id } });
   }
@@ -1462,7 +1464,11 @@ export class PresentialPackageService {
         });
       });
     } catch (error) {
-      await this.cancelPackage(clientId, pkg.id).catch((cancelError) =>
+      // notify: false — o cliente nunca recebeu confirmação de que esse
+      // pacote tinha sido criado (o combo falhou antes de qualquer sucesso),
+      // então notificar "cancelado" aqui só confundiria sobre algo que, do
+      // ponto de vista dele, nunca existiu.
+      await this.cancelPackage(clientId, pkg.id, false).catch((cancelError) =>
         console.error("Falha ao cancelar pacote órfão após erro na criação do contrato do combo:", cancelError)
       );
       const message = error instanceof Error ? error.message : "Falha ao criar o contrato de consultoria do combo.";

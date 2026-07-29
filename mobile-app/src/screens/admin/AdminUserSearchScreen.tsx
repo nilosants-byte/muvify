@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, TouchableOpacity, View } from "react-native";
 import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { adminApi, AdminUserDetail, AdminUserSearchResult } from "../../services/api/client";
@@ -9,6 +9,7 @@ import { handleScreenError } from "../shared/api-helpers";
 
 type Props = {
   navigation: any;
+  route?: { params?: { initialQuery?: string } };
 };
 
 function formatCents(amountCents: number) {
@@ -19,11 +20,12 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-export function AdminUserSearchScreen({ navigation }: Props) {
+export function AdminUserSearchScreen({ navigation, route }: Props) {
   const { theme } = useMvTheme();
   const { runWithAuth, showToast } = useAppState();
 
-  const [query, setQuery] = useState("");
+  const initialQuery = route?.params?.initialQuery;
+  const [query, setQuery] = useState(initialQuery ?? "");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<AdminUserSearchResult[] | null>(null);
 
@@ -59,6 +61,15 @@ export function AdminUserSearchScreen({ navigation }: Props) {
       setSearching(false);
     }
   }
+
+  const didAutoSearch = useRef(false);
+  useEffect(() => {
+    if (initialQuery && initialQuery.trim().length >= 3 && !didAutoSearch.current) {
+      didAutoSearch.current = true;
+      void search();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function openUser(userId: string) {
     try {

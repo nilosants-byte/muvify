@@ -141,7 +141,7 @@ export type AdminStackParamList = {
   AdminExercises: undefined;
   AdminDisputes: undefined;
   AdminDebts: undefined;
-  AdminUserSearch: undefined;
+  AdminUserSearch: { initialQuery?: string } | undefined;
   AdminDisputeDetail: { caseId: string };
   AdminNoShowReports: undefined;
   AdminDataRetention: undefined;
