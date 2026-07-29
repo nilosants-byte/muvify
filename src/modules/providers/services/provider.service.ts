@@ -844,7 +844,14 @@ export class ProviderService {
             ? { create: categoryIds.map((categoryId) => ({ categoryId })) }
             : undefined
         },
-        include: {
+        // Raio-X Muvify, Frente 2 (Segurança do código), Lote 1: select em
+        // vez de include na raiz — include devolvia TODAS as colunas de
+        // ProviderProfile, inclusive mpAccessToken/mpRefreshToken/mpAccountId
+        // e credentialDocuments/crefDocumentUrl (documento de identidade),
+        // que "must never leave the server" segundo o próprio comentário
+        // deste arquivo.
+        select: {
+          ...PUBLIC_PROVIDER_SELECT,
           user: {
             select: {
               id: true,
@@ -943,7 +950,11 @@ export class ProviderService {
         ...(input.specialties !== undefined && { specialties: nextSpecialties }),
         ...(input.minBookingNoticeHours !== undefined && { minBookingNoticeHours: input.minBookingNoticeHours }),
       },
-      include: {
+      // Raio-X Muvify, Frente 2 (Segurança do código), Lote 1: mesma
+      // correção de createProfile acima — select em vez de include.
+      select: {
+        ...PUBLIC_PROVIDER_SELECT,
+        minBookingNoticeHours: true,
         user: { select: { id: true, name: true, email: true, phone: true } },
         categoryLinks: { include: { category: true } }
       }
