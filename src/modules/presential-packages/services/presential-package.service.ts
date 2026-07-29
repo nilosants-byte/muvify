@@ -829,6 +829,10 @@ export class PresentialPackageService {
         status: { in: [PresentialPackageStatus.ACTIVE, PresentialPackageStatus.PAST_DUE] },
         nextBillingAt: { lte: now },
         pendingChargeMpPaymentId: null,
+        // Raio-X de pagamentos, Rodada 5, Lote 2: profissional suspenso nao
+        // pode continuar faturando com alunos ja contratados so porque o
+        // pacote ja estava ativo antes da suspensao.
+        provider: { user: { suspendedAt: null } },
         OR: [
           { NOT: { mode: PresentialPackageMode.FIXED_RECURRING, paymentMethod: ConsultancyPaymentMethod.CREDIT_CARD } },
           { consultancyContractId: { not: null } }
@@ -867,7 +871,8 @@ export class PresentialPackageService {
         mode: PresentialPackageMode.FIXED_RECURRING,
         paymentMethod: ConsultancyPaymentMethod.CREDIT_CARD,
         consultancyContractId: null,
-        nextBillingAt: { lte: now }
+        nextBillingAt: { lte: now },
+        provider: { user: { suspendedAt: null } }
       },
       select: { id: true, hasFixedTerm: true, totalCycles: true, nextCycleIndex: true }
     });

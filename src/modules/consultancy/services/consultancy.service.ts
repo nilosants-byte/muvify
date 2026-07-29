@@ -2154,6 +2154,20 @@ export class ConsultancyService {
       provider,
       `Seu CREF ainda não foi aprovado. ${CREF_APPROVAL_REQUIRED_MESSAGE}`
     );
+
+    // Raio-X de pagamentos, Rodada 5, Lote 2: cada nova ficha entregue cobra
+    // o aluno de novo (Frente B) — um profissional suspenso nao pode seguir
+    // gerando cobranca nova so porque o contrato ja estava ativo antes da
+    // suspensao. Defesa em profundidade: a sessao/token ja deveriam ter sido
+    // revogados na suspensao, mas o blacklist de token e "best effort".
+    const suspendedProvider = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { suspendedAt: true }
+    });
+    if (suspendedProvider?.suspendedAt) {
+      throw new AppError("Sua conta está suspensa e não pode entregar novas fichas.", StatusCodes.FORBIDDEN);
+    }
+
     const contract = await prisma.consultancyContract.findUnique({
       where: { id: contractId },
       include: {

@@ -1,4 +1,4 @@
-﻿import { BookingStatus, ConsultancyPaymentStatus, CrefValidationStatus, DisputeCaseStatus, Prisma, SupportTicketStatus, UserRole } from "@prisma/client";
+﻿import { BookingStatus, ConsultancyContractStatus, ConsultancyPaymentStatus, CrefValidationStatus, DisputeCaseStatus, PresentialPackageStatus, Prisma, SupportTicketStatus, UserRole } from "@prisma/client";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
@@ -11,6 +11,8 @@ import { resolveAccessTokenTtlSeconds, setTokenBlacklist } from "../../../shared
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DataRetentionService } from "../../privacy/services/data-retention.service";
 import { UserService } from "../../users/services/user.service";
+import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
+import { ConsultancyService } from "../../consultancy/services/consultancy.service";
 
 type DashboardInput = {
   month?: number;
@@ -258,6 +260,8 @@ export class AdminService {
   private notificationService = new NotificationService();
   private dataRetentionService = new DataRetentionService();
   private userService = new UserService();
+  private presentialPackageService = new PresentialPackageService();
+  private consultancyService = new ConsultancyService();
 
   private async ensureAdminAccess(adminUserId: string) {
     const admin = await prisma.user.findUnique({
@@ -1321,6 +1325,42 @@ export class AdminService {
     });
     const nowSeconds = Math.floor(Date.now() / 1000);
     await setTokenBlacklist(target.id, nowSeconds, resolveAccessTokenTtlSeconds()).catch(() => {/* best effort */});
+
+    // Raio-X de pagamentos, Rodada 5, Lote 2: suspensão bloqueava login e
+    // negócio novo, mas pacotes/consultorias já ativos do profissional
+    // continuavam sendo cobrados normalmente pelos jobs recorrentes — a
+    // suspensão virava teatro pra quem já tinha contrato em andamento.
+    // Mesmo mecanismo de cancelamento (com aviso/reembolso) já usado quando
+    // o profissional exclui a própria conta (user.service.ts::deleteMe).
+    const providerProfile = await prisma.providerProfile.findFirst({ where: { userId: target.id }, select: { id: true } });
+    if (providerProfile) {
+      const [activePackages, activeContracts] = await Promise.all([
+        prisma.presentialPackage.findMany({
+          where: {
+            providerId: providerProfile.id,
+            status: { in: [PresentialPackageStatus.PENDING_PAYMENT, PresentialPackageStatus.ACTIVE, PresentialPackageStatus.PAST_DUE] }
+          },
+          select: { id: true }
+        }),
+        prisma.consultancyContract.findMany({
+          where: {
+            providerId: providerProfile.id,
+            status: { in: [ConsultancyContractStatus.ACTIVE, ConsultancyContractStatus.DELIVERED] }
+          },
+          select: { id: true }
+        })
+      ]);
+      for (const pkg of activePackages) {
+        await this.presentialPackageService.cancelPackage(target.id, pkg.id).catch((error) =>
+          console.error(`Falha ao cancelar pacote ${pkg.id} na suspensão do profissional ${target.id}:`, error)
+        );
+      }
+      for (const contract of activeContracts) {
+        await this.consultancyService.cancelContract(target.id, contract.id).catch((error) =>
+          console.error(`Falha ao cancelar contrato ${contract.id} na suspensão do profissional ${target.id}:`, error)
+        );
+      }
+    }
 
     void writeAdminAuditLog({
       adminId: admin.id,
