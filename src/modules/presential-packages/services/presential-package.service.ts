@@ -1159,24 +1159,48 @@ export class PresentialPackageService {
         orderBy: { cycleIndex: "desc" }
       });
       if (lastCycle?.mpPaymentId) {
-        try {
-          await mpRefundClient.create({ payment_id: lastCycle.mpPaymentId, body: {} });
-        } catch (error) {
-          console.error(`[presential-package] refund do ciclo ${lastCycle.id} falhou:`, error);
-          Sentry.captureException(error, { tags: { area: "presential-package" }, extra: { cycleId: lastCycle.id, phase: "cycle_refund_failed" } });
-          refundFailed = true;
-          await prisma.disputeCase.create({
-            data: {
-              type: "REFUND_FAILED",
-              clientId: pkg.clientId,
-              providerId: pkg.providerId,
-              amountCents: lastCycle.amountCents ?? 0,
-              mpPaymentId: lastCycle.mpPaymentId,
-              presentialPackageId: pkg.id,
-              presentialPackageCycleId: lastCycle.id,
-              contextNote: "Reembolso automático falhou ao cancelar pacote presencial (cancelamento pelo profissional)."
-            }
-          });
+        // Raio-X de pagamentos, Rodada 5, Lote 7: o ciclo era sempre
+        // estornado no valor cheio, mesmo quando várias sessões daquele
+        // ciclo já tinham sido entregues — o profissional que cancela no
+        // meio do ciclo perdia o valor de sessões que já prestou.
+        // Prorateia pelo número de sessões concluídas dentro do período do
+        // próprio ciclo.
+        const deliveredSessions = await prisma.booking.count({
+          where: {
+            packageId: pkg.id,
+            status: BookingStatus.COMPLETED,
+            scheduledAt: { gte: lastCycle.periodStart, lt: lastCycle.periodEnd }
+          }
+        });
+        const totalSessions = lastCycle.sessionsGranted;
+        const remainingSessions = Math.max(totalSessions - deliveredSessions, 0);
+        const isFullRefund = remainingSessions >= totalSessions;
+        const refundAmountCents =
+          totalSessions > 0 ? Math.round((lastCycle.amountCents ?? 0) * (remainingSessions / totalSessions)) : 0;
+
+        if (refundAmountCents > 0) {
+          try {
+            await mpRefundClient.create({
+              payment_id: lastCycle.mpPaymentId,
+              body: isFullRefund ? {} : { amount: refundAmountCents / 100 }
+            });
+          } catch (error) {
+            console.error(`[presential-package] refund do ciclo ${lastCycle.id} falhou:`, error);
+            Sentry.captureException(error, { tags: { area: "presential-package" }, extra: { cycleId: lastCycle.id, phase: "cycle_refund_failed" } });
+            refundFailed = true;
+            await prisma.disputeCase.create({
+              data: {
+                type: "REFUND_FAILED",
+                clientId: pkg.clientId,
+                providerId: pkg.providerId,
+                amountCents: refundAmountCents,
+                mpPaymentId: lastCycle.mpPaymentId,
+                presentialPackageId: pkg.id,
+                presentialPackageCycleId: lastCycle.id,
+                contextNote: "Reembolso automático falhou ao cancelar pacote presencial (cancelamento pelo profissional)."
+              }
+            });
+          }
         }
       }
       // O ciclo já foi pago de uma vez (Pix) e as sessões da semana já tinham
