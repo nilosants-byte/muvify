@@ -566,6 +566,32 @@ export class ProviderService {
       );
     }
 
+    // Raio-X de pagamentos, Rodada 5, Lote 5 (auditoria adversarial):
+    // profissional suspenso ou com CREF rejeitado podia recriar conta com
+    // e-mail novo e resubmeter o mesmo número de CREF sem nenhum bloqueio
+    // automático — crefNumber não tem @unique, e a revisão nunca cruzava
+    // com submissões anteriores (aprovadas, rejeitadas ou suspensas).
+    if (input.decision === "APPROVE") {
+      const duplicate = await prisma.providerProfile.findFirst({
+        where: {
+          id: { not: provider.id },
+          crefNumber: { equals: provider.crefNumber, mode: "insensitive" },
+          OR: [
+            { crefValidationStatus: CrefValidationStatus.APPROVED },
+            { crefValidationStatus: CrefValidationStatus.REJECTED },
+            { user: { suspendedAt: { not: null } } }
+          ]
+        },
+        select: { id: true, userId: true }
+      });
+      if (duplicate) {
+        throw new AppError(
+          "Este número de CREF já foi usado em outro perfil (aprovado, rejeitado ou suspenso). Revise manualmente antes de aprovar — pode ser uma tentativa de recriar conta.",
+          StatusCodes.CONFLICT
+        );
+      }
+    }
+
     const decision = input.decision;
     const justification = input.justification?.trim() ?? "";
     if (decision === "REJECT" && !justification) {
