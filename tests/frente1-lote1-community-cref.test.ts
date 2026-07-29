@@ -79,14 +79,27 @@ describe("Frente 1, Lote 1 — documento de CREF privado", () => {
   it("getOwnCredentials devolve o documento como URL relativa assinada, não a chave crua", async () => {
     vi.spyOn(S3Client.prototype, "send").mockResolvedValue({} as never);
 
+    const frontUpload = await request(app)
+      .post("/api/uploads/media")
+      .set("Authorization", `Bearer ${token}`)
+      .field("folder", "cref-documents")
+      .attach("file", VALID_JPEG_BUFFER, { filename: "front.jpg", contentType: "image/jpeg" });
+    const backUpload = await request(app)
+      .post("/api/uploads/media")
+      .set("Authorization", `Bearer ${token}`)
+      .field("folder", "cref-documents")
+      .attach("file", VALID_JPEG_BUFFER, { filename: "back.jpg", contentType: "image/jpeg" });
+    const frontKey = frontUpload.body.url as string;
+    const backKey = backUpload.body.url as string;
+
     await request(app)
       .put("/api/providers/me/credentials")
       .set("Authorization", `Bearer ${token}`)
       .send({
         crefNumber: `CREF-${Date.now()}A`,
         credentials: [
-          { name: "frente", uri: "cref-documents/fake-front-key.jpg", mimeType: "image/jpeg" },
-          { name: "verso", uri: "cref-documents/fake-back-key.jpg", mimeType: "image/jpeg" }
+          { name: "frente", uri: frontKey, mimeType: "image/jpeg" },
+          { name: "verso", uri: backKey, mimeType: "image/jpeg" }
         ]
       });
 
@@ -96,7 +109,8 @@ describe("Frente 1, Lote 1 — documento de CREF privado", () => {
 
     expect(res.status).toBe(200);
     const frontUri = res.body.credentials[0].uri as string;
-    expect(frontUri).toMatch(new RegExp(`^/providers/${providerId}/credentials/documents/fake-front-key\\.jpg\\?exp=\\d+&sig=[a-f0-9]{64}$`));
+    const frontKeyName = frontKey.replace("cref-documents/", "");
+    expect(frontUri).toMatch(new RegExp(`^/providers/${providerId}/credentials/documents/${frontKeyName}\\?exp=\\d+&sig=[a-f0-9]{64}$`));
   });
 
   it("rota assinada serve o documento com assinatura válida", async () => {
@@ -105,14 +119,25 @@ describe("Frente 1, Lote 1 — documento de CREF privado", () => {
       Body: { transformToByteArray: async () => bytes }
     } as never);
 
+    const frontUpload = await request(app)
+      .post("/api/uploads/media")
+      .set("Authorization", `Bearer ${token}`)
+      .field("folder", "cref-documents")
+      .attach("file", VALID_JPEG_BUFFER, { filename: "served-front.jpg", contentType: "image/jpeg" });
+    const backUpload = await request(app)
+      .post("/api/uploads/media")
+      .set("Authorization", `Bearer ${token}`)
+      .field("folder", "cref-documents")
+      .attach("file", VALID_JPEG_BUFFER, { filename: "served-back.jpg", contentType: "image/jpeg" });
+
     await request(app)
       .put("/api/providers/me/credentials")
       .set("Authorization", `Bearer ${token}`)
       .send({
         crefNumber: `CREF-${Date.now()}B`,
         credentials: [
-          { name: "frente", uri: "cref-documents/served-key.jpg", mimeType: "image/jpeg" },
-          { name: "verso", uri: "cref-documents/served-key-2.jpg", mimeType: "image/jpeg" }
+          { name: "frente", uri: frontUpload.body.url, mimeType: "image/jpeg" },
+          { name: "verso", uri: backUpload.body.url, mimeType: "image/jpeg" }
         ]
       });
     const credRes = await request(app)

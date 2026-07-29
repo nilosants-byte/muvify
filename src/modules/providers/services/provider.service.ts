@@ -501,6 +501,28 @@ export class ProviderService {
       mimeType: item.mimeType?.trim() || null,
       createdAt: item.createdAt ?? new Date().toISOString()
     }));
+
+    // Frente 2 (Segurança do código), Lote 4: a chave de storage privado não
+    // pode ser aceita só porque o client declarou no body — precisa ter sido
+    // realmente enviada por esse mesmo usuário via /uploads/media.
+    const privateKeys = sanitizedCredentials
+      .map((item) => item.uri)
+      .filter((uri) => uri.startsWith("cref-documents/"));
+    if (privateKeys.length > 0) {
+      const owned = await prisma.crefDocumentUpload.findMany({
+        where: { storageKey: { in: privateKeys }, uploadedByUser: userId },
+        select: { storageKey: true }
+      });
+      const ownedKeys = new Set(owned.map((row) => row.storageKey));
+      const unowned = privateKeys.filter((key) => !ownedKeys.has(key));
+      if (unowned.length > 0) {
+        throw new AppError(
+          "Um ou mais documentos enviados nao pertencem a este usuario.",
+          StatusCodes.FORBIDDEN
+        );
+      }
+    }
+
     const hasBothSides = this.hasFrontAndBackCredentialDocuments(sanitizedCredentials);
 
     const updated = await prisma.providerProfile.update({

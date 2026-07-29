@@ -8,7 +8,7 @@ services:
       - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
   alertmanager:
     image: prom/alertmanager:v0.27.0
     container_name: marketplace_alertmanager
@@ -18,7 +18,7 @@ services:
     volumes:
       - ./monitoring/alertmanager-entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
   grafana:
     image: grafana/grafana:11.0.0
@@ -26,7 +26,7 @@ services:
     restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD precisa estar definida no .env}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro

@@ -29,3 +29,8 @@ process.env.R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "test-sec
 process.env.R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "test-bucket";
 process.env.R2_ENDPOINT = process.env.R2_ENDPOINT || "https://fake-r2.test";
 process.env.R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://fake-r2-public.test";
+// Frente 2 (Segurança do código), Lote 4: precisa estar setada pra dar pra
+// testar a regressão funcional do compare timing-safe do Basic Auth do
+// Swagger (ver tests/frente2-lote4-upload-binding-and-swagger.test.ts).
+process.env.SWAGGER_BASIC_AUTH_PASSWORD =
+  process.env.SWAGGER_BASIC_AUTH_PASSWORD || "test-swagger-basic-auth-password";

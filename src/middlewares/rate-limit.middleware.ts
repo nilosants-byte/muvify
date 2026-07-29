@@ -33,6 +33,11 @@ function userOrIpKey(req: Request): string {
   return req.ip ?? "unknown";
 }
 
+// Frente 2 (Segurança do código), Lote 4: sem Redis (fora de ambiente de
+// teste), o RedisStore fica sem instância compartilhada entre processos —
+// cada instância da API passa a contar localmente. Isso não é uma falha
+// permissiva: o pior caso é o limite ficar mais restritivo (dividido por
+// instância), nunca mais permissivo. Não exige mudança de código.
 function makeStore(prefix: string) {
   if (!useRedisStore) return undefined;
   return new RedisStore({ prefix, sendCommand: sendRedisCommand });

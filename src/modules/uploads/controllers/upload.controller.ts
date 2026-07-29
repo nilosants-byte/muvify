@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
+import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import {
   InvalidFileContentError,
@@ -26,6 +27,12 @@ export class UploadController {
       // (ver provider.service.ts::mapCredentialsPayload).
       if (folder === "cref-documents") {
         const result = await uploadPrivateMediaFromBuffer(file.buffer, file.mimetype, folder);
+        // Frente 2 (Segurança do código), Lote 4: registra quem fez upload
+        // dessa chave, pra upsertOwnCredentials poder validar depois que a
+        // chave declarada no body foi realmente enviada por esse usuário.
+        await prisma.crefDocumentUpload.create({
+          data: { storageKey: result.key, uploadedByUser: req.user!.id }
+        });
         return res.status(StatusCodes.CREATED).json({
           url: result.key,
           mimeType: result.mimeType,

@@ -316,9 +316,25 @@ model User {
   disputeCasesAsClient     DisputeCase[]               @relation("DisputeCaseClient")
   disputeCasesResolved     DisputeCase[]               @relation("DisputeCaseResolvedBy")
   debtRecords              DebtRecord[]
+  crefDocumentUploads      CrefDocumentUpload[]
 
   @@index([createdAt])
   @@index([documentHash])
+}
+
+// Frente 2 (Segurança do código), Lote 4: registra quem fez upload de cada
+// chave de documento de CREF no momento do upload, pra upsertOwnCredentials
+// poder validar que a chave enviada no body foi realmente enviada por esse
+// mesmo usuário, em vez de confiar cegamente no que o client declarar.
+model CrefDocumentUpload {
+  id             String   @id @default(uuid())
+  storageKey     String   @unique
+  uploadedByUser String
+  createdAt      DateTime @default(now())
+
+  uploadedBy User @relation(fields: [uploadedByUser], references: [id], onDelete: Cascade)
+
+  @@index([uploadedByUser])
 }
 
 model AdminAuditLog {

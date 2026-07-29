@@ -134,8 +134,8 @@ if (parsed.NODE_ENV === "production") {
 if (parsed.NODE_ENV === "production" && !parsed.METRICS_TOKEN) {
   throw new Error("METRICS_TOKEN e obrigatorio em producao.");
 }
-if (parsed.NODE_ENV === "production" && !parsed.APP_ENCRYPTION_KEY?.trim()) {
-  throw new Error("APP_ENCRYPTION_KEY e obrigatoria em producao.");
+if (!parsed.APP_ENCRYPTION_KEY?.trim()) {
+  throw new Error("APP_ENCRYPTION_KEY e obrigatoria em qualquer ambiente.");
 }
 if (parsed.NODE_ENV === "production") {
   const hasSmtpConfig =

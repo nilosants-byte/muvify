@@ -1,7 +1,7 @@
 import "express-async-errors";
 import compression from "compression";
 import cors from "cors";
-import { randomUUID } from "crypto";
+import { randomUUID, timingSafeEqual } from "crypto";
 import express from "express";
 import fs from "fs";
 import helmet from "helmet";
@@ -44,7 +44,11 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       imgSrc: ["'self'", "data:"],
       mediaSrc: ["'self'"],
-      scriptSrc: ["'none'"],
+      // Frente 2 (Segurança do código), Lote 4: hoje nada serve <script> (o
+      // build web do Expo, se presente em public/app, não é servido em
+      // producao ainda) — 'self' em vez de 'none' é preventivo, pra não
+      // quebrar silenciosamente o dia que esse build for integrado.
+      scriptSrc: ["'self'"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
     }
@@ -159,7 +163,12 @@ if (env.NODE_ENV !== "production") {
       if (auth && auth.startsWith("Basic ")) {
         const credentials = Buffer.from(auth.slice(6), "base64").toString("utf8");
         const [, password] = credentials.split(":");
-        if (password === swaggerPassword) {
+        const passwordBuffer = Buffer.from(password ?? "", "utf8");
+        const expectedBuffer = Buffer.from(swaggerPassword, "utf8");
+        if (
+          passwordBuffer.length === expectedBuffer.length &&
+          timingSafeEqual(passwordBuffer, expectedBuffer)
+        ) {
           return next();
         }
       }

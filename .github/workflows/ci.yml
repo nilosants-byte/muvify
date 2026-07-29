@@ -48,6 +48,7 @@ jobs:
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/marketplace_test?schema=public
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: ci-secret-key
+          APP_ENCRYPTION_KEY: ci-test-encryption-key-32-chars-min
           NODE_ENV: test
       - run: npm run test
         env:
@@ -55,6 +56,7 @@ jobs:
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/marketplace_test?schema=public
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: ci-test-secret-key-with-at-least-32-characters
+          APP_ENCRYPTION_KEY: ci-test-encryption-key-32-chars-min
           CORS_ORIGIN: http://localhost:8081,http://localhost:3000
           MP_ACCESS_TOKEN: TEST-ci-placeholder-access-token
           MP_PUBLIC_KEY: TEST-ci-placeholder-public-key

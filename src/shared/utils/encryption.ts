@@ -2,27 +2,15 @@ import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes }
 import { env } from "../../config/env";
 
 const ENCRYPTION_PREFIX = "enc:v1:";
-let warnedWeakKey = false;
 
 function resolveEncryptionSecret() {
   if (env.APP_ENCRYPTION_KEY?.trim()) {
     return env.APP_ENCRYPTION_KEY.trim();
   }
 
-  if (env.NODE_ENV === "production") {
-    throw new Error(
-      "APP_ENCRYPTION_KEY nao configurada. Esta variavel e obrigatoria em producao para proteger dados sensiveis."
-    );
-  }
-
-  if (!warnedWeakKey) {
-    warnedWeakKey = true;
-    console.warn(
-      "[AVISO] APP_ENCRYPTION_KEY nao configurada. Usando JWT_SECRET como fallback APENAS em desenvolvimento."
-    );
-  }
-
-  return env.JWT_SECRET;
+  throw new Error(
+    "APP_ENCRYPTION_KEY nao configurada. Esta variavel e obrigatoria em qualquer ambiente para proteger dados sensiveis."
+  );
 }
 
 function resolveEncryptionKey() {
