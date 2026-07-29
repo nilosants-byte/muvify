@@ -8,6 +8,7 @@ import { isAdminEmail } from "../../../shared/utils/admin-access";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { PaymentService } from "../../payments/services/payment.service";
+import { providerSplitAmount } from "../../../shared/utils/platform-fee";
 
 const mpRefund = new PaymentRefund(mp);
 
@@ -341,12 +342,18 @@ export class DisputeCaseService {
       // cancelamento, nao reembolso), entao o personal ja recebeu esse
       // valor: a divida nasce automatica aqui, sem acao extra do admin.
       if (input.resolution === "REFUNDED" && resolvedAmountCents !== null) {
+        // Raio-X de pagamentos, Rodada 5, Lote 3: o profissional nunca
+        // recebeu o valor bruto da venda — recebeu só o líquido (split),
+        // já que a comissão da plataforma ficou retida na venda original.
+        // Cobrar o bruto de volta faz a plataforma terminar com mais
+        // dinheiro do que a venda tinha (bruto de volta + comissão já
+        // embolsada, nunca revertida).
         await tx.debtRecord.create({
           data: {
             disputeCaseId: caseId,
             debtorType: "PROVIDER",
             providerId: disputeCase.providerId,
-            amountCents: resolvedAmountCents,
+            amountCents: providerSplitAmount(resolvedAmountCents),
             reason: note,
             status: "NOTIFIED"
           }
@@ -412,7 +419,7 @@ export class DisputeCaseService {
 
     const providerMessage =
       input.resolution === "REFUNDED"
-        ? `O caso foi resolvido: o cliente foi reembolsado em R$ ${formatCents(resolvedAmountCents!)}. Motivo: ${note} Esse valor será descontado do seu próximo repasse.`
+        ? `O caso foi resolvido: o cliente foi reembolsado em R$ ${formatCents(resolvedAmountCents!)}. Motivo: ${note} O valor que você recebeu por essa venda (R$ ${formatCents(providerSplitAmount(resolvedAmountCents!))}) será descontado do seu próximo repasse.`
         : input.resolution === "RETRY_CAPTURE"
           ? `O caso foi resolvido: a cobrança pendente foi confirmada com sucesso e o repasse segue normalmente. Motivo: ${note}`
           : `O caso foi resolvido: o pedido de reembolso do cliente não foi aprovado. Motivo: ${note}`;

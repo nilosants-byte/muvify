@@ -1251,10 +1251,25 @@ export class PaymentService {
       throw new AppError("Pagamento ainda não autorizado para captura.", StatusCodes.BAD_REQUEST);
     }
 
-    await mpPayment.capture({
+    const mpPay = await mpPayment.capture({
       id: payment.mpPaymentId,
       transaction_amount: payment.amountCents / 100
     });
+
+    // Raio-X de pagamentos, Rodada 5, Lote 3: a MP pode responder 200 com um
+    // status que não é approved (hold expirado, captura recusada) - o
+    // retorno era descartado e o pagamento virava CAPTURED mesmo assim.
+    // Mesma checagem que authorizePayment já faz sobre a própria resposta.
+    if (mpPay.status !== MP_STATUS_APPROVED) {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { failureReason: `Captura recusada pela MP: ${mpPay.status} / ${mpPay.status_detail}` }
+      });
+      throw new AppError(
+        `Captura recusada pela Mercado Pago (status: ${mpPay.status}).`,
+        StatusCodes.BAD_REQUEST
+      );
+    }
 
     // Marca como CAPTURED só se ainda AUTHORIZED (idempotência via updateMany)
     const capturedCount = await prisma.payment.updateMany({

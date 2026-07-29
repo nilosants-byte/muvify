@@ -187,7 +187,7 @@ describe("Integridade da conclusao de sessao presencial (Lote 2 do raio-x)", () 
   });
 
   it("conclui normalmente quando a captura funciona", async () => {
-    vi.spyOn(Payment.prototype, "capture").mockResolvedValueOnce({} as any);
+    vi.spyOn(Payment.prototype, "capture").mockResolvedValueOnce({ status: "approved", status_detail: "accredited" } as any);
 
     const booking = await createBookingReadyToConfirm(3, PaymentStatus.AUTHORIZED);
     await prisma.payment.update({ where: { bookingId: booking.id }, data: { mpPaymentId: `mp_${uid("pay")}` } });

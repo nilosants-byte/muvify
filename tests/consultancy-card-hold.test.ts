@@ -152,7 +152,7 @@ describe("Consultoria — reserva no cartão e captura na entrega", () => {
   it("entregar a primeira ficha captura o valor reservado e marca o contrato como DELIVERED", async () => {
     vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_test" } as any);
     vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: 222, status: "authorized" } as any);
-    const captureSpy = vi.spyOn(Payment.prototype, "capture").mockResolvedValue({} as any);
+    const captureSpy = vi.spyOn(Payment.prototype, "capture").mockResolvedValue({ status: "approved", status_detail: "accredited" } as any);
 
     const request = await makeRespondedRequest();
     const { contract } = await consultancyService.decideRequest(clientId, request.id, {

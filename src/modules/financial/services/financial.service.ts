@@ -919,7 +919,15 @@ export class FinancialService {
         (p.refundedAmountCents / 100).toFixed(2)
       ].join(",");
     });
-    return [header, ...rows].join("\n");
+    // Raio-X de pagamentos, Rodada 5, Lote 3: valor_liquido é calculado
+    // localmente pela plataforma (split fixo) — a MP pode reter uma taxa de
+    // adquirência própria por cima disso, que este sistema não captura.
+    // Aviso explícito em vez de deixar o profissional achar que é o valor
+    // exato depositado na conta MP dele.
+    const disclaimer = escapeCsv(
+      "valor_liquido é um cálculo teórico da plataforma e pode não bater exatamente com o extrato da sua conta Mercado Pago (taxas de adquirência da própria MP não estão incluídas aqui)."
+    );
+    return [header, ...rows, disclaimer].join("\n");
   }
 
   private async buildPayoutsData(userId: string, take: number) {

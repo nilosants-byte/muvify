@@ -490,6 +490,7 @@ export type AdminDashboardOverview = {
   };
   attentionNeeded: {
     revenueThisMonthCents: number;
+    commissionThisMonthCents: number;
     openDisputesCount: number;
     pendingDebtsCount: number;
     pendingDebtsAmountCents: number;

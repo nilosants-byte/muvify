@@ -117,6 +117,13 @@ export function AdminHomeScreen({ navigation }: Props) {
           <MvText variant="h2" style={{ marginTop: 2 }}>
             {formatCurrencyBRL((overview?.attentionNeeded?.revenueThisMonthCents ?? 0) / 100)}
           </MvText>
+          {/* Raio-X de pagamentos, Rodada 5, Lote 3: comissão real da
+              plataforma agregada aqui pela primeira vez — não existia nenhum
+              jeito de comparar manualmente contra o extrato de comissões da
+              própria conta Mercado Pago. */}
+          <MvText variant="caption" color="secondary" style={{ marginTop: 6 }}>
+            Comissão da plataforma: {formatCurrencyBRL((overview?.attentionNeeded?.commissionThisMonthCents ?? 0) / 100)} — confira contra o extrato da conta Mercado Pago
+          </MvText>
 
           <View style={{ gap: 4, marginTop: 12 }}>
             <TouchableOpacity

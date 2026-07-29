@@ -160,7 +160,11 @@ describe("DebtRecord — pendências financeiras entre disputa e cobrança (Fren
     expect(debt).not.toBeNull();
     expect(debt?.debtorType).toBe("PROVIDER");
     expect(debt?.providerId).toBe(providerId);
-    expect(debt?.amountCents).toBe(6000);
+    // Raio-X de pagamentos, Rodada 5, Lote 3: a dívida cobra o valor líquido
+    // (90%) que o profissional efetivamente recebeu, não o bruto de 6000 —
+    // a comissão da plataforma (10%, já embolsada na venda original) nunca
+    // é cobrada de volta dele.
+    expect(debt?.amountCents).toBe(5400);
     expect(debt?.status).toBe("NOTIFIED");
   });
 

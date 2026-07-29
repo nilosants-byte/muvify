@@ -490,9 +490,11 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
           {/* Raio-X de pagamentos, Rodada 4, Lote 10: esse valor é uma
               estimativa somada dos registros locais — não é o saldo de
               verdade da conta Mercado Pago, que pode diferir por causa de
-              taxas, prazos de liberação ou repasses já feitos fora daqui. */}
+              taxas, prazos de liberação ou repasses já feitos fora daqui.
+              Rodada 5, Lote 3: reforça que taxa própria de adquirência da
+              MP não entra nessa conta (o app não recebe esse dado). */}
           <MvText variant="caption" color="tertiary" style={{ textAlign: "center", maxWidth: 280 }}>
-            Estimativa com base nos registros do app — o valor exato pode diferir do saldo real na sua conta Mercado Pago.
+            Estimativa com base nos registros do app — o valor exato pode diferir do saldo real na sua conta Mercado Pago (taxas de adquirência da própria MP não estão incluídas aqui).
           </MvText>
           <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
             <MvBadge label={account?.hasAccount ? "Conta ativa" : "Conta pendente"} variant={account?.hasAccount ? "green" : "orange"} />

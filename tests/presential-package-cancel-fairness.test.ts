@@ -154,7 +154,7 @@ describe("Cancelamento justo de pacote presencial (Lote 3 do raio-x)", () => {
     // (AUTHORIZED), nunca capturado. Cancelar uma reserva libera o cartao
     // (Payment.cancel), nao estorna dinheiro que nunca foi cobrado de verdade
     // (PaymentRefund.create so se aplica a pagamento ja CAPTURED).
-    vi.spyOn(Payment.prototype, "capture").mockResolvedValueOnce({} as any);
+    vi.spyOn(Payment.prototype, "capture").mockResolvedValueOnce({ status: "approved", status_detail: "accredited" } as any);
     vi.spyOn(Payment.prototype, "cancel").mockResolvedValueOnce({} as any);
 
     const { pkg, soonSession, laterSession } = await createFlexiblePackageWithSessions();

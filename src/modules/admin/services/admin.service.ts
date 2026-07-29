@@ -13,6 +13,7 @@ import { DataRetentionService } from "../../privacy/services/data-retention.serv
 import { UserService } from "../../users/services/user.service";
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
+import { platformFeeAmount } from "../../../shared/utils/platform-fee";
 
 type DashboardInput = {
   month?: number;
@@ -422,6 +423,7 @@ export class AdminService {
     // profissional — sem gráficos novos, só números com link direto pra cada fila.
     const [
       completedBookingsAgg,
+      completedBookingsFeeAgg,
       capturedContractsAgg,
       capturedPackageCyclesAgg,
       renewalPlansThisMonth,
@@ -434,13 +436,17 @@ export class AdminService {
         where: { status: BookingStatus.COMPLETED, scheduledAt: { gte: start, lt: end } },
         _sum: { priceCents: true }
       }),
+      prisma.payment.aggregate({
+        where: { booking: { status: BookingStatus.COMPLETED, scheduledAt: { gte: start, lt: end } } },
+        _sum: { platformFeeCents: true }
+      }),
       prisma.consultancyContract.aggregate({
         where: { paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: { gte: start, lt: end } },
-        _sum: { paymentAmountCents: true }
+        _sum: { paymentAmountCents: true, platformAmountCents: true }
       }),
       prisma.presentialPackageCycle.aggregate({
         where: { capturedAt: { gte: start, lt: end } },
-        _sum: { amountCents: true }
+        _sum: { amountCents: true, platformAmountCents: true }
       }),
       prisma.trainingPlan.findMany({
         where: { renewalMpPaymentId: { not: null }, createdAt: { gte: start, lt: end } },
@@ -464,6 +470,21 @@ export class AdminService {
       (capturedPackageCyclesAgg._sum.amountCents ?? 0) +
       renewalRevenueThisMonth;
 
+    // Raio-X de pagamentos, Rodada 5, Lote 3 (moderado #5): nenhum lugar
+    // agregava a comissão real da plataforma pra comparação manual contra o
+    // extrato de comissões da própria conta Mercado Pago — só existia GMV
+    // bruto. Renovação de ficha não tem coluna própria de comissão (mesmo
+    // split fixo de sempre, calculado aqui em vez de persistido por linha).
+    const renewalCommissionThisMonth = renewalPlansThisMonth.reduce(
+      (s, p) => s + platformFeeAmount(p.contract?.paymentAmountCents ?? 0),
+      0
+    );
+    const platformCommissionCents =
+      (completedBookingsFeeAgg._sum.platformFeeCents ?? 0) +
+      (capturedContractsAgg._sum.platformAmountCents ?? 0) +
+      (capturedPackageCyclesAgg._sum.platformAmountCents ?? 0) +
+      renewalCommissionThisMonth;
+
     return {
       summary: {
         activeUsers: activeUsersRows.length,
@@ -484,6 +505,7 @@ export class AdminService {
       },
       attentionNeeded: {
         revenueThisMonthCents: platformRevenueCents,
+        commissionThisMonthCents: platformCommissionCents,
         openDisputesCount,
         pendingDebtsCount: pendingDebtsAgg._count,
         pendingDebtsAmountCents: pendingDebtsAgg._sum.amountCents ?? 0,

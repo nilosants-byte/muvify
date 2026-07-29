@@ -236,7 +236,7 @@ describe("Suspensao de conta pelo admin (Rodada 3, Lote 3)", () => {
     });
     disputeCaseIds.push(disputeCase.id);
 
-    vi.spyOn(Payment.prototype, "capture").mockResolvedValueOnce({} as any);
+    vi.spyOn(Payment.prototype, "capture").mockResolvedValueOnce({ status: "approved", status_detail: "accredited" } as any);
 
     const res = await request(app)
       .post(`/api/admin/disputes/${disputeCase.id}/resolve`)

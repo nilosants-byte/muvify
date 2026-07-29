@@ -2246,10 +2246,17 @@ export class ConsultancyService {
       Boolean(contract.mpPaymentId);
     if (shouldCaptureNow) {
       try {
-        await mpPaymentClient.capture({
+        const mpPay = await mpPaymentClient.capture({
           id: contract.mpPaymentId!,
           transaction_amount: contract.paymentAmountCents / 100
         });
+        // Raio-X de pagamentos, Rodada 5, Lote 3: a MP pode responder 200
+        // com um status que não é approved (hold expirado, captura
+        // recusada) - o retorno era descartado e a entrega seguia como se
+        // o pagamento tivesse sido efetivado de verdade.
+        if (mpPay.status !== "approved") {
+          throw new Error(`status inesperado: ${mpPay.status} / ${mpPay.status_detail}`);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "erro desconhecido";
         throw new AppError(

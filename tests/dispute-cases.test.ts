@@ -453,7 +453,7 @@ describe("DisputeCase — fila de disputas (Fase 6)", () => {
       data: { type: "CAPTURE_FAILED", clientId, providerId, amountCents: 9000, mpPaymentId, bookingId: booking.id }
     });
 
-    vi.spyOn(Payment.prototype, "capture").mockResolvedValueOnce({} as any);
+    vi.spyOn(Payment.prototype, "capture").mockResolvedValueOnce({ status: "approved", status_detail: "accredited" } as any);
 
     const resolved = await disputeCaseService.resolveCase(adminId, disputeCase.id, {
       resolution: "RETRY_CAPTURE",
