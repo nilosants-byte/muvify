@@ -36,7 +36,7 @@ export async function commentPost(req: Request, res: Response) {
 
 export async function listComments(req: Request, res: Response) {
   const { page, limit } = req.query as { page: string; limit: string };
-  const result = await getComments(req.params.postId, Number(page), Number(limit));
+  const result = await getComments(req.params.postId, req.user!.id, Number(page), Number(limit));
   res.json(result);
 }
 

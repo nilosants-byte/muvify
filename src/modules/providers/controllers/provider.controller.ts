@@ -69,6 +69,19 @@ export class ProviderController {
     return response.send(buffer);
   }
 
+  async streamCredentialDocument(request: Request, response: Response) {
+    const { buffer, mimeType } = await providerService.getSignedCredentialDocument({
+      providerId: request.params.providerId,
+      key: `cref-documents/${decodeURIComponent(request.params.key)}`,
+      exp: request.query.exp as string | undefined,
+      sig: request.query.sig as string | undefined
+    });
+    response.setHeader("Content-Type", mimeType);
+    response.setHeader("Content-Length", String(buffer.length));
+    response.setHeader("Cache-Control", "private, max-age=60");
+    return response.send(buffer);
+  }
+
   async schedulePreview(request: Request, response: Response) {
     const payload = await providerService.getPublicSchedulePreview(request.params.providerId, {
       startDate: request.query.startDate as string | undefined,

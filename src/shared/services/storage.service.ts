@@ -150,6 +150,45 @@ export async function uploadMediaFromBuffer(
   };
 }
 
+// Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 1: documento de CREF é
+// documento de identidade — grava no mesmo bucket, mas nunca constrói uma
+// URL pública. Quem quiser exibir o documento precisa passar pela rota
+// assinada (cref-document-signature.ts), nunca acessa o objeto direto.
+export async function uploadPrivateMediaFromBuffer(
+  buffer: Buffer,
+  mimeType: string,
+  folder: UploadFolder
+): Promise<{ key: string; mimeType: string; sizeBytes: number }> {
+  assertAllowedMimeType(mimeType);
+  validateMagicBytes(buffer, mimeType);
+  const config = getR2Config();
+  const extension = EXTENSION_BY_MIME[mimeType] ?? "bin";
+  const key = `${folder}/${randomUUID()}.${extension}`;
+
+  await getR2Client(config).send(
+    new PutObjectCommand({
+      Bucket: config.bucketName,
+      Key: key,
+      Body: buffer,
+      ContentType: mimeType
+    })
+  );
+
+  return { key, mimeType, sizeBytes: buffer.byteLength };
+}
+
+export async function getPrivateMediaBuffer(key: string): Promise<Buffer> {
+  const config = getR2Config();
+  const result = await getR2Client(config).send(
+    new GetObjectCommand({ Bucket: config.bucketName, Key: key })
+  );
+  const bytes = await result.Body?.transformToByteArray();
+  if (!bytes) {
+    throw new InvalidFileContentError("Objeto não encontrado ou vazio.");
+  }
+  return Buffer.from(bytes);
+}
+
 // Opaque, already-encrypted content (e.g. an attendance-proof selfie run through
 // encryptSensitiveText) — stored under its own key, never exposed as a public URL.
 // No mime/magic-byte validation here since the body isn't an image anymore, it's ciphertext.

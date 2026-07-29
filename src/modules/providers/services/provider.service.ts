@@ -26,6 +26,8 @@ import {
   toProviderVideoUrl,
   toUserPhotoUrl
 } from "../../../shared/utils/photo-url";
+import { createCrefDocumentSignatureQuery, verifyCrefDocumentSignature } from "../../../shared/utils/cref-document-signature";
+import { getPrivateMediaBuffer } from "../../../shared/services/storage.service";
 import { ENABLE_VIDEO_UPLOAD } from "../../../config/features";
 import { NotificationService } from "../../notifications/services/notification.service";
 
@@ -352,6 +354,19 @@ export class ProviderService {
     });
   }
 
+  // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 1: documento novo
+  // (upload privado) grava a própria chave do storage no campo "uri", não
+  // uma URL — reconhecível por começar com o prefixo da pasta privada.
+  // Documento antigo (pré-correção) continua com a URL pública real,
+  // devolvida sem alteração (risco residual documentado e aceito).
+  private resolveCredentialDocumentUri(providerId: string, uri: string | null | undefined) {
+    if (!uri) return uri ?? null;
+    if (!uri.startsWith("cref-documents/")) return uri;
+    const filename = uri.slice("cref-documents/".length);
+    const signature = createCrefDocumentSignatureQuery(providerId, uri);
+    return `/providers/${providerId}/credentials/documents/${encodeURIComponent(filename)}?${signature}`;
+  }
+
   private hasFrontAndBackCredentialDocuments(value: unknown) {
     const docs = this.getCredentialDocuments(value);
     const frontUri = typeof docs[0]?.uri === "string" ? docs[0].uri.trim() : "";
@@ -374,17 +389,63 @@ export class ProviderService {
     crefRejectionCount: number;
     crefReviewedAt: Date | null;
   }) {
+    const credentials = this.getCredentialDocuments(provider.credentialDocuments).map((doc) => ({
+      ...doc,
+      uri: this.resolveCredentialDocumentUri(provider.id, doc.uri)
+    }));
     return {
       providerId: provider.id,
       crefNumber: provider.crefNumber,
       crefDocumentUrl: provider.crefDocumentUrl,
-      credentials: this.getCredentialDocuments(provider.credentialDocuments),
+      credentials,
       crefValidatedAt: provider.crefValidatedAt,
       crefValidationStatus: provider.crefValidationStatus,
       crefRejectionReason: provider.crefRejectionReason,
       crefRejectionCount: provider.crefRejectionCount,
       crefReviewedAt: provider.crefReviewedAt
     };
+  }
+
+  // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 1: rota assinada que
+  // serve o documento de CREF (privado no R2) — validação por HMAC de
+  // curta duração, não por sessão (o mesmo padrão já usado pra foto de
+  // usuário, necessário porque a tag <Image> do app não envia header de
+  // autorização).
+  async getSignedCredentialDocument(input: {
+    providerId: string;
+    key: string;
+    exp: string | number | undefined;
+    sig: string | undefined;
+  }) {
+    if (
+      !verifyCrefDocumentSignature({
+        providerId: input.providerId,
+        key: input.key,
+        exp: input.exp,
+        sig: input.sig
+      })
+    ) {
+      throw new AppError("Assinatura de acesso a documento invalida.", StatusCodes.FORBIDDEN);
+    }
+
+    const provider = await prisma.providerProfile.findUnique({
+      where: { id: input.providerId },
+      select: { credentialDocuments: true }
+    });
+    if (!provider) {
+      throw new AppError("Perfil profissional nao encontrado.", StatusCodes.NOT_FOUND);
+    }
+    const docs = this.getCredentialDocuments(provider.credentialDocuments) as Array<{
+      uri?: string | null;
+      mimeType?: string | null;
+    }>;
+    const doc = docs.find((d) => d.uri === input.key);
+    if (!doc) {
+      throw new AppError("Documento nao encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    const buffer = await getPrivateMediaBuffer(input.key);
+    return { buffer, mimeType: doc.mimeType || "application/octet-stream" };
   }
 
   async getOwnCredentials(userId: string) {

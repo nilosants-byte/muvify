@@ -132,10 +132,25 @@ export const providerStudentDetailSchema = z.object({
   })
 });
 
+// Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 1: documento de CREF
+// novo passa a ir pro storage privado — o campo uri passa a aceitar tanto
+// uma URL de verdade (documento antigo, público, pré-correção) quanto a
+// própria chave de armazenamento privado (pasta cref-documents/...),
+// resolvida pra URL assinada só no momento de exibir (ver
+// provider.service.ts::resolveCredentialDocumentUri).
+const credentialDocumentUri = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2000)
+  .refine((value) => /^https?:\/\//.test(value) || /^cref-documents\/[A-Za-z0-9._-]+$/.test(value), {
+    message: "URI de documento invalida."
+  });
+
 const credentialDocumentSchema = z.object({
   id: z.string().trim().min(1).max(120).optional(),
   name: z.string().trim().min(1).max(180),
-  uri: z.string().trim().url(),
+  uri: credentialDocumentUri,
   mimeType: z.string().trim().max(120).optional(),
   createdAt: z.string().datetime({ offset: true }).optional()
 });

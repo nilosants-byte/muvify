@@ -66,7 +66,7 @@ export async function createManualPhotoPost(
   imageUrl: string | undefined,
   caption?: string
 ): Promise<void> {
-  await prisma.feedPost.create({
+  const post = await prisma.feedPost.create({
     data: {
       userId,
       type: "MANUAL_PHOTO",
@@ -76,7 +76,10 @@ export async function createManualPhotoPost(
     },
   });
 
-  await awardXp(userId, 10, "POST_WORKOUT_PHOTO");
+  // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 1: referenceId ativa a
+  // deduplicação de XP já existente em awardXp — antes, sem esse valor,
+  // cada chamada sempre criava uma transação de XP nova.
+  await awardXp(userId, 10, "POST_WORKOUT_PHOTO", post.id);
   await checkAndUnlock(userId, ["TOTAL_PHOTO_POSTS"]);
 }
 
@@ -112,7 +115,26 @@ export async function createAutoPost(
   });
 }
 
+// Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 1: getFeed só mostra
+// posts do próprio usuário e de quem ele segue, mas toggleLike/addComment/
+// getComments só checavam se o post existia — um postId vazado por
+// qualquer canal permitia curtir/comentar/ler comentários fora do feed do
+// usuário. Mesmo critério de visibilidade do getFeed, aplicado por post.
+async function assertPostVisibleToViewer(authorId: string, viewerId: string): Promise<void> {
+  if (authorId === viewerId) return;
+  const follows = await prisma.follow.findUnique({
+    where: { followerId_followingId: { followerId: viewerId, followingId: authorId } },
+  });
+  if (!follows) {
+    throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
+  }
+}
+
 export async function toggleLike(postId: string, userId: string): Promise<{ liked: boolean }> {
+  const post = await prisma.feedPost.findUnique({ where: { id: postId }, select: { userId: true } });
+  if (!post) throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
+  await assertPostVisibleToViewer(post.userId, userId);
+
   const existing = await prisma.feedPostLike.findUnique({
     where: { postId_userId: { postId, userId } },
   });
@@ -122,16 +144,14 @@ export async function toggleLike(postId: string, userId: string): Promise<{ like
     return { liked: false };
   }
 
-  const post = await prisma.feedPost.findUnique({ where: { id: postId }, select: { userId: true } });
-  if (!post) throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
-
   await prisma.feedPostLike.create({ data: { postId, userId } });
   return { liked: true };
 }
 
 export async function addComment(postId: string, userId: string, content: string) {
-  const post = await prisma.feedPost.findUnique({ where: { id: postId }, select: { id: true } });
+  const post = await prisma.feedPost.findUnique({ where: { id: postId }, select: { userId: true } });
   if (!post) throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
+  await assertPostVisibleToViewer(post.userId, userId);
 
   return prisma.feedPostComment.create({
     data: { postId, userId, content },
@@ -144,7 +164,11 @@ export async function addComment(postId: string, userId: string, content: string
   });
 }
 
-export async function getComments(postId: string, page: number, limit: number) {
+export async function getComments(postId: string, viewerId: string, page: number, limit: number) {
+  const post = await prisma.feedPost.findUnique({ where: { id: postId }, select: { userId: true } });
+  if (!post) throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
+  await assertPostVisibleToViewer(post.userId, viewerId);
+
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
     prisma.feedPostComment.findMany({
@@ -194,11 +218,26 @@ export async function editComment(commentId: string, userId: string, content: st
   });
 }
 
+// Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 1: janela curta o
+// suficiente pra pegar o padrão "cria e apaga na hora" de quem tá farmando
+// XP, mas não penalizar quem apaga um post antigo por limpeza normal —
+// esse já "valeu a pena" pro engajamento real.
+const XP_FARM_REVERSAL_WINDOW_MS = 10 * 60 * 1000;
+
 export async function deletePost(postId: string, userId: string): Promise<void> {
-  const post = await prisma.feedPost.findUnique({ where: { id: postId }, select: { userId: true, isAutomatic: true } });
+  const post = await prisma.feedPost.findUnique({
+    where: { id: postId },
+    select: { userId: true, isAutomatic: true, type: true, createdAt: true },
+  });
   if (!post) throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
   if (post.userId !== userId) throw new AppError("Sem permissão.", StatusCodes.FORBIDDEN);
   if (post.isAutomatic) throw new AppError("Posts automáticos não podem ser excluídos.", StatusCodes.FORBIDDEN);
 
   await prisma.feedPost.delete({ where: { id: postId } });
+
+  if (post.type === "MANUAL_PHOTO" && Date.now() - post.createdAt.getTime() < XP_FARM_REVERSAL_WINDOW_MS) {
+    await prisma.userXpTransaction.deleteMany({
+      where: { userId, reason: "POST_WORKOUT_PHOTO", referenceId: postId },
+    });
+  }
 }

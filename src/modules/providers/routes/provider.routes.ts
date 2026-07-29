@@ -160,4 +160,12 @@ providerRoutes.get(
   providerController.streamVideo
 );
 
+// Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 1: rota assinada (não
+// autenticada por sessão, igual /photo e /video) que serve o documento de
+// CREF privado — a validação real acontece via HMAC em getSignedCredentialDocument.
+providerRoutes.get(
+  "/:providerId/credentials/documents/:key",
+  providerController.streamCredentialDocument
+);
+
 providerRoutes.get("/:providerId", validate(providerIdSchema), providerController.show);

@@ -76,6 +76,17 @@ describe("community", () => {
     expect(res.status).toBe(204);
   });
 
+  // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 1: curtir/comentar
+  // agora respeita a visibilidade do feed (curtir/comentar exige que o
+  // autor seja o próprio usuário ou alguém que ele segue) — B precisa
+  // seguir A pra poder interagir com os posts de A mais abaixo.
+  it("POST /community/follow/:userId (B follows A, needed for B to interact with A's posts)", async () => {
+    const res = await request(app)
+      .post(`/api/community/follow/${userAId}`)
+      .set("Authorization", `Bearer ${tokenB}`);
+    expect(res.status).toBe(204);
+  });
+
   it("GET /community/following lists users A is following", async () => {
     const res = await request(app)
       .get("/api/community/following")
