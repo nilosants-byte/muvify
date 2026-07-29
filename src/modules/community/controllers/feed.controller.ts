@@ -41,13 +41,13 @@ export async function listComments(req: Request, res: Response) {
 }
 
 export async function deleteCommentCtrl(req: Request, res: Response) {
-  await deleteComment(req.params.commentId, req.user!.id);
+  await deleteComment(req.params.postId, req.params.commentId, req.user!.id);
   res.status(StatusCodes.NO_CONTENT).send();
 }
 
 export async function editCommentCtrl(req: Request, res: Response) {
   const { content } = req.body as { content: string };
-  const updated = await editComment(req.params.commentId, req.user!.id, content);
+  const updated = await editComment(req.params.postId, req.params.commentId, req.user!.id, content);
   res.json(updated);
 }
 

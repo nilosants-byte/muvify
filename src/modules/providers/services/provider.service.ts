@@ -534,7 +534,11 @@ export class ProviderService {
     return this.mapCredentialsPayload(updated);
   }
 
-  async listCrefValidationQueue(status: CrefValidationQueueStatus = "IN_REVIEW", take = 100) {
+  // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: quebrava o padrão
+  // de defesa em profundidade do resto do módulo — dependia 100% do
+  // ensureRole(ADMIN) da rota.
+  async listCrefValidationQueue(adminId: string, status: CrefValidationQueueStatus = "IN_REVIEW", take = 100) {
+    await this.assertAdminAccess(adminId);
     const desiredStatus =
       status === "IN_REVIEW"
         ? CREF_STATUS_IN_REVIEW
@@ -2385,18 +2389,12 @@ export class ProviderService {
     });
     if (!provider) throw new AppError("Perfil de prestador não encontrado.", StatusCodes.NOT_FOUND);
 
-    // Only allow access if the client has at least one booking with this provider
-    const hasRelationship = await prisma.booking.findFirst({
-      where: {
-        providerId: provider.id,
-        clientId,
-        status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED, BookingStatus.COMPLETED] },
-      },
-      select: { id: true },
-    });
-    if (!hasRelationship) {
-      throw new AppError("Você não tem acesso à ficha deste aluno.", StatusCodes.FORBIDDEN);
-    }
+    // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: unificado com o
+    // critério usado em getStudentManagementDetail/upsertStudentPhysicalAssessment
+    // (booking OU contrato de consultoria ativo) — antes só aceitava
+    // booking, bloqueando acesso legítimo de profissional vinculado só por
+    // consultoria.
+    await this.assertStudentManagedByProvider(provider.id, clientId);
 
     const anamnesis = await prisma.clientAnamnesis.findUnique({
       where: { clientId },

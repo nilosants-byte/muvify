@@ -332,7 +332,11 @@ export class AdminService {
     };
   }
 
-  async getDashboardOverview(input: DashboardInput) {
+  // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: quebrava o padrão
+  // de defesa em profundidade do resto do módulo — dependia 100% do
+  // ensureRole(ADMIN) da rota, sem revalidar isAdminEmail direto no banco.
+  async getDashboardOverview(adminId: string, input: DashboardInput) {
+    await this.ensureAdminAccess(adminId);
     const now = new Date();
     const month = input.month ?? now.getMonth() + 1;
     const year = input.year ?? now.getFullYear();
@@ -519,7 +523,8 @@ export class AdminService {
   // nada sobre o contexto financeiro/disciplinar do usuário — um admin podia
   // responder um ticket de reclamação sem saber que esse mesmo usuário tem
   // dívida em aberto, disputa em julgamento ou está suspenso.
-  async listSupportTickets(input: SupportQueueInput) {
+  async listSupportTickets(adminId: string, input: SupportQueueInput) {
+    await this.ensureAdminAccess(adminId);
     const status =
       input.status === "ANSWERED"
         ? SupportTicketStatus.ANSWERED
@@ -1095,6 +1100,7 @@ export class AdminService {
   }
 
   async lookupCrefByDocument(adminId: string, providerDocument: string) {
+    await this.ensureAdminAccess(adminId);
     const doc = this.normalizeDocument(providerDocument);
     console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupCref document=${doc}`);
     const user = await this.userByDoc(doc, {
@@ -1124,6 +1130,7 @@ export class AdminService {
     providerDocument: string,
     clientDocument: string
   ) {
+    await this.ensureAdminAccess(adminId);
     const provDoc = this.normalizeDocument(providerDocument);
     const cliDoc = this.normalizeDocument(clientDocument);
     console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupChats provDoc=${provDoc} cliDoc=${cliDoc}`);
@@ -1172,6 +1179,7 @@ export class AdminService {
     clientDocument: string,
     date?: string
   ) {
+    await this.ensureAdminAccess(adminId);
     const provDoc = this.normalizeDocument(providerDocument);
     const cliDoc = this.normalizeDocument(clientDocument);
     console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupBookings provDoc=${provDoc} cliDoc=${cliDoc} date=${date ?? "all"}`);
@@ -1224,6 +1232,7 @@ export class AdminService {
   }
 
   async lookupBookingDetail(adminId: string, bookingId: string) {
+    await this.ensureAdminAccess(adminId);
     console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupBookingDetail bookingId=${bookingId}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const booking = await (prisma.booking.findUnique as any)({
@@ -1289,6 +1298,7 @@ export class AdminService {
   // consequência automática é aplicada — cabe a um admin revisar os casos
   // recorrentes (minStrikes) e decidir manualmente.
   async listNoShowReports(adminId: string, minStrikes = 1) {
+    await this.ensureAdminAccess(adminId);
     console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=listNoShowReports minStrikes=${minStrikes}`);
 
     const reports = await prisma.noShowReport.findMany({

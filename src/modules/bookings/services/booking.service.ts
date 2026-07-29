@@ -1000,11 +1000,12 @@ export class BookingService {
       throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
     }
 
+    // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: 404 em vez de
+    // 403 — não diferencia "não existe" de "existe mas não é seu" pra
+    // quem tenta um bookingId de terceiro, alinhado ao padrão já usado em
+    // consultancy/presential-packages.
     if (booking.clientId !== userId) {
-      throw new AppError(
-        "Somente o aluno pode visualizar o código de presença.",
-        StatusCodes.FORBIDDEN
-      );
+      throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
     }
 
     if (booking.status === BookingStatus.CANCELLED || booking.status === BookingStatus.COMPLETED) {
@@ -1091,11 +1092,10 @@ export class BookingService {
       throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
     }
 
+    // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: 404 em vez de
+    // 403, mesma razão de getAttendanceCode acima.
     if (booking.provider.userId !== userId) {
-      throw new AppError(
-        "Somente o profissional pode validar o código de presença.",
-        StatusCodes.FORBIDDEN
-      );
+      throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
     }
 
     const ATTENDANCE_MAX_ATTEMPTS = 10;
@@ -1285,8 +1285,9 @@ export class BookingService {
     const now = new Date();
     const isClient = booking.clientId === userId;
     const isProvider = booking.provider.userId === userId;
+    // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: 404 em vez de 403.
     if (!isClient && !isProvider) {
-      throw new AppError("Sem permissao para confirmar este agendamento.", StatusCodes.FORBIDDEN);
+      throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
     }
 
     if (!booking.attendanceCodeValidatedAt) {
@@ -1464,8 +1465,9 @@ export class BookingService {
 
     const isClient = booking.clientId === reporterId;
     const isProvider = booking.provider.userId === reporterId;
+    // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: 404 em vez de 403.
     if (!isClient && !isProvider) {
-      throw new AppError("Sem permissao para reportar este agendamento.", StatusCodes.FORBIDDEN);
+      throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
     }
 
     if (booking.status !== BookingStatus.CONFIRMED) {
@@ -1628,8 +1630,9 @@ export class BookingService {
 
     const isClient = booking.clientId === userId;
     const isProvider = booking.provider.userId === userId;
+    // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: 404 em vez de 403.
     if (!isClient && !isProvider) {
-      throw new AppError("Você não tem permissão para contestar este agendamento.", StatusCodes.FORBIDDEN);
+      throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
     }
 
     if (booking.status !== BookingStatus.COMPLETED || !booking.completedAt) {

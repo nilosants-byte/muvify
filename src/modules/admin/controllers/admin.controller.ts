@@ -15,7 +15,7 @@ const debtService = new DebtService();
 
 export class AdminController {
   async dashboardOverview(request: Request, response: Response) {
-    const payload = await adminService.getDashboardOverview({
+    const payload = await adminService.getDashboardOverview(request.user!.id, {
       month: request.query.month ? Number(request.query.month) : undefined,
       year: request.query.year ? Number(request.query.year) : undefined
     });
@@ -24,6 +24,7 @@ export class AdminController {
 
   async listCrefValidationQueue(request: Request, response: Response) {
     const payload = await providerService.listCrefValidationQueue(
+      request.user!.id,
       (
         request.query.status as
           | "PENDING"
@@ -47,7 +48,7 @@ export class AdminController {
   }
 
   async listSupportTickets(request: Request, response: Response) {
-    const payload = await adminService.listSupportTickets({
+    const payload = await adminService.listSupportTickets(request.user!.id, {
       status: request.query.status as "OPEN" | "ANSWERED" | undefined,
       take: request.query.take ? Number(request.query.take) : undefined
     });

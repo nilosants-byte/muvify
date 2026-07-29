@@ -189,22 +189,26 @@ export async function getComments(postId: string, viewerId: string, page: number
   return { items, total, page, totalPages: Math.ceil(total / limit) };
 }
 
-export async function deleteComment(commentId: string, userId: string): Promise<void> {
+// Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: a rota exige postId
+// no path (commentIdParamSchema), mas o service nunca cruzava esse valor
+// com o comentário — cosmético (a checagem de dono do comentário já era
+// correta), mas fecha a inconsistência.
+export async function deleteComment(postId: string, commentId: string, userId: string): Promise<void> {
   const comment = await prisma.feedPostComment.findUnique({
     where: { id: commentId },
-    select: { userId: true },
+    select: { userId: true, postId: true },
   });
-  if (!comment) throw new AppError("Comentário não encontrado.", StatusCodes.NOT_FOUND);
+  if (!comment || comment.postId !== postId) throw new AppError("Comentário não encontrado.", StatusCodes.NOT_FOUND);
   if (comment.userId !== userId) throw new AppError("Sem permissão.", StatusCodes.FORBIDDEN);
   await prisma.feedPostComment.delete({ where: { id: commentId } });
 }
 
-export async function editComment(commentId: string, userId: string, content: string) {
+export async function editComment(postId: string, commentId: string, userId: string, content: string) {
   const comment = await prisma.feedPostComment.findUnique({
     where: { id: commentId },
-    select: { userId: true },
+    select: { userId: true, postId: true },
   });
-  if (!comment) throw new AppError("Comentário não encontrado.", StatusCodes.NOT_FOUND);
+  if (!comment || comment.postId !== postId) throw new AppError("Comentário não encontrado.", StatusCodes.NOT_FOUND);
   if (comment.userId !== userId) throw new AppError("Sem permissão.", StatusCodes.FORBIDDEN);
   return prisma.feedPostComment.update({
     where: { id: commentId },

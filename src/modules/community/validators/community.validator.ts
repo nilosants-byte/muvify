@@ -1,4 +1,17 @@
 import { z } from "zod";
+import { env } from "../../../config/env";
+
+// Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: imageUrl aceitava
+// qualquer domínio externo — restringe ao próprio bucket, evitando que um
+// post do feed injete link/rastreamento arbitrário dentro de tela confiável
+// do app.
+const ownMediaUrl = z
+  .string()
+  .trim()
+  .url()
+  .refine((value) => !env.R2_PUBLIC_URL || value.startsWith(env.R2_PUBLIC_URL), {
+    message: "imageUrl deve apontar para o storage do próprio app."
+  });
 
 export const userIdParamSchema = z.object({
   params: z.object({ userId: z.string().uuid() })
@@ -30,7 +43,7 @@ export const searchUsersSchema = z.object({
 
 export const createPhotoPostSchema = z.object({
   body: z.object({
-    imageUrl: z.string().trim().url().optional(),
+    imageUrl: ownMediaUrl.optional(),
     caption: z.string().trim().min(1).max(300).optional(),
   }).refine((b) => b.imageUrl || b.caption, {
     message: "Informe uma imagem ou uma legenda",

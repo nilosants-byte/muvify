@@ -1,4 +1,24 @@
 import { z } from "zod";
+import { env } from "../../../config/env";
+
+// Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: mediaUrl aceitava
+// qualquer domínio externo — restringe ao próprio bucket, exceto quando
+// mediaType é YOUTUBE (único caso legítimo de link externo).
+function assertOwnOrYoutubeMedia(data: { mediaUrl?: string; mediaType?: string }, ctx: z.RefinementCtx) {
+  if (!data.mediaUrl) return;
+  const isYoutube = data.mediaType === "YOUTUBE";
+  const isOwnBucket = !env.R2_PUBLIC_URL || data.mediaUrl.startsWith(env.R2_PUBLIC_URL);
+  const isYoutubeUrl = /^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(data.mediaUrl);
+  if (isYoutube ? !isYoutubeUrl : !isOwnBucket) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: isYoutube
+        ? "mediaUrl deve ser um link do YouTube quando mediaType é YOUTUBE."
+        : "mediaUrl deve apontar para o storage do próprio app.",
+      path: ["mediaUrl"]
+    });
+  }
+}
 
 export const createExerciseSchema = z.object({
   body: z.object({
@@ -9,7 +29,7 @@ export const createExerciseSchema = z.object({
     defaultRestLabel: z.string().trim().max(120).optional(),
     mediaUrl: z.string().trim().max(2048).optional(),
     mediaType: z.enum(["YOUTUBE", "VIDEO", "IMAGE", "GIF"]).optional()
-  })
+  }).superRefine(assertOwnOrYoutubeMedia)
 });
 
 export const listExercisesSchema = z.object({
@@ -35,7 +55,7 @@ export const createPrebuiltExerciseSchema = z.object({
     defaultRestLabel: z.string().trim().max(120).optional(),
     mediaUrl: z.string().trim().max(2048).optional(),
     mediaType: z.enum(["YOUTUBE", "VIDEO", "IMAGE", "GIF"]).optional()
-  })
+  }).superRefine(assertOwnOrYoutubeMedia)
 });
 
 export const updatePrebuiltExerciseSchema = z.object({
@@ -48,5 +68,5 @@ export const updatePrebuiltExerciseSchema = z.object({
     defaultRestLabel: z.string().trim().max(120).optional(),
     mediaUrl: z.string().trim().max(2048).optional(),
     mediaType: z.enum(["YOUTUBE", "VIDEO", "IMAGE", "GIF"]).optional()
-  })
+  }).superRefine(assertOwnOrYoutubeMedia)
 });

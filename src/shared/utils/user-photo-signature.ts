@@ -1,7 +1,11 @@
 import crypto from "crypto";
 import { env } from "../../config/env";
 
-const USER_PHOTO_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
+// Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: 7 dias era tempo
+// demais pra uma URL que funciona como "bearer token" enquanto válida — o
+// app já rebusca o perfil/URL com frequência normal de uso, então 24h
+// reduz a janela de exposição sem quebrar cache legítimo de sessão.
+const USER_PHOTO_URL_TTL_SECONDS = 24 * 60 * 60;
 
 function getSecret() {
   return (env.APP_ENCRYPTION_KEY?.trim() || env.JWT_SECRET).trim();

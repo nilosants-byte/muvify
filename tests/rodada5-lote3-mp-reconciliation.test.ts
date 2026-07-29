@@ -188,7 +188,7 @@ describe("Rodada 5, Lote 3 — reconciliação com a Mercado Pago", () => {
       }
     });
 
-    const overview = await adminService.getDashboardOverview({
+    const overview = await adminService.getDashboardOverview(admin.id, {
       month: scheduledAt.getMonth() + 1,
       year: scheduledAt.getFullYear()
     });
