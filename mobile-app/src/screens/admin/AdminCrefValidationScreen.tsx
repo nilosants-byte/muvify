@@ -408,6 +408,11 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
                     Último motivo: {item.crefRejectionReason}
                   </MvText>
                 ) : null}
+                {(item.crefRejectionCount ?? 0) > 0 ? (
+                  <MvText variant="caption" color="secondary">
+                    Já reprovado {item.crefRejectionCount}x antes
+                  </MvText>
+                ) : null}
 
                 {/* Document viewer buttons */}
                 <DocButtons item={item} />

@@ -372,6 +372,11 @@ model ProviderProfile {
   crefValidatedAt             DateTime?
   crefValidationStatus        CrefValidationStatus        @default(PENDING)
   crefRejectionReason         String?                     @db.VarChar(300)
+  // Raio-X de pagamentos, Rodada 4, Lote 12: crefRejectionReason é
+  // sobrescrito a cada revisão (fica null de novo se a próxima tentativa for
+  // aprovada) — sem isso, não existia nenhum jeito de saber que um
+  // profissional já foi reprovado 3 vezes antes de finalmente aprovar.
+  crefRejectionCount           Int                         @default(0)
   crefReviewedAt              DateTime?
   crefReviewedByUserId        String?
   specialties                 Json?

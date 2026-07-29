@@ -628,6 +628,11 @@ export function RootNavigator() {
               component={AdminDataRetentionScreen as React.ComponentType<any>}
               options={{ headerShown: false }}
             />
+            <AdminStack.Screen
+              name="Security"
+              component={SecurityScreen as React.ComponentType<any>}
+              options={{ headerShown: false }}
+            />
           </AdminStack.Navigator>
         );
       },

@@ -159,6 +159,7 @@ export class UserService {
         photoUrl: true,
         role: true,
         emailVerifiedAt: true,
+        twoFactorEnabled: true,
         createdAt: true,
         updatedAt: true,
         providerProfile: {
@@ -260,6 +261,7 @@ export class UserService {
         photoUrl: true,
         role: true,
         emailVerifiedAt: true,
+        twoFactorEnabled: true,
         createdAt: true,
         updatedAt: true
       }

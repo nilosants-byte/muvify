@@ -297,7 +297,16 @@ export class DisputeCaseService {
 
     let clientDebtCents: number | null = null;
     if (input.resolution === "DENIED" && input.chargeClientDebtCents !== undefined) {
-      if (!Number.isInteger(input.chargeClientDebtCents) || input.chargeClientDebtCents <= 0) {
+      // Raio-X de pagamentos, Rodada 4, Lote 12: mesmo teto que amountCents já
+      // tem no fluxo de reembolso (linha acima) — sem isso, um erro de
+      // digitação do admin (um zero a mais) virava uma dívida real e
+      // desproporcional pro aluno, sem nenhum valor histórico do próprio caso
+      // pra comparar.
+      if (
+        !Number.isInteger(input.chargeClientDebtCents) ||
+        input.chargeClientDebtCents <= 0 ||
+        input.chargeClientDebtCents > disputeCase.amountCents
+      ) {
         throw new AppError("Valor de pendência do aluno inválido.", StatusCodes.BAD_REQUEST);
       }
       clientDebtCents = input.chargeClientDebtCents;

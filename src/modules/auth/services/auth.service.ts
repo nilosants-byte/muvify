@@ -393,7 +393,12 @@ export class AuthService {
         email: user.email,
         role: effectiveRole,
         phone: user.phone,
-        photoUrl: toUserPhotoUrl(user.id, user.photoUrl, user.updatedAt)
+        photoUrl: toUserPhotoUrl(user.id, user.photoUrl, user.updatedAt),
+        // Raio-X de pagamentos, Rodada 4, Lote 12: usado pelo app pra mostrar
+        // um aviso de "configure 2FA" pra conta admin sem exigir isso no
+        // login em si (bloquear o login travaria o admin pra sempre, já que
+        // ativar 2FA exige estar logado primeiro).
+        twoFactorEnabled: user.twoFactorEnabled
       },
       accessToken: signToken(user.id, effectiveRole),
       refreshToken
@@ -436,7 +441,8 @@ export class AuthService {
         email: user.email,
         role: effectiveRole,
         phone: user.phone,
-        photoUrl: toUserPhotoUrl(user.id, user.photoUrl, user.updatedAt)
+        photoUrl: toUserPhotoUrl(user.id, user.photoUrl, user.updatedAt),
+        twoFactorEnabled: true
       },
       accessToken: signToken(user.id, effectiveRole),
       refreshToken
@@ -488,7 +494,8 @@ export class AuthService {
             session.user.id,
             session.user.photoUrl,
             session.user.updatedAt
-          )
+          ),
+          twoFactorEnabled: session.user.twoFactorEnabled
         },
         accessToken: signToken(session.user.id, effectiveRole),
         refreshToken: newRefreshToken

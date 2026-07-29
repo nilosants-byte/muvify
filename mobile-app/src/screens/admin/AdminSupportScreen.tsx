@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Alert, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
-import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { adminApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -136,6 +136,19 @@ export function AdminSupportScreen({ navigation }: Props) {
               <View style={{ gap: 8 }}>
                 <MvText variant="semi2">{ticket.subject?.trim() || "Solicitação sem assunto"}</MvText>
                 <MvText variant="body4" color="secondary">{ticket.user.name ?? "Usuário"} - {ticket.user.email ?? "—"}</MvText>
+                {ticket.indicators?.isSuspended || ticket.indicators?.hasOpenDebt || ticket.indicators?.hasOpenDispute ? (
+                  <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                    {ticket.indicators.isSuspended ? (
+                      <MvBadge label="Suspenso" variant="red" />
+                    ) : null}
+                    {ticket.indicators.hasOpenDispute ? (
+                      <MvBadge label="Disputa em aberto" variant="orange" />
+                    ) : null}
+                    {ticket.indicators.hasOpenDebt ? (
+                      <MvBadge label="Dívida em aberto" variant="orange" />
+                    ) : null}
+                  </View>
+                ) : null}
                 <MvText variant="body3" numberOfLines={4}>{ticket.message ?? "Mensagem não disponível"}</MvText>
                 <MvText variant="caption" color="secondary">
                   Aberto em: {formatBRDateTime(ticket.createdAt)}

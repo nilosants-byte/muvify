@@ -489,6 +489,10 @@ export class AdminService {
     };
   }
 
+  // Raio-X de pagamentos, Rodada 4, Lote 12: ticket de suporte não mostrava
+  // nada sobre o contexto financeiro/disciplinar do usuário — um admin podia
+  // responder um ticket de reclamação sem saber que esse mesmo usuário tem
+  // dívida em aberto, disputa em julgamento ou está suspenso.
   async listSupportTickets(input: SupportQueueInput) {
     const status =
       input.status === "ANSWERED"
@@ -496,7 +500,7 @@ export class AdminService {
         : SupportTicketStatus.OPEN;
 
     const take = Math.min(Math.max(input.take ?? 100, 1), 200);
-    return prisma.supportTicket.findMany({
+    const tickets = await prisma.supportTicket.findMany({
       where: {
         status
       },
@@ -518,7 +522,8 @@ export class AdminService {
             id: true,
             name: true,
             email: true,
-            role: true
+            role: true,
+            suspendedAt: true
           }
         },
         respondedBy: {
@@ -530,6 +535,46 @@ export class AdminService {
         }
       }
     });
+
+    const userIds = Array.from(new Set(tickets.map((t) => t.user.id)));
+    const [debts, disputes] = userIds.length
+      ? await Promise.all([
+          prisma.debtRecord.findMany({
+            where: {
+              status: { in: ["PENDING", "NOTIFIED"] },
+              OR: [{ clientId: { in: userIds } }, { provider: { userId: { in: userIds } } }]
+            },
+            select: { clientId: true, provider: { select: { userId: true } } }
+          }),
+          prisma.disputeCase.findMany({
+            where: {
+              status: "OPEN",
+              OR: [{ clientId: { in: userIds } }, { provider: { userId: { in: userIds } } }]
+            },
+            select: { clientId: true, provider: { select: { userId: true } } }
+          })
+        ])
+      : [[], []];
+
+    const debtUserIds = new Set<string>();
+    debts.forEach((d) => {
+      if (d.clientId) debtUserIds.add(d.clientId);
+      if (d.provider?.userId) debtUserIds.add(d.provider.userId);
+    });
+    const disputeUserIds = new Set<string>();
+    disputes.forEach((d) => {
+      if (d.clientId) disputeUserIds.add(d.clientId);
+      if (d.provider?.userId) disputeUserIds.add(d.provider.userId);
+    });
+
+    return tickets.map((ticket) => ({
+      ...ticket,
+      indicators: {
+        hasOpenDebt: debtUserIds.has(ticket.user.id),
+        hasOpenDispute: disputeUserIds.has(ticket.user.id),
+        isSuspended: Boolean(ticket.user.suspendedAt)
+      }
+    }));
   }
 
   async listDataRetentionRuns(adminUserId: string, input: DataRetentionRunsInput) {

@@ -22,6 +22,7 @@ export type AuthUser = {
   phone?: string | null;
   photoUrl?: string | null;
   emailVerifiedAt?: string | null;
+  twoFactorEnabled?: boolean;
   createdAt?: string;
   providerProfile?: {
     id: string;
@@ -461,6 +462,7 @@ export type ProviderCredentials = {
   crefValidatedAt?: string | null;
   crefValidationStatus?: "PENDING" | "IN_REVIEW" | "APPROVED" | "REJECTED";
   crefRejectionReason?: string | null;
+  crefRejectionCount?: number;
   crefReviewedAt?: string | null;
 };
 
@@ -527,6 +529,11 @@ export type AdminSupportTicket = {
     name: string;
     email: string;
   } | null;
+  indicators: {
+    hasOpenDebt: boolean;
+    hasOpenDispute: boolean;
+    isSuspended: boolean;
+  };
 };
 
 export type AdminChatAuditSessionSummary = {
@@ -1349,15 +1356,35 @@ export const authApi = {
     });
   },
   loginWithTwoFactor(input: { challengeToken: string; code: string }) {
-    return apiRequest<AuthResponse>("/auth/2fa/login", {
+    return apiRequest<AuthResponse>("/auth/2fa/verify", {
       method: "POST",
       body: input
     });
   },
-  loginWithBackupCode(input: { challengeToken: string; code: string }) {
-    return apiRequest<AuthResponse>("/auth/2fa/login", {
+  loginWithBackupCode(input: { challengeToken: string; backupCode: string }) {
+    return apiRequest<AuthResponse>("/auth/2fa/verify", {
       method: "POST",
       body: input
+    });
+  },
+  setupTwoFactor(token: string) {
+    return apiRequest<{ manualEntryKey: string; qrCodeDataUrl: string }>("/auth/2fa/setup", {
+      method: "POST",
+      token
+    });
+  },
+  confirmTwoFactor(token: string, code: string) {
+    return apiRequest<{ message: string; backupCodes: string[] }>("/auth/2fa/confirm", {
+      method: "POST",
+      token,
+      body: { code }
+    });
+  },
+  disableTwoFactor(token: string, password: string, code: string) {
+    return apiRequest<{ message: string }>("/auth/2fa", {
+      method: "DELETE",
+      token,
+      body: { password, code }
     });
   }
 };

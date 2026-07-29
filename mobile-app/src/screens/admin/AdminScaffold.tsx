@@ -175,6 +175,30 @@ export function AdminScaffold({
         <View style={{ width: 36, height: 36 }} />
       </View>
 
+      {/* Raio-X de pagamentos, Rodada 4, Lote 12: a conta admin (allowlist de
+          e-mail) é a mais sensível do sistema e podia ficar protegida só por
+          senha. Não bloqueamos o login em si (travaria o admin pra sempre,
+          já que ativar 2FA exige estar logado primeiro) — em vez disso, um
+          aviso persistente em toda tela admin até configurar. */}
+      {user?.role === "ADMIN" && !user?.twoFactorEnabled ? (
+        <TouchableOpacity
+          onPress={() => navigation.navigate("Security")}
+          style={{
+            flexDirection: "row", alignItems: "center", gap: 10,
+            marginHorizontal: 16, marginTop: 10,
+            borderRadius: 12, borderWidth: 1, borderColor: "rgba(245,158,11,0.35)",
+            backgroundColor: "rgba(245,158,11,0.10)",
+            paddingHorizontal: 13, paddingVertical: 10,
+          }}
+        >
+          <Ionicons name="shield-outline" size={16} color="#F59E0B" />
+          <MvText variant="caption" style={{ flex: 1, color: "#F59E0B", fontFamily: "DMSans_700Bold" }}>
+            Configure a autenticação em dois fatores — obrigatória para contas de administrador
+          </MvText>
+          <Ionicons name="chevron-forward" size={14} color="#F59E0B" />
+        </TouchableOpacity>
+      ) : null}
+
       {children}
 
       {menuOpen ? (

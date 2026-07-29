@@ -371,6 +371,7 @@ export class ProviderService {
     crefValidatedAt: Date | null;
     crefValidationStatus: CrefValidationStatus;
     crefRejectionReason: string | null;
+    crefRejectionCount: number;
     crefReviewedAt: Date | null;
   }) {
     return {
@@ -381,6 +382,7 @@ export class ProviderService {
       crefValidatedAt: provider.crefValidatedAt,
       crefValidationStatus: provider.crefValidationStatus,
       crefRejectionReason: provider.crefRejectionReason,
+      crefRejectionCount: provider.crefRejectionCount,
       crefReviewedAt: provider.crefReviewedAt
     };
   }
@@ -396,6 +398,7 @@ export class ProviderService {
         crefValidatedAt: true,
         crefValidationStatus: true,
         crefRejectionReason: true,
+        crefRejectionCount: true,
         crefReviewedAt: true
       }
     });
@@ -461,6 +464,7 @@ export class ProviderService {
         crefValidatedAt: true,
         crefValidationStatus: true,
         crefRejectionReason: true,
+        crefRejectionCount: true,
         crefReviewedAt: true
       }
     });
@@ -493,6 +497,7 @@ export class ProviderService {
         crefValidatedAt: true,
         crefValidationStatus: true,
         crefRejectionReason: true,
+        crefRejectionCount: true,
         crefReviewedAt: true,
         createdAt: true,
         updatedAt: true,
@@ -579,6 +584,10 @@ export class ProviderService {
         crefValidatedAt: approved ? reviewedAt : null,
         crefValidationStatus: approved ? CrefValidationStatus.APPROVED : CrefValidationStatus.REJECTED,
         crefRejectionReason: approved ? null : justification,
+        // Contador nunca reseta (histórico de vida inteira do perfil) —
+        // diferente de crefRejectionReason, que só guarda o motivo da
+        // reprovação mais recente e é sobrescrito a cada nova revisão.
+        crefRejectionCount: approved ? undefined : { increment: 1 },
         crefReviewedAt: reviewedAt,
         crefReviewedByUserId: adminUserId
       },
@@ -591,6 +600,7 @@ export class ProviderService {
         crefValidatedAt: true,
         crefValidationStatus: true,
         crefRejectionReason: true,
+        crefRejectionCount: true,
         crefReviewedAt: true,
         user: {
           select: {
