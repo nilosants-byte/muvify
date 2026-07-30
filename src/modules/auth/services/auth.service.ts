@@ -619,7 +619,7 @@ export class AuthService {
     const tokenHash = hashRefreshToken(token);
     const now = new Date();
 
-    await prisma.$transaction(async (tx) => {
+    const resetUserId = await prisma.$transaction(async (tx) => {
       const passwordResetToken = await tx.passwordResetToken.findUnique({
         where: { tokenHash }
       });
@@ -649,6 +649,16 @@ export class AuthService {
         where: { userId: passwordResetToken.userId, revokedAt: null },
         data: { revokedAt: now }
       });
+
+      return passwordResetToken.userId;
     });
+
+    // Frente 3 (Cadastro/onboarding), Lote 1: sem isso, um access token já
+    // emitido (ex: roubado) continuava válido por até ACCESS_TOKEN_EXPIRES_IN
+    // depois do reset, na janela exata em que a vítima acredita ter fechado
+    // o acesso. Mesmo padrão de changeMyPassword.
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const ttl = parseDurationToSeconds(env.ACCESS_TOKEN_EXPIRES_IN);
+    await setTokenBlacklist(resetUserId, nowSeconds, ttl).catch(() => {/* best effort */});
   }
 }

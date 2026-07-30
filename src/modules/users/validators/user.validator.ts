@@ -67,7 +67,8 @@ export const changeMyPasswordSchema = z.object({
 
 export const upsertRecoveryEmailSchema = z.object({
   body: z.object({
-    recoveryEmail: z.string().trim().email().max(120)
+    recoveryEmail: z.string().trim().email().max(120),
+    password: z.string().min(1).max(72, "Senha atual obrigatória para confirmar a troca de e-mail de recuperação.")
   })
 });
 

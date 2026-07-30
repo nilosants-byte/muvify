@@ -78,6 +78,7 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
   const [recoveryModalVisible, setRecoveryModalVisible] = useState(false);
   const [recoverySaving, setRecoverySaving] = useState(false);
   const [editRecoveryEmail, setEditRecoveryEmail] = useState("");
+  const [recoveryPassword, setRecoveryPassword] = useState("");
 
   // Raio-X de pagamentos, Rodada 4, Lote 12: o backend de 2FA (setup/confirm/
   // disable) já existia inteiro — só a UI ficava travada num "Em breve"
@@ -202,13 +203,18 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
       showToast("E-mail de recuperação inválido.", "error");
       return;
     }
+    if (!recoveryPassword) {
+      showToast("Informe sua senha atual pra confirmar.", "error");
+      return;
+    }
 
     try {
       setRecoverySaving(true);
-      const payload = await runWithAuth((token) => userApi.upsertRecoveryEmail(token, normalized));
+      const payload = await runWithAuth((token) => userApi.upsertRecoveryEmail(token, normalized, recoveryPassword));
       queryClient.setQueryData(queryKeys.user.recoveryEmail(), payload);
       showToast("E-mail de recuperação atualizado.", "success");
       setRecoveryModalVisible(false);
+      setRecoveryPassword("");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao atualizar e-mail de recuperação.";
       showToast(message, "error");
@@ -357,6 +363,13 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
               autoCapitalize="none"
               keyboardType="email-address"
               placeholder={accountEmail || "email@exemplo.com"}
+            />
+            <MvInput
+              label="Sua senha atual"
+              value={recoveryPassword}
+              onChangeText={setRecoveryPassword}
+              secureTextEntry
+              autoCapitalize="none"
             />
 
             <View style={{ flexDirection: "row", gap: 8 }}>

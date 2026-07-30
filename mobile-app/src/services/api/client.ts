@@ -1473,11 +1473,11 @@ export const userApi = {
       token
     });
   },
-  upsertRecoveryEmail(token: string, recoveryEmail: string) {
+  upsertRecoveryEmail(token: string, recoveryEmail: string, password: string) {
     return apiRequest<SecurityRecoveryEmailResponse>("/users/me/security/recovery-email", {
       method: "PUT",
       token,
-      body: { recoveryEmail }
+      body: { recoveryEmail, password }
     });
   },
   sendSupportMessage(

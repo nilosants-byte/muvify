@@ -51,6 +51,7 @@ type ChangeMyPasswordInput = {
 
 type UpsertRecoveryEmailInput = {
   recoveryEmail: string;
+  password: string;
 };
 
 type SendSupportMessageInput = {
@@ -362,7 +363,8 @@ export class UserService {
       select: {
         id: true,
         name: true,
-        email: true
+        email: true,
+        password: true
       }
     });
 
@@ -370,7 +372,34 @@ export class UserService {
       throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
     }
 
+    const validPassword = await compareHash(input.password, user.password);
+    if (!validPassword) {
+      throw new AppError("Senha atual inválida.", StatusCodes.BAD_REQUEST);
+    }
+
     const recoveryEmail = this.normalizeEmail(input.recoveryEmail);
+    const accountEmail = this.normalizeEmail(user.email);
+    if (recoveryEmail === accountEmail) {
+      throw new AppError(
+        "O e-mail de recuperação não pode ser igual ao e-mail de login da conta.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    // Frente 3 (Cadastro/onboarding), Lote 1: e-mail de recuperação não pode
+    // coincidir com o e-mail de login de OUTRA conta - reduz a superfície de
+    // reuso do mesmo endereço em contas comprometidas.
+    const emailInUse = await prisma.user.findUnique({
+      where: { email: recoveryEmail },
+      select: { id: true }
+    });
+    if (emailInUse && emailInUse.id !== user.id) {
+      throw new AppError(
+        "Este e-mail já é usado como login por outra conta.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -380,6 +409,9 @@ export class UserService {
     await setCache(this.recoveryEmailCacheKey(user.id), recoveryEmail, 60 * 60 * 24 * 365);
 
     if (emailService.canSendEmail()) {
+      // Avisa tanto o endereço novo quanto o e-mail de login real da conta -
+      // antes só o novo era avisado, então o dono legítimo nunca ficava
+      // sabendo que essa troca aconteceu.
       void emailService
         .sendRecoveryEmailUpdated({
           to: recoveryEmail,
@@ -389,12 +421,23 @@ export class UserService {
         .catch((error) => {
           console.error("Falha ao enviar confirmação de e-mail de recuperação:", error);
         });
+      if (accountEmail !== recoveryEmail) {
+        void emailService
+          .sendRecoveryEmailUpdated({
+            to: user.email,
+            name: user.name,
+            recoveryEmail
+          })
+          .catch((error) => {
+            console.error("Falha ao avisar conta sobre troca de e-mail de recuperação:", error);
+          });
+      }
     }
 
     return {
       recoveryEmail,
       accountEmail: user.email,
-      custom: recoveryEmail !== this.normalizeEmail(user.email)
+      custom: recoveryEmail !== accountEmail
     };
   }
 

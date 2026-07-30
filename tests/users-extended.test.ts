@@ -193,7 +193,7 @@ describe("users — extended profile, security and preferences", () => {
     const res = await request(app)
       .put("/api/users/me/security/recovery-email")
       .set("Authorization", `Bearer ${token}`)
-      .send({ recoveryEmail: `recovery_${uid("rec")}@test.com` });
+      .send({ recoveryEmail: `recovery_${uid("rec")}@test.com`, password: PASSWORD });
     expect(res.status).toBe(200);
   });
 
@@ -201,7 +201,23 @@ describe("users — extended profile, security and preferences", () => {
     const res = await request(app)
       .put("/api/users/me/security/recovery-email")
       .set("Authorization", `Bearer ${token}`)
-      .send({ recoveryEmail: "not-an-email" });
+      .send({ recoveryEmail: "not-an-email", password: PASSWORD });
+    expect(res.status).toBe(400);
+  });
+
+  it("PUT /users/me/security/recovery-email rejects without the current password", async () => {
+    const res = await request(app)
+      .put("/api/users/me/security/recovery-email")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ recoveryEmail: `recovery_${uid("rec")}@test.com` });
+    expect(res.status).toBe(400);
+  });
+
+  it("PUT /users/me/security/recovery-email rejects with the wrong current password", async () => {
+    const res = await request(app)
+      .put("/api/users/me/security/recovery-email")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ recoveryEmail: `recovery_${uid("rec")}@test.com`, password: "WrongPassword1" });
     expect(res.status).toBe(400);
   });
 
