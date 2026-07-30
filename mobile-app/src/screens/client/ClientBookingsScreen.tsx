@@ -45,6 +45,29 @@ function getInitials(name?: string | null): string {
   return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
 }
 
+// Frente 5 (Descoberta, agendamento e agenda), Lote 9: lista não sinalizava
+// nenhum estado de disputa (no-show reportado, contestação em aberto) — só
+// aparecia abrindo o detalhe do agendamento. Mesma lógica de
+// wasReportedAsNoShow/canContestNoShow/canContestAutoCapture do detalhe,
+// mas sem exigir que o reportado seja o cliente (aqui é só um indicador).
+function disputeBadge(item: Booking): { label: string } | null {
+  const report = item.noShowReport;
+  if (report) {
+    if (report.status === "CONTESTED") return { label: "Em disputa" };
+    if (report.status === "PENDING" && new Date(report.contestDeadlineAt) > new Date()) {
+      return { label: "Aguardando contestação" };
+    }
+  }
+  const autoCaptureOpen =
+    item.status === "COMPLETED" &&
+    !!item.completedAt &&
+    !item.clientConfirmedAt &&
+    !!item.providerConfirmedAt &&
+    Date.now() - new Date(item.completedAt).getTime() <= 24 * 60 * 60 * 1000;
+  if (autoCaptureOpen) return { label: "Aguardando contestação" };
+  return null;
+}
+
 function badgeStyle(status: Booking["status"], theme: MvTheme): { label: string; color: string; bg: string; border: string } {
   const isDark = theme.mode === "dark";
   if (status === "CONFIRMED") return { label: "Confirmado", color: theme.primary, bg: theme.primarySubtle, border: theme.primarySubtleBorder };
@@ -120,6 +143,7 @@ export function ClientBookingsScreen({ navigation }: Props) {
   const renderItem = ({ item }: { item: Booking }) => {
     const date = new Date(item.scheduledAt);
     const bs = badgeStyle(item.status, theme);
+    const dispute = disputeBadge(item);
     const isFinished = item.status === "COMPLETED" || item.status === "CANCELLED";
 
     return (
@@ -161,8 +185,18 @@ export function ClientBookingsScreen({ navigation }: Props) {
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>
             {formatBRDateTime(item.scheduledAt)}
           </Text>
-          <View style={{ backgroundColor: bs.bg, borderWidth: 1, borderColor: bs.border, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start" }}>
-            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: bs.color }}>{bs.label}</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            <View style={{ backgroundColor: bs.bg, borderWidth: 1, borderColor: bs.border, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start" }}>
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: bs.color }}>{bs.label}</Text>
+            </View>
+            {dispute ? (
+              <View
+                testID={`booking.card.${item.id}.dispute`}
+                style={{ backgroundColor: C.amberDim, borderWidth: 1, borderColor: C.amberBorder, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start" }}
+              >
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: C.amber }}>{dispute.label}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 

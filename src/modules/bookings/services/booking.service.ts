@@ -5,7 +5,8 @@ import {
   PaymentMethod,
   PaymentStatus,
   PresentialPackageMode,
-  PresentialPackageStatus
+  PresentialPackageStatus,
+  Prisma
 } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { env } from "../../../config/env";
@@ -1639,15 +1640,28 @@ export class BookingService {
         return { updated: booking, alreadyReported: true };
       }
 
-      await tx.noShowReport.create({
-        data: {
-          bookingId,
-          reportedUserId,
-          reportedByUserId: reporterId,
-          contestDeadlineAt,
-          reportReason: reportReason?.trim() || null
+      // O pre-check acima nao protege sozinho contra duas requisicoes
+      // concorrentes (isolation READ COMMITTED deixa ambas passarem por
+      // ele antes de qualquer commit) — sem esse catch, a perdedora da
+      // corrida vazava o erro cru de unique constraint do Prisma em vez
+      // da mensagem amigavel que o app espera pra detectar estado obsoleto.
+      try {
+        await tx.noShowReport.create({
+          data: {
+            bookingId,
+            reportedUserId,
+            reportedByUserId: reporterId,
+            contestDeadlineAt,
+            reportReason: reportReason?.trim() || null
+          }
+        });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+          return { updated: booking, alreadyReported: true };
         }
-      });
+        throw err;
+      }
+
       const updatedBooking = await tx.booking.update({
         where: { id: bookingId },
         data: { status: BookingStatus.CANCELLED },

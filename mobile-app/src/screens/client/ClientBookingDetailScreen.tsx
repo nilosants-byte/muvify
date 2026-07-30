@@ -20,11 +20,13 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import QRCode from "react-native-qrcode-svg";
 import { ClientStackParamList } from "../../navigation/route-types";
 import {
+  ApiError,
   AttendanceCodeResponse,
   bookingsApi,
   Booking,
@@ -114,6 +116,13 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   const loading = detailQuery.isLoading;
   const booking = detailQuery.data?.booking ?? null;
   const payment = detailQuery.data?.payment ?? null;
+
+  // Frente 5 (Descoberta, agendamento e agenda), Lote 9: única tela de
+  // agendamento do cliente sem refetch ao voltar pro foco — se o
+  // profissional cancelasse enquanto o cliente estava com a tela de
+  // detalhe aberta (ou voltando de uma notificação push), os dados
+  // ficavam desatualizados até sair e voltar manualmente.
+  useFocusEffect(useCallback(() => { void detailQuery.refetch(); }, [detailQuery.refetch]));
 
   // ── Local attendance state (also refreshable on-demand via button) ─────────
   const [attendance, setAttendance] = useState<AttendanceCodeResponse | null>(null);
@@ -254,7 +263,17 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
               showToast("Agendamento cancelado.", "success");
               navigation.goBack();
             } catch (error) {
-              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível cancelar.", navigation });
+              // Frente 5 (Descoberta, agendamento e agenda), Lote 9: sem
+              // refetch aqui, o botão de cancelar continuava visível e
+              // clicável mesmo depois do booking já ter mudado de estado
+              // em outro lugar (ex: profissional cancelou primeiro) — a
+              // tela nunca refletia o estado real até sair e voltar.
+              void detailQuery.refetch();
+              if (error instanceof ApiError && /transição de status inválida/i.test(error.message)) {
+                showToast("Este agendamento já não está mais nesse estado. Atualizamos os dados da tela.", "error");
+              } else {
+                handleScreenError({ error, showToast, fallbackMessage: "Não foi possível cancelar.", navigation });
+              }
             } finally { setCancelling(false); }
           },
         },
@@ -279,7 +298,15 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
               showToast("Agendamento encerrado.", "success");
               navigation.goBack();
             } catch (error) {
-              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível reportar a falta.", navigation });
+              void detailQuery.refetch();
+              if (
+                error instanceof ApiError &&
+                /transição de status inválida|apenas agendamentos confirmados podem ser reportados|já foi reportado/i.test(error.message)
+              ) {
+                showToast("Este agendamento já não está mais nesse estado. Atualizamos os dados da tela.", "error");
+              } else {
+                handleScreenError({ error, showToast, fallbackMessage: "Não foi possível reportar a falta.", navigation });
+              }
             } finally { setReportingNoShow(false); }
           },
         },
