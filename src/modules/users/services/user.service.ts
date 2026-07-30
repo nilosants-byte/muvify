@@ -22,9 +22,11 @@ import { compareHash, hashValue } from "../../../shared/utils/hash";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
+import { BookingService } from "../../bookings/services/booking.service";
 
 const presentialPackageService = new PresentialPackageService();
 const consultancyService = new ConsultancyService();
+const bookingService = new BookingService();
 
 const ACTIVE_PACKAGE_STATUSES = ["PENDING_PAYMENT", "ACTIVE", "PAST_DUE"] as const;
 const ACTIVE_CONTRACT_STATUSES = ["PENDING_PAYMENT", "ACTIVE", "DELIVERED"] as const;
@@ -680,6 +682,16 @@ export class UserService {
           console.error(`Falha ao cancelar contrato ${contract.id} na exclusão de conta do profissional ${userId}:`, error)
         );
       }
+
+      // Frente 5 (Descoberta, agendamento e agenda), Lote 2: mesma lacuna de
+      // "pacotes/consultorias eram encerrados, mas agendamentos avulsos
+      // não" — cliente com sessão avulsa já paga ficava sem resolução
+      // proativa quando o profissional excluía a própria conta.
+      await bookingService
+        .cancelActiveStandaloneBookingsForProviderRemoval(providerProfileForCheck.id)
+        .catch((error) =>
+          console.error(`Falha ao cancelar agendamentos avulsos na exclusão de conta do profissional ${userId}:`, error)
+        );
     }
 
     const anonymizedEmail = `deleted_${userId}@removed.invalid`;

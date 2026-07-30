@@ -13,6 +13,7 @@ import { DataRetentionService } from "../../privacy/services/data-retention.serv
 import { UserService } from "../../users/services/user.service";
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
+import { BookingService } from "../../bookings/services/booking.service";
 import { platformFeeAmount } from "../../../shared/utils/platform-fee";
 
 type DashboardInput = {
@@ -263,6 +264,7 @@ export class AdminService {
   private userService = new UserService();
   private presentialPackageService = new PresentialPackageService();
   private consultancyService = new ConsultancyService();
+  private bookingService = new BookingService();
 
   private async ensureAdminAccess(adminUserId: string) {
     const admin = await prisma.user.findUnique({
@@ -1392,6 +1394,16 @@ export class AdminService {
           console.error(`Falha ao cancelar contrato ${contract.id} na suspensão do profissional ${target.id}:`, error)
         );
       }
+
+      // Frente 5 (Descoberta, agendamento e agenda), Lote 2: a mesma lacuna
+      // de "pacotes/consultorias eram cancelados, mas agendamentos avulsos
+      // não" — cliente com sessão avulsa já paga ficava sem nenhuma
+      // resolução proativa quando o profissional era suspenso.
+      await this.bookingService
+        .cancelActiveStandaloneBookingsForProviderRemoval(providerProfile.id)
+        .catch((error) =>
+          console.error(`Falha ao cancelar agendamentos avulsos na suspensão do profissional ${target.id}:`, error)
+        );
     }
 
     void writeAdminAuditLog({

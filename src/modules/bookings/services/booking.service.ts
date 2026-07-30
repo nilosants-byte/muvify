@@ -609,59 +609,82 @@ export class BookingService {
 
   async listMyBookings(userId: string, skip = 0, take = 50) {
     take = Math.max(1, Math.min(take, 200));
-    const bookings = await prisma.booking.findMany({
-      where: {
-        OR: [
-          { clientId: userId },
-          {
-            provider: {
-              userId
-            }
+
+    const baseWhere = {
+      OR: [
+        { clientId: userId },
+        {
+          provider: {
+            userId
           }
-        ]
+        }
+      ]
+    };
+
+    const includeShape = {
+      category: { select: { id: true, name: true } },
+      client: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          photoUrl: true,
+          updatedAt: true
+        }
       },
-      skip,
-      take,
-      include: {
-        category: { select: { id: true, name: true } },
-        client: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            photoUrl: true,
-            updatedAt: true
-          }
-        },
-        provider: {
-          select: {
-            id: true,
-            displayName: true,
-            photoUrl: true,
-            updatedAt: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-                phone: true,
-              }
+      provider: {
+        select: {
+          id: true,
+          displayName: true,
+          photoUrl: true,
+          updatedAt: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
             }
-          }
-        },
-        noShowReport: {
-          select: {
-            id: true,
-            reportedUserId: true,
-            reportedByUserId: true,
-            status: true,
-            contestDeadlineAt: true,
-            contestedAt: true,
-            resolvedAt: true
           }
         }
       },
-      orderBy: { scheduledAt: "asc" }
-    });
+      noShowReport: {
+        select: {
+          id: true,
+          reportedUserId: true,
+          reportedByUserId: true,
+          status: true,
+          contestDeadlineAt: true,
+          contestedAt: true,
+          resolvedAt: true
+        }
+      }
+    } as const;
+
+    // Frente 5 (Descoberta, agendamento e agenda), Lote 2: sem filtro de
+    // status, ordenação ascendente por scheduledAt + take fixo faziam essa
+    // rota devolver sempre os agendamentos MAIS ANTIGOS de toda a vida da
+    // conta assim que ultrapassava o limite de paginação — agendamentos
+    // ativos (pendentes/confirmados, inclusive futuros) simplesmente
+    // paravam de aparecer (aba "Próximos" vazia, notificação levando a
+    // "agendamento não encontrado"). Os ativos agora sempre entram
+    // inteiros (volume real por conta é sempre pequeno, não precisa
+    // paginar), e só o histórico (concluído/cancelado) é paginado.
+    const [activeBookings, historyBookings] = await Promise.all([
+      prisma.booking.findMany({
+        where: { ...baseWhere, status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] } },
+        include: includeShape,
+        orderBy: { scheduledAt: "asc" }
+      }),
+      prisma.booking.findMany({
+        where: { ...baseWhere, status: { in: [BookingStatus.COMPLETED, BookingStatus.CANCELLED] } },
+        skip,
+        take,
+        include: includeShape,
+        orderBy: { scheduledAt: "desc" }
+      })
+    ]);
+
+    const bookings = [...activeBookings, ...historyBookings];
 
     return bookings.map(
       ({
@@ -2066,5 +2089,47 @@ export class BookingService {
     }
 
     return payload;
+  }
+
+  // Frente 5 (Descoberta, agendamento e agenda), Lote 2: suspender ou
+  // excluir a conta do profissional já cancelava pacotes presenciais e
+  // contratos de consultoria ativos (admin.service.ts::suspendUser,
+  // user.service.ts::deleteMe), mas nunca agendamentos avulsos (sem
+  // packageId) em PENDING/CONFIRMED — cliente que já tinha pago ficava sem
+  // nenhuma resolução proativa, só descoberto ~48h depois via disputa
+  // manual de admin. Mesmo espírito de "profissional some, cliente nunca
+  // perde dinheiro" já usado no cancelamento normal feito pelo profissional
+  // (updateStatus, isProviderCancelling sempre reembolsa).
+  async cancelActiveStandaloneBookingsForProviderRemoval(providerId: string) {
+    const bookings = await prisma.booking.findMany({
+      where: {
+        providerId,
+        packageId: null,
+        status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] }
+      },
+      include: {
+        client: { select: { id: true, name: true } },
+        provider: { select: { userId: true, displayName: true } }
+      }
+    });
+
+    for (const booking of bookings) {
+      await prisma.booking.update({ where: { id: booking.id }, data: { status: BookingStatus.CANCELLED } });
+      await paymentService.cancelPaymentForBooking(booking.id).catch((error) =>
+        console.error(`Falha ao estornar agendamento ${booking.id} na remoção do profissional ${providerId}:`, error)
+      );
+      void notificationService
+        .sendToUsers([booking.clientId], {
+          preferenceType: "BOOKINGS",
+          title: "Agendamento cancelado",
+          body: `Seu agendamento de ${formatPtBrDate(booking.scheduledAt)} com ${booking.provider.displayName} foi cancelado porque o profissional não está mais disponível. O valor pago será totalmente reembolsado.`,
+          data: { type: "BOOKING_CANCELLED_PROVIDER_UNAVAILABLE", bookingId: booking.id }
+        })
+        .catch((error) =>
+          console.error(`Falha ao notificar cliente sobre cancelamento do agendamento ${booking.id}:`, error)
+        );
+    }
+
+    return bookings.length;
   }
 }
