@@ -16,7 +16,7 @@ import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { SkeletonStudentCard } from "../../components/polish/SkeletonCard";
-import { formatCurrencyBRL } from "../../utils/formatters";
+import { formatCurrencyBRL, formatRelativeActivityLabel } from "../../utils/formatters";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { handleScreenError } from "../shared/api-helpers";
 
@@ -462,6 +462,9 @@ function StudentRow({
               </>
             ) : null}
           </View>
+          <MvText variant="caption" color="secondary" numberOfLines={1} style={{ fontSize: 11 }}>
+            {formatRelativeActivityLabel(student.lastActivityAt)}
+          </MvText>
         </View>
         <View style={{ alignItems: "flex-end", gap: 8 }}>
           <MvText variant="semi2" style={{ fontSize: 13 }}>

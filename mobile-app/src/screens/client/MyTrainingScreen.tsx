@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import {
@@ -16,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientTabParamList } from "../../navigation/route-types";
@@ -597,6 +598,11 @@ export function MyTrainingScreen({ navigation }: Props) {
   const loading = trainingQuery.isLoading;
   const data: MyTrainingResponse | null = trainingQuery.data?.training ?? null;
   const requests: ConsultancyRequest[] = trainingQuery.data?.requests ?? [];
+
+  // Frente 4 (Criação/entrega/evolução do treino), Lote 5: única tela do
+  // cliente sem refetch ao voltar pro foco — ficha nova entregue pelo
+  // profissional só aparecia depois de fechar e reabrir o app.
+  useFocusEffect(useCallback(() => { void trainingQuery.refetch(); }, [trainingQuery.refetch]));
 
   useEffect(() => {
     if (trainingQuery.error) {

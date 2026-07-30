@@ -379,6 +379,7 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                   { label: "Consultoria", value: summary?.onlineConsultancyContracts ?? 0 },
                   { label: "Especializada", value: summary?.specializedConsultancyContracts ?? 0 },
                   { label: "Combo", value: summary?.comboContracts ?? 0 },
+                  { label: "Treinos concluídos", value: detail?.trainingCompliance.completionCount ?? 0 },
                 ].map((item) => (
                   <View
                     key={item.label}

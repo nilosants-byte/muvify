@@ -110,6 +110,15 @@ export function maskDateInputBR(value: string | null | undefined): string {
   if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
+export function formatRelativeActivityLabel(dateIso: string | null | undefined): string {
+  if (!dateIso) return "Sem atividade registrada";
+  const date = new Date(dateIso);
+  if (!Number.isFinite(date.getTime())) return "Sem atividade registrada";
+  const diffDays = Math.floor((Date.now() - date.getTime()) / (24 * 60 * 60 * 1000));
+  if (diffDays <= 0) return "Última atividade: hoje";
+  if (diffDays === 1) return "Última atividade: há 1 dia";
+  return `Última atividade: há ${diffDays} dias`;
+}
 export function getInitials(name: string | null | undefined): string {
   if (!name) return '';
   return name

@@ -26,7 +26,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientTabParamList } from "../../navigation/route-types";
 import { useAppState } from "../../state/AppState";
-import { bookingsApi, Booking, communityApi, CommunityUser, UserPublicProfile, gamificationApi, GamificationProfile, RankingEntry, FeedPost, FeedPostMetadata, FeedComment, uploadsApi } from "../../services/api/client";
+import { bookingsApi, Booking, communityApi, CommunityUser, UserPublicProfile, gamificationApi, GamificationProfile, RankingEntry, FeedPost, FeedPostMetadata, FeedComment, uploadsApi, consultancyApi, TrainingPlanCompletion } from "../../services/api/client";
 import { MvAvatar } from "../../components/mv";
 import {
   computeAchievements,
@@ -1096,19 +1096,24 @@ export function CommunityScreen({ navigation }: Props) {
   const communityQuery = useAuthQuery(
     queryKeys.community.all,
     async (token) => {
-      const [bks, gam, suggestionsRes, achRes, followingRes] = await Promise.all([
+      const [bks, gam, suggestionsRes, achRes, followingRes, trainingCompletionsRes] = await Promise.all([
         bookingsApi.me(token),
         gamificationApi.getMyProfile(token),
         communityApi.getSuggestions(token, 10).catch(() => [] as CommunityUser[]),
         gamificationApi.getAchievements(token).catch(() => [] as BackendAchievement[]),
         communityApi.getFollowing(token, 1, 200).catch(() => ({ items: [] as CommunityUser[], total: 0 })),
+        // Frente 4 (Criação/entrega/evolução do treino), Lote 5: "Meu progresso"
+        // só contava sessões presenciais (bookings) — treinos de consultoria
+        // online concluídos nunca entravam na meta semanal/mensal/anual.
+        consultancyApi.myTrainingCompletions(token).catch(() => [] as TrainingPlanCompletion[]),
       ]);
-      return { bookings: bks, gamification: gam, suggestions: suggestionsRes, achievements: achRes, followingItems: followingRes.items };
+      return { bookings: bks, gamification: gam, suggestions: suggestionsRes, achievements: achRes, followingItems: followingRes.items, trainingCompletions: trainingCompletionsRes };
     },
     { staleTime: 5 * 60 * 1000 }
   );
 
   const bookings: Booking[] = communityQuery.data?.bookings ?? [];
+  const trainingCompletions: TrainingPlanCompletion[] = communityQuery.data?.trainingCompletions ?? [];
   const gamificationData: GamificationProfile | null = communityQuery.data?.gamification ?? null;
   const suggestions: CommunityUser[] = communityQuery.data?.suggestions ?? [];
   const backendAchievements: BackendAchievement[] = communityQuery.data?.achievements ?? [];
@@ -1271,14 +1276,22 @@ export function CommunityScreen({ navigation }: Props) {
   const d = useMemo(() => {
     const base = progressForScope(bookings, scope);
     const done = bookings.filter((b) => b.status === "COMPLETED");
+    const onlineDates = trainingCompletions
+      .map((c) => new Date(c.completedAt))
+      .filter((date) => Number.isFinite(date.getTime()));
     const now = new Date();
 
     const ws = new Date(now); ws.setHours(0, 0, 0, 0); ws.setDate(ws.getDate() - ws.getDay());
-    const wDone = done.filter((b) => new Date(b.completedAt ?? b.scheduledAt) >= ws).length;
+    const wDone = done.filter((b) => new Date(b.completedAt ?? b.scheduledAt) >= ws).length
+      + onlineDates.filter((date) => date >= ws).length;
 
-    const mDone = done.filter((b) => new Date(b.completedAt ?? b.scheduledAt) >= new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)).length;
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const mDone = done.filter((b) => new Date(b.completedAt ?? b.scheduledAt) >= monthStart).length
+      + onlineDates.filter((date) => date >= monthStart).length;
 
-    const yDone = done.filter((b) => new Date(b.completedAt ?? b.scheduledAt) >= new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0)).length;
+    const yearStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+    const yDone = done.filter((b) => new Date(b.completedAt ?? b.scheduledAt) >= yearStart).length
+      + onlineDates.filter((date) => date >= yearStart).length;
 
     const current = scope === "Semana" ? wDone : scope === "Mês" ? mDone : yDone;
     const target  = scope === "Semana" ? weeklyGoalTarget : scope === "Mês" ? monthlyGoalTarget : annualGoalTarget;
@@ -1297,23 +1310,28 @@ export function CommunityScreen({ navigation }: Props) {
       pts:    gamificationData?.totalXp        ?? base.pts,
       lvl:    gamificationData?.currentLevel   ?? base.lvl,
     };
-  }, [bookings, scope, weeklyGoalTarget, monthlyGoalTarget, annualGoalTarget, gamificationData]);
+  }, [bookings, trainingCompletions, scope, weeklyGoalTarget, monthlyGoalTarget, annualGoalTarget, gamificationData]);
 
-  const totalWorkouts = useMemo(() => bookings.filter((b) => b.status === "COMPLETED").length, [bookings]);
+  const totalWorkouts = useMemo(
+    () => bookings.filter((b) => b.status === "COMPLETED").length + trainingCompletions.length,
+    [bookings, trainingCompletions]
+  );
 
   const weeklyCompleted = useMemo(() => {
     const completed = bookings.filter((b) => b.status === "COMPLETED");
     const weekStart = new Date();
     weekStart.setHours(0, 0, 0, 0);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    return completed.filter((b) => new Date(b.completedAt ?? b.scheduledAt) >= weekStart).length;
-  }, [bookings]);
+    const onlineCount = trainingCompletions.filter((c) => new Date(c.completedAt) >= weekStart).length;
+    return completed.filter((b) => new Date(b.completedAt ?? b.scheduledAt) >= weekStart).length + onlineCount;
+  }, [bookings, trainingCompletions]);
 
   const monthlyCompleted = useMemo(() => {
     const completed = bookings.filter((b) => b.status === "COMPLETED");
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1, 0, 0, 0, 0);
-    return completed.filter((b) => new Date(b.completedAt ?? b.scheduledAt) >= monthStart).length;
-  }, [bookings]);
+    const onlineCount = trainingCompletions.filter((c) => new Date(c.completedAt) >= monthStart).length;
+    return completed.filter((b) => new Date(b.completedAt ?? b.scheduledAt) >= monthStart).length + onlineCount;
+  }, [bookings, trainingCompletions]);
 
   const achievements = useMemo(() => {
     if (backendAchievements.length > 0) {
