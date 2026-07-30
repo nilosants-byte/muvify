@@ -85,3 +85,20 @@ export const uploadRateLimiter = rateLimit({
     message: "Limite de uploads atingido. Tente novamente em 1 hora."
   }
 });
+
+// Frente 5 (Descoberta, agendamento e agenda), Lote 11: disponibilidade e
+// bloqueio manual reaproveitavam o uploadRateLimiter (mesmo limite de
+// 20/hora), mas devolviam a mensagem "Limite de uploads atingido" pra uma
+// ação que não é upload nenhum — confuso pro profissional.
+export const writeRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: userOrIpKey,
+  store: makeStore("rl:write:"),
+  message: {
+    message: "Muitas alterações em pouco tempo. Tente novamente em 1 hora."
+  }
+});

@@ -83,7 +83,10 @@ export const reportNoShowSchema = z.object({
     bookingId: z.string().uuid()
   }),
   body: z.object({
-    reportReason: z.string().trim().min(3).max(500).optional()
+    // Frente 5 (Descoberta, agendamento e agenda), Lote 11: sem mensagem
+    // customizada, o erro de validação cai no texto padrão em inglês do
+    // Zod ("String must contain at least 3 character(s)").
+    reportReason: z.string().trim().min(3, "O motivo deve ter pelo menos 3 caracteres.").max(500).optional()
   })
 });
 
@@ -92,7 +95,7 @@ export const contestNoShowSchema = z.object({
     bookingId: z.string().uuid()
   }),
   body: z.object({
-    contestReason: z.string().trim().min(3).max(500).optional()
+    contestReason: z.string().trim().min(3, "O motivo deve ter pelo menos 3 caracteres.").max(500).optional()
   })
 });
 
@@ -101,7 +104,7 @@ export const contestAutoCaptureSchema = z.object({
     bookingId: z.string().uuid()
   }),
   body: z.object({
-    reason: z.string().trim().min(3).max(500).optional()
+    reason: z.string().trim().min(3, "O motivo deve ter pelo menos 3 caracteres.").max(500).optional()
   })
 });
 

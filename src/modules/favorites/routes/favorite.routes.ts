@@ -9,7 +9,12 @@ import { favoriteParamSchema, favoriteSchema } from "../validators/favorite.vali
 const favoriteController = new FavoriteController();
 export const favoriteRoutes = Router();
 favoriteRoutes.use(ensureAuthenticated);
-favoriteRoutes.get("/", favoriteController.list);
+// Frente 5 (Descoberta, agendamento e agenda), Lote 11: sem restrição de
+// role, qualquer usuário autenticado podia favoritar (inclusive um
+// profissional favoritando a própria conta) — favoritos é uma feature do
+// cliente, defesa em profundidade além da checagem de negócio já feita
+// em FavoriteService.add.
+favoriteRoutes.get("/", ensureRole(UserRole.CLIENT), favoriteController.list);
 favoriteRoutes.get("/favorited-by-me", ensureRole(UserRole.PROVIDER), favoriteController.countFavoritedByMe);
-favoriteRoutes.post("/", uploadRateLimiter, validate(favoriteSchema), favoriteController.add);
-favoriteRoutes.delete("/:providerId", uploadRateLimiter, validate(favoriteParamSchema), favoriteController.remove);
+favoriteRoutes.post("/", ensureRole(UserRole.CLIENT), uploadRateLimiter, validate(favoriteSchema), favoriteController.add);
+favoriteRoutes.delete("/:providerId", ensureRole(UserRole.CLIENT), uploadRateLimiter, validate(favoriteParamSchema), favoriteController.remove);

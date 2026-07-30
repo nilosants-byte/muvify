@@ -1186,6 +1186,22 @@ export class ProviderService {
       };
     })();
 
+    // Frente 5 (Descoberta, agendamento e agenda), Lote 11: array_contains
+    // exige igualdade exata do termo dentro do array JSON de specialties —
+    // diferente da busca por nome (que usa contains/insensitive), buscar
+    // "yoga" não encontrava um profissional com a especialidade "Yoga" ou
+    // "Yoga terapêutico". jsonb_array_elements_text + ILIKE dá o mesmo
+    // comportamento parcial/case-insensitive que displayName já tem.
+    const specialtyMatchIds = filters.q
+      ? (
+          await prisma.$queryRaw<Array<{ id: string }>>`
+            SELECT DISTINCT p.id
+            FROM "ProviderProfile" p, jsonb_array_elements_text(p.specialties) AS s
+            WHERE s ILIKE ${`%${filters.q}%`}
+          `
+        ).map((row) => row.id)
+      : [];
+
     const where: Prisma.ProviderProfileWhereInput = {
       crefValidationStatus: CrefValidationStatus.APPROVED,
       mpAccountId: { not: null },
@@ -1197,7 +1213,7 @@ export class ProviderService {
       ...(filters.q ? {
         OR: [
           { displayName: { contains: filters.q, mode: "insensitive" as const } },
-          { specialties: { array_contains: [filters.q] } },
+          { id: { in: specialtyMatchIds } },
         ]
       } : {}),
       categoryLinks: filters.categoryId
