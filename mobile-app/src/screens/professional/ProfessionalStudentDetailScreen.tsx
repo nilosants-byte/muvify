@@ -154,7 +154,11 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
 
   const [assessmentForm, setAssessmentForm] = useState<AssessmentForm>(emptyAssessment);
   const [autoSaving, setAutoSaving] = useState(false);
-  const hydratedRef = useRef(false);
+  // Frente 4 (Criação/entrega/evolução do treino), Lote 6: era um boolean
+  // simples — se a tela fosse reaproveitada pra outro aluno sem desmontar,
+  // a hidratação nunca rodava de novo e o formulário do aluno anterior podia
+  // acabar sendo salvo por cima do novo. Agora chaveado por clientId.
+  const hydratedClientIdRef = useRef<string | null>(null);
   const changeCounterRef = useRef(0);
 
   const studentDetailQuery = useAuthQuery(
@@ -253,10 +257,17 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
   const summary = detail?.serviceSummary;
 
   useEffect(() => {
-    if (!physicalAssessment || hydratedRef.current) return;
+    setAssessmentForm(emptyAssessment);
+    hydratedClientIdRef.current = null;
+    changeCounterRef.current = 0;
+  }, [clientId]);
+
+  useEffect(() => {
+    if (!physicalAssessment || hydratedClientIdRef.current === clientId) return;
     setAssessmentForm(toAssessmentForm(physicalAssessment as unknown as Record<string, unknown>));
-    hydratedRef.current = true;
-  }, [physicalAssessment]);
+    hydratedClientIdRef.current = clientId;
+    changeCounterRef.current = 0;
+  }, [physicalAssessment, clientId]);
 
   const saveAssessment = useCallback(async (form: AssessmentForm) => {
     try {
@@ -270,10 +281,10 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
   }, [clientId, navigation, runWithAuth, showToast]);
 
   useEffect(() => {
-    if (!hydratedRef.current || changeCounterRef.current === 0) return;
+    if (hydratedClientIdRef.current !== clientId || changeCounterRef.current === 0) return;
     const timer = setTimeout(() => { void saveAssessment(assessmentForm); }, 600);
     return () => clearTimeout(timer);
-  }, [assessmentForm, saveAssessment]);
+  }, [assessmentForm, saveAssessment, clientId]);
 
   const updateAssessmentField = (key: keyof AssessmentForm, value: string) => {
     changeCounterRef.current += 1;
@@ -539,13 +550,30 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
 
                         {contract.isVigente ? (
                           <TouchableOpacity
-                            onPress={() =>
-                              navigation.navigate("TrainingCreation", {
-                                contractId: contract.id,
-                                clientId: detail.student.id,
-                                contractValidUntil: contract.validUntil ?? undefined,
-                              })
-                            }
+                            onPress={() => {
+                              const goToCreation = () =>
+                                navigation.navigate("TrainingCreation", {
+                                  contractId: contract.id,
+                                  clientId: detail.student.id,
+                                  contractValidUntil: contract.validUntil ?? undefined,
+                                });
+                              // Frente 4 (Criação/entrega/evolução do treino), Lote 6:
+                              // entregar uma renovação desativa automaticamente a ficha
+                              // atual (Lote 3) - sem aviso, o profissional podia achar
+                              // que as duas fichas ficariam vigentes ao mesmo tempo.
+                              if (contract.trainingPlans.length > 0) {
+                                Alert.alert(
+                                  "Substituir ficha atual?",
+                                  "Ao entregar um novo treino, a ficha vigente deste aluno será desativada automaticamente.",
+                                  [
+                                    { text: "Cancelar", style: "cancel" },
+                                    { text: "Continuar", onPress: goToCreation },
+                                  ]
+                                );
+                                return;
+                              }
+                              goToCreation();
+                            }}
                             style={{ marginTop: 4 }}
                           >
                             <MvText variant="body4" style={{ color: theme.textGreen }}>

@@ -37,6 +37,7 @@ import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { MvMediaPreviewButton, MvMediaViewer } from "../../components/mv";
 import { formatDateLabel, formatCurrencyBRL } from "../../utils/formatters";
+import { PTS_CONSULTORIA } from "../../utils/gamification";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
@@ -139,6 +140,9 @@ function WorkoutDetailModal({
   const [seconds, setSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimestampRef = useRef<number | null>(null);
+  // Guard síncrono contra double-tap em "Finalizar" — setCompleting(true) sozinho
+  // não bastava, pois o re-render do useState não é imediato.
+  const completingRef = useRef(false);
 
   // ── Opt-in de foto pro feed de evolução (não obrigatório) ─────────────────
   const [sharePhotoStage, setSharePhotoStage] = useState<"idle" | "capturing" | "uploading" | "done">("idle");
@@ -216,6 +220,8 @@ function WorkoutDetailModal({
   }
 
   async function handleFinish() {
+    if (completingRef.current) return;
+    completingRef.current = true;
     try {
       setCompleting(true);
       await runWithAuth((token) => consultancyApi.completeTrainingPlan(token, plan.id));
@@ -225,7 +231,7 @@ function WorkoutDetailModal({
       if (timerRef.current) clearInterval(timerRef.current);
       // Limpa o timer persistido — treino encerrado manualmente
       if (TIMER_KEY) AsyncStorage.removeItem(TIMER_KEY).catch(() => {});
-      showToast("Treino concluído! +50 pts", "success");
+      showToast(`Treino concluído! +${PTS_CONSULTORIA} pts`, "success");
       onCompleted();
     } catch (error) {
       setShowFinishConfirm(false);
@@ -235,6 +241,7 @@ function WorkoutDetailModal({
       );
     } finally {
       setCompleting(false);
+      completingRef.current = false;
     }
   }
 
@@ -975,8 +982,11 @@ export function MyTrainingScreen({ navigation }: Props) {
                 <Ionicons name="barbell-outline" size={28} color={theme.primary} />
               </View>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, textAlign: "center" }}>
-                {activeTab === "active" ? "Nenhum plano vigente. Solicite uma consultoria para começar." :
-                 activeTab === "pending" ? "Nenhum item pendente." :
+                {activeTab === "active"
+                  ? historyPlans.length > 0 || waitingDelivery.length > 0
+                    ? "Sua ficha está sendo renovada. Fale com seu personal."
+                    : "Nenhum plano vigente. Solicite uma consultoria para começar."
+                  : activeTab === "pending" ? "Nenhum item pendente." :
                  "Nenhum treino vencido ainda."}
               </Text>
             </View>
