@@ -302,7 +302,43 @@ function parseRange(range: ProviderCalendarRangeInput) {
 // tokens (mpAccessToken/mpRefreshToken/mpTokenExpiresAt) and CREF review
 // internals (crefDocumentUrl/credentialDocuments/crefRejectionReason/
 // crefReviewedAt/crefReviewedByUserId) — those must never leave the server.
-const PUBLIC_PROVIDER_SELECT = {
+function hashSeed(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+// Frente 5 (Descoberta, agendamento e agenda), Lote 1: a localização base do
+// profissional (usada internamente pro raio de atendimento a domicílio) era
+// devolvida publicamente sem autenticação e plotada como pino real no mapa da
+// home do cliente — pra quem atende de casa sem endereço comercial cadastrado
+// (fixedLocations, que são intencionalmente públicos), isso podia revelar o
+// endereço residencial exato. Aplica um deslocamento fixo e determinístico
+// (300-500m, estável por profissional) só na resposta pública; o cálculo de
+// distância/raio de atendimento em search() continua usando a coordenada real
+// via query própria, nunca exposta ao cliente.
+export function jitterPublicCoordinates<T extends { id: string; latitude?: number | null; longitude?: number | null }>(
+  provider: T
+): T {
+  if (typeof provider.latitude !== "number" || typeof provider.longitude !== "number") {
+    return provider;
+  }
+  const seed = hashSeed(provider.id);
+  const angleRad = (seed % 360) * (Math.PI / 180);
+  const distanceMeters = 300 + (seed % 201);
+  const latRad = (provider.latitude * Math.PI) / 180;
+  const deltaLat = (distanceMeters * Math.cos(angleRad)) / 111_320;
+  const deltaLng = (distanceMeters * Math.sin(angleRad)) / (111_320 * Math.cos(latRad));
+  return {
+    ...provider,
+    latitude: provider.latitude + deltaLat,
+    longitude: provider.longitude + deltaLng
+  };
+}
+
+export const PUBLIC_PROVIDER_SELECT = {
   id: true,
   userId: true,
   displayName: true,
@@ -1174,14 +1210,17 @@ export class ProviderService {
         photoUrl?: string | null;
         presentationVideoUrl?: string | null;
         updatedAt?: Date;
+        latitude?: number | null;
+        longitude?: number | null;
       }
     >(
       provider: T,
       distanceKm?: number
     ) => {
       const { presentationVideoUrl: _v, ...rest } = provider;
+      const jittered = jitterPublicCoordinates(rest);
       return {
-        ...rest,
+        ...jittered,
         ...(typeof distanceKm === "number" ? { distanceKm } : {}),
         photoUrl: toProviderPhotoUrl(rest.id, rest.photoUrl ?? null, rest.updatedAt ?? null),
       };
@@ -1463,7 +1502,7 @@ export class ProviderService {
     // Replace base64 media blobs with streaming paths so the JSON response stays small.
     // Clients reconstruct the full URL by prepending their API base URL.
     return {
-      ...provider,
+      ...jitterPublicCoordinates(provider),
       photoUrl: toProviderPhotoUrl(provider.id, provider.photoUrl, provider.updatedAt),
       presentationVideoUrl:
         ENABLE_VIDEO_UPLOAD && provider.presentationVideoUrl
