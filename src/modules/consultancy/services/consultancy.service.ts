@@ -1343,6 +1343,24 @@ export class ConsultancyService {
     }
   ) {
     const provider = await this.providerProfileByUserId(userId);
+    // Frente 4 (Criação/entrega/evolução do treino), Lote 3: este endpoint
+    // não checava nada além de dono - diferente de deliverContract, que
+    // exige CREF aprovado, conta não suspensa, contrato ACTIVE/DELIVERED e
+    // ausência de contestação em aberto. Um profissional podia reescrever o
+    // conteúdo de uma ficha até durante uma disputa aberta sobre ela mesma,
+    // apagando a evidência que gerou a reclamação antes do admin julgar.
+    this.ensureProviderCrefApproved(
+      provider,
+      `Seu CREF ainda não foi aprovado. ${CREF_APPROVAL_REQUIRED_MESSAGE}`
+    );
+    const suspendedProvider = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { suspendedAt: true }
+    });
+    if (suspendedProvider?.suspendedAt) {
+      throw new AppError("Sua conta está suspensa e não pode editar fichas de treino.", StatusCodes.FORBIDDEN);
+    }
+
     const existing = await prisma.trainingPlan.findUnique({
       where: { id: planId },
       select: {
@@ -1354,6 +1372,7 @@ export class ConsultancyService {
             clientId: true,
             paymentCapturedAt: true,
             createdAt: true,
+            status: true,
             offer: { select: { billingCycle: true } }
           }
         }
@@ -1362,6 +1381,28 @@ export class ConsultancyService {
 
     if (!existing || existing.providerId !== provider.id) {
       throw new AppError("Treino não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    if (
+      existing.contract &&
+      existing.contract.status !== ConsultancyContractStatus.ACTIVE &&
+      existing.contract.status !== ConsultancyContractStatus.DELIVERED
+    ) {
+      throw new AppError(
+        "Contrato não está mais ativo — não é possível editar fichas vinculadas a ele.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    const openContestOnThisPlan = await prisma.disputeCase.findFirst({
+      where: { trainingPlanId: existing.id, type: "DELIVERY_CONTESTED", status: "OPEN" },
+      select: { id: true }
+    });
+    if (openContestOnThisPlan) {
+      throw new AppError(
+        "Existe uma contestação em aberto sobre esta ficha. Aguarde a resolução antes de editá-la.",
+        StatusCodes.CONFLICT
+      );
     }
 
     let planValidUntil: Date | undefined;
@@ -2373,6 +2414,17 @@ export class ConsultancyService {
           }
         });
 
+        // Frente 4 (Criação/entrega/evolução do treino), Lote 3: sem isso,
+        // entregar uma renovação antes da ficha anterior vencer deixava as
+        // duas "vigentes" ao mesmo tempo pro cliente - ele podia concluir
+        // (e ganhar XP/gerar post/histórico) a ficha já substituída.
+        if (!isFirstDelivery) {
+          await tx.trainingPlan.updateMany({
+            where: { contractId: contract.id, isActive: true, id: { not: plan.id } },
+            data: { isActive: false }
+          });
+        }
+
         const updatedContract = isFirstDelivery
           ? await tx.consultancyContract.update({
               where: { id: contract.id },
@@ -2508,10 +2560,16 @@ export class ConsultancyService {
         // AUTHORIZED entra aqui também: cartão com valor reservado (ainda não
         // capturado) já é um contrato ativo de verdade — o aluno precisa ver
         // que está "em preparação" mesmo antes da entrega/captura acontecer.
-        paymentStatus: { in: [ConsultancyPaymentStatus.AUTHORIZED, ConsultancyPaymentStatus.CAPTURED] },
-        status: {
-          in: [ConsultancyContractStatus.ACTIVE, ConsultancyContractStatus.DELIVERED]
-        }
+        paymentStatus: { in: [ConsultancyPaymentStatus.AUTHORIZED, ConsultancyPaymentStatus.CAPTURED] }
+        // Frente 4 (Criação/entrega/evolução do treino), Lote 3: antes só
+        // ACTIVE/DELIVERED entravam aqui - assim que o contrato cancelava
+        // (inclusive no desfecho automático mais comum: ficha vencida 7
+        // dias sem renovação), o cliente perdia acesso a TODAS as fichas
+        // já pagas, contradizendo a própria mensagem de cancelamento ("as
+        // fichas já recebidas continuam disponíveis"). Contratos CANCELLED/
+        // REFUNDED_EXPIRED/ARCHIVED continuam aparecendo aqui (histórico),
+        // mas sem permitir novas ações - ver o filtro por contrato ativo em
+        // completeTrainingPlan/contestDelivery.
       },
       include: {
         provider: {
@@ -2559,11 +2617,21 @@ export class ConsultancyService {
     }));
 
     const unlockedContracts = contractsWithPlanValidity.filter((contract) => contract.trainingPlans.length > 0);
+    const ACTIVE_CONTRACT_STATUSES_FOR_WAITING: ConsultancyContractStatus[] = [
+      ConsultancyContractStatus.ACTIVE,
+      ConsultancyContractStatus.DELIVERED
+    ];
 
     return {
       locked: unlockedContracts.length === 0,
+      // "Aguardando entrega" só faz sentido pra contrato ainda ativo — um
+      // contrato cancelado/expirado sem nenhuma ficha nunca vai receber uma,
+      // então não entra aqui (não é histórico de nada, nem está esperando).
       waitingDelivery: contractsWithPlanValidity
-        .filter((contract) => contract.trainingPlans.length === 0)
+        .filter(
+          (contract) =>
+            contract.trainingPlans.length === 0 && ACTIVE_CONTRACT_STATUSES_FOR_WAITING.includes(contract.status)
+        )
         .map((contract) => ({
           contractId: contract.id,
           providerName: contract.provider.displayName,
@@ -2613,6 +2681,18 @@ export class ConsultancyService {
     let providerId = trainingPlan.providerId;
 
     if (trainingPlan.contract) {
+      // Frente 4 (Criação/entrega/evolução do treino), Lote 3: getMyTraining
+      // agora mantém fichas de contratos cancelados/expirados visíveis
+      // (histórico), mas nenhuma ação nova é permitida sobre elas.
+      if (
+        trainingPlan.contract.status !== ConsultancyContractStatus.ACTIVE &&
+        trainingPlan.contract.status !== ConsultancyContractStatus.DELIVERED
+      ) {
+        throw new AppError(
+          "Este contrato não está mais ativo — não é possível registrar novos treinos.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
       if (trainingPlan.contract.clientId !== clientId) {
         throw new AppError(
           "Você não possui acesso para registrar este treino.",

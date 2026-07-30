@@ -175,8 +175,32 @@ export class DisputeCaseService {
         // era nem quando foi entregue — só "oferta X, valor Y", igual pra
         // ficha #1 ou #12. contextNote (motivo do aluno) já vinha pelo
         // include padrão do Prisma, mas o app nunca exibia.
+        //
+        // Frente 4 (Criação/entrega/evolução do treino), Lote 3: mesmo
+        // depois disso, o admin só via título/data - nunca os exercícios
+        // prescritos, exatamente o que precisa julgar se a ficha era
+        // vazia/inadequada. Sem isso a contestação de entrega ficava sem
+        // lastro probatório nenhum pro admin.
         trainingPlan: {
-          select: { id: true, title: true, createdAt: true, isActive: true }
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            createdAt: true,
+            isActive: true,
+            exercises: {
+              orderBy: { sortOrder: "asc" },
+              select: {
+                id: true,
+                name: true,
+                repetitionsSets: true,
+                load: true,
+                restSeconds: true,
+                demoVideoUrl: true,
+                exercise: { select: { mediaUrl: true, mediaType: true } }
+              }
+            }
+          }
         }
       }
     });

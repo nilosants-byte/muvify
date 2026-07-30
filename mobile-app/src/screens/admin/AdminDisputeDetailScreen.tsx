@@ -321,12 +321,35 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
             <View style={{ gap: 6 }}>
               <MvText variant="semi2">Ficha de treino em disputa</MvText>
               <MvText variant="body4">Título: {disputeCase.trainingPlan.title}</MvText>
+              {disputeCase.trainingPlan.description ? (
+                <MvText variant="body4" color="secondary">{disputeCase.trainingPlan.description}</MvText>
+              ) : null}
               <MvText variant="body4" color="secondary">
                 Entregue em: {formatDateTime(disputeCase.trainingPlan.createdAt)}
               </MvText>
               {!disputeCase.trainingPlan.isActive ? (
                 <MvText variant="body4" color="secondary">Esta ficha não é mais a ativa do contrato.</MvText>
               ) : null}
+              {/* Frente 4 (Criação/entrega/evolução do treino), Lote 3: antes o
+                  admin só via título/data - nunca os exercícios prescritos,
+                  exatamente o que precisa julgar se a ficha era vazia/
+                  inadequada. */}
+              {disputeCase.trainingPlan.exercises.length > 0 ? (
+                <View style={{ gap: 8, marginTop: 6 }}>
+                  <MvText variant="semi3">Exercícios prescritos ({disputeCase.trainingPlan.exercises.length})</MvText>
+                  {disputeCase.trainingPlan.exercises.map((ex, index) => (
+                    <View key={ex.id} style={{ paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: "rgba(127,127,127,0.25)" }}>
+                      <MvText variant="body4">{index + 1}. {ex.name}</MvText>
+                      <MvText variant="caption" color="secondary">
+                        {ex.repetitionsSets} · carga: {ex.load}
+                        {ex.restSeconds ? ` · descanso: ${ex.restSeconds}s` : ""}
+                      </MvText>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <MvText variant="body4" color="secondary">Nenhum exercício registrado nesta ficha.</MvText>
+              )}
             </View>
           </MvCard>
         ) : null}

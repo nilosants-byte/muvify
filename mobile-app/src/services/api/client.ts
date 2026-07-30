@@ -1937,8 +1937,18 @@ export type AdminDisputeCaseDetail = AdminDisputeCaseListItem & {
   trainingPlan: {
     id: string;
     title: string;
+    description: string | null;
     createdAt: string;
     isActive: boolean;
+    exercises: Array<{
+      id: string;
+      name: string;
+      repetitionsSets: string;
+      load: string;
+      restSeconds: number | null;
+      demoVideoUrl: string | null;
+      exercise: { mediaUrl: string | null; mediaType: string | null } | null;
+    }>;
   } | null;
 };
 
