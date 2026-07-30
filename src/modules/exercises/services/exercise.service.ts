@@ -1,4 +1,4 @@
-import { ExerciseMediaType } from "@prisma/client";
+import { ConsultancyContractStatus, ExerciseMediaType } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { ENABLE_VIDEO_UPLOAD } from "../../../config/features";
 import { prisma } from "../../../config/prisma";
@@ -222,6 +222,28 @@ export class ExerciseService {
     }
     if (exercise.isPrebuilt) {
       throw new AppError("Exercícios da biblioteca Muvify não podem ser removidos.", StatusCodes.FORBIDDEN);
+    }
+
+    // Frente 4 (Criação/entrega/evolução do treino), Lote 4: excluir um
+    // exercício em uso apagava silenciosamente o conteúdo de fichas ativas
+    // de alunos (a FK usa onDelete: SetNull) — sem aviso nenhum ao
+    // profissional de que aquilo afetaria alguém que já está treinando.
+    const activeUsages = await prisma.trainingPlanExercise.findMany({
+      where: {
+        exerciseId,
+        trainingPlan: {
+          isActive: true,
+          contract: { status: { in: [ConsultancyContractStatus.ACTIVE, ConsultancyContractStatus.DELIVERED] } }
+        }
+      },
+      select: { trainingPlanId: true },
+      distinct: ["trainingPlanId"]
+    });
+    if (activeUsages.length > 0) {
+      throw new AppError(
+        `Este exercício está em uso em ${activeUsages.length} ficha(s) ativa(s) de aluno(s) e não pode ser removido.`,
+        StatusCodes.CONFLICT
+      );
     }
 
     await prisma.exercise.delete({ where: { id: exerciseId } });

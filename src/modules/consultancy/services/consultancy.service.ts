@@ -26,6 +26,16 @@ import { NotificationService } from "../../notifications/services/notification.s
 import { DebtService } from "../../payments/services/debt.service";
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
 
+function startOfTodayInSaoPaulo(): Date {
+  const dateKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+  return new Date(`${dateKey}T00:00:00-03:00`);
+}
+
 const BASE_PRICE_UPDATE_COOLDOWN_DAYS = 30;
 const BASE_PRICE_UPDATE_COOLDOWN_MS =
   BASE_PRICE_UPDATE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
@@ -2726,6 +2736,25 @@ export class ConsultancyService {
         );
       }
       contractId = activeContract.id;
+    }
+
+    // Frente 4 (Criação/entrega/evolução do treino), Lote 4: referenceId do
+    // XP é o id da própria conclusão (sempre novo), então a idempotência do
+    // awardXp nunca disparava — o cliente podia chamar este endpoint
+    // repetidamente e ganhar XP/post ilimitado pela mesma ficha, sem
+    // nenhum treino de verdade acontecer entre uma chamada e outra. Trava
+    // por dia (mesmo padrão de "um treino presencial só conta uma vez"
+    // aplicado aqui como "uma conclusão de ficha só conta uma vez por dia").
+    const todayStart = startOfTodayInSaoPaulo();
+    const alreadyCompletedToday = await prisma.trainingPlanCompletion.findFirst({
+      where: { trainingPlanId: trainingPlan.id, completedAt: { gte: todayStart } },
+      select: { id: true }
+    });
+    if (alreadyCompletedToday) {
+      throw new AppError(
+        "Você já registrou a conclusão deste treino hoje. Volte amanhã para registrar de novo.",
+        StatusCodes.CONFLICT
+      );
     }
 
     const completion = await prisma.trainingPlanCompletion.create({

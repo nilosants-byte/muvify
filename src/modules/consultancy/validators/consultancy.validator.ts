@@ -1,4 +1,21 @@
 import { z } from "zod";
+import { env } from "../../../config/env";
+
+// Frente 4 (Criação/entrega/evolução do treino), Lote 4: demoVideoUrl só
+// validava .url(), sem a mesma restrição de storage próprio/YouTube já
+// aplicada a Exercise.mediaUrl — aceitava qualquer domínio externo.
+function assertOwnOrYoutubeDemoVideo(demoVideoUrl: string | undefined, ctx: z.RefinementCtx) {
+  if (!demoVideoUrl) return;
+  const isOwnBucket = !env.R2_PUBLIC_URL || demoVideoUrl.startsWith(env.R2_PUBLIC_URL);
+  const isYoutubeUrl = /^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(demoVideoUrl);
+  if (!isOwnBucket && !isYoutubeUrl) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "demoVideoUrl deve apontar para o storage do próprio app ou ser um link do YouTube.",
+      path: ["demoVideoUrl"]
+    });
+  }
+}
 
 const offerKindSchema = z.enum([
   "PRESENTIAL",
@@ -19,13 +36,13 @@ const offerBillingCycleSchema = z.enum([
 const exerciseInputSchema = z.object({
   sortOrder: z.number().int().min(0).optional(),
   exerciseId: z.string().uuid().optional(),
-  name: z.string().trim().min(2).max(120),
-  repetitionsSets: z.string().trim().min(2).max(120),
-  load: z.string().trim().min(1).max(120),
+  name: z.string().trim().min(3).max(120),
+  repetitionsSets: z.string().trim().min(3).max(120),
+  load: z.string().trim().min(2).max(120),
   restSeconds: z.number().int().min(0).max(3600).optional(),
   restLabel: z.string().trim().max(120).optional(),
   demoVideoUrl: z.string().trim().url().max(500).optional()
-});
+}).superRefine((value, ctx) => assertOwnOrYoutubeDemoVideo(value.demoVideoUrl, ctx));
 
 export const providerCatalogSchema = z.object({
   params: z.object({
