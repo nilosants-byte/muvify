@@ -7,7 +7,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
-import { Availability, availabilityApi } from "../../services/api/client";
+import { ApiError, Availability, availabilityApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvCard, MvText, MvToggle, TimeWheelPicker } from "../../components/mv";
@@ -150,7 +150,12 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
 
     try {
       setSaving(true);
-      await Promise.all(
+      // Frente 5 (Descoberta, agendamento e agenda), Lote 6: Promise.all
+      // falhava tudo-ou-nada se um único dia conflitasse (cada dia tem seu
+      // próprio conjunto de slots) — os dias que já tinham sido criados
+      // com sucesso ficavam invisíveis no cache local até a próxima carga
+      // da tela, e a mensagem sugeria falha total.
+      const results = await Promise.allSettled(
         allDays.map((day) =>
           runWithAuth((token) =>
             availabilityApi.create(token, {
@@ -162,11 +167,21 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
           )
         )
       );
-      const count = allDays.length;
+      const failedDays = allDays.filter((_, index) => results[index]?.status === "rejected");
+      const succeededCount = allDays.length - failedDays.length;
+
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      trackEvent("availability_slot_added", { days_count: count });
-      showToast(count > 1 ? `Horário adicionado em ${count} dias.` : "Horário adicionado.", "success");
-      resetAddForm();
+      trackEvent("availability_slot_added", { days_count: succeededCount });
+
+      if (failedDays.length === 0) {
+        showToast(succeededCount > 1 ? `Horário adicionado em ${succeededCount} dias.` : "Horário adicionado.", "success");
+        resetAddForm();
+      } else if (succeededCount > 0) {
+        const failedLabels = failedDays.map((day) => WEEKDAYS.find((w) => w.id === day)?.short ?? String(day)).join(", ");
+        showToast(`Adicionado em ${succeededCount} dia(s). Falhou em: ${failedLabels}.`, "error");
+      } else {
+        showToast("Falha ao adicionar horário em todos os dias selecionados.", "error");
+      }
       void availabilityQuery.refetch();
     } catch (error) {
       const msg = error instanceof Error ? error.message : "";
@@ -181,7 +196,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
     }
   }
 
-  async function deleteSlot(id: string) {
+  async function deleteSlot(id: string, force = false) {
     Alert.alert("Remover horário", "Deseja remover este horário?", [
       { text: "Cancelar", style: "cancel" },
       {
@@ -189,12 +204,23 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
         onPress: async () => {
           try {
             setDeletingId(id);
-            await runWithAuth((token) => availabilityApi.delete(token, id));
+            await runWithAuth((token) => availabilityApi.delete(token, id, force));
             queryClient.setQueryData<Availability[]>(queryKeys.availability.me(), (old) =>
               (old ?? []).filter((item) => item.id !== id)
             );
             showToast("Horário removido.", "success");
           } catch (error) {
+            // Frente 5 (Descoberta, agendamento e agenda), Lote 6: 409 aqui
+            // significa que há agendamento futuro marcado dentro desse
+            // horário — pede confirmação extra em vez de bloquear de vez.
+            if (error instanceof ApiError && error.status === 409 && !force) {
+              setDeletingId(null);
+              Alert.alert("Existem agendamentos marcados", error.message, [
+                { text: "Cancelar", style: "cancel" },
+                { text: "Remover mesmo assim", style: "destructive", onPress: () => void deleteSlot(id, true) },
+              ]);
+              return;
+            }
             handleScreenError({ error, showToast, fallbackMessage: "Falha ao remover horário.", navigation });
           } finally {
             setDeletingId(null);

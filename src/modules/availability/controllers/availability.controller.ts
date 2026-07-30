@@ -18,7 +18,8 @@ export class AvailabilityController {
     return response.json(availabilities);
   }
   async deleteAvailability(request: Request, response: Response) {
-    await availabilityService.deleteAvailability(request.user!.id, request.params.availabilityId);
+    const force = request.query.force === "true";
+    await availabilityService.deleteAvailability(request.user!.id, request.params.availabilityId, force);
     return response.status(StatusCodes.NO_CONTENT).send();
   }
 }

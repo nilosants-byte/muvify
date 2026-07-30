@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { ProfessionalTabParamList } from "../../navigation/route-types";
 import {
+  ApiError,
   Availability,
   availabilityApi,
   Booking,
@@ -474,24 +475,38 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     const allDays = [selectedWeekday, ...Array.from(availExtraDays)];
     try {
       setAvailAddSaving(true);
-      const results = await Promise.all(
+      // Frente 5 (Descoberta, agendamento e agenda), Lote 6: Promise.all
+      // falhava tudo-ou-nada se um único dia conflitasse — os dias já
+      // criados com sucesso ficavam fora do cache local até a próxima
+      // carga da tela, e a mensagem sugeria falha total.
+      const settled = await Promise.allSettled(
         allDays.map((day) =>
           runWithAuth((token) =>
             availabilityApi.create(token, { weekday: day, startTime: ps, endTime: pe, isActive: true })
           )
         )
       );
+      const succeeded = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+      const failedDays = allDays.filter((_, index) => settled[index]?.status === "rejected");
+
       queryClient.setQueryData<typeof agendaQuery.data>(queryKeys.agenda.professional(), (old) => ({
         ...old!,
-        availabilities: [...(old?.availabilities ?? []), ...results],
+        availabilities: [...(old?.availabilities ?? []), ...succeeded],
       }));
-      setAvailModalVisible(false);
-      setAvailStart("08:00");
-      setAvailEnd("09:00");
-      setAvailExtraDays(new Set());
-      const count = allDays.length;
-      trackEvent("availability_slot_added", { days_count: count });
-      showToast(count > 1 ? `Horário adicionado em ${count} dias.` : "Horário adicionado.", "success");
+      trackEvent("availability_slot_added", { days_count: succeeded.length });
+
+      if (failedDays.length === 0) {
+        setAvailModalVisible(false);
+        setAvailStart("08:00");
+        setAvailEnd("09:00");
+        setAvailExtraDays(new Set());
+        showToast(succeeded.length > 1 ? `Horário adicionado em ${succeeded.length} dias.` : "Horário adicionado.", "success");
+      } else if (succeeded.length > 0) {
+        const failedLabels = failedDays.map((day) => WEEKDAY_FULL_PT[day]).join(", ");
+        showToast(`Adicionado em ${succeeded.length} dia(s). Falhou em: ${failedLabels}.`, "error");
+      } else {
+        showToast("Falha ao adicionar horário em todos os dias selecionados.", "error");
+      }
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao adicionar horário.", navigation });
     } finally {
@@ -499,16 +514,27 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     }
   }
 
-  async function doRemoveAvailSlot(id: string) {
+  async function doRemoveAvailSlot(id: string, force = false) {
     try {
       setDeletingAvailId(id);
-      await runWithAuth((token) => availabilityApi.delete(token, id));
+      await runWithAuth((token) => availabilityApi.delete(token, id, force));
       queryClient.setQueryData<typeof agendaQuery.data>(queryKeys.agenda.professional(), (old) => ({
         ...old!,
         availabilities: (old?.availabilities ?? []).filter((a) => a.id !== id),
       }));
       showToast("Horário removido.", "success");
     } catch (error) {
+      // Frente 5 (Descoberta, agendamento e agenda), Lote 6: 409 aqui
+      // significa que há agendamento futuro marcado dentro desse horário —
+      // pede confirmação extra em vez de bloquear de vez.
+      if (error instanceof ApiError && error.status === 409 && !force) {
+        setDeletingAvailId(null);
+        Alert.alert("Existem agendamentos marcados", error.message, [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Remover mesmo assim", style: "destructive", onPress: () => void doRemoveAvailSlot(id, true) },
+        ]);
+        return;
+      }
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao remover horário.", navigation });
     } finally {
       setDeletingAvailId(null);
@@ -948,7 +974,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                           paddingHorizontal: 14, paddingVertical: 13,
                         }}>
                           <MvText variant="semi2" style={{ color: theme.textGreen, minWidth: 44, fontSize: 16 }}>{item.time}</MvText>
-                          <View style={{ flex: 1 }}>
+                          <View style={{ flex: 1, gap: 2 }}>
                             <View style={{
                               flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start",
                               backgroundColor: "rgba(34,197,94,0.12)",
@@ -956,6 +982,14 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                             }}>
                               <MvText variant="body4" style={{ color: theme.textGreen, fontSize: 11 }}>Horário livre</MvText>
                             </View>
+                            {/* Frente 5 (Descoberta, agendamento e agenda), Lote 6: a lixeira
+                                remove a janela de disponibilidade inteira, não só este slot de
+                                30min — deixa o range real explícito antes do usuário tocar. */}
+                            {containingRange ? (
+                              <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>
+                                Faixa completa: {containingRange.startTime}–{containingRange.endTime}
+                              </MvText>
+                            ) : null}
                           </View>
                           {containingRange ? (
                             <TouchableOpacity

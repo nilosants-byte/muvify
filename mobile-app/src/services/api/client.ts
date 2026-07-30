@@ -2163,8 +2163,8 @@ export const availabilityApi = {
   ) {
     return apiRequest<Availability>("/availability", { method: "POST", token, body });
   },
-  delete(token: string, availabilityId: string) {
-    return apiRequest<void>(`/availability/${availabilityId}`, { method: "DELETE", token });
+  delete(token: string, availabilityId: string, force?: boolean) {
+    return apiRequest<void>(`/availability/${availabilityId}${force ? "?force=true" : ""}`, { method: "DELETE", token });
   }
 };
 
