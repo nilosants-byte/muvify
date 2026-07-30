@@ -476,10 +476,21 @@ export class PaymentService {
 
     if (!user) throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
 
+    // Frente 5 (Descoberta, agendamento e agenda), Lote 8: dívida do cliente
+    // só era descoberta no submit final da criação de booking/pacote/
+    // consultoria, depois de escolher categoria, data, horário e local —
+    // a tela já busca esse status junto com o resto no carregamento
+    // inicial, então dá pra avisar antes do cliente preencher tudo.
+    const outstandingDebt = await prisma.debtRecord.findFirst({
+      where: { clientId: userId, debtorType: "CLIENT", status: { in: ["PENDING", "NOTIFIED"] } },
+      select: { id: true }
+    });
+
     return {
       configured: Boolean(user.mpCustomerId && user.mpDefaultCardId),
       hasCustomer: Boolean(user.mpCustomerId),
-      hasDefaultPaymentMethod: Boolean(user.mpDefaultCardId)
+      hasDefaultPaymentMethod: Boolean(user.mpDefaultCardId),
+      hasOutstandingDebt: Boolean(outstandingDebt)
     };
   }
 

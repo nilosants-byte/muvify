@@ -16,7 +16,8 @@ describe("CreateBookingScreen", () => {
     const customerStatusSpy = jest.spyOn(paymentsApi, "customerStatus").mockResolvedValue({
       configured: true,
       hasCustomer: true,
-      hasDefaultPaymentMethod: true
+      hasDefaultPaymentMethod: true,
+      hasOutstandingDebt: false
     });
 
     const createSpy = jest.spyOn(bookingsApi, "create").mockResolvedValue({

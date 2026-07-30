@@ -204,6 +204,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
         provider: providerDetail,
         categories: resolvedCategories,
         paymentReady: customerStatus.hasDefaultPaymentMethod,
+        clientHasDebt: customerStatus.hasOutstandingDebt,
         anamnesis: anamnesisProfile,
       };
     },
@@ -213,6 +214,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
   const loading = createBookingQuery.isLoading;
   const provider = createBookingQuery.data?.provider ?? null;
   const paymentReady = createBookingQuery.data?.paymentReady ?? false;
+  const clientHasDebt = createBookingQuery.data?.clientHasDebt ?? false;
   const anamnesis = createBookingQuery.data?.anamnesis ?? null;
 
   useEffect(() => {
@@ -885,6 +887,22 @@ export function CreateBookingScreen({ navigation, route }: Props) {
           ) : null}
         </View>
 
+        {/* Frente 5 (Descoberta, agendamento e agenda), Lote 8: dívida do
+            cliente só era descoberta no submit final, depois de preencher
+            categoria, data, horário e local — mesmo padrão de aviso
+            antecipado já usado pra ficha de saúde/pagamento pendente. */}
+        {clientHasDebt ? (
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: "rgba(239,68,68,0.35)", backgroundColor: "rgba(239,68,68,0.08)", padding: S.cardPad, gap: 6 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Ionicons name="alert-circle-outline" size={18} color={theme.danger} />
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.danger }}>Pendência financeira em aberto</Text>
+            </View>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.danger, lineHeight: 18 }}>
+              Você tem uma pendência financeira em aberto. Regularize antes de agendar uma nova sessão.
+            </Text>
+          </View>
+        ) : null}
+
         {/* Card: Resumo financeiro */}
         <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 6 }}>
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, marginBottom: 4 }}>Resumo financeiro</Text>
@@ -892,7 +910,14 @@ export function CreateBookingScreen({ navigation, route }: Props) {
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Aulas selecionadas: {selectedLessonsCount}</Text>
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.primary, marginTop: 4 }}>Total previsto: {formatCurrencyBRL(totalSelectedPriceCents / 100)}</Text>
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, marginTop: 4, lineHeight: 16 }}>
-            Cancelamento com 2h ou mais de antecedência devolve o valor integralmente. Cancelando depois disso, o valor fica com o profissional.
+            {selectedPaymentMethod === "PIX"
+              // Frente 5 (Descoberta, agendamento e agenda), Lote 8: a
+              // penalidade de "profissional fica com o valor" só se aplica
+              // se o Pix já tiver sido de fato pago — se o cliente nunca
+              // gerar/pagar a cobrança, cancelar simplesmente cancela o Pix
+              // pendente, sem nada a reter.
+              ? "Cancelamento com 2h ou mais de antecedência devolve o valor integralmente. Cancelando depois disso com o Pix já pago, o valor fica com o profissional — se o Pix ainda não foi pago, a cobrança é só cancelada."
+              : "Cancelamento com 2h ou mais de antecedência devolve o valor integralmente. Cancelando depois disso, o valor fica com o profissional."}
           </Text>
         </View>
 
@@ -920,20 +945,21 @@ export function CreateBookingScreen({ navigation, route }: Props) {
             disabled={
               creating ||
               !anamnesisCompleted ||
+              clientHasDebt ||
               (selectedPaymentMethod === "CARD" && !paymentReady) ||
               (hasNearTermDate && !immediateExecutionAcknowledged)
             }
             onPress={() => { hapticCta(); void handleContinue(); }}
             style={{
               height: S.btnH, borderRadius: S.btnR,
-              backgroundColor: (!anamnesisCompleted || (selectedPaymentMethod === "CARD" && !paymentReady) || (hasNearTermDate && !immediateExecutionAcknowledged)) ? "rgba(36,230,109,0.4)" : theme.primary,
+              backgroundColor: (!anamnesisCompleted || clientHasDebt || (selectedPaymentMethod === "CARD" && !paymentReady) || (hasNearTermDate && !immediateExecutionAcknowledged)) ? "rgba(36,230,109,0.4)" : theme.primary,
               alignItems: "center", justifyContent: "center",
               shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
               opacity: creating ? 0.7 : 1,
             }}
           >
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary, letterSpacing: -0.02 * 14 }}>
-              {creating ? "Criando..." : !anamnesisCompleted ? "Ficha de saúde pendente" : selectedDateKeys.length > 1 ? "Criar agendamentos" : "Ir para pagamento"}
+              {creating ? "Criando..." : !anamnesisCompleted ? "Ficha de saúde pendente" : clientHasDebt ? "Pendência financeira" : selectedDateKeys.length > 1 ? "Criar agendamentos" : "Ir para pagamento"}
             </Text>
           </TouchableOpacity>
         </View>

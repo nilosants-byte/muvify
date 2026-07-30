@@ -230,9 +230,15 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     if (!booking) return;
     const hoursUntilSession = (new Date(booking.scheduledAt).getTime() - Date.now()) / (60 * 60 * 1000);
     const willRefund = hoursUntilSession >= 2;
+    // Frente 5 (Descoberta, agendamento e agenda), Lote 8: "não gera
+    // reembolso" só faz sentido se o Pix já tiver sido de fato pago — se
+    // o cliente nunca gerou/pagou a cobrança, não há nada retido.
+    const isPixUnpaid = payment?.method === "PIX" && payment.status !== "CAPTURED";
     const message = willRefund
       ? "Você será reembolsado integralmente. Deseja cancelar mesmo assim?"
-      : "Faltam menos de 2h para o horário marcado — cancelar agora não gera reembolso, o profissional já reservou esse horário. Deseja cancelar mesmo assim?";
+      : isPixUnpaid
+        ? "Faltam menos de 2h para o horário marcado. Como o Pix ainda não foi pago, cancelar agora só cancela a cobrança pendente — nada será cobrado. Deseja cancelar mesmo assim?"
+        : "Faltam menos de 2h para o horário marcado — cancelar agora não gera reembolso, o profissional já reservou esse horário. Deseja cancelar mesmo assim?";
     Alert.alert(
       "Cancelar agendamento",
       message,

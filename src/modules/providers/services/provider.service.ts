@@ -1203,7 +1203,15 @@ export class ProviderService {
       categoryLinks: filters.categoryId
         ? { some: { categoryId: filters.categoryId } }
         : undefined,
-      serviceMode: filters.serviceMode ? { equals: filters.serviceMode } : undefined,
+      // Frente 5 (Descoberta, agendamento e agenda), Lote 8: igualdade
+      // estrita excluía profissionais "Ambas" (BOTH) quando o cliente
+      // filtrava por "Só academia"/"Vai ao cliente" — um profissional que
+      // atende dos dois jeitos claramente também atende o modo filtrado.
+      serviceMode: filters.serviceMode
+        ? filters.serviceMode === ProviderServiceMode.BOTH
+          ? { equals: ProviderServiceMode.BOTH }
+          : { in: [filters.serviceMode, ProviderServiceMode.BOTH] }
+        : undefined,
       ...bboxWhere,
     };
 

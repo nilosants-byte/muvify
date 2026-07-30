@@ -24,7 +24,8 @@ describe("CustomerPaymentMethodScreen", () => {
       .mockResolvedValue({
         configured: false,
         hasCustomer: false,
-        hasDefaultPaymentMethod: false
+        hasDefaultPaymentMethod: false,
+        hasOutstandingDebt: false
       });
 
     const navigation = { navigate: jest.fn() };
@@ -46,7 +47,8 @@ describe("CustomerPaymentMethodScreen", () => {
     jest.spyOn(paymentsApi, "customerStatus").mockResolvedValue({
       configured: true,
       hasCustomer: true,
-      hasDefaultPaymentMethod: true
+      hasDefaultPaymentMethod: true,
+      hasOutstandingDebt: false
     });
 
     const { findByText } = render(<CustomerPaymentMethodScreen navigation={{ navigate: jest.fn() }} />);

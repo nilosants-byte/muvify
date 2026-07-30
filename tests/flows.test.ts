@@ -211,7 +211,8 @@ describe("flows", () => {
     expect(response.body).toEqual({
       configured: false,
       hasCustomer: false,
-      hasDefaultPaymentMethod: false
+      hasDefaultPaymentMethod: false,
+      hasOutstandingDebt: false
     });
   });
 });

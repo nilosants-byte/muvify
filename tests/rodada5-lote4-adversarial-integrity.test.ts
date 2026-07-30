@@ -154,7 +154,7 @@ describe("Rodada 5, Lote 4 — integridade de conclusão e reincidência", () =>
     const scheduledAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
     await expect(
       bookingService.create(clientId, providerId, categoryId, scheduledAt.toISOString(), undefined, "CREDIT_CARD" as any)
-    ).rejects.toThrow(/pendência financeira/i);
+    ).rejects.toThrow(/temporariamente indisponível/i);
 
     await prisma.debtRecord.delete({ where: { id: debt.id } });
     await prisma.disputeCase.delete({ where: { id: disputeCase.id } });
@@ -191,7 +191,7 @@ describe("Rodada 5, Lote 4 — integridade de conclusão e reincidência", () =>
 
     await expect(
       packageService.purchasePackage(clientId, { offerId: offer.id, categoryId, paymentMethod: "CREDIT_CARD" as any })
-    ).rejects.toThrow(/pendência financeira/i);
+    ).rejects.toThrow(/temporariamente indisponível/i);
 
     await prisma.providerServiceOffer.delete({ where: { id: offer.id } });
     await prisma.debtRecord.delete({ where: { id: debt.id } });
@@ -233,7 +233,7 @@ describe("Rodada 5, Lote 4 — integridade de conclusão e reincidência", () =>
         paymentMethod: "CREDIT_CARD" as any,
         acknowledgedImmediateExecution: true
       })
-    ).rejects.toThrow(/pendência financeira/i);
+    ).rejects.toThrow(/temporariamente indisponível/i);
 
     await prisma.consultancyRequest.delete({ where: { id: consultancyRequest.id } });
     await prisma.providerServiceOffer.delete({ where: { id: offer.id } });

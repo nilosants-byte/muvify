@@ -1002,6 +1002,7 @@ export type CustomerPaymentStatus = {
   configured: boolean;
   hasCustomer: boolean;
   hasDefaultPaymentMethod: boolean;
+  hasOutstandingDebt: boolean;
 };
 
 export type CustomerCardSummary = {

@@ -167,8 +167,14 @@ export class DebtService {
       where: { providerId, debtorType: "PROVIDER", status: { in: [...OUTSTANDING_STATUSES] } }
     });
     if (outstanding) {
+      // Frente 5 (Descoberta, agendamento e agenda), Lote 8: os 4 pontos
+      // que chamam essa checagem (booking avulso, aceite de consultoria,
+      // compra de pacote/combo) são todos ações do CLIENTE — a mensagem
+      // antiga ("regularize antes de vender um novo serviço") era escrita
+      // na perspectiva do profissional, mas quem via o erro era sempre o
+      // cliente, sem nenhuma ação possível sobre a dívida de outra pessoa.
       throw new AppError(
-        "Você tem uma pendência financeira em aberto. Regularize antes de vender um novo serviço.",
+        "Este profissional está temporariamente indisponível para novos agendamentos.",
         StatusCodes.PAYMENT_REQUIRED
       );
     }
