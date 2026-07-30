@@ -18,6 +18,7 @@ import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/util
 import { haversineKm } from "../../../shared/utils/geo";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
 import { getPrivateObject, putPrivateObject } from "../../../shared/services/storage.service";
+import { restoreFlexibleCreditForBooking } from "../../../shared/utils/presential-package-credit";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { PaymentService } from "../../payments/services/payment.service";
 import { DebtService } from "../../payments/services/debt.service";
@@ -489,10 +490,22 @@ export class BookingService {
       });
 
       if (presentialPackage) {
-        await tx.presentialPackage.update({
-          where: { id: presentialPackage.id },
+        // Frente 4 (Criação/entrega/evolução do treino), Lote 1: o lock de
+        // transação é por profissional+horário, não por pacote - duas
+        // requisições concorrentes pra horários diferentes do mesmo
+        // profissional podiam ambas passar na checagem de saldo (linha
+        // ~296) antes de qualquer uma decrementar. O decremento condicional
+        // (só afeta a linha se ainda houver saldo) fecha essa corrida -
+        // Postgres reavalia o WHERE contra o valor mais recente ao adquirir
+        // o lock da linha, então a segunda transação a chegar aqui vê o
+        // saldo já zerado e falha, em vez de decrementar pra negativo.
+        const consumed = await tx.presentialPackage.updateMany({
+          where: { id: presentialPackage.id, creditsRemainingThisCycle: { gt: 0 } },
           data: { creditsRemainingThisCycle: { decrement: 1 } }
         });
+        if (consumed.count === 0) {
+          throw new AppError("Você já usou todas as sessões deste pacote.", StatusCodes.BAD_REQUEST);
+        }
       }
       await paymentService.createPendingForBooking(
         tx,
@@ -876,6 +889,9 @@ export class BookingService {
           await paymentService.cancelPaymentForBooking(booking.id).catch((err) => {
             console.error("autoExpire confirmation deadline: cancel payment failed for booking", booking.id, err);
           });
+          await restoreFlexibleCreditForBooking(prisma, booking.id).catch((err) => {
+            console.error("autoExpire confirmation deadline: restore credit failed for booking", booking.id, err);
+          });
           void notificationService
             .sendToUsers([booking.clientId, booking.provider.userId], {
               preferenceType: "BOOKINGS",
@@ -912,6 +928,9 @@ export class BookingService {
           if (updatedPending.count === 0) return;
           await paymentService.cancelPaymentForBooking(booking.id).catch((err) => {
             console.error("autoExpire pending: cancel payment failed for booking", booking.id, err);
+          });
+          await restoreFlexibleCreditForBooking(prisma, booking.id).catch((err) => {
+            console.error("autoExpire pending: restore credit failed for booking", booking.id, err);
           });
           void notificationService
             .sendToUsers([booking.clientId, booking.provider.userId], {
@@ -989,6 +1008,9 @@ export class BookingService {
 
           await paymentService.cancelPaymentForBooking(booking.id).catch((err) => {
             console.error("autoExpire: cancel payment failed for booking", booking.id, err);
+          });
+          await restoreFlexibleCreditForBooking(prisma, booking.id).catch((err) => {
+            console.error("autoExpire: restore credit failed for booking", booking.id, err);
           });
           void notificationService
             .sendToUsers([booking.clientId, booking.provider.userId], {
@@ -1267,6 +1289,7 @@ export class BookingService {
       const hoursUntilSession = (booking.scheduledAt.getTime() - Date.now()) / (60 * 60 * 1000);
       if (isProviderCancelling || hoursUntilSession >= 2) {
         await paymentService.cancelPaymentForBooking(bookingId);
+        await restoreFlexibleCreditForBooking(prisma, bookingId);
       } else {
         await paymentService.captureIfAuthorizedForBookingOrDispute(
           bookingId,
@@ -1732,6 +1755,7 @@ export class BookingService {
           );
         } else {
           await paymentService.cancelPaymentForBooking(report.bookingId);
+          await restoreFlexibleCreditForBooking(prisma, report.bookingId);
         }
         await prisma.$transaction([
           prisma.user.update({

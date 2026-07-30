@@ -9,6 +9,7 @@ import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { PaymentService } from "../../payments/services/payment.service";
 import { providerSplitAmount } from "../../../shared/utils/platform-fee";
+import { restoreFlexibleCreditForBooking } from "../../../shared/utils/presential-package-credit";
 
 const mpRefund = new PaymentRefund(mp);
 
@@ -375,6 +376,13 @@ export class DisputeCaseService {
               refundedAmountCents: resolvedAmountCents
             }
           });
+          // Frente 4 (Criação/entrega/evolução do treino), Lote 1: reembolso
+          // total decidido pelo admin também devolve o crédito da sessão se
+          // for de um pacote de sessões avulsas - mesmo raciocínio de
+          // qualquer outro cancelamento/estorno dessa sessão.
+          if (isFullRefund) {
+            await restoreFlexibleCreditForBooking(tx, disputeCase.bookingId);
+          }
         }
         if (disputeCase.consultancyContractId) {
           await tx.consultancyContract.updateMany({
