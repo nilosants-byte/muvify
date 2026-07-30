@@ -51,6 +51,7 @@ type BookingPaymentPublicView = {
   currency: string;
   method: PaymentMethod;
   status: PaymentStatus;
+  failureReason: string | null;
 };
 
 // MP payment statuses
@@ -137,6 +138,7 @@ export class PaymentService {
     currency: string;
     method: PaymentMethod;
     status: PaymentStatus;
+    failureReason?: string | null;
   }): BookingPaymentPublicView {
     return {
       id: payment.id,
@@ -144,7 +146,13 @@ export class PaymentService {
       amountCents: payment.amountCents,
       currency: payment.currency,
       method: payment.method,
-      status: payment.status
+      status: payment.status,
+      // Frente 5 (Descoberta, agendamento e agenda), Lote 3: o campo
+      // existe e é gravado ativamente em vários pontos do fluxo de
+      // pagamento, mas nunca era selecionado/devolvido aqui — cliente e
+      // profissional nunca viam o motivo real de uma falha, mesmo o
+      // backend tendo a informação disponível.
+      failureReason: payment.failureReason ?? null
     };
   }
 
@@ -1394,6 +1402,7 @@ export class PaymentService {
         currency: true,
         method: true,
         status: true,
+        failureReason: true,
         booking: {
           select: {
             clientId: true,

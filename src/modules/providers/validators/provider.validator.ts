@@ -50,7 +50,10 @@ export const updateProviderProfileSchema = z.object({
     categoryIds: z.array(z.string().uuid()).optional(),
     specialties: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
     // Piso minimo do proprio app e 24h — profissional so pode aumentar (ate 1 semana).
-    minBookingNoticeHours: z.number().int().min(24).max(168).optional()
+    minBookingNoticeHours: z.number().int().min(24).max(168).optional(),
+    // Frente 5 (Descoberta, agendamento e agenda), Lote 3: duração real de
+    // cada sessão avulsa, usada pra detectar sobreposição de horário.
+    sessionDurationMinutes: z.number().int().min(15).max(240).optional()
   }).refine((b) => Object.keys(b).length > 0, { message: "Informe ao menos um campo.", path: ["displayName"] })
 });
 

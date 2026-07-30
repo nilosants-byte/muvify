@@ -57,6 +57,7 @@ type CreateProviderInput = {
   categoryIds?: string[];
   specialties?: string[];
   minBookingNoticeHours?: number;
+  sessionDurationMinutes?: number;
 };
 
 type UpdateProviderInput = Partial<Omit<CreateProviderInput, "userId">>;
@@ -1111,12 +1112,14 @@ export class ProviderService {
         ...(input.excludedLocations !== undefined && { excludedLocations: input.excludedLocations }),
         ...(input.specialties !== undefined && { specialties: nextSpecialties }),
         ...(input.minBookingNoticeHours !== undefined && { minBookingNoticeHours: input.minBookingNoticeHours }),
+        ...(input.sessionDurationMinutes !== undefined && { sessionDurationMinutes: input.sessionDurationMinutes }),
       },
       // Raio-X Muvify, Frente 2 (Segurança do código), Lote 1: mesma
       // correção de createProfile acima — select em vez de include.
       select: {
         ...PUBLIC_PROVIDER_SELECT,
         minBookingNoticeHours: true,
+        sessionDurationMinutes: true,
         user: { select: { id: true, name: true, email: true, phone: true } },
         categoryLinks: { include: { category: true } }
       }
@@ -1538,6 +1541,7 @@ export class ProviderService {
         id: true,
         crefValidationStatus: true,
         minBookingNoticeHours: true,
+        sessionDurationMinutes: true,
         availabilities: {
           where: { isActive: true },
           select: {
@@ -1598,13 +1602,19 @@ export class ProviderService {
       }
     });
 
-    const occupiedByDay = new Map<string, Set<string>>();
+    // Frente 5 (Descoberta, agendamento e agenda), Lote 3: marcar só o
+    // horário exato de cada booking como ocupado (comparação de string)
+    // deixava um slot 5-10min depois de uma sessão em andamento aparecer
+    // como "livre", mesmo estando dentro da duração real da sessão. Agora
+    // guarda o minuto de início de cada booking pra comparar por
+    // sobreposição de intervalo (mesma duração usada na criação).
+    const occupiedByDay = new Map<string, number[]>();
     for (const booking of bookings) {
       const dayKey = formatDateKeyInTimezone(booking.scheduledAt, timezone);
       if (!dayKeySet.has(dayKey)) continue;
       const time = formatTimeInTimezone(booking.scheduledAt, timezone);
-      const existing = occupiedByDay.get(dayKey) ?? new Set<string>();
-      existing.add(time);
+      const existing = occupiedByDay.get(dayKey) ?? [];
+      existing.push(parseMinutes(time));
       occupiedByDay.set(dayKey, existing);
     }
 
@@ -1659,7 +1669,7 @@ export class ProviderService {
     const payload = dayRefs.map((ref, index) => {
       const date = dayKeys[index];
       const weekday = weekdayInTimezone(ref, timezone);
-      const occupiedSet = occupiedByDay.get(date) ?? new Set<string>();
+      const occupiedMinutes = occupiedByDay.get(date) ?? [];
       const blockRanges = blockedByDay.get(date) ?? [];
       const offAppRanges = offAppByDay.get(date) ?? [];
       const windows = provider.availabilities
@@ -1676,10 +1686,14 @@ export class ProviderService {
         }
       }
 
-      const occupiedSlots = Array.from(occupiedSet).sort((a, b) => a.localeCompare(b));
+      const occupiedSlots = occupiedMinutes.map((m) => formatMinutes(m)).sort((a, b) => a.localeCompare(b));
       const availableSlots = Array.from(availableGenerated)
         .filter((slot) => {
-          if (occupiedSet.has(slot)) return false;
+          const slotMinutes = parseMinutes(slot);
+          // Um slot só é oferecido se a sessão inteira (duração do
+          // profissional) não sobrepor nenhum booking já existente — não
+          // basta o horário exato de início estar livre.
+          if (occupiedMinutes.some((occ) => Math.abs(slotMinutes - occ) < provider.sessionDurationMinutes)) return false;
           if (blockRanges.some((b) => slot >= b.startTime && slot < b.endTime)) return false;
           if (offAppRanges.some((b) => slot >= b.startTime && slot < b.endTime)) return false;
           if (date < noticeCutoffDateKey) return false;

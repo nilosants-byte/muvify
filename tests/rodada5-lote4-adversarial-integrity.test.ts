@@ -246,11 +246,16 @@ describe("Rodada 5, Lote 4 — integridade de conclusão e reincidência", () =>
     vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: 5002, status: "authorized" } as any);
 
     const scheduledAt = new Date(Date.now() - 60 * 60 * 60 * 1000); // 60h atrás
+    // +11 dias (não +10, como o primeiro teste do arquivo): o booking do
+    // primeiro teste ("conluio de 2 contas") fica CONFIRMED em +10 dias
+    // pra sempre (nunca é movido/cancelado) — com a checagem de
+    // sobreposição por duração de sessão (Frente 5, Lote 3), reusar o
+    // mesmo instante aqui conflitaria com aquele booking ainda ativo.
     const booking = await bookingService.create(
       clientId,
       providerId,
       categoryId,
-      new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+      new Date(Date.now() + 11 * 24 * 60 * 60 * 1000).toISOString(),
       undefined,
       "CREDIT_CARD" as any
     );
@@ -283,11 +288,13 @@ describe("Rodada 5, Lote 4 — integridade de conclusão e reincidência", () =>
     vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: 5003, status: "authorized" } as any);
 
     const scheduledAt = new Date(Date.now() - 60 * 60 * 60 * 1000);
+    // +12 dias — mesmo motivo do teste anterior (booking do primeiro
+    // teste do arquivo fica ativo em +10 dias pra sempre).
     const booking = await bookingService.create(
       clientId,
       providerId,
       categoryId,
-      new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+      new Date(Date.now() + 12 * 24 * 60 * 60 * 1000).toISOString(),
       undefined,
       "CREDIT_CARD" as any
     );

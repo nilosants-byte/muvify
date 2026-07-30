@@ -365,6 +365,11 @@ model ProviderProfile {
   longitude                   Float?
   serviceMode                 ProviderServiceMode         @default(BOTH)
   minBookingNoticeHours       Int                         @default(24)
+  // Frente 5 (Descoberta, agendamento e agenda), Lote 3: não existia
+  // conceito de duração de sessão — a checagem de conflito de horário
+  // comparava só igualdade exata de instante, permitindo dois agendamentos
+  // que na prática se sobrepõem (ex: 10:00 e 10:05) coexistirem sem erro.
+  sessionDurationMinutes       Int                         @default(60)
   fixedLocations              Json?
   excludedLocations           Json?
   averageRating               Float                       @default(0)

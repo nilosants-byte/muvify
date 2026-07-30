@@ -402,16 +402,27 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
   const dayTimeline = useMemo<TimelineItem[]>(() => {
     if (activeTab !== "day") return [];
     const items: TimelineItem[] = [];
+    const matchedBookingIds = new Set<string>();
+    // Frente 5 (Descoberta, agendamento e agenda), Lote 3: usar só a grade
+    // de 30min (occupiedSlotKeys, que também só cobre PENDING/CONFIRMED)
+    // pra decidir se um horário tem booking deixava de fora tanto sessões
+    // fora da grade (horário não múltiplo de 30min) quanto sessões já
+    // concluídas/canceladas — o mapa por horário exato, com todos os
+    // status, cobre os dois casos de uma vez.
+    const bookingByTime = new Map<string, Booking>();
+    visibleBookings.forEach((booking) => {
+      const d = new Date(booking.scheduledAt);
+      const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      bookingByTime.set(time, booking);
+    });
+
     allDaySlots.forEach((slot) => {
-      const isOccupied = occupiedSlotKeys.has(slot);
+      const bookingHere = bookingByTime.get(slot);
       const isBlocked = todayBlockedKeys.has(slot);
       const isOffApp = offAppOccupiedKeys.has(slot);
-      if (isOccupied) {
-        const booking = visibleBookings.find((b) => {
-          const d = new Date(b.scheduledAt);
-          return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}` === slot;
-        });
-        if (booking) items.push({ kind: "booking", time: slot, booking });
+      if (bookingHere) {
+        items.push({ kind: "booking", time: slot, booking: bookingHere });
+        matchedBookingIds.add(bookingHere.id);
       } else if (isBlocked) {
         const block = todayManualBlocks.find((b) => {
           const slotMin = parseMinutes(slot);
@@ -427,8 +438,17 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     offAppClassesForDay.forEach((cls) => {
       items.push({ kind: "external", time: cls.startTime, cls });
     });
+    // Booking cujo horário não caiu em nenhum slot de 30min gerado pela
+    // disponibilidade recorrente — sem isso, ficava completamente
+    // invisível na timeline do dia (nem "livre", nem "booking").
+    visibleBookings.forEach((booking) => {
+      if (matchedBookingIds.has(booking.id)) return;
+      const d = new Date(booking.scheduledAt);
+      const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      items.push({ kind: "booking", time, booking });
+    });
     return items.sort((a, b) => a.time.localeCompare(b.time));
-  }, [activeTab, allDaySlots, occupiedSlotKeys, todayBlockedKeys, offAppOccupiedKeys, visibleBookings, todayManualBlocks, offAppClassesForDay]);
+  }, [activeTab, allDaySlots, todayBlockedKeys, offAppOccupiedKeys, visibleBookings, todayManualBlocks, offAppClassesForDay]);
 
   const dayAvailabilities = useMemo(
     () => availabilities

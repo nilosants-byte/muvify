@@ -378,17 +378,30 @@ export class BookingService {
         }
       }
 
+      // Frente 5 (Descoberta, agendamento e agenda), Lote 3: comparar só
+      // igualdade exata de instante permitia dois agendamentos que na
+      // prática se sobrepõem (ex: 10:00 e 10:05, ambos dentro de uma
+      // sessão de 60min) coexistirem sem erro nenhum. Como a duração é
+      // única por profissional, a checagem de sobreposição de intervalo
+      // se reduz a "existe algum agendamento cujo início cai dentro da
+      // janela (novo início - duração, novo início + duração)" — os
+      // limites são estritos de propósito, pra permitir sessões
+      // encostadas (uma termina exatamente quando a outra começa).
+      const sessionDurationMs = provider.sessionDurationMinutes * 60 * 1000;
       const conflict = await tx.booking.findFirst({
         where: {
           providerId,
-          scheduledAt: scheduleDate,
           status: {
             in: [BookingStatus.PENDING, BookingStatus.CONFIRMED]
+          },
+          scheduledAt: {
+            gt: new Date(scheduleDate.getTime() - sessionDurationMs),
+            lt: new Date(scheduleDate.getTime() + sessionDurationMs)
           }
         }
       });
       if (conflict) {
-        throw new AppError("Já existe agendamento para este horário.", StatusCodes.CONFLICT);
+        throw new AppError("Este horário conflita com outro agendamento já marcado.", StatusCodes.CONFLICT);
       }
 
       const manualBlocks = await tx.providerManualBlock.findMany({
