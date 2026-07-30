@@ -155,32 +155,49 @@ type CategoryClient = Pick<Prisma.TransactionClient, "serviceCategory">;
 async function resolveCategoryIdsFromSpecialties(db: CategoryClient, specialties: string[]) {
   if (specialties.length === 0) return [];
 
-  // 1. Fetch all existing categories matching the specialties in one query
-  const existing = await db.serviceCategory.findMany({
-    where: { name: { in: specialties, mode: "insensitive" } },
+  // Frente 3 (Cadastro/onboarding), Lote 4: comparar só case-insensitive
+  // exato não pegava acento/espaço diferente (ex: "Pilates" vs "Pilátes")
+  // — duas categorias efetivamente iguais podiam coexistir, fragmentando
+  // busca por categoria. Busca todas as categorias (ativas ou não) e
+  // compara com a mesma normalização já usada pra deduplicar as
+  // especialidades do próprio provider (normalizeLoose). Inclui inativas
+  // de propósito: o nome tem constraint única no banco independente do
+  // status, então "criar uma nova" com o mesmo nome de uma desativada
+  // sempre colidiria — em vez disso, o provider é vinculado à categoria
+  // existente (ela continua fora da busca pública enquanto desativada, só
+  // o vínculo do provider aponta pra ela).
+  const allCategories = await db.serviceCategory.findMany({
     select: { id: true, name: true }
   });
+  const byNormalized = new Map(allCategories.map((c) => [normalizeLoose(c.name), c] as const));
 
-  const existingNamesLower = new Set(existing.map((c) => c.name.toLowerCase()));
-  const toCreate = specialties.filter((s) => !existingNamesLower.has(s.toLowerCase()));
+  const resolvedIds = new Set<string>();
+  const toCreate: string[] = [];
+  for (const specialty of specialties) {
+    const match = byNormalized.get(normalizeLoose(specialty));
+    if (match) {
+      resolvedIds.add(match.id);
+    } else {
+      toCreate.push(specialty);
+    }
+  }
 
-  // 2. Create missing ones in one batch
   if (toCreate.length > 0) {
     await db.serviceCategory.createMany({
       data: toCreate.map((name) => ({ name })),
       skipDuplicates: true
     });
+    // Corrida entre duas requisições criando a mesma categoria (exata) ao
+    // mesmo tempo: skipDuplicates garante só uma grava, este re-fetch acha
+    // a que já existe pra quem perdeu a corrida.
+    const created = await db.serviceCategory.findMany({
+      where: { name: { in: toCreate, mode: "insensitive" } },
+      select: { id: true }
+    });
+    created.forEach((c) => resolvedIds.add(c.id));
   }
 
-  // 3. Re-fetch to get IDs of newly created entries (createMany doesn't return IDs)
-  const all = toCreate.length > 0
-    ? await db.serviceCategory.findMany({
-        where: { name: { in: specialties, mode: "insensitive" } },
-        select: { id: true }
-      })
-    : existing;
-
-  return Array.from(new Set(all.map((c) => c.id)));
+  return Array.from(resolvedIds);
 }
 
 type ProviderCalendarRangeInput = {

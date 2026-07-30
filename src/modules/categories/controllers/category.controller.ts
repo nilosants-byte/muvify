@@ -11,4 +11,12 @@ export class CategoryController {
     const categories = await categoryService.list();
     return response.json(categories);
   }
+  async deactivate(request: Request, response: Response) {
+    const category = await categoryService.deactivate(request.params.categoryId);
+    return response.json(category);
+  }
+  async reactivate(request: Request, response: Response) {
+    const category = await categoryService.reactivate(request.params.categoryId);
+    return response.json(category);
+  }
 }

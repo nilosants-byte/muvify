@@ -5,3 +5,9 @@ export const createCategorySchema = z.object({
     description: z.string().optional()
   })
 });
+
+export const categoryIdParamsSchema = z.object({
+  params: z.object({
+    categoryId: z.string().uuid()
+  })
+});

@@ -5,7 +5,7 @@ import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { CategoryController } from "../controllers/category.controller";
-import { createCategorySchema } from "../validators/category.validator";
+import { categoryIdParamsSchema, createCategorySchema } from "../validators/category.validator";
 const categoryController = new CategoryController();
 export const categoryRoutes = Router();
 categoryRoutes.get("/", categoryController.list);
@@ -16,4 +16,20 @@ categoryRoutes.post(
   uploadRateLimiter,
   validate(createCategorySchema),
   categoryController.create
+);
+categoryRoutes.patch(
+  "/:categoryId/deactivate",
+  ensureAuthenticated,
+  ensureRole(UserRole.ADMIN),
+  uploadRateLimiter,
+  validate(categoryIdParamsSchema),
+  categoryController.deactivate
+);
+categoryRoutes.patch(
+  "/:categoryId/reactivate",
+  ensureAuthenticated,
+  ensureRole(UserRole.ADMIN),
+  uploadRateLimiter,
+  validate(categoryIdParamsSchema),
+  categoryController.reactivate
 );

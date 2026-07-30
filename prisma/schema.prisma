@@ -439,6 +439,12 @@ model ServiceCategory {
   id                 String              @id @default(uuid())
   name               String              @unique
   description        String?
+  // Frente 3 (Cadastro/onboarding), Lote 4: soft-delete - nunca exclusão
+  // física, pra não quebrar referências de bookings/pacotes/perfis
+  // existentes (onDelete: Cascade/Restrict continuam intactos). Categoria
+  // desativada some da listagem pública, mas segue íntegra pra quem já a
+  // referencia.
+  active             Boolean             @default(true)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   providers          ProviderCategory[]
