@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "DisputeCaseType" ADD VALUE 'CONFIRMATION_DEADLOCK';

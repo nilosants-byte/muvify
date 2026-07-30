@@ -1834,7 +1834,8 @@ export type AdminDisputeCaseType =
   | "REFUND_FAILED"
   | "DELIVERY_CONTESTED"
   | "AUTO_CAPTURE_CONTESTED"
-  | "CAPTURE_FAILED";
+  | "CAPTURE_FAILED"
+  | "CONFIRMATION_DEADLOCK";
 export type AdminDisputeCaseStatus = "OPEN" | "RESOLVED";
 export type AdminDisputeCaseResolution = "REFUNDED" | "DENIED" | "CAPTURED";
 

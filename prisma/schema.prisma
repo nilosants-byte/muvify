@@ -558,6 +558,12 @@ enum DisputeCaseType {
   DELIVERY_CONTESTED
   AUTO_CAPTURE_CONTESTED
   CAPTURE_FAILED
+  // Frente 4 (Criação/entrega/evolução do treino), Lote 2: rede de
+  // segurança pra sessões que ficaram travadas em CONFIRMED com os dois
+  // lados já confirmados (bug de corrida corrigido, mas dados antigos
+  // podem ter ficado presos assim) - sessão claramente aconteceu
+  // (attendanceCodeValidatedAt setado), não é um caso de estorno automático.
+  CONFIRMATION_DEADLOCK
 }
 
 enum DisputeCaseStatus {

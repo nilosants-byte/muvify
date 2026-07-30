@@ -958,6 +958,8 @@ export class BookingService {
         clientId: true,
         providerId: true,
         attendanceCodeValidatedAt: true,
+        clientConfirmedAt: true,
+        providerConfirmedAt: true,
         provider: { select: { userId: true } }
       }
     });
@@ -971,6 +973,42 @@ export class BookingService {
             data: { status: BookingStatus.CANCELLED }
           });
           if (updated.count === 0) return;
+
+          // Frente 4 (Criação/entrega/evolução do treino), Lote 2: rede de
+          // segurança - se os dois lados já confirmaram e o código de
+          // presença foi validado, a sessão claramente aconteceu; ela só
+          // ficou travada em CONFIRMED por causa da corrida de dupla-
+          // confirmação (corrigida em confirmCompletion, mas dados
+          // anteriores ao fix podem ter ficado presos assim). Cancelar e
+          // estornar automaticamente aqui seria exatamente o erro que o
+          // achado da auditoria apontou - abre um caso pra revisão manual
+          // em vez disso, mantendo a reserva do cartão intacta.
+          if (booking.attendanceCodeValidatedAt && booking.clientConfirmedAt && booking.providerConfirmedAt) {
+            const payment = await prisma.payment.findUnique({ where: { bookingId: booking.id } });
+            if (payment) {
+              await prisma.disputeCase.create({
+                data: {
+                  type: "CONFIRMATION_DEADLOCK",
+                  clientId: booking.clientId,
+                  providerId: booking.providerId,
+                  amountCents: payment.amountCents,
+                  mpPaymentId: payment.mpPaymentId,
+                  bookingId: booking.id,
+                  contextNote:
+                    "Sessão com código de presença validado e as duas partes confirmadas, mas travada em CONFIRMED (corrida de dupla-confirmação) - encerrada automaticamente 48h após o horário marcado sem decisão sobre o pagamento. Reserva do cartão mantida até revisão manual."
+                }
+              });
+            }
+            void notificationService
+              .sendToUsers([booking.clientId, booking.provider.userId], {
+                preferenceType: "BOOKINGS",
+                title: "Agendamento encaminhado para revisão",
+                body: "A sessão foi confirmada pelas duas partes, mas ficou pendente por uma falha técnica. O caso foi encaminhado para revisão manual.",
+                data: { type: "BOOKING_CONFIRMATION_DEADLOCK", bookingId: booking.id }
+              })
+              .catch((error) => console.error("Booking confirmation-deadlock notification failed:", error));
+            return;
+          }
 
           // Raio-X de pagamentos, Rodada 5, Lote 4 (auditoria adversarial):
           // se o código de presença nunca foi validado, o cliente pode ter
@@ -1351,95 +1389,115 @@ export class BookingService {
       );
     }
 
-    const data: {
-      clientConfirmedAt?: Date;
-      providerConfirmedAt?: Date;
-      status?: BookingStatus;
-      completedAt?: Date;
-    } = {};
-
-    if (isClient && !booking.clientConfirmedAt) {
-      data.clientConfirmedAt = now;
-    }
-    if (isProvider && !booking.providerConfirmedAt) {
-      data.providerConfirmedAt = now;
-    }
-
-    const finalClientConfirmedAt = data.clientConfirmedAt ?? booking.clientConfirmedAt;
-    const finalProviderConfirmedAt = data.providerConfirmedAt ?? booking.providerConfirmedAt;
-    const bothConfirmed = Boolean(finalClientConfirmedAt && finalProviderConfirmedAt);
-    if (bothConfirmed) {
-      const payment = await prisma.payment.findUnique({
-        where: { bookingId },
-        select: { method: true, status: true }
-      });
-
-      if (payment?.method === PaymentMethod.PIX) {
-        if (payment.status !== PaymentStatus.CAPTURED) {
-          throw new AppError(
-            "Pagamento via PIX ainda não foi concluído. Finalize o pagamento para concluir o agendamento.",
-            StatusCodes.BAD_REQUEST
-          );
-        }
-      } else if (payment) {
-        // Cartão: a cobrança definitiva acontece agora, ANTES de qualquer
-        // gravação no banco — nunca deixamos o agendamento fechar como
-        // concluído sem o dinheiro resolvido (mesmo espírito do Pix acima).
-        // Se a captura falhar, a exceção sobe e nada é salvo — quem estava
-        // confirmando pode tentar de novo depois de resolver o pagamento.
-        if (payment.status !== PaymentStatus.AUTHORIZED && payment.status !== PaymentStatus.CAPTURED) {
-          throw new AppError(
-            "O pagamento deste agendamento ainda não foi autorizado. Peça para o cliente verificar o cartão antes de concluir.",
-            StatusCodes.BAD_REQUEST
-          );
-        }
-        await paymentService.captureIfAuthorizedForBooking(bookingId);
-      }
-    }
-
-    if (bothConfirmed) {
-      data.status = BookingStatus.COMPLETED;
-      data.completedAt = now;
-    }
-
-    // Guard atômico ANTES de upsert — evita sobrescrever evidência em requests concorrentes.
     const confirmationField = isClient ? "clientConfirmedAt" : "providerConfirmedAt";
-    const wasAlreadySet = booking[confirmationField] !== null;
-    if (wasAlreadySet) {
-      // Este request chegou após outro já ter confirmado — não há nada novo a fazer.
-      return prisma.booking.findUniqueOrThrow({
-        where: { id: bookingId },
-        include: {
-          client: { select: { id: true, name: true } },
-          provider: { select: { userId: true, displayName: true } }
+    const CONFIRM_INCLUDE = {
+      client: { select: { id: true, name: true } },
+      provider: { select: { userId: true, displayName: true } }
+    } as const;
+
+    // Frente 4 (Criação/entrega/evolução do treino), Lote 2: cliente e
+    // profissional confirmando quase ao mesmo tempo liam o campo de
+    // confirmação um do outro ainda nulo, então nenhuma das duas
+    // requisições calculava bothConfirmed=true — a sessão travava em
+    // CONFIRMED pra sempre (a captura por confirmação única só cobre o
+    // caso de exatamente um campo preenchido; 48h depois o job de
+    // expiração cancelava e estornava sem abrir disputa nenhuma, mesmo com
+    // o código de presença validado). O lock por bookingId serializa as
+    // duas confirmações — quem chega depois sempre lê o estado já
+    // atualizado por quem chegou antes, então exatamente uma das duas
+    // sempre detecta bothConfirmed=true corretamente.
+    const lockKey = `booking-confirm:${bookingId}`;
+    const result = await prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+
+        const fresh = await tx.booking.findUniqueOrThrow({
+          where: { id: bookingId },
+          select: { status: true, clientConfirmedAt: true, providerConfirmedAt: true }
+        });
+
+        if (fresh.status === BookingStatus.COMPLETED) {
+          const current = await tx.booking.findUniqueOrThrow({ where: { id: bookingId }, include: CONFIRM_INCLUDE });
+          return { updated: current, justCompleted: false, stillWaiting: false };
         }
-      });
+
+        const alreadyConfirmedByMe = Boolean(fresh[confirmationField]);
+        const data: {
+          clientConfirmedAt?: Date;
+          providerConfirmedAt?: Date;
+          status?: BookingStatus;
+          completedAt?: Date;
+        } = {};
+        if (!alreadyConfirmedByMe) {
+          data[confirmationField] = now;
+        }
+
+        const finalClientConfirmedAt = data.clientConfirmedAt ?? fresh.clientConfirmedAt;
+        const finalProviderConfirmedAt = data.providerConfirmedAt ?? fresh.providerConfirmedAt;
+        const bothConfirmed = Boolean(finalClientConfirmedAt && finalProviderConfirmedAt);
+
+        if (alreadyConfirmedByMe && !bothConfirmed) {
+          // Já confirmei antes e o outro lado ainda não — nada novo a fazer.
+          const current = await tx.booking.findUniqueOrThrow({ where: { id: bookingId }, include: CONFIRM_INCLUDE });
+          return { updated: current, justCompleted: false, stillWaiting: true };
+        }
+
+        if (bothConfirmed) {
+          const payment = await tx.payment.findUnique({
+            where: { bookingId },
+            select: { method: true, status: true }
+          });
+
+          if (payment?.method === PaymentMethod.PIX) {
+            if (payment.status !== PaymentStatus.CAPTURED) {
+              throw new AppError(
+                "Pagamento via PIX ainda não foi concluído. Finalize o pagamento para concluir o agendamento.",
+                StatusCodes.BAD_REQUEST
+              );
+            }
+          } else if (payment) {
+            // Cartão: a cobrança definitiva acontece agora, ANTES de qualquer
+            // gravação no banco — nunca deixamos o agendamento fechar como
+            // concluído sem o dinheiro resolvido (mesmo espírito do Pix acima).
+            // Se a captura falhar, a exceção sobe e nada é salvo — quem estava
+            // confirmando pode tentar de novo depois de resolver o pagamento.
+            if (payment.status !== PaymentStatus.AUTHORIZED && payment.status !== PaymentStatus.CAPTURED) {
+              throw new AppError(
+                "O pagamento deste agendamento ainda não foi autorizado. Peça para o cliente verificar o cartão antes de concluir.",
+                StatusCodes.BAD_REQUEST
+              );
+            }
+            await paymentService.captureIfAuthorizedForBooking(bookingId);
+          }
+          data.status = BookingStatus.COMPLETED;
+          data.completedAt = now;
+        }
+
+        if (!alreadyConfirmedByMe) {
+          const sanitizedProof = this.validateCompletionProof(completionProof);
+          await this.upsertCompletionEvidence(bookingId, userId, sanitizedProof);
+        }
+
+        const updatedBooking = await tx.booking.update({
+          where: { id: bookingId },
+          data,
+          include: CONFIRM_INCLUDE
+        });
+
+        return { updated: updatedBooking, justCompleted: bothConfirmed, stillWaiting: false };
+      },
+      { timeout: 15000, maxWait: 15000 }
+    );
+
+    const { updated, justCompleted, stillWaiting } = result;
+
+    if (!justCompleted && !stillWaiting) {
+      // Já estava concluído (por essa mesma corrida ou por outro caminho) —
+      // devolve como está, sem repetir notificação/gamificação.
+      return updated;
     }
 
-    // Upsert da evidência apenas após passar o guard (evita sobrescrita desnecessária)
-    const sanitizedProof = this.validateCompletionProof(completionProof);
-    await this.upsertCompletionEvidence(bookingId, userId, sanitizedProof);
-
-    const updated = await prisma.booking.update({
-      where: { id: bookingId },
-      data,
-      include: {
-        client: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        provider: {
-          select: {
-            userId: true,
-            displayName: true
-          }
-        }
-      }
-    });
-
-    if (bothConfirmed) {
+    if (justCompleted) {
       // A captura (cartão) já foi feita mais acima, antes de qualquer
       // gravação — aqui só o que depende do agendamento já estar concluído.
       const {

@@ -26,7 +26,8 @@ const TYPE_LABEL: Record<MyDisputeCase["type"], string> = {
   REFUND_FAILED: "Falha no reembolso",
   DELIVERY_CONTESTED: "Ficha de treino contestada",
   AUTO_CAPTURE_CONTESTED: "Cobrança automática contestada",
-  CAPTURE_FAILED: "Falha na cobrança"
+  CAPTURE_FAILED: "Falha na cobrança",
+  CONFIRMATION_DEADLOCK: "Sessão pendente por falha técnica"
 };
 
 function statusInfo(dispute: MyDisputeCase) {

@@ -20,7 +20,8 @@ const TYPE_LABEL: Record<AdminDisputeCaseType, string> = {
   REFUND_FAILED: "Falha no reembolso automático",
   DELIVERY_CONTESTED: "Entrega de ficha contestada",
   AUTO_CAPTURE_CONTESTED: "Contestação pós-cobrança automática",
-  CAPTURE_FAILED: "Falha na cobrança de uma sessão concluída"
+  CAPTURE_FAILED: "Falha na cobrança de uma sessão concluída",
+  CONFIRMATION_DEADLOCK: "Sessão travada por corrida de dupla-confirmação"
 };
 
 function formatCents(amountCents: number) {
