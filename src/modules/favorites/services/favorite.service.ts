@@ -6,11 +6,17 @@ import { PUBLIC_PROVIDER_SELECT, jitterPublicCoordinates } from "../../providers
 
 export class FavoriteService {
   async add(userId: string, providerId: string) {
-    const provider = await prisma.providerProfile.findUnique({ where: { id: providerId } });
+    const provider = await prisma.providerProfile.findUnique({
+      where: { id: providerId },
+      include: { user: { select: { suspendedAt: true } } }
+    });
     if (!provider) {
       throw new AppError("Prestador nao encontrado.", StatusCodes.NOT_FOUND);
     }
-    if (provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
+    // Raio-X de pagamentos, Rodada 4, Lote 3: suspensão só bloqueava o
+    // próprio login do profissional — a mesma correção já feita na busca
+    // pública nunca chegou em favoritos.
+    if (provider.crefValidationStatus !== CrefValidationStatus.APPROVED || provider.user.suspendedAt) {
       throw new AppError("Prestador nao disponivel no momento.", StatusCodes.BAD_REQUEST);
     }
 
@@ -68,7 +74,11 @@ export class FavoriteService {
       where: {
         userId,
         provider: {
-          crefValidationStatus: CrefValidationStatus.APPROVED
+          crefValidationStatus: CrefValidationStatus.APPROVED,
+          // Frente 5 (Descoberta, agendamento e agenda), Lote 5: profissional
+          // suspenso continuava aparecendo nos favoritos do cliente como se
+          // estivesse disponível — mesmo filtro já usado na busca pública.
+          user: { suspendedAt: null }
         }
       },
       select: {

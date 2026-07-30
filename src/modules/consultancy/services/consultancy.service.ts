@@ -774,7 +774,12 @@ export class ConsultancyService {
         isActive: true,
         provider: {
           is: {
-            crefValidationStatus: CrefValidationStatus.APPROVED
+            crefValidationStatus: CrefValidationStatus.APPROVED,
+            // Frente 5 (Descoberta, agendamento e agenda), Lote 5: vitrine
+            // de "Destaques"/Promoções não filtrava suspenso, diferente da
+            // busca principal — profissional suspenso continuava sendo
+            // "recomendado" na home.
+            user: { suspendedAt: null }
           }
         },
         OR: [

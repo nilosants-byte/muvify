@@ -1434,7 +1434,8 @@ export class ProviderService {
       user: {
         select: {
           id: true,
-          name: true
+          name: true,
+          suspendedAt: true
         }
       },
       categoryLinks: {
@@ -1465,6 +1466,12 @@ export class ProviderService {
       throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
     }
     if (!this.isCrefApproved(provider)) {
+      throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    // Frente 5 (Descoberta, agendamento e agenda), Lote 5: mesmo filtro de
+    // suspensão já aplicado na busca pública — sem isso, o perfil completo
+    // do profissional suspenso continuava acessível diretamente pelo id.
+    if (provider.user.suspendedAt) {
       throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
     }
     const currentProviderId = provider.id;
@@ -1504,8 +1511,10 @@ export class ProviderService {
 
     // Replace base64 media blobs with streaming paths so the JSON response stays small.
     // Clients reconstruct the full URL by prepending their API base URL.
+    const { suspendedAt: _suspendedAt, ...publicUser } = provider.user;
     return {
       ...jitterPublicCoordinates(provider),
+      user: publicUser,
       photoUrl: toProviderPhotoUrl(provider.id, provider.photoUrl, provider.updatedAt),
       presentationVideoUrl:
         ENABLE_VIDEO_UPLOAD && provider.presentationVideoUrl
