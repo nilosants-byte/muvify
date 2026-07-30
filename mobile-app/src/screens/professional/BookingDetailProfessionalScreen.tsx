@@ -86,7 +86,15 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   const [validatingAttendance, setValidatingAttendance] = useState(false);
   const [scannerVisible, setScannerVisible] = useState(false);
   const scannerReadLockRef = useRef(false);
-  const [validated, setValidated] = useState(() => _validatedCache.get(bookingId) ?? false);
+  // Frente 5 (Descoberta, agendamento e agenda), Lote 7: `validated` era
+  // derivado só do cache local — se a validação tivesse acontecido em
+  // outra tela (ex: ProfessionalConfirmCompletionScreen) ou o app tivesse
+  // sido reiniciado depois de validar, o cache ficava desatualizado e a
+  // UI oferecia "aluno não compareceu" mesmo com a presença já confirmada
+  // no servidor. Deriva do campo real do booking; o cache local só serve
+  // de otimização visual imediata pós-validação, antes do refetch chegar.
+  const [validatedOptimistic, setValidatedOptimistic] = useState(() => _validatedCache.get(bookingId) ?? false);
+  const validated = Boolean(booking?.attendanceCodeValidatedAt) || validatedOptimistic;
   const [reportingNoShow, setReportingNoShow] = useState(false);
   const [contestingNoShow, setContestingNoShow] = useState(false);
   const [contestingAutoCapture, setContestingAutoCapture] = useState(false);
@@ -186,7 +194,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
 
   const runValidationSuccess = useCallback(() => {
     _validatedCache.set(bookingId, true);
-    setValidated(true);
+    setValidatedOptimistic(true);
     checkOpacity.value = withTiming(1, { duration: 180 });
     checkScale.value = withSequence(
       withTiming(1.3, { duration: 200, easing: Easing.out(Easing.back(2)) }),
@@ -478,6 +486,24 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
             </View>
           ) : null}
 
+          {/* Frente 5 (Descoberta, agendamento e agenda), Lote 7: as checagens de
+              CREF aprovado/conta não suspensa só existiam na criação de um
+              booking novo — o profissional continuava confirmando, cancelando
+              e concluindo (com captura de pagamento) sessões já marcadas sem
+              nenhum aviso de que a própria conta está com pendência. */}
+          {booking.provider?.user?.suspendedAt || (booking.provider?.crefValidationStatus && booking.provider.crefValidationStatus !== "APPROVED") ? (
+            <MvCard style={{ borderColor: theme.danger, gap: 4 }}>
+              <MvText variant="semi3" style={{ color: theme.danger }}>
+                {booking.provider?.user?.suspendedAt ? "Sua conta está suspensa" : "Seu CREF ainda não foi aprovado"}
+              </MvText>
+              <MvText variant="body4" color="secondary">
+                {booking.provider?.user?.suspendedAt
+                  ? "Enquanto sua conta estiver suspensa, entre em contato com o suporte antes de gerenciar este agendamento."
+                  : "Regularize seu CREF o quanto antes — isso pode afetar o processamento do pagamento desta sessão."}
+              </MvText>
+            </MvCard>
+          ) : null}
+
           {/* Ações */}
           <View style={{ gap: 10 }}>
             {booking.status === "PENDING" ? (
@@ -495,12 +521,23 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
             ) : null}
 
             {isActive ? (
-              <MvButton
-                variant="danger"
-                label="Cancelar agendamento"
-                loading={updating}
-                onPress={() => setCancelModalVisible(true)}
-              />
+              // Frente 5 (Descoberta, agendamento e agenda), Lote 7: os
+              // botões de cancelar e reportar falta tinham o mesmo estilo
+              // visual (variant="danger") apesar de efeitos financeiros
+              // opostos — cancelar sempre reembolsa o aluno; falta pode
+              // fazer o profissional ficar com o valor. Legenda explícita
+              // sob cada botão deixa isso claro antes do toque.
+              <View style={{ gap: 4 }}>
+                <MvButton
+                  variant="danger"
+                  label="Cancelar agendamento"
+                  loading={updating}
+                  onPress={() => setCancelModalVisible(true)}
+                />
+                <MvText variant="body4" color="secondary" style={{ textAlign: "center", fontSize: 11 }}>
+                  O aluno é sempre reembolsado integralmente.
+                </MvText>
+              </View>
             ) : null}
 
             {booking.status === "CONFIRMED" && !validated && new Date(booking.scheduledAt) < new Date() ? (
@@ -520,6 +557,9 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
                   loading={reportingNoShow}
                   onPress={reportNoShow}
                 />
+                <MvText variant="body4" color="secondary" style={{ textAlign: "center", fontSize: 11 }}>
+                  Se não for contestado em 48h, você fica com o valor da sessão.
+                </MvText>
               </View>
             ) : null}
 

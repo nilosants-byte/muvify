@@ -163,10 +163,12 @@ export type Booking = {
     id: string;
     displayName?: string;
     photoUrl?: string | null;
+    crefValidationStatus?: "PENDING" | "IN_REVIEW" | "APPROVED" | "REJECTED";
     user?: {
       id: string;
       name?: string;
       phone?: string | null;
+      suspendedAt?: string | null;
     };
   };
   client?: {

@@ -651,11 +651,17 @@ export class BookingService {
           displayName: true,
           photoUrl: true,
           updatedAt: true,
+          // Frente 5 (Descoberta, agendamento e agenda), Lote 7: nenhuma
+          // tela avisava o profissional que a própria conta está com
+          // CREF rejeitado/suspensa ao gerenciar um booking já existente
+          // (checagem só existia na criação de booking novo).
+          crefValidationStatus: true,
           user: {
             select: {
               id: true,
               name: true,
               phone: true,
+              suspendedAt: true
             }
           }
         }

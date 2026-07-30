@@ -81,6 +81,8 @@ import { SupportScreen } from "../screens/shared/SupportScreen";
 import { PrivacyScreen } from "../screens/shared/PrivacyScreen";
 import { SecurityScreen } from "../screens/shared/SecurityScreen";
 import { useAppState } from "../state/AppState";
+import { queryClient } from "../lib/queryClient";
+import { queryKeys } from "../lib/queryKeys";
 import { useConnectivity } from "../state/useConnectivity";
 import { darkColors, lightColors } from "../theme/tokens";
 import { HeaderBackButton } from "./header-components";
@@ -707,7 +709,26 @@ export function RootNavigator() {
       routeNotification(data, role);
     });
 
-    return () => sub.remove();
+    // Frente 5 (Descoberta, agendamento e agenda), Lote 7: telas de agenda/
+    // booking só recarregavam via useFocusEffect ou pull-to-refresh — se o
+    // profissional já estivesse com a agenda aberta e um booking mudasse de
+    // status em outro lugar (cliente cancelou pelo app dele, por exemplo),
+    // a notificação chegava mas os dados na tela ficavam desatualizados até
+    // sair e voltar. Notificação recebida em primeiro plano invalida as
+    // queries relevantes direto, sem precisar de nenhuma navegação.
+    const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification.request.content.data as Record<string, unknown>;
+      const type = typeof data.type === "string" ? data.type : "";
+      if (BOOKING_TYPES_PRO.has(type) || BOOKING_TYPES_CLIENT.has(type)) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.agenda.all });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all });
+      }
+    });
+
+    return () => {
+      sub.remove();
+      receivedSub.remove();
+    };
   }, [isAuthenticated, role]);
 
   if (previewParam === "splash") {
