@@ -46,7 +46,7 @@ import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonHomeScreen } from "../../components/polish/SkeletonCard";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { AppLogoText } from "../../components/ui/AppLogoText";
-import { formatCurrencyBRL } from "../../utils/formatters";
+import { formatCurrencyBRL, isCurrentWeekInAppTimezone, isTodayInAppTimezone } from "../../utils/formatters";
 import { resolveMediaUrl } from "../../utils/media";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
@@ -107,27 +107,6 @@ function formatCityLabel(place?: { city?: string | null; subregion?: string | nu
   const regionNorm = regionRaw.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   const stateCode = /^[a-z]{2}$/i.test(regionRaw) ? regionRaw.toUpperCase() : (BRAZIL_STATE_CODES[regionNorm] ?? null);
   return stateCode ? `${city}-${stateCode}` : city;
-}
-
-function isToday(dateIso: string) {
-  const date = new Date(dateIso);
-  const now = new Date();
-  return (
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
-  );
-}
-
-function isCurrentWeek(dateIso: string) {
-  const date = new Date(dateIso);
-  const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(now.getDate() - now.getDay());
-  const end = new Date(start);
-  end.setDate(start.getDate() + 7);
-  return date >= start && date < end;
 }
 
 function bookingStatusBadge(status: Booking["status"]) {
@@ -381,7 +360,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
         .filter((b) => {
           if (!["CONFIRMED", "PENDING", "COMPLETED"].includes(b.status)) return false;
           const dateRef = b.status === "COMPLETED" ? (b.completedAt ?? b.scheduledAt) : b.scheduledAt;
-          return isToday(dateRef);
+          return isTodayInAppTimezone(dateRef);
         })
         .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()),
     [bookings]
@@ -401,7 +380,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   );
 
   const confirmedToday = useMemo(
-    () => bookings.filter((b) => b.status === "CONFIRMED" && isToday(b.scheduledAt)).length,
+    () => bookings.filter((b) => b.status === "CONFIRMED" && isTodayInAppTimezone(b.scheduledAt)).length,
     [bookings]
   );
 
@@ -420,7 +399,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
 
   const weeklyRevenue = useMemo(() => {
     const cents = bookings
-      .filter((b) => b.status === "COMPLETED" && isCurrentWeek(b.completedAt ?? b.scheduledAt))
+      .filter((b) => b.status === "COMPLETED" && isCurrentWeekInAppTimezone(b.completedAt ?? b.scheduledAt))
       .reduce((s, b) => s + (b.priceCents ?? 0), 0);
     return cents / 100;
   }, [bookings]);

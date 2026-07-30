@@ -20,7 +20,11 @@ export function ReviewProfessionalScreen({ navigation, route }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
-  const [rating, setRating] = useState(5);
+  // Frente 5 (Descoberta, agendamento e agenda), Lote 12: nota vinha
+  // pré-selecionada em 5 estrelas — cliente que só queria deixar um
+  // comentário podia acabar enviando 5 estrelas sem ter escolhido de
+  // verdade. Agora exige toque explícito numa estrela antes de habilitar o envio.
+  const [rating, setRating] = useState(0);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -81,7 +85,9 @@ export function ReviewProfessionalScreen({ navigation, route }: Props) {
               </PressableScale>
             ))}
           </View>
-          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: C.amber }}>{rating} de 5</Text>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: C.amber }}>
+            {rating === 0 ? "Toque para avaliar" : `${rating} de 5`}
+          </Text>
         </View>
 
         {/* Chips de qualificação V2 */}
@@ -107,10 +113,10 @@ export function ReviewProfessionalScreen({ navigation, route }: Props) {
       {/* Botão fixo com safe area */}
       <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: S.px, paddingBottom: Math.max(16, insets.bottom + 12), paddingTop: 12, backgroundColor: `${theme.bg}f0`, borderTopWidth: 1, borderTopColor: theme.border }}>
         <TouchableOpacity
-          disabled={loading}
+          disabled={loading || rating === 0}
           onPress={() => void handleSubmit()}
           accessibilityRole="button"
-          style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: loading ? "rgba(36,230,109,0.4)" : theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+          style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: loading || rating === 0 ? "rgba(36,230,109,0.4)" : theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
         >
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
             {loading ? "Enviando..." : "Enviar avaliação"}

@@ -21,6 +21,20 @@ export function formatMinutes(totalMinutes: number): string {
   return `${Math.floor(clamped / 60).toString().padStart(2, "0")}:${(clamped % 60).toString().padStart(2, "0")}`;
 }
 
+// Frente 5 (Descoberta, agendamento e agenda), Lote 12: TimeWheelPicker
+// recebia só os dois extremos de um intervalo já ocupado (start/end),
+// deixando os horários no meio do intervalo (ex: 09:15/09:30 de um
+// bloqueio 09:00–11:00) livres pra seleção mesmo estando dentro dele.
+export function expandRangeToQuarterHours(startTime: string, endTime: string): string[] {
+  const start = parseMinutes(startTime);
+  const end = parseMinutes(endTime);
+  if (end <= start) return [startTime, endTime];
+  const times: string[] = [];
+  for (let minute = start; minute < end; minute += 15) times.push(formatMinutes(minute));
+  times.push(formatMinutes(end));
+  return times;
+}
+
 // Slots de 30min gerados a partir das janelas de disponibilidade recorrente
 // (Availability) do profissional pro dia da semana informado.
 export function generateDaySlots(availabilities: Availability[], weekday: number): string[] {

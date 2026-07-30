@@ -17,7 +17,7 @@ import { ClientBottomNavV2 } from "../../components/navigation/ClientBottomNavV2
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonBookingCard } from "../../components/polish/SkeletonCard";
-import { formatBRDateTime } from "../../utils/formatters";
+import { formatBRDateTime, isTodayInAppTimezone } from "../../utils/formatters";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 
@@ -25,12 +25,6 @@ type Props = BottomTabScreenProps<ClientTabParamList, "ClientBookings">;
 type BookingFilter = "upcoming" | "pending" | "history" | "all";
 
 const MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
-
-function isToday(dateIso: string) {
-  const d = new Date(dateIso);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-}
 
 function useTabNav() {
   const nav = useNavigation() as any;
@@ -242,7 +236,7 @@ export function ClientBookingsScreen({ navigation }: Props) {
               {nextBooking ? (
                 <>
                   <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.02 * 22, marginTop: 8 }}>
-                    {isToday(nextBooking.scheduledAt)
+                    {isTodayInAppTimezone(nextBooking.scheduledAt)
                       ? `Hoje às ${new Date(nextBooking.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}`
                       : new Date(nextBooking.scheduledAt).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" }) +
                         " às " +

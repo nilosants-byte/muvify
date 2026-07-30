@@ -151,6 +151,11 @@ export type Booking = {
   providerId: string;
   clientId: string;
   categoryId: string;
+  // Frente 5 (Descoberta, agendamento e agenda), Lote 12: nenhuma
+  // distinção visual entre sessão avulsa e sessão de pacote nos cards da
+  // agenda — presente quando a sessão foi debitada de um pacote
+  // presencial em vez de cobrada avulsa.
+  packageId?: string | null;
   clientConfirmedAt?: string | null;
   providerConfirmedAt?: string | null;
   completedAt?: string | null;

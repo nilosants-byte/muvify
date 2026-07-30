@@ -510,6 +510,11 @@ export function CreateBookingScreen({ navigation, route }: Props) {
         );
         setSelectedDateKeys([]);
         setSelectedSlotsByDate({});
+        // Frente 5 (Descoberta, agendamento e agenda), Lote 12: sem isso, o
+        // horário que acabou de conflitar continuava marcado como livre no
+        // calendário — o cliente podia tentar de novo o mesmo horário e
+        // cair no mesmo conflito.
+        void loadMonthSchedule(calendarCursor, true);
         return;
       }
 

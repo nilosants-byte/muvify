@@ -47,6 +47,36 @@ export function formatDateLabel(dateIso: string | null | undefined): string {
     timeZone: TZ,
   }).format(date);
 }
+// Frente 5 (Descoberta, agendamento e agenda), Lote 12: comparações de
+// "hoje" espalhadas pelo app usavam o fuso horário local do aparelho —
+// um usuário viajando (ou com o fuso do aparelho errado) via um
+// agendamento de hoje sumir da seção "hoje" perto da virada do dia.
+export function dateKeyInAppTimezone(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(date);
+}
+export function isTodayInAppTimezone(dateIso: string | null | undefined): boolean {
+  if (!dateIso) return false;
+  const date = new Date(dateIso);
+  if (!Number.isFinite(date.getTime())) return false;
+  return dateKeyInAppTimezone(date) === dateKeyInAppTimezone(new Date());
+}
+export function isCurrentWeekInAppTimezone(dateIso: string | null | undefined): boolean {
+  if (!dateIso) return false;
+  const date = new Date(dateIso);
+  if (!Number.isFinite(date.getTime())) return false;
+  const targetKey = dateKeyInAppTimezone(date);
+  const todayKey = dateKeyInAppTimezone(new Date());
+  // Ancora em UTC pra fazer aritmetica de calendario sobre a data-chave
+  // (ja resolvida no fuso do app) sem reintroduzir o fuso do aparelho.
+  const today = new Date(`${todayKey}T00:00:00Z`);
+  const start = new Date(today);
+  start.setUTCDate(today.getUTCDate() - today.getUTCDay());
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 7);
+  const startKey = start.toISOString().slice(0, 10);
+  const endKey = end.toISOString().slice(0, 10);
+  return targetKey >= startKey && targetKey < endKey;
+}
 export function formatTimeLabel(dateIso: string | null | undefined): string {
   if (!dateIso) return "—";
   const date = new Date(dateIso);

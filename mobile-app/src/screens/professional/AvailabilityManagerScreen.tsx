@@ -17,6 +17,7 @@ import { ServiceAreaInlineSection } from "./components/ServiceAreaInlineSection"
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
+import { expandRangeToQuarterHours } from "../../utils/agendaFreeSlots";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "AvailabilityManager">;
 
@@ -425,7 +426,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
         <View style={{ gap: 14, paddingBottom: 16 }}>
           {/* Horários */}
           {(() => {
-            const usedTimes = daySlots.flatMap((s) => [s.startTime, s.endTime]);
+            const usedTimes = daySlots.flatMap((s) => expandRangeToQuarterHours(s.startTime, s.endTime));
             return (
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <View style={{ flex: 1 }}>
