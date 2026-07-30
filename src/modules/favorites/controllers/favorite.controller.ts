@@ -15,4 +15,8 @@ export class FavoriteController {
     await favoriteService.remove(request.user!.id, request.params.providerId);
     return response.status(StatusCodes.NO_CONTENT).send();
   }
+  async countFavoritedByMe(request: Request, response: Response) {
+    const result = await favoriteService.countFavoritedBy(request.user!.id);
+    return response.json(result);
+  }
 }

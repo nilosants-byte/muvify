@@ -5,7 +5,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useCallback } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
-import { providersApi, reviewsApi } from "../../services/api/client";
+import { favoritesApi, ProviderReview, reviewsApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
@@ -14,6 +14,8 @@ import { ProfessionalScreenHeader } from "../../components/navigation/Profession
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
+
+const PAGE_SIZE = 20;
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalReviews">;
 
@@ -28,27 +30,42 @@ function Stars({ rating, color }: { rating: number; color: string }) {
 }
 
 export function ProfessionalReviewsScreen({ navigation }: Props) {
-  const { user, runWithAuth, showToast } = useAppState();
+  const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
-  const providerId = user?.providerProfile?.id;
 
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
   const [responseText, setResponseText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Frente 5 (Descoberta, agendamento e agenda), Lote 10: a tela reusava o
+  // endpoint de detalhe público do provider (take: 10 fixo, pensado pra
+  // vitrine do cliente) — o profissional nunca via nem respondia
+  // avaliações além das 10 mais recentes. Agora usa /reviews/mine,
+  // paginado de verdade.
+  const [page, setPage] = useState(0);
 
   const reviewsQuery = useAuthQuery(
-    queryKeys.providers.detail(providerId ?? "me"),
-    () => providersApi.detail(providerId!),
-    { enabled: Boolean(providerId) }
+    queryKeys.reviews.mine({ page }),
+    (token) => reviewsApi.mine(token, { skip: page * PAGE_SIZE, take: PAGE_SIZE })
   );
 
-  useFocusEffect(useCallback(() => { void reviewsQuery.refetch(); }, [reviewsQuery.refetch]));
+  const favoritedByQuery = useAuthQuery(
+    queryKeys.favorites.countByMe(),
+    (token) => favoritesApi.countFavoritedByMe(token)
+  );
+
+  useFocusEffect(useCallback(() => {
+    void reviewsQuery.refetch();
+    void favoritedByQuery.refetch();
+  }, [reviewsQuery.refetch, favoritedByQuery.refetch]));
 
   if (reviewsQuery.error) {
     handleScreenError({ error: reviewsQuery.error, showToast, fallbackMessage: "Falha ao carregar avaliações.", navigation });
   }
 
-  const reviews = reviewsQuery.data?.reviews ?? [];
+  const reviews: ProviderReview[] = reviewsQuery.data?.reviews ?? [];
+  const total = reviewsQuery.data?.total ?? 0;
+  const hasMore = (page + 1) * PAGE_SIZE < total;
+  const favoritedByCount = favoritedByQuery.data?.count ?? 0;
 
   async function submitResponse(reviewId: string) {
     const text = responseText.trim();
@@ -73,6 +90,17 @@ export function ProfessionalReviewsScreen({ navigation }: Props) {
       <ProfessionalScreenHeader title="Minhas avaliações" onBack={() => navigation.goBack()} />
       <ScreenEntrance>
         <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+          <MvCard>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Ionicons name="heart" size={18} color={theme.danger} />
+              <MvText variant="body4" color="secondary">
+                {favoritedByCount === 0
+                  ? "Nenhum aluno te favoritou ainda."
+                  : `${favoritedByCount} aluno${favoritedByCount === 1 ? "" : "s"} ${favoritedByCount === 1 ? "te favoritou" : "te favoritaram"}.`}
+              </MvText>
+            </View>
+          </MvCard>
+
           {reviews.length === 0 ? (
             <MvText variant="body4" color="secondary">Você ainda não recebeu avaliações.</MvText>
           ) : (
@@ -120,6 +148,23 @@ export function ProfessionalReviewsScreen({ navigation }: Props) {
               </MvCard>
             ))
           )}
+
+          {page > 0 || hasMore ? (
+            <View style={{ flexDirection: "row", gap: 8, justifyContent: "center", marginTop: 4 }}>
+              <MvButton
+                variant="outline"
+                label="Anterior"
+                disabled={page === 0}
+                onPress={() => setPage((p) => Math.max(0, p - 1))}
+              />
+              <MvButton
+                variant="outline"
+                label="Próxima"
+                disabled={!hasMore}
+                onPress={() => setPage((p) => p + 1)}
+              />
+            </View>
+          ) : null}
         </ScrollView>
       </ScreenEntrance>
     </View>

@@ -86,6 +86,13 @@ export const queryKeys = {
   favorites: {
     all: ["favorites"] as const,
     list: () => ["favorites", "list"] as const,
+    countByMe: () => ["favorites", "countByMe"] as const,
+  },
+
+  // ── Avaliações ─────────────────────────────────────────────────────────────
+  reviews: {
+    all: ["reviews"] as const,
+    mine: (params?: object) => ["reviews", "mine", params] as const,
   },
 
   // ── Pagamentos ─────────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
+import { UserRole } from "@prisma/client";
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
+import { ensureRole } from "../../../middlewares/role.middleware";
 import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { ReviewController } from "../controllers/review.controller";
@@ -7,5 +9,6 @@ import { createReviewSchema, respondToReviewSchema } from "../validators/review.
 const reviewController = new ReviewController();
 export const reviewRoutes = Router();
 reviewRoutes.use(ensureAuthenticated);
+reviewRoutes.get("/mine", ensureRole(UserRole.PROVIDER), reviewController.listMine);
 reviewRoutes.post("/", uploadRateLimiter, validate(createReviewSchema), reviewController.create);
 reviewRoutes.patch("/:reviewId/response", uploadRateLimiter, validate(respondToReviewSchema), reviewController.respond);

@@ -79,6 +79,36 @@ export class ReviewService {
     return review;
   }
 
+  // Frente 5 (Descoberta, agendamento e agenda), Lote 10: "Minhas avaliações"
+  // reusava o endpoint de detalhe público do provider (take: 10 fixo,
+  // pensado pra vitrine do cliente) — o próprio profissional nunca
+  // conseguia ver nem responder avaliações além das 10 mais recentes.
+  async listMine(providerUserId: string, skip = 0, take = 20) {
+    take = Math.max(1, Math.min(take, 50));
+    skip = Math.max(0, skip);
+
+    const provider = await prisma.providerProfile.findUnique({
+      where: { userId: providerUserId },
+      select: { id: true }
+    });
+    if (!provider) {
+      throw new AppError("Perfil de prestador não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    const [reviews, total] = await Promise.all([
+      prisma.review.findMany({
+        where: { providerId: provider.id },
+        include: { user: { select: { id: true, name: true } } },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take
+      }),
+      prisma.review.count({ where: { providerId: provider.id } })
+    ]);
+
+    return { reviews, total, skip, take };
+  }
+
   async respondToReview(providerUserId: string, reviewId: string, response: string) {
     const review = await prisma.review.findUnique({
       where: { id: reviewId },

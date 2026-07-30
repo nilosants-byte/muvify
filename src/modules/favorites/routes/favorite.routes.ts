@@ -1,5 +1,7 @@
+import { UserRole } from "@prisma/client";
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
+import { ensureRole } from "../../../middlewares/role.middleware";
 import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { FavoriteController } from "../controllers/favorite.controller";
@@ -8,5 +10,6 @@ const favoriteController = new FavoriteController();
 export const favoriteRoutes = Router();
 favoriteRoutes.use(ensureAuthenticated);
 favoriteRoutes.get("/", favoriteController.list);
+favoriteRoutes.get("/favorited-by-me", ensureRole(UserRole.PROVIDER), favoriteController.countFavoritedByMe);
 favoriteRoutes.post("/", uploadRateLimiter, validate(favoriteSchema), favoriteController.add);
 favoriteRoutes.delete("/:providerId", uploadRateLimiter, validate(favoriteParamSchema), favoriteController.remove);

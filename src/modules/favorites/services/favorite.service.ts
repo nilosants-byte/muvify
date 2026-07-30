@@ -60,6 +60,21 @@ export class FavoriteService {
     return { ...favorite, provider: jitterPublicCoordinates(favorite.provider) };
   }
 
+  // Frente 5 (Descoberta, agendamento e agenda), Lote 10: lacuna de produto
+  // — o profissional não tinha nenhuma forma de saber quantos clientes o
+  // favoritaram.
+  async countFavoritedBy(providerUserId: string) {
+    const provider = await prisma.providerProfile.findUnique({
+      where: { userId: providerUserId },
+      select: { id: true }
+    });
+    if (!provider) {
+      throw new AppError("Perfil de prestador não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    const count = await prisma.favorite.count({ where: { providerId: provider.id } });
+    return { count };
+  }
+
   async remove(userId: string, providerId: string) {
     await prisma.favorite.deleteMany({
       where: {

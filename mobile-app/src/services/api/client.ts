@@ -2365,6 +2365,16 @@ export const reviewsApi = {
       token,
       body: { response }
     });
+  },
+  mine(token: string, params?: { skip?: number; take?: number }) {
+    const query = new URLSearchParams();
+    if (params?.skip) query.set("skip", String(params.skip));
+    if (params?.take) query.set("take", String(params.take));
+    const qs = query.toString();
+    return apiRequest<{ reviews: ProviderReview[]; total: number; skip: number; take: number }>(
+      `/reviews/mine${qs ? `?${qs}` : ""}`,
+      { token }
+    );
   }
 };
 
@@ -2377,6 +2387,9 @@ export const favoritesApi = {
   },
   remove(token: string, providerId: string) {
     return apiRequest<void>(`/favorites/${providerId}`, { method: "DELETE", token });
+  },
+  countFavoritedByMe(token: string) {
+    return apiRequest<{ count: number }>("/favorites/favorited-by-me", { token });
   }
 };
 
