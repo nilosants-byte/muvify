@@ -72,6 +72,7 @@ describe("realtime-chat", () => {
     });
     clientToken = clientRegister.body.accessToken;
     clientId = clientRegister.body.user.id;
+    await prisma.user.update({ where: { id: clientId }, data: { emailVerifiedAt: new Date() } });
 
     const providerRegister = await request(app).post("/api/auth/register").send({
       name: "ProviderRT",
@@ -84,6 +85,7 @@ describe("realtime-chat", () => {
     });
     providerToken = providerRegister.body.accessToken;
     providerUserId = providerRegister.body.user.id;
+    await prisma.user.update({ where: { id: providerUserId }, data: { emailVerifiedAt: new Date() } });
 
     const outsiderRegister = await request(app).post("/api/auth/register").send({
       name: "OutsiderRT",

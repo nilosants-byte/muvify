@@ -124,6 +124,14 @@ export function AuthRegisterScreen({ navigation }: Props) {
       showToast("A senha não pode ter mais de 72 caracteres.", "error");
       return;
     }
+    // Frente 3 (Cadastro/onboarding), Lote 5: o backend já exige letra+
+    // número (e recusa senhas comuns), mas o app só validava tamanho -
+    // usuário só descobria a regra real depois de um "Erro de validação."
+    // genérico. Espelha a mesma regra aqui pra dar feedback imediato.
+    if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      showToast("A senha precisa ter letras e números.", "error");
+      return;
+    }
     if (apelidoError) {
       showToast("Apelido inválido. Use letras minúsculas, números e _.", "error");
       return;

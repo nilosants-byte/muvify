@@ -44,7 +44,8 @@ describe("Duplo clique em compra de pacote/combo não gera cobrança duplicada (
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_dc"
+        mpCustomerId: "cus_test_dc",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

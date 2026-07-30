@@ -13,6 +13,7 @@ import { prisma } from "../../../config/prisma";
 import { redis } from "../../../config/redis";
 import { AppError } from "../../../shared/errors/app-error";
 import { deleteByPattern } from "../../../shared/utils/cache";
+import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/utils/encryption";
 import { haversineKm } from "../../../shared/utils/geo";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
@@ -162,6 +163,7 @@ export class BookingService {
       );
     }
 
+    await assertEmailVerified(clientId);
     await debtService.assertNoOutstandingDebt(clientId);
     await debtService.assertProviderNoOutstandingDebt(providerId);
 

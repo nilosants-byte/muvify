@@ -70,7 +70,8 @@ describe("Integridade da conclusao de sessao presencial (Lote 2 do raio-x)", () 
         email: `${uid("ci_client")}@test.com`,
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
-        role: "CLIENT"
+        role: "CLIENT",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

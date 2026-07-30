@@ -42,7 +42,8 @@ describe("Rede de seguranca de estorno — cancelPaymentForBooking (Lote 1 do ra
         email: `${uid("refund_client")}@test.com`,
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
-        role: "CLIENT"
+        role: "CLIENT",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

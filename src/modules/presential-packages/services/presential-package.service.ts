@@ -16,6 +16,7 @@ import * as Sentry from "@sentry/node";
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
+import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
@@ -251,6 +252,7 @@ export class PresentialPackageService {
   }
 
   async purchasePackage(clientId: string, input: PurchasePresentialPackageInput) {
+    await assertEmailVerified(clientId);
     await debtService.assertNoOutstandingDebt(clientId);
     await this.assertAnamnesisCompleted(clientId);
 
@@ -1325,6 +1327,7 @@ export class PresentialPackageService {
     // financeira em aberto (ex: reembolso que falhou e virou dívida)
     // conseguia comprar um combo normalmente, furando a trava anti-calote
     // que já existe em purchasePackage, booking avulso e consultoria.
+    await assertEmailVerified(clientId);
     await debtService.assertNoOutstandingDebt(clientId);
     await this.assertAnamnesisCompleted(clientId);
 

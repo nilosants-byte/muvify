@@ -9,6 +9,11 @@ import { AppError } from "../../../shared/errors/app-error";
 import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/utils/encryption";
 import { compareHash } from "../../../shared/utils/hash";
 import { generateRefreshToken, hashRefreshToken } from "../../../shared/utils/refresh-token";
+import {
+  clearLocalLoginAttempts,
+  getLocalLoginAttempts,
+  incrementLocalLoginAttempts
+} from "../../../shared/security/login-attempts";
 
 const CHALLENGE_TTL_SECONDS = 300; // 5 minutos
 const BACKUP_CODE_COUNT = 8;
@@ -157,12 +162,27 @@ export class TwoFactorService {
     return `2fa:attempts:${userId}`;
   }
 
+  // Frente 3 (Cadastro/onboarding), Lote 5: sem Redis, o lockout de
+  // tentativas de código TOTP simplesmente não agia (só retornava), sem
+  // fallback - diferente do lockout de login, que já cai pra um mapa em
+  // memória local. Mesmo utilitário, mesma proteção nos dois.
+  private localTwoFactorKey(userId: string) {
+    return `2fa:${userId}`;
+  }
+
   private async ensureTwoFactorNotLocked(userId: string) {
     if (env.NODE_ENV === "test") return;
     await connectRedis();
-    if (redis.status !== "ready") return;
-    const attempts = await redis.get(this.twoFactorAttemptsKey(userId));
-    if (attempts && Number(attempts) >= env.LOGIN_MAX_ATTEMPTS) {
+    if (redis.status === "ready") {
+      const attempts = await redis.get(this.twoFactorAttemptsKey(userId));
+      if (attempts && Number(attempts) >= env.LOGIN_MAX_ATTEMPTS) {
+        throw new AppError("Muitas tentativas. Tente novamente mais tarde.", StatusCodes.TOO_MANY_REQUESTS);
+      }
+      return;
+    }
+
+    const localAttempts = getLocalLoginAttempts(this.localTwoFactorKey(userId));
+    if (localAttempts >= env.LOGIN_MAX_ATTEMPTS) {
       throw new AppError("Muitas tentativas. Tente novamente mais tarde.", StatusCodes.TOO_MANY_REQUESTS);
     }
   }
@@ -170,19 +190,25 @@ export class TwoFactorService {
   private async registerTwoFactorFailure(userId: string) {
     if (env.NODE_ENV === "test") return;
     await connectRedis();
-    if (redis.status !== "ready") return;
-    const key = this.twoFactorAttemptsKey(userId);
-    const attempts = await redis.incr(key);
-    if (attempts === 1) {
-      await redis.expire(key, env.LOGIN_LOCK_MINUTES * 60);
+    if (redis.status === "ready") {
+      const key = this.twoFactorAttemptsKey(userId);
+      const attempts = await redis.incr(key);
+      if (attempts === 1) {
+        await redis.expire(key, env.LOGIN_LOCK_MINUTES * 60);
+      }
+      return;
     }
+    incrementLocalLoginAttempts(this.localTwoFactorKey(userId), env.LOGIN_LOCK_MINUTES * 60);
   }
 
   private async clearTwoFactorFailures(userId: string) {
     if (env.NODE_ENV === "test") return;
     await connectRedis();
-    if (redis.status !== "ready") return;
-    await redis.del(this.twoFactorAttemptsKey(userId));
+    if (redis.status === "ready") {
+      await redis.del(this.twoFactorAttemptsKey(userId));
+      return;
+    }
+    clearLocalLoginAttempts(this.localTwoFactorKey(userId));
   }
 
   async verifyCode(userId: string, code: string): Promise<void> {

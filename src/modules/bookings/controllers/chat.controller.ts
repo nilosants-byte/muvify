@@ -5,6 +5,7 @@ import { prisma } from "../../../config/prisma";
 import { emitNewBookingMessage } from "../../../realtime/socket";
 import { AppError } from "../../../shared/errors/app-error";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
+import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { NotificationService } from "../../notifications/services/notification.service";
 
 function isChatOpen(booking: { status: string }): boolean {
@@ -294,6 +295,8 @@ export class ChatController {
 
     if (!content?.trim()) throw new AppError("Mensagem não pode ser vazia.", StatusCodes.BAD_REQUEST);
     if (content.trim().length > 1000) throw new AppError("Mensagem muito longa.", StatusCodes.BAD_REQUEST);
+
+    await assertEmailVerified(userId);
 
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },

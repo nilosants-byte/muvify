@@ -347,11 +347,22 @@ export class AuthService {
       throw new AppError("E-mail ja verificado.", StatusCodes.CONFLICT);
     }
 
-    // Throttle por userId: máx 3 reenvios por hora
+    // Throttle por userId: máx 3 reenvios por hora. Frente 3 (Cadastro/
+    // onboarding), Lote 5: sem Redis isso simplesmente não agia, caindo só
+    // no rate limiter genérico por IP da rota (20/15min, compartilhado com
+    // login/register) - mesmo fallback local já usado no lockout de login.
     if (redis.status === "ready") {
       const key = `auth:resend_verification:${userId}`;
       const count = await redis.incr(key);
       if (count === 1) await redis.expire(key, 3600);
+      if (count > 3) {
+        throw new AppError(
+          "Muitas tentativas de reenvio. Aguarde 1 hora antes de tentar novamente.",
+          StatusCodes.TOO_MANY_REQUESTS
+        );
+      }
+    } else {
+      const count = incrementLocalLoginAttempts(`resend-verify:${userId}`, 3600);
       if (count > 3) {
         throw new AppError(
           "Muitas tentativas de reenvio. Aguarde 1 hora antes de tentar novamente.",

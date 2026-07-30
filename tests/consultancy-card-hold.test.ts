@@ -40,7 +40,8 @@ describe("Consultoria — reserva no cartão e captura na entrega", () => {
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_hold"
+        mpCustomerId: "cus_test_hold",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

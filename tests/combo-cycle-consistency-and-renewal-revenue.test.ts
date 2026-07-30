@@ -57,7 +57,8 @@ describe("Consistência de combo e visibilidade financeira de renovação (Rodad
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_cr"
+        mpCustomerId: "cus_test_cr",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

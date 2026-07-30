@@ -208,7 +208,8 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_ficha"
+        mpCustomerId: "cus_test_ficha",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

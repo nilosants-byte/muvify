@@ -65,7 +65,8 @@ describe("Combo — aviso e opção do aluno quando a consultoria é estornada a
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_combo"
+        mpCustomerId: "cus_test_combo",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

@@ -42,7 +42,8 @@ describe("Pacote de sessões avulsas (créditos flexíveis redesenhado) — Fren
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_flex"
+        mpCustomerId: "cus_test_flex",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

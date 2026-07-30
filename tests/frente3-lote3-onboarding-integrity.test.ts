@@ -186,7 +186,8 @@ describe("Frente 3, Lote 3 — integridade de onboarding (profissional e cliente
         email: `${uid("noanamnesis")}@test.com`,
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}5`,
-        role: "CLIENT"
+        role: "CLIENT",
+        emailVerifiedAt: new Date()
       }
     });
     userIds.push(client.id);

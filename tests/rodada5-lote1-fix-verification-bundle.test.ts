@@ -43,7 +43,8 @@ describe("Rodada 5, Lote 1 — cancelar consultoria pelo profissional via rota H
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_l5l1"
+        mpCustomerId: "cus_test_l5l1",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

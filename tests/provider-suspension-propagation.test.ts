@@ -60,6 +60,7 @@ describe("Suspensão de conta propaga pra busca e novo negócio (Rodada 4, Lote 
     categoryId = category.id;
 
     clientId = (await createUser("sp_client")).userId;
+    await prisma.user.update({ where: { id: clientId }, data: { emailVerifiedAt: new Date() } });
     await prisma.clientAnamnesis.create({ data: { clientId, status: "COMPLETED", completedAt: new Date() } });
 
     const providerReg = await createUser("sp_provider", "PROVIDER");

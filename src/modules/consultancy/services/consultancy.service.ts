@@ -15,6 +15,7 @@ import { StatusCodes } from "http-status-codes";
 import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
+import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
@@ -1862,6 +1863,7 @@ export class ConsultancyService {
       throw new AppError("Este profissional não está disponível para novas contratações no momento.", StatusCodes.BAD_REQUEST);
     }
 
+    await assertEmailVerified(clientId);
     await debtService.assertNoOutstandingDebt(clientId);
     await debtService.assertProviderNoOutstandingDebt(request.providerId);
 

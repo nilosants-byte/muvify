@@ -53,7 +53,8 @@ describe("DebtRecord — pendências financeiras entre disputa e cobrança (Fren
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_debt"
+        mpCustomerId: "cus_test_debt",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

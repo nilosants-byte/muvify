@@ -36,7 +36,8 @@ describe("Prazo de confirmação do agendamento avulso (Rodada 4, Lote 4)", () =
         email: `${uid("bcd_client")}@test.com`,
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
-        role: "CLIENT"
+        role: "CLIENT",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

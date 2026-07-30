@@ -15,19 +15,20 @@ export function errorMiddleware(
   const log = req.log;
 
   if (error instanceof ZodError) {
+    // Frente 3 (Cadastro/onboarding), Lote 5: essas mensagens já são as que
+    // nós mesmos escrevemos nos schemas Zod (português, voltadas pro
+    // usuário) - não é detalhe interno de implementação nem stack trace, é
+    // exatamente a informação que falta pro usuário corrigir o campo certo.
+    // Esconder isso só em produção transformava toda validação em "Erro de
+    // validação." genérico bem na hora que mais importa (cadastro/senha).
     const flat = error.flatten();
-    const devDetail =
-      process.env["NODE_ENV"] !== "production"
-        ? Object.entries(flat.fieldErrors ?? {})
-            .filter(([, msgs]) => Array.isArray(msgs) && msgs.length > 0)
-            .map(([field, msgs]) => `${field}: ${(msgs as string[]).join(", ")}`)
-            .join(" | ")
-        : "";
+    const detail = Object.entries(flat.fieldErrors ?? {})
+      .filter(([, msgs]) => Array.isArray(msgs) && msgs.length > 0)
+      .map(([field, msgs]) => `${field}: ${(msgs as string[]).join(", ")}`)
+      .join(" | ");
     return response.status(StatusCodes.BAD_REQUEST).json({
-      message: devDetail
-        ? `Erro de validação — ${devDetail}`
-        : "Erro de validação.",
-      errors: process.env["NODE_ENV"] !== "production" ? flat : undefined,
+      message: detail ? `Erro de validação — ${detail}` : "Erro de validação.",
+      errors: flat,
       requestId
     });
   }

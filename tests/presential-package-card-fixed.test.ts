@@ -64,7 +64,8 @@ describe("Pacote presencial de horário fixo pago em cartão — sessão por ses
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_pkg"
+        mpCustomerId: "cus_test_pkg",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

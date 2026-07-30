@@ -52,7 +52,8 @@ describe("Nunca cobra sem split resolvido (Rodada 2, Lote 1 do raio-x)", () => {
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_sf"
+        mpCustomerId: "cus_test_sf",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

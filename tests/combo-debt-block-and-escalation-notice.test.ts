@@ -44,7 +44,8 @@ describe("purchaseCombo bloqueia dívida pendente + aviso de combo no encerramen
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_cd"
+        mpCustomerId: "cus_test_cd",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

@@ -43,7 +43,8 @@ describe("Rodada 5, Lote 4 — integridade de conclusão e reincidência", () =>
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_l5l4"
+        mpCustomerId: "cus_test_l5l4",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;

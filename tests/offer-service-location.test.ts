@@ -41,7 +41,8 @@ describe("Liberdade de ofertas — Frente C (local por oferta + local do pacote)
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}1`,
         role: "CLIENT",
-        mpCustomerId: "cus_test_loc"
+        mpCustomerId: "cus_test_loc",
+        emailVerifiedAt: new Date()
       }
     });
     clientId = client.id;
