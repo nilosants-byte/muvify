@@ -19,6 +19,7 @@ import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { encryptSensitiveText, decryptSensitiveText } from "../../../shared/utils/encryption";
 import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { recalculateProviderRatingAfterRefund } from "../../../shared/utils/provider-rating";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
 
@@ -1147,6 +1148,9 @@ export class PaymentService {
           body: "Pagamento cancelado e estorno realizado para o cliente.",
           data: { type: "PAYMENT_REFUNDED" }
         });
+        await recalculateProviderRatingAfterRefund(bookingId).catch((error) =>
+          console.error(`Falha ao recalcular rating do profissional após estorno do agendamento ${bookingId}:`, error)
+        );
       } catch (error) {
         // Dinheiro já cobrado de verdade (CAPTURED) e o estorno no gateway
         // falhou — nunca deixar essa exceção subir (o agendamento precisa
@@ -1711,7 +1715,7 @@ export class PaymentService {
             : payment.amountCents;
         const isPartial = refundedAmountCents < payment.amountCents;
 
-        await prisma.payment.updateMany({
+        const updatedByWebhook = await prisma.payment.updateMany({
           // refundedAmountCents muda a cada notificação (parcial -> parcial
           // maior -> total) — comparar por ele em vez de status permite
           // processar reembolsos parciais sucessivos sem reprocessar o
@@ -1727,6 +1731,16 @@ export class PaymentService {
             refundedAmountCents
           }
         });
+        // Frente 5 (Descoberta, agendamento e agenda), Lote 4: reembolso
+        // total notificado via webhook (ex: chargeback processado direto no
+        // gateway) é outro caminho, além da resolução manual do admin, em
+        // que uma sessão já avaliada podia ser estornada sem o rating do
+        // profissional nunca ser corrigido.
+        if (!isPartial && updatedByWebhook.count > 0) {
+          await recalculateProviderRatingAfterRefund(payment.bookingId).catch((error) =>
+            console.error(`Falha ao recalcular rating do profissional após estorno via webhook (booking ${payment.bookingId}):`, error)
+          );
+        }
       }
       if (consultancyContract) {
         await prisma.consultancyContract.updateMany({

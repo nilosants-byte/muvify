@@ -10,6 +10,7 @@ import { NotificationService } from "../../notifications/services/notification.s
 import { PaymentService } from "../../payments/services/payment.service";
 import { providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { restoreFlexibleCreditForBooking } from "../../../shared/utils/presential-package-credit";
+import { recalculateProviderRatingAfterRefund } from "../../../shared/utils/provider-rating";
 
 const mpRefund = new PaymentRefund(mp);
 
@@ -406,6 +407,11 @@ export class DisputeCaseService {
           // qualquer outro cancelamento/estorno dessa sessão.
           if (isFullRefund) {
             await restoreFlexibleCreditForBooking(tx, disputeCase.bookingId);
+            // Frente 5 (Descoberta, agendamento e agenda), Lote 4: rating do
+            // profissional nunca era corrigido quando o admin resolvia uma
+            // disputa com reembolso total de uma sessão já avaliada — a
+            // review continuava contando pra sempre.
+            await recalculateProviderRatingAfterRefund(disputeCase.bookingId, tx);
           }
         }
         if (disputeCase.consultancyContractId) {

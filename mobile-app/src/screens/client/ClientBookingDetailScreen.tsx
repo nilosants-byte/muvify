@@ -708,7 +708,8 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14, gap: 8 }}>
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, marginBottom: 4 }}>Detalhes do agendamento</Text>
           <InfoRow icon="calendar-outline" label="Data e hora" value={formatBRDateTime(booking.scheduledAt)} />
-          {booking.notes && <InfoRow icon="location-outline" label="Local" value={booking.notes} />}
+          {booking.sessionLocation && <InfoRow icon="location-outline" label="Local" value={booking.sessionLocation} />}
+          {booking.notes && <InfoRow icon="chatbox-ellipses-outline" label="Observações" value={booking.notes} />}
           <InfoRow icon="card-outline" label="Pagamento" value={paymentLabel(payment?.status)} />
           {payment?.amountCents ? (
             <InfoRow icon="cash-outline" label="Valor" value={formatCurrencyBRL(payment.amountCents / 100)} />

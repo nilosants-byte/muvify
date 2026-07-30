@@ -296,6 +296,9 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
           </Text>
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Profissional: {booking.provider?.displayName ?? "Profissional"}</Text>
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Data e hora: {formatBRDateTime(booking.scheduledAt)}</Text>
+          {booking.sessionLocation ? (
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Local: {booking.sessionLocation}</Text>
+          ) : null}
           {booking.notes ? (
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Observações: {booking.notes}</Text>
           ) : null}

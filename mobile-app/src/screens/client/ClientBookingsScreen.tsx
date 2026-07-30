@@ -215,7 +215,7 @@ export function ClientBookingsScreen({ navigation }: Props) {
                         new Date(nextBooking.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}
                   </Text>
                   <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, marginTop: 6 }}>
-                    {nextBooking.provider?.displayName ?? "Personal"} · {nextBooking.notes ?? "Aula presencial"}
+                    {nextBooking.provider?.displayName ?? "Personal"} · {nextBooking.sessionLocation ?? "Aula presencial"}
                   </Text>
                   {nextBooking.status === "PENDING" && (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10, backgroundColor: C.amberDim, borderWidth: 1, borderColor: C.amberBorder, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 4, alignSelf: "flex-start" }}>
