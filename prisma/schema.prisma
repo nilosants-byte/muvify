@@ -386,6 +386,11 @@ model ProviderProfile {
   crefDocumentUrl             String?
   credentialDocuments         Json?
   crefValidatedAt             DateTime?
+  // Frente 3 (Cadastro/onboarding), Lote 2: setado só quando o CREF muda de
+  // verdade (upsertOwnCredentials), não em qualquer update de perfil - a
+  // fila do admin usa este campo pra ordenar por ordem de submissão real,
+  // já que updatedAt é tocado por qualquer edição de bio/preço/etc.
+  crefSubmittedAt             DateTime?
   crefValidationStatus        CrefValidationStatus        @default(PENDING)
   crefRejectionReason         String?                     @db.VarChar(300)
   // Raio-X de pagamentos, Rodada 4, Lote 12: crefRejectionReason é

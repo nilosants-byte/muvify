@@ -10,7 +10,8 @@ export const adminDashboardOverviewSchema = z.object({
 export const adminCrefQueueQuerySchema = z.object({
   query: z.object({
     status: z.enum(["PENDING", "IN_REVIEW", "APPROVED", "REJECTED"]).optional(),
-    take: z.coerce.number().int().min(1).max(200).optional()
+    take: z.coerce.number().int().min(1).max(200).optional(),
+    offset: z.coerce.number().int().min(0).optional()
   })
 });
 

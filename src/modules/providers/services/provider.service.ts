@@ -378,6 +378,16 @@ export class ProviderService {
     return profile.crefValidationStatus === CrefValidationStatus.APPROVED;
   }
 
+  // Frente 3 (Cadastro/onboarding), Lote 2: a checagem antifraude de CREF
+  // duplicado comparava só case-insensitive - "012345-SP" e "12345/SP" não
+  // batiam, deixando o controle contornável recriando a conta com grafia
+  // levemente diferente. Remove pontuação/espaços e zeros à esquerda antes
+  // de comparar.
+  private normalizeCrefForComparison(value: string) {
+    const stripped = value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    return stripped.replace(/^0+(?=\d)/, "");
+  }
+
   private mapCredentialsPayload(provider: {
     id: string;
     crefNumber: string | null;
@@ -535,7 +545,14 @@ export class ProviderService {
         crefValidationStatus: hasBothSides
           ? CREF_STATUS_IN_REVIEW
           : CrefValidationStatus.PENDING,
-        crefRejectionReason: null,
+        // Frente 3 (Cadastro/onboarding), Lote 2: setado só quando o CREF
+        // muda de verdade, pra fila do admin ordenar por ordem de submissão
+        // real em vez de updatedAt (tocado por qualquer edição de perfil).
+        crefSubmittedAt: new Date(),
+        // Frente 3 (Cadastro/onboarding), Lote 2: antes zerava aqui,
+        // apagando o motivo da rejeição anterior antes do próximo revisor
+        // ver. Agora só é limpo quando reviewProviderCref decide de novo
+        // (aprovado -> null, reprovado -> novo motivo).
         crefReviewedAt: null,
         crefReviewedByUserId: null
       },
@@ -559,7 +576,12 @@ export class ProviderService {
   // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: quebrava o padrão
   // de defesa em profundidade do resto do módulo — dependia 100% do
   // ensureRole(ADMIN) da rota.
-  async listCrefValidationQueue(adminId: string, status: CrefValidationQueueStatus = "IN_REVIEW", take = 100) {
+  async listCrefValidationQueue(
+    adminId: string,
+    status: CrefValidationQueueStatus = "IN_REVIEW",
+    take = 100,
+    offset = 0
+  ) {
     await this.assertAdminAccess(adminId);
     const desiredStatus =
       status === "IN_REVIEW"
@@ -570,114 +592,65 @@ export class ProviderService {
           ? CrefValidationStatus.REJECTED
           : CrefValidationStatus.PENDING;
 
-    const providers = await prisma.providerProfile.findMany({
-      where: {
-        crefNumber: { not: null },
-        crefValidationStatus: desiredStatus
-      },
-      select: {
-        id: true,
-        userId: true,
-        crefNumber: true,
-        crefDocumentUrl: true,
-        credentialDocuments: true,
-        crefValidatedAt: true,
-        crefValidationStatus: true,
-        crefRejectionReason: true,
-        crefRejectionCount: true,
-        crefReviewedAt: true,
-        createdAt: true,
-        updatedAt: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true
-          }
-        }
-      },
-      orderBy: [{ updatedAt: "desc" }],
-      take: Math.min(Math.max(take, 1), 200)
-    });
+    const where = {
+      crefNumber: { not: null },
+      crefValidationStatus: desiredStatus
+    } as const;
+    const takeClamped = Math.min(Math.max(take, 1), 200);
+    const skip = Math.max(offset, 0);
 
-    return providers
-      .map((provider) => ({
+    const [providers, total] = await Promise.all([
+      prisma.providerProfile.findMany({
+        where,
+        select: {
+          id: true,
+          userId: true,
+          crefNumber: true,
+          crefDocumentUrl: true,
+          credentialDocuments: true,
+          crefValidatedAt: true,
+          crefValidationStatus: true,
+          crefRejectionReason: true,
+          crefRejectionCount: true,
+          crefReviewedAt: true,
+          crefSubmittedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true
+            }
+          }
+        },
+        // Frente 3 (Cadastro/onboarding), Lote 2: ordenar por ordem de
+        // submissão real do CREF, não por updatedAt - que era tocado por
+        // qualquer edição de bio/preço, deixando a fila essencialmente LIFO.
+        orderBy: [{ crefSubmittedAt: "asc" }, { createdAt: "asc" }],
+        skip,
+        take: takeClamped
+      }),
+      prisma.providerProfile.count({ where })
+    ]);
+
+    return {
+      items: providers.map((provider) => ({
         ...this.mapCredentialsPayload(provider),
         user: provider.user,
         createdAt: provider.createdAt,
         updatedAt: provider.updatedAt
-      }));
+      })),
+      total,
+      offset: skip,
+      take: takeClamped,
+      hasMore: skip + providers.length < total
+    };
   }
 
   async reviewProviderCref(adminUserId: string, providerId: string, input: ReviewProviderCrefInput) {
     await this.assertAdminAccess(adminUserId);
-
-    const provider = await prisma.providerProfile.findUnique({
-      where: { id: providerId },
-      select: {
-        id: true,
-        userId: true,
-        crefNumber: true,
-        crefDocumentUrl: true,
-        credentialDocuments: true,
-        crefValidatedAt: true,
-        crefValidationStatus: true,
-        crefRejectionReason: true,
-        crefReviewedAt: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        }
-      }
-    });
-
-    if (!provider) {
-      throw new AppError("Perfil profissional nao encontrado.", StatusCodes.NOT_FOUND);
-    }
-
-    if (!provider.crefNumber?.trim() || !this.hasFrontAndBackCredentialDocuments(provider.credentialDocuments)) {
-      throw new AppError(
-        "Nao e possivel validar CREF sem frente e verso anexados.",
-        StatusCodes.BAD_REQUEST
-      );
-    }
-
-    if (provider.crefValidationStatus !== CREF_STATUS_IN_REVIEW) {
-      throw new AppError(
-        "Este CREF nao esta em analise no momento.",
-        StatusCodes.BAD_REQUEST
-      );
-    }
-
-    // Raio-X de pagamentos, Rodada 5, Lote 5 (auditoria adversarial):
-    // profissional suspenso ou com CREF rejeitado podia recriar conta com
-    // e-mail novo e resubmeter o mesmo número de CREF sem nenhum bloqueio
-    // automático — crefNumber não tem @unique, e a revisão nunca cruzava
-    // com submissões anteriores (aprovadas, rejeitadas ou suspensas).
-    if (input.decision === "APPROVE") {
-      const duplicate = await prisma.providerProfile.findFirst({
-        where: {
-          id: { not: provider.id },
-          crefNumber: { equals: provider.crefNumber, mode: "insensitive" },
-          OR: [
-            { crefValidationStatus: CrefValidationStatus.APPROVED },
-            { crefValidationStatus: CrefValidationStatus.REJECTED },
-            { user: { suspendedAt: { not: null } } }
-          ]
-        },
-        select: { id: true, userId: true }
-      });
-      if (duplicate) {
-        throw new AppError(
-          "Este número de CREF já foi usado em outro perfil (aprovado, rejeitado ou suspenso). Revise manualmente antes de aprovar — pode ser uma tentativa de recriar conta.",
-          StatusCodes.CONFLICT
-        );
-      }
-    }
 
     const decision = input.decision;
     const justification = input.justification?.trim() ?? "";
@@ -691,37 +664,129 @@ export class ProviderService {
 
     const reviewedAt = new Date();
     const approved = decision === "APPROVE";
-    const updated = await prisma.providerProfile.update({
-      where: { id: provider.id },
-      data: {
-        crefValidatedAt: approved ? reviewedAt : null,
-        crefValidationStatus: approved ? CrefValidationStatus.APPROVED : CrefValidationStatus.REJECTED,
-        crefRejectionReason: approved ? null : justification,
-        // Contador nunca reseta (histórico de vida inteira do perfil) —
-        // diferente de crefRejectionReason, que só guarda o motivo da
-        // reprovação mais recente e é sobrescrito a cada nova revisão.
-        crefRejectionCount: approved ? undefined : { increment: 1 },
-        crefReviewedAt: reviewedAt,
-        crefReviewedByUserId: adminUserId
-      },
-      select: {
-        id: true,
-        userId: true,
-        crefNumber: true,
-        crefDocumentUrl: true,
-        credentialDocuments: true,
-        crefValidatedAt: true,
-        crefValidationStatus: true,
-        crefRejectionReason: true,
-        crefRejectionCount: true,
-        crefReviewedAt: true,
-        user: {
-          select: {
-            name: true,
-            email: true
+
+    // Frente 3 (Cadastro/onboarding), Lote 2: leitura + checagem de
+    // duplicado + escrita agora rodam na mesma transação, e a escrita só
+    // afeta a linha se o status ainda for IN_REVIEW no momento exato do
+    // update. Antes, dois admins revisando o mesmo profissional quase ao
+    // mesmo tempo (ou duplo-clique) podiam ambos passar na validação e
+    // ambos disparar notificação/e-mail/audit log, um sobrescrevendo o
+    // outro silenciosamente.
+    const updated = await prisma.$transaction(async (tx) => {
+      const provider = await tx.providerProfile.findUnique({
+        where: { id: providerId },
+        select: {
+          id: true,
+          userId: true,
+          crefNumber: true,
+          crefDocumentUrl: true,
+          credentialDocuments: true,
+          crefValidatedAt: true,
+          crefValidationStatus: true,
+          crefRejectionReason: true,
+          crefReviewedAt: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
           }
         }
+      });
+
+      if (!provider) {
+        throw new AppError("Perfil profissional nao encontrado.", StatusCodes.NOT_FOUND);
       }
+
+      const crefNumber = provider.crefNumber?.trim();
+      if (!crefNumber || !this.hasFrontAndBackCredentialDocuments(provider.credentialDocuments)) {
+        throw new AppError(
+          "Nao e possivel validar CREF sem frente e verso anexados.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+
+      if (provider.crefValidationStatus !== CREF_STATUS_IN_REVIEW) {
+        throw new AppError(
+          "Este CREF nao esta em analise no momento.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+
+      // Raio-X de pagamentos, Rodada 5, Lote 5 (auditoria adversarial):
+      // profissional suspenso ou com CREF rejeitado podia recriar conta com
+      // e-mail novo e resubmeter o mesmo número de CREF sem nenhum bloqueio
+      // automático — crefNumber não tem @unique, e a revisão nunca cruzava
+      // com submissões anteriores (aprovadas, rejeitadas ou suspensas).
+      if (approved) {
+        const normalizedTarget = this.normalizeCrefForComparison(crefNumber);
+        const candidates = await tx.providerProfile.findMany({
+          where: {
+            id: { not: provider.id },
+            crefNumber: { not: null },
+            OR: [
+              { crefValidationStatus: CrefValidationStatus.APPROVED },
+              { crefValidationStatus: CrefValidationStatus.REJECTED },
+              { user: { suspendedAt: { not: null } } }
+            ]
+          },
+          select: { id: true, userId: true, crefNumber: true }
+        });
+        const duplicate = candidates.find(
+          (c) => c.crefNumber && this.normalizeCrefForComparison(c.crefNumber) === normalizedTarget
+        );
+        if (duplicate) {
+          throw new AppError(
+            "Este número de CREF já foi usado em outro perfil (aprovado, rejeitado ou suspenso). Revise manualmente antes de aprovar — pode ser uma tentativa de recriar conta.",
+            StatusCodes.CONFLICT
+          );
+        }
+      }
+
+      const result = await tx.providerProfile.updateMany({
+        where: { id: provider.id, crefValidationStatus: CREF_STATUS_IN_REVIEW },
+        data: {
+          crefValidatedAt: approved ? reviewedAt : null,
+          crefValidationStatus: approved ? CrefValidationStatus.APPROVED : CrefValidationStatus.REJECTED,
+          crefRejectionReason: approved ? null : justification,
+          // Contador nunca reseta (histórico de vida inteira do perfil) —
+          // diferente de crefRejectionReason, que só guarda o motivo da
+          // reprovação mais recente e é sobrescrito a cada nova revisão.
+          crefRejectionCount: approved ? undefined : { increment: 1 },
+          crefReviewedAt: reviewedAt,
+          crefReviewedByUserId: adminUserId
+        }
+      });
+
+      if (result.count === 0) {
+        throw new AppError(
+          "Este CREF ja foi revisado por outro administrador enquanto voce revisava. Recarregue a fila.",
+          StatusCodes.CONFLICT
+        );
+      }
+
+      return tx.providerProfile.findUniqueOrThrow({
+        where: { id: provider.id },
+        select: {
+          id: true,
+          userId: true,
+          crefNumber: true,
+          crefDocumentUrl: true,
+          credentialDocuments: true,
+          crefValidatedAt: true,
+          crefValidationStatus: true,
+          crefRejectionReason: true,
+          crefRejectionCount: true,
+          crefReviewedAt: true,
+          user: {
+            select: {
+              name: true,
+              email: true
+            }
+          }
+        }
+      });
     });
 
     const notificationService = new NotificationService();
@@ -762,10 +827,10 @@ export class ProviderService {
       adminId: adminUserId,
       action: approved ? "CREF_APPROVED" : "CREF_REJECTED",
       targetType: "PROVIDER",
-      targetId: provider.id,
+      targetId: updated.id,
       metadata: {
-        providerUserId: provider.userId,
-        crefNumber: provider.crefNumber,
+        providerUserId: updated.userId,
+        crefNumber: updated.crefNumber,
         justification: approved ? null : justification,
       },
     });

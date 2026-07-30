@@ -33,7 +33,8 @@ export class AdminController {
           | "REJECTED"
           | undefined
       ) ?? "IN_REVIEW",
-      request.query.take ? Number(request.query.take) : undefined
+      request.query.take ? Number(request.query.take) : undefined,
+      request.query.offset ? Number(request.query.offset) : undefined
     );
     return response.json(payload);
   }

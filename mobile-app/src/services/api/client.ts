@@ -510,6 +510,14 @@ export type AdminCrefQueueItem = ProviderCredentials & {
   updatedAt: string;
 };
 
+export type AdminCrefQueuePage = {
+  items: AdminCrefQueueItem[];
+  total: number;
+  offset: number;
+  take: number;
+  hasMore: boolean;
+};
+
 export type AdminSupportTicket = {
   id: string;
   subject?: string | null;
@@ -1520,13 +1528,15 @@ export const adminApi = {
     params?: {
       status?: "PENDING" | "IN_REVIEW" | "APPROVED" | "REJECTED";
       take?: number;
+      offset?: number;
     }
   ) {
     const query = new URLSearchParams();
     if (params?.status) query.set("status", params.status);
     if (typeof params?.take === "number") query.set("take", String(params.take));
+    if (typeof params?.offset === "number") query.set("offset", String(params.offset));
     const suffix = query.toString() ? `?${query}` : "";
-    return apiRequest<AdminCrefQueueItem[]>(`/admin/cref/requests${suffix}`, { token });
+    return apiRequest<AdminCrefQueuePage>(`/admin/cref/requests${suffix}`, { token });
   },
   reviewCref(
     token: string,

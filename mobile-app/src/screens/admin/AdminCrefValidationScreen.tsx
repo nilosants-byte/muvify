@@ -243,6 +243,8 @@ function DocButtons({ item }: { item: AdminCrefQueueItem }) {
   );
 }
 
+const PAGE_SIZE = 100;
+
 export function AdminCrefValidationScreen({ navigation }: Props) {
   const { theme } = useMvTheme();
   const { runWithAuth, showToast } = useAppState();
@@ -250,14 +252,26 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [justification, setJustification] = useState("");
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [accumulatedItems, setAccumulatedItems] = useState<AdminCrefQueueItem[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const crefQuery = useAuthQuery(
-    queryKeys.admin.crefRequests({ status, take: 100 }),
-    (token) => adminApi.listCrefRequests(token, { status, take: 100 })
+    queryKeys.admin.crefRequests({ status, take: PAGE_SIZE, offset }),
+    (token) => adminApi.listCrefRequests(token, { status, take: PAGE_SIZE, offset })
   );
 
-  const loading = crefQuery.isLoading;
-  const items = crefQuery.data ?? [];
+  const loading = crefQuery.isLoading && offset === 0;
+  const items = accumulatedItems;
+  const total = crefQuery.data?.total ?? items.length;
+  const hasMore = crefQuery.data?.hasMore ?? false;
+
+  useEffect(() => {
+    if (!crefQuery.data) return;
+    setAccumulatedItems((prev) => (offset === 0 ? crefQuery.data.items : [...prev, ...crefQuery.data.items]));
+    setLoadingMore(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crefQuery.data]);
 
   useEffect(() => {
     if (crefQuery.error) {
@@ -268,8 +282,15 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
   useFocusEffect(useCallback(() => {
     setRejectingId(null);
     setJustification("");
+    setOffset(0);
+    setAccumulatedItems([]);
     void crefQuery.refetch();
   }, [crefQuery.refetch]));
+
+  function loadMore() {
+    setLoadingMore(true);
+    setOffset((prev) => prev + PAGE_SIZE);
+  }
 
   async function approve(providerId: string) {
     try {
@@ -280,7 +301,7 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
       showToast("CREF aprovado com sucesso.", "success");
       setRejectingId(null);
       setJustification("");
-      await crefQuery.refetch();
+      setAccumulatedItems((prev) => prev.filter((item) => item.providerId !== providerId));
     } catch (error) {
       handleScreenError({
         error,
@@ -312,7 +333,7 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
       showToast("CREF reprovado e devolutiva enviada.", "success");
       setRejectingId(null);
       setJustification("");
-      await crefQuery.refetch();
+      setAccumulatedItems((prev) => prev.filter((item) => item.providerId !== providerId));
     } catch (error) {
       handleScreenError({
         error,
@@ -351,6 +372,8 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
                 setStatus(option);
                 setRejectingId(null);
                 setJustification("");
+                setOffset(0);
+                setAccumulatedItems([]);
               }}
               style={{
                 borderWidth: 1,
@@ -377,6 +400,12 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
           <MvCard>
             <MvText variant="body3">Nenhum CREF encontrado nessa fila.</MvText>
           </MvCard>
+        ) : null}
+
+        {items.length > 0 ? (
+          <MvText variant="caption" color="secondary">
+            Mostrando {items.length} de {total}
+          </MvText>
         ) : null}
 
         {items.map((item) => {
@@ -475,6 +504,15 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
             </MvCard>
           );
         })}
+
+        {hasMore ? (
+          <MvButton
+            variant="outline"
+            label="Carregar mais"
+            loading={loadingMore}
+            onPress={loadMore}
+          />
+        ) : null}
       </ScrollView>
     </AdminScaffold>
   );
