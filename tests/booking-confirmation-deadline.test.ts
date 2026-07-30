@@ -40,6 +40,7 @@ describe("Prazo de confirmação do agendamento avulso (Rodada 4, Lote 4)", () =
       }
     });
     clientId = client.id;
+    await prisma.clientAnamnesis.create({ data: { clientId, status: "COMPLETED", completedAt: new Date() } });
 
     const providerUser = await prisma.user.create({
       data: {

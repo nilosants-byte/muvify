@@ -45,6 +45,7 @@ describe("Liberdade de ofertas — Frente C (local por oferta + local do pacote)
       }
     });
     clientId = client.id;
+    await prisma.clientAnamnesis.create({ data: { clientId, status: "COMPLETED", completedAt: new Date() } });
 
     await prisma.customerPaymentMethod.create({
       data: {

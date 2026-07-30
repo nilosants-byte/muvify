@@ -152,6 +152,16 @@ export class AdminController {
     return response.json(payload);
   }
 
+  async changeUserRole(request: Request, response: Response) {
+    const payload = await adminService.changeUserRole(
+      request.user!.id,
+      request.params.userId,
+      request.body.role,
+      request.body.reason
+    );
+    return response.json(payload);
+  }
+
   async setLegalHold(request: Request, response: Response) {
     const payload = await adminService.setLegalHold(
       request.user!.id,

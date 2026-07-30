@@ -56,6 +56,7 @@ describe("Nunca cobra sem split resolvido (Rodada 2, Lote 1 do raio-x)", () => {
       }
     });
     clientId = client.id;
+    await prisma.clientAnamnesis.create({ data: { clientId, status: "COMPLETED", completedAt: new Date() } });
 
     const defaultCardId = `card_${uid("c")}`;
     await prisma.customerPaymentMethod.create({

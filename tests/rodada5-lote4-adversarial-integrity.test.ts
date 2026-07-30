@@ -47,6 +47,7 @@ describe("Rodada 5, Lote 4 — integridade de conclusão e reincidência", () =>
       }
     });
     clientId = client.id;
+    await prisma.clientAnamnesis.create({ data: { clientId, status: "COMPLETED", completedAt: new Date() } });
     await prisma.customerPaymentMethod.create({
       data: {
         userId: clientId,

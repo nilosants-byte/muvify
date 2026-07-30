@@ -6,6 +6,7 @@ import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { AdminController } from "../controllers/admin.controller";
 import {
+  adminChangeUserRoleSchema,
   adminChatAuditSessionMessagesSchema,
   adminChatAuditSessionsQuerySchema,
   adminClearLegalHoldSchema,
@@ -124,6 +125,12 @@ adminRoutes.post(
   uploadRateLimiter,
   validate(adminReactivateUserSchema),
   adminController.reactivateUser
+);
+adminRoutes.patch(
+  "/users/:userId/role",
+  uploadRateLimiter,
+  validate(adminChangeUserRoleSchema),
+  adminController.changeUserRole
 );
 adminRoutes.post(
   "/users/:userId/legal-hold",

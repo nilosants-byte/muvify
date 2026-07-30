@@ -74,6 +74,7 @@ describe("Integridade da conclusao de sessao presencial (Lote 2 do raio-x)", () 
       }
     });
     clientId = client.id;
+    await prisma.clientAnamnesis.create({ data: { clientId, status: "COMPLETED", completedAt: new Date() } });
 
     const providerUser = await prisma.user.create({
       data: {

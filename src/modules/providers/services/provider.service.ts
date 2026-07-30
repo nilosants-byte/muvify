@@ -484,7 +484,13 @@ export class ProviderService {
   async upsertOwnCredentials(userId: string, input: UpsertProviderCredentialsInput) {
     const provider = await prisma.providerProfile.findUnique({
       where: { userId },
-      select: { id: true, crefValidationStatus: true, crefReviewedAt: true }
+      select: {
+        id: true,
+        crefValidationStatus: true,
+        crefReviewedAt: true,
+        crefRejectionCount: true,
+        credentialDocuments: true
+      }
     });
 
     if (!provider) {
@@ -492,7 +498,12 @@ export class ProviderService {
     }
 
     if (provider.crefValidationStatus === CrefValidationStatus.REJECTED && provider.crefReviewedAt) {
-      const cooldownDays = 7;
+      // Frente 3 (Cadastro/onboarding), Lote 3: crefRejectionCount era só
+      // armazenado e nunca influenciava nada - cooldown crescente é uma
+      // penalidade automática proporcional ao histórico, sem depender de um
+      // admin notar manualmente o número de rejeições.
+      const cooldownDays =
+        provider.crefRejectionCount <= 1 ? 7 : provider.crefRejectionCount === 2 ? 14 : 30;
       const msSinceRejection = Date.now() - provider.crefReviewedAt.getTime();
       const daysSinceRejection = msSinceRejection / (1000 * 60 * 60 * 24);
       if (daysSinceRejection < cooldownDays) {
@@ -504,43 +515,54 @@ export class ProviderService {
       }
     }
 
-    const sanitizedCredentials = (input.credentials ?? []).map((item) => ({
-      id: item.id ?? randomUUID(),
-      name: item.name.trim(),
-      uri: item.uri.trim(),
-      mimeType: item.mimeType?.trim() || null,
-      createdAt: item.createdAt ?? new Date().toISOString()
-    }));
+    // Frente 3 (Cadastro/onboarding), Lote 3: se o client não reenviar
+    // `credentials` (ex: uma resubmissão que só corrige o número do CREF),
+    // preserva os documentos já enviados em vez de apagá-los - antes,
+    // omitir o campo derrubava um perfil já aprovado de volta pra PENDING,
+    // apagando documentos válidos sem aviso.
+    const sanitizedCredentials = input.credentials
+      ? input.credentials.map((item) => ({
+          id: item.id ?? randomUUID(),
+          name: item.name.trim(),
+          uri: item.uri.trim(),
+          mimeType: item.mimeType?.trim() || null,
+          createdAt: item.createdAt ?? new Date().toISOString()
+        }))
+      : null;
 
     // Frente 2 (Segurança do código), Lote 4: a chave de storage privado não
     // pode ser aceita só porque o client declarou no body — precisa ter sido
     // realmente enviada por esse mesmo usuário via /uploads/media.
-    const privateKeys = sanitizedCredentials
-      .map((item) => item.uri)
-      .filter((uri) => uri.startsWith("cref-documents/"));
-    if (privateKeys.length > 0) {
-      const owned = await prisma.crefDocumentUpload.findMany({
-        where: { storageKey: { in: privateKeys }, uploadedByUser: userId },
-        select: { storageKey: true }
-      });
-      const ownedKeys = new Set(owned.map((row) => row.storageKey));
-      const unowned = privateKeys.filter((key) => !ownedKeys.has(key));
-      if (unowned.length > 0) {
-        throw new AppError(
-          "Um ou mais documentos enviados nao pertencem a este usuario.",
-          StatusCodes.FORBIDDEN
-        );
+    if (sanitizedCredentials) {
+      const privateKeys = sanitizedCredentials
+        .map((item) => item.uri)
+        .filter((uri) => uri.startsWith("cref-documents/"));
+      if (privateKeys.length > 0) {
+        const owned = await prisma.crefDocumentUpload.findMany({
+          where: { storageKey: { in: privateKeys }, uploadedByUser: userId },
+          select: { storageKey: true }
+        });
+        const ownedKeys = new Set(owned.map((row) => row.storageKey));
+        const unowned = privateKeys.filter((key) => !ownedKeys.has(key));
+        if (unowned.length > 0) {
+          throw new AppError(
+            "Um ou mais documentos enviados nao pertencem a este usuario.",
+            StatusCodes.FORBIDDEN
+          );
+        }
       }
     }
 
-    const hasBothSides = this.hasFrontAndBackCredentialDocuments(sanitizedCredentials);
+    const hasBothSides = sanitizedCredentials
+      ? this.hasFrontAndBackCredentialDocuments(sanitizedCredentials)
+      : this.hasFrontAndBackCredentialDocuments(provider.credentialDocuments);
 
     const updated = await prisma.providerProfile.update({
       where: { id: provider.id },
       data: {
         crefNumber: input.crefNumber.trim(),
         crefDocumentUrl: input.crefDocumentUrl?.trim() ?? null,
-        credentialDocuments: sanitizedCredentials,
+        ...(sanitizedCredentials ? { credentialDocuments: sanitizedCredentials } : {}),
         crefValidatedAt: null,
         crefValidationStatus: hasBothSides
           ? CREF_STATUS_IN_REVIEW

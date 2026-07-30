@@ -7,6 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { MvVideoPlayer } from "../../components/mv/MvVideoPlayer";
 import { ProfessionalTabParamList } from "../../navigation/route-types";
 import {
+  ApiError,
   PROFESSIONAL_SPECIALTIES,
   ProviderFixedLocation,
   providersApi,
@@ -265,7 +266,17 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       await syncCurrentUser();
       void profileQuery.refetch();
     } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar perfil.", navigation });
+      // Se a criação teve sucesso no servidor mas a resposta não chegou a
+      // tempo (timeout/queda de rede), o app não sabia disso e continuava
+      // tentando criar de novo, recebendo 409 repetidamente. Recarrega o
+      // perfil real e já entra em modo edição, em vez de deixar o usuário
+      // preso reenviando o mesmo formulário.
+      if (!hasExistingProfile && error instanceof ApiError && error.status === 409) {
+        await profileQuery.refetch();
+        showToast("Você já tem um perfil profissional - editando o existente.", "info");
+      } else {
+        handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar perfil.", navigation });
+      }
     } finally {
       setSavingProfile(false);
     }

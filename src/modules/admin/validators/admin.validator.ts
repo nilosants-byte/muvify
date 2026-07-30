@@ -151,6 +151,14 @@ export const adminReactivateUserSchema = z.object({
   params: z.object({ userId: z.string().uuid() })
 });
 
+export const adminChangeUserRoleSchema = z.object({
+  params: z.object({ userId: z.string().uuid() }),
+  body: z.object({
+    role: z.enum(["CLIENT", "PROVIDER"]),
+    reason: z.string().trim().min(5).max(500)
+  })
+});
+
 export const adminSetLegalHoldSchema = z.object({
   params: z.object({ userId: z.string().uuid() }),
   body: z.object({

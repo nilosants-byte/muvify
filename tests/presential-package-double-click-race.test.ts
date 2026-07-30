@@ -48,6 +48,7 @@ describe("Duplo clique em compra de pacote/combo não gera cobrança duplicada (
       }
     });
     clientId = client.id;
+    await prisma.clientAnamnesis.create({ data: { clientId, status: "COMPLETED", completedAt: new Date() } });
 
     await prisma.customerPaymentMethod.create({
       data: {

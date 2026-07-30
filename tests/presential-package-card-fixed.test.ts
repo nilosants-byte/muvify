@@ -68,6 +68,7 @@ describe("Pacote presencial de horário fixo pago em cartão — sessão por ses
       }
     });
     clientId = client.id;
+    await prisma.clientAnamnesis.create({ data: { clientId, status: "COMPLETED", completedAt: new Date() } });
 
     await prisma.customerPaymentMethod.create({
       data: {

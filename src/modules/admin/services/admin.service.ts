@@ -1457,6 +1457,63 @@ export class AdminService {
     return updated;
   }
 
+  // Frente 3 (Cadastro/onboarding), Lote 3: troca de tipo de usuário
+  // (CLIENT/PROVIDER) é proposital só via chamado de suporte, não
+  // self-service - mas até agora não existia nenhuma ação no admin service
+  // que efetivamente mudasse o role no banco, então o processo só se
+  // resolvia com edição manual direta, sem rastro de auditoria. Isso dá ao
+  // suporte uma ferramenta de verdade, com writeAdminAuditLog registrando
+  // quem mudou, quando e o motivo.
+  async changeUserRole(adminId: string, targetUserId: string, newRole: "CLIENT" | "PROVIDER", reason: string) {
+    const admin = await this.ensureAdminAccess(adminId);
+
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      throw new AppError("Informe o motivo da troca de tipo de usuário.", StatusCodes.BAD_REQUEST);
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, name: true, email: true, role: true }
+    });
+    if (!target) {
+      throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    if (target.role === newRole) {
+      throw new AppError("O usuário já possui este tipo de conta.", StatusCodes.BAD_REQUEST);
+    }
+
+    if (target.role === UserRole.PROVIDER) {
+      const providerProfile = await prisma.providerProfile.findUnique({
+        where: { userId: target.id },
+        select: { id: true }
+      });
+      if (providerProfile) {
+        throw new AppError(
+          "Este usuário já tem um perfil profissional criado (com CREF, histórico de agendamentos, etc.). Trocar o tipo de conta nesse caso exige um processo separado de encerramento de conta profissional, não essa ação.",
+          StatusCodes.CONFLICT
+        );
+      }
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: target.id },
+      data: { role: newRole },
+      select: { id: true, name: true, email: true, role: true }
+    });
+
+    void writeAdminAuditLog({
+      adminId: admin.id,
+      action: "USER_ROLE_CHANGED",
+      targetType: "USER",
+      targetId: target.id,
+      metadata: { fromRole: target.role, toRole: newRole, reason: trimmedReason }
+    });
+
+    return updated;
+  }
+
   // ─── Legal hold por usuário (Rodada 4, Lote 9) ───────────────────────────
   // Antes só existia a env var DATA_RETENTION_LEGAL_HOLD_USER_IDS — mudar
   // exigia editar variável de ambiente e redeployar. Persistido no próprio

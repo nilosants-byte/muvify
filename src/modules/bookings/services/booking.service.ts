@@ -165,6 +165,23 @@ export class BookingService {
     await debtService.assertNoOutstandingDebt(clientId);
     await debtService.assertProviderNoOutstandingDebt(providerId);
 
+    // Frente 3 (Cadastro/onboarding), Lote 3: a consultoria online já
+    // exigia anamnese completa no servidor antes de contratar; agendamento
+    // presencial só bloqueava isso na UI do mobile - quem chamasse a API
+    // direto conseguia agendar sem a ficha de saúde preenchida. Mesma regra,
+    // mesma flag.
+    if (env.REQUIRE_ANAMNESIS_FOR_CONTRACTS) {
+      const anamnesis = await prisma.clientAnamnesis.findUnique({
+        where: { clientId }
+      });
+      if (!anamnesis || anamnesis.status !== "COMPLETED") {
+        throw new AppError(
+          "Preencha a anamnese antes de agendar com um profissional.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+    }
+
     // Pre-compute timezone-dependent values outside the transaction to
     // minimize the time spent holding the advisory lock.
     const scheduleWeekday = toWeekdayInTimezone(scheduleDate, env.APP_TIMEZONE);

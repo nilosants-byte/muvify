@@ -61,6 +61,7 @@ describe("Consistência de combo e visibilidade financeira de renovação (Rodad
       }
     });
     clientId = client.id;
+    await prisma.clientAnamnesis.create({ data: { clientId, status: "COMPLETED", completedAt: new Date() } });
 
     await prisma.customerPaymentMethod.create({
       data: {

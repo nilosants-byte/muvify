@@ -41,6 +41,7 @@ describe("Consentimento de início imediato em agendamento presencial (Rodada 3,
       }
     });
     clientId = client.id;
+    await prisma.clientAnamnesis.create({ data: { clientId, status: "COMPLETED", completedAt: new Date() } });
 
     const providerUser = await prisma.user.create({
       data: {

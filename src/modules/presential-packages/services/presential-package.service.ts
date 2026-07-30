@@ -235,8 +235,24 @@ async function resolveSessionLocationForPackage(
 
 export class PresentialPackageService {
 
+  // Frente 3 (Cadastro/onboarding), Lote 3: consultoria online e booking
+  // presencial avulso já exigiam anamnese completa no servidor; pacote
+  // presencial (e combo) só bloqueavam isso na UI do mobile - quem chamasse
+  // a API direto conseguia comprar sem a ficha de saúde preenchida.
+  private async assertAnamnesisCompleted(clientId: string) {
+    if (!env.REQUIRE_ANAMNESIS_FOR_CONTRACTS) return;
+    const anamnesis = await prisma.clientAnamnesis.findUnique({ where: { clientId } });
+    if (!anamnesis || anamnesis.status !== "COMPLETED") {
+      throw new AppError(
+        "Preencha a anamnese antes de comprar um pacote presencial.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+  }
+
   async purchasePackage(clientId: string, input: PurchasePresentialPackageInput) {
     await debtService.assertNoOutstandingDebt(clientId);
+    await this.assertAnamnesisCompleted(clientId);
 
     const offer = await prisma.providerServiceOffer.findFirst({
       where: { id: input.offerId, isActive: true },
@@ -1310,6 +1326,7 @@ export class PresentialPackageService {
     // conseguia comprar um combo normalmente, furando a trava anti-calote
     // que já existe em purchasePackage, booking avulso e consultoria.
     await debtService.assertNoOutstandingDebt(clientId);
+    await this.assertAnamnesisCompleted(clientId);
 
     const offer = await prisma.providerServiceOffer.findFirst({
       where: { id: input.offerId, isActive: true },

@@ -46,6 +46,7 @@ describe("Rede de seguranca de estorno — cancelPaymentForBooking (Lote 1 do ra
       }
     });
     clientId = client.id;
+    await prisma.clientAnamnesis.create({ data: { clientId, status: "COMPLETED", completedAt: new Date() } });
 
     const providerUser = await prisma.user.create({
       data: {

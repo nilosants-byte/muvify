@@ -46,6 +46,7 @@ describe("Pacote de sessões avulsas (créditos flexíveis redesenhado) — Fren
       }
     });
     clientId = client.id;
+    await prisma.clientAnamnesis.create({ data: { clientId, status: "COMPLETED", completedAt: new Date() } });
 
     await prisma.customerPaymentMethod.create({
       data: {
