@@ -2357,7 +2357,40 @@ export class ProviderService {
       // efetivamente pagou nao aparece em lugar nenhum desta tela.
       prisma.presentialPackage.findMany({
         where: { providerId: provider.id, clientId },
-        include: {
+        select: {
+          id: true,
+          providerId: true,
+          clientId: true,
+          offerId: true,
+          categoryId: true,
+          consultancyContractId: true,
+          mode: true,
+          status: true,
+          paymentMethod: true,
+          cycleAmountCents: true,
+          billingCycle: true,
+          sessionsPerCycle: true,
+          weeklySchedule: true,
+          hasFixedTerm: true,
+          totalCycles: true,
+          validFrom: true,
+          validUntil: true,
+          expiryReminderSentAt: true,
+          cancelledAt: true,
+          sessionLocation: true,
+          nextCycleIndex: true,
+          nextBillingAt: true,
+          consecutiveFailedCycles: true,
+          paymentInstallments: true,
+          creditsRemainingThisCycle: true,
+          lastBillingFailureReason: true,
+          billingReminderSentAt: true,
+          createdAt: true,
+          updatedAt: true,
+          // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 1:
+          // billingCardId/pendingChargePix* são dado de cobrança do
+          // CLIENTE (cartão salvo, código Pix pendente) — não devem
+          // aparecer pro profissional que está só vendo o aluno.
           offer: { select: { title: true } },
           cycles: { orderBy: { cycleIndex: "desc" }, take: 24 }
         },

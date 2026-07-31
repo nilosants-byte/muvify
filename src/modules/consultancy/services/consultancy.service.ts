@@ -25,6 +25,7 @@ import { consultancyValidUntil } from "../../../shared/utils/consultancy-validit
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
+import { PUBLIC_PROVIDER_SELECT } from "../../providers/services/provider.service";
 
 function startOfTodayInSaoPaulo(): Date {
   const dateKey = new Intl.DateTimeFormat("en-CA", {
@@ -39,6 +40,34 @@ function startOfTodayInSaoPaulo(): Date {
 const BASE_PRICE_UPDATE_COOLDOWN_DAYS = 30;
 const BASE_PRICE_UPDATE_COOLDOWN_MS =
   BASE_PRICE_UPDATE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+
+// Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 1: telas do
+// cliente reusavam `include` no contrato/provider, vazando
+// mpAccessToken/mpRefreshToken do profissional e o split financeiro
+// interno (providerAmountCents/platformAmountCents/mpPaymentId/mpRefundId)
+// do próprio contrato — mesma classe de bug já corrigida em favorites na
+// Frente 5 Lote 1, mas que passou batida aqui.
+const CLIENT_SAFE_CONTRACT_SELECT = {
+  id: true,
+  requestId: true,
+  providerId: true,
+  clientId: true,
+  offerId: true,
+  status: true,
+  paymentMethod: true,
+  paymentInstallments: true,
+  paymentStatus: true,
+  paymentAmountCents: true,
+  paymentCapturedAt: true,
+  paymentCanceledAt: true,
+  deliveryDeadlineAt: true,
+  immediateExecutionAcknowledgedAt: true,
+  deliveredAt: true,
+  refundedAt: true,
+  refundReason: true,
+  createdAt: true,
+  updatedAt: true
+} as const;
 
 const onlineOfferKinds: ServiceOfferKind[] = [
   ServiceOfferKind.ONLINE_CONSULTANCY,
@@ -1637,7 +1666,8 @@ export class ConsultancyService {
       where: { clientId },
       include: {
         provider: {
-          include: {
+          select: {
+            ...PUBLIC_PROVIDER_SELECT,
             user: {
               select: {
                 id: true,
@@ -1648,7 +1678,8 @@ export class ConsultancyService {
         },
         quotedOffer: true,
         contract: {
-          include: {
+          select: {
+            ...CLIENT_SAFE_CONTRACT_SELECT,
             offer: true
           }
         }
@@ -1685,7 +1716,8 @@ export class ConsultancyService {
       },
       include: {
         provider: {
-          include: {
+          select: {
+            ...PUBLIC_PROVIDER_SELECT,
             user: {
               select: {
                 id: true,
@@ -1696,7 +1728,8 @@ export class ConsultancyService {
         },
         quotedOffer: true,
         contract: {
-          include: {
+          select: {
+            ...CLIENT_SAFE_CONTRACT_SELECT,
             offer: true
           }
         }
@@ -2586,9 +2619,11 @@ export class ConsultancyService {
         // mas sem permitir novas ações - ver o filtro por contrato ativo em
         // completeTrainingPlan/contestDelivery.
       },
-      include: {
+      select: {
+        ...CLIENT_SAFE_CONTRACT_SELECT,
         provider: {
-          include: {
+          select: {
+            ...PUBLIC_PROVIDER_SELECT,
             user: {
               select: {
                 id: true,

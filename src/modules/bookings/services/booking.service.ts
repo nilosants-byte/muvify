@@ -2151,7 +2151,12 @@ export class BookingService {
       await paymentService.cancelPaymentForBooking(booking.id).catch((error) =>
         console.error(`Falha ao estornar agendamento ${booking.id} na remoção do profissional ${providerId}:`, error)
       );
-      void notificationService
+      // Frente 6 (Ofertas do profissional), achado incidental de teste:
+      // era fire-and-forget (`void`, sem await) — corrida real entre o
+      // retorno desta função e a escrita da notificação, que passava a
+      // maior parte do tempo mas não sempre. Mesmo padrão await+catch já
+      // usado acima pra cancelPaymentForBooking.
+      await notificationService
         .sendToUsers([booking.clientId], {
           preferenceType: "BOOKINGS",
           title: "Agendamento cancelado",

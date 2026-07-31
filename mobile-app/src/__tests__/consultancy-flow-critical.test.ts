@@ -57,8 +57,6 @@ function buildContract(overrides?: Partial<ConsultancyContract>): ConsultancyCon
     status: "PENDING_PAYMENT",
     paymentStatus: "PENDING",
     paymentAmountCents: 30000,
-    providerAmountCents: 27000,
-    platformAmountCents: 3000,
     deliveryDeadlineAt: "2026-04-03T10:00:00Z",
     ...overrides,
   };
@@ -199,8 +197,6 @@ describe("Consultoria — fluxo do cliente", () => {
           status: "ACTIVE",
           paymentStatus: "CAPTURED",
           paymentAmountCents: 30000,
-          providerAmountCents: 27000,
-          platformAmountCents: 3000,
           deliveryDeadlineAt: "2026-05-01T00:00:00Z",
           trainingPlans: [
             {

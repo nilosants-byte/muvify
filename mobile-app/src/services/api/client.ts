@@ -356,8 +356,6 @@ export type ConsultancyContract = {
   paymentMethod?: ConsultancyPaymentMethod | null;
   paymentStatus: "PENDING" | "AUTHORIZED" | "CAPTURED" | "CANCELED" | "REFUNDED" | "FAILED";
   paymentAmountCents: number;
-  providerAmountCents: number;
-  platformAmountCents: number;
   deliveryDeadlineAt: string;
   deliveredAt?: string | null;
   refundedAt?: string | null;

@@ -36,6 +36,32 @@ const mpPaymentClient = new Payment(mp);
 const mpCardTokenClient = new CardToken(mp);
 const mpRefundClient = new PaymentRefund(mp);
 
+// Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 1: cartão
+// salvo e código Pix pendente do CLIENTE vazavam pro profissional em
+// rotas compartilhadas (cancelPackage/getPackageById) ou usadas só pelo
+// profissional (listProviderPackages) — nenhuma delas excluía esses
+// campos do resultado.
+const CLIENT_ONLY_PACKAGE_BILLING_FIELDS = [
+  "billingCardId",
+  "pendingChargeMpPaymentId",
+  "pendingChargePixQrCodeUrl",
+  "pendingChargePixCopyPasteCode",
+  "pendingChargePixExpiresAt"
+] as const;
+
+function hideClientBillingFieldsFromProvider<T extends Record<string, unknown>>(
+  pkg: T,
+  requesterId: string,
+  clientId: string
+): T {
+  if (requesterId === clientId) return pkg;
+  const sanitized = { ...pkg };
+  for (const field of CLIENT_ONLY_PACKAGE_BILLING_FIELDS) {
+    delete (sanitized as Record<string, unknown>)[field];
+  }
+  return sanitized;
+}
+
 // Depois de N ciclos seguidos sem conseguir cobrar (cartao recusado, ou Pix
 // de renovacao expirado sem pagamento), o pacote cancela sozinho - ninguem
 // fica com uma assinatura fantasma pendurada pra sempre.
@@ -1260,7 +1286,8 @@ export class PresentialPackageService {
       });
     }
 
-    return prisma.presentialPackage.findUniqueOrThrow({ where: { id: pkg.id } });
+    const finalPkg = await prisma.presentialPackage.findUniqueOrThrow({ where: { id: pkg.id } });
+    return hideClientBillingFieldsFromProvider(finalPkg, userId, pkg.clientId);
   }
 
   async listMyPackages(clientId: string) {
@@ -1279,7 +1306,7 @@ export class PresentialPackageService {
     if (!provider) {
       throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
     }
-    return prisma.presentialPackage.findMany({
+    const packages = await prisma.presentialPackage.findMany({
       where: { providerId: provider.id },
       include: {
         offer: true,
@@ -1287,6 +1314,7 @@ export class PresentialPackageService {
       },
       orderBy: { createdAt: "desc" }
     });
+    return packages.map((pkg) => hideClientBillingFieldsFromProvider(pkg, userId, pkg.clientId));
   }
 
   async getPackageById(userId: string, packageId: string) {
@@ -1305,7 +1333,7 @@ export class PresentialPackageService {
     if (pkg.clientId !== userId && pkg.provider.user.id !== userId) {
       throw new AppError("Você não tem permissão para ver este pacote.", StatusCodes.FORBIDDEN);
     }
-    return pkg;
+    return hideClientBillingFieldsFromProvider(pkg, userId, pkg.clientId);
   }
 
   // Combo = ConsultancyContract (pagamento unico, mesmo mecanismo de
