@@ -905,7 +905,8 @@ export class ConsultancyService {
         user: {
           select: {
             id: true,
-            name: true
+            name: true,
+            suspendedAt: true
           }
         },
         categoryLinks: {
@@ -937,7 +938,11 @@ export class ConsultancyService {
       }
     });
 
-    if (!provider || provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
+    // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 5: só
+    // checava CREF — profissional suspenso continuava aparecendo aqui
+    // como "contratável" (diferente de listPromotions, que já filtra os
+    // dois). Suspensão só barrava no último passo (decideRequest).
+    if (!provider || provider.crefValidationStatus !== CrefValidationStatus.APPROVED || provider.user.suspendedAt) {
       throw new AppError("Profissional não encontrado.", StatusCodes.NOT_FOUND);
     }
 
@@ -2105,6 +2110,34 @@ export class ConsultancyService {
         // Re-lê o request para garantir consistência (request fora da tx pode estar stale)
         const consistentRequest = await tx.consultancyRequest.findUniqueOrThrow({ where: { id: request.id } });
         return { updatedRequest: consistentRequest, contract: freshRequest.contract };
+      }
+
+      // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 5: entre
+      // o profissional cotar (respondToRequest) e o cliente aceitar pode
+      // passar horas/dias — sem revalidar aqui, a oferta podia ser
+      // desativada ou o CREF revogado nesse intervalo e o cliente ainda
+      // conseguia pagar normalmente por uma oferta/profissional já
+      // inválido no momento do aceite.
+      const freshOffer = await tx.providerServiceOffer.findUnique({ where: { id: quotedOffer.id } });
+      if (!freshOffer || !freshOffer.isActive) {
+        throw new AppError(
+          "Esta oferta não está mais disponível — peça ao profissional uma nova cotação.",
+          StatusCodes.CONFLICT
+        );
+      }
+      const freshProvider = await tx.providerProfile.findUnique({
+        where: { id: request.providerId },
+        select: { crefValidationStatus: true, user: { select: { suspendedAt: true } } }
+      });
+      if (
+        !freshProvider ||
+        freshProvider.crefValidationStatus !== CrefValidationStatus.APPROVED ||
+        freshProvider.user.suspendedAt
+      ) {
+        throw new AppError(
+          "Este profissional não está mais disponível para novas contratações.",
+          StatusCodes.CONFLICT
+        );
       }
 
       const updatedRequestTx = await tx.consultancyRequest.update({
