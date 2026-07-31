@@ -7,7 +7,7 @@ import {
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
-import { FinancialDashboard, FinancialGoal, financialApi } from "../../services/api/client";
+import { FinancialDashboard, FinancialGoal, financialApi, providersApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvCard, MvInput, MvModalSheet, MvText } from "../../components/mv";
@@ -87,6 +87,22 @@ export function FinancialGoalsScreen({ navigation }: Props) {
   const goal = goalsQuery.data?.goal ?? null;
   const dashboard = goalsQuery.data?.dashboard ?? null;
   const loading = goalsQuery.isLoading;
+
+  // Épico de Frentes, Frente 6, Lote 8: "alunos ativos" usa a mesma fonte de
+  // verdade da Home/Gestão de Alunos (dashboardStudents, considera
+  // presencial + consultoria de vendas reais pelo app), não mais
+  // FinancialStudent (lista manual do profissional, sem relação com ofertas
+  // reais) - profissional que só vende pelo app via dashboard.activeStudents
+  // sempre via 0.
+  const studentsQuery = useAuthQuery(
+    queryKeys.providers.dashboardStudents(),
+    (token) => providersApi.dashboardStudents(token),
+    { retry: false },
+  );
+  const activeStudentsCount = useMemo(
+    () => studentsQuery.data?.students.filter((s) => s.active).length ?? 0,
+    [studentsQuery.data]
+  );
 
   const effectiveRevenue = useMemo(() => {
     const d = goalsQuery.data;
@@ -172,7 +188,7 @@ export function FinancialGoalsScreen({ navigation }: Props) {
               <GoalBar label="Faturamento" current={effectiveRevenue} target={goal.targetRevenueCents} formatFn={fmtCents} color={green} isDark={isDark} />
             ) : null}
             {goal?.targetStudents && d ? (
-              <GoalBar label="Alunos ativos" current={d.activeStudents} target={goal.targetStudents} formatFn={v => `${v} aluno${v !== 1 ? "s" : ""}`} color="#42A5F5" isDark={isDark} />
+              <GoalBar label="Alunos ativos" current={activeStudentsCount} target={goal.targetStudents} formatFn={v => `${v} aluno${v !== 1 ? "s" : ""}`} color="#42A5F5" isDark={isDark} />
             ) : null}
             {goal?.targetWeeklyClasses && d ? (
               <GoalBar label="Aulas por semana" current={d.weeklyClasses} target={goal.targetWeeklyClasses} formatFn={v => `${v} aula${v !== 1 ? "s" : ""}`} color="#FF9800" isDark={isDark} />

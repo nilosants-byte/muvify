@@ -830,6 +830,7 @@ export type ProviderStudentServiceEntry = {
   active: boolean;
   nextSessionAt: string | null;
   validUntil: string | null;
+  paymentPastDue: boolean;
 };
 
 export type ProviderStudent = {
@@ -844,6 +845,7 @@ export type ProviderStudent = {
   fichaRenewalPending: boolean;
   fichaValidUntil?: string | null;
   active: boolean;
+  paymentPastDue: boolean;
   totalValueCents: number;
   services: ProviderStudentServiceEntry[];
   totalBookings: number;

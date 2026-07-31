@@ -507,12 +507,22 @@ function StudentRow({
               paddingHorizontal: 10,
               paddingVertical: 4,
               borderRadius: 20,
-              backgroundColor: student.active ? "rgba(34,197,94,0.12)" : "rgba(107,114,128,0.10)",
+              backgroundColor: student.paymentPastDue
+                ? "rgba(239,68,68,0.14)"
+                : student.active ? "rgba(34,197,94,0.12)" : "rgba(107,114,128,0.10)",
               borderWidth: 1,
-              borderColor: student.active ? "rgba(34,197,94,0.25)" : "rgba(107,114,128,0.20)",
+              borderColor: student.paymentPastDue
+                ? "rgba(239,68,68,0.30)"
+                : student.active ? "rgba(34,197,94,0.25)" : "rgba(107,114,128,0.20)",
             }}>
-              <MvText variant="body4" style={{ color: student.active ? theme.textGreen : theme.text3, fontSize: 11 }}>
-                {student.active ? "Ativo" : "Inativo"}
+              <MvText
+                variant="body4"
+                style={{
+                  color: student.paymentPastDue ? "#EF4444" : student.active ? theme.textGreen : theme.text3,
+                  fontSize: 11,
+                }}
+              >
+                {student.paymentPastDue ? "Cobrança pendente" : student.active ? "Ativo" : "Inativo"}
               </MvText>
             </View>
           </View>

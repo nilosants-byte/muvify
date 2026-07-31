@@ -922,7 +922,7 @@ export class ProviderService {
   }
 
   private async assertStudentManagedByProvider(providerId: string, clientId: string) {
-    const [booking, contract] = await Promise.all([
+    const [booking, contract, presentialPackage] = await Promise.all([
       prisma.booking.findFirst({
         where: {
           providerId,
@@ -938,10 +938,24 @@ export class ProviderService {
           status: { in: ["PENDING_PAYMENT", "ACTIVE", "DELIVERED"] }
         },
         select: { id: true }
+      }),
+      // Épico de Frentes, Frente 6, Lote 8: cliente com pacote de créditos
+      // avulsos (ou pacote recorrente recém-comprado) ainda sem nenhum
+      // Booking gerado aparece na lista de alunos (listStudentsByService
+      // considera PresentialPackage direto), mas caía aqui num 404 "aluno
+      // não vinculado" ao abrir o detalhe, por essa checagem nunca olhar
+      // PresentialPackage.
+      prisma.presentialPackage.findFirst({
+        where: {
+          providerId,
+          clientId,
+          status: { in: ["PENDING_PAYMENT", "ACTIVE", "PAST_DUE"] }
+        },
+        select: { id: true }
       })
     ]);
 
-    if (!booking && !contract) {
+    if (!booking && !contract && !presentialPackage) {
       throw new AppError(
         "Aluno não vinculado aos serviços deste profissional.",
         StatusCodes.NOT_FOUND
@@ -2000,6 +2014,10 @@ export class ProviderService {
       active: boolean;
       nextSessionAt: Date | null;
       validUntil: Date | null;
+      // Épico de Frentes, Frente 6, Lote 8: distingue pacote presencial com
+      // cobrança de ciclo falhando (PAST_DUE) de aluno que simplesmente
+      // parou de comprar - os dois hoje caiam no mesmo badge "Inativo".
+      paymentPastDue: boolean;
     };
 
     type StudentAggregate = {
@@ -2092,7 +2110,8 @@ export class ProviderService {
         valueCents: latest.priceCents,
         active: recentMs < 60 * 24 * 60 * 60 * 1000,
         nextSessionAt: presentialNextSession.get(clientId) ?? null,
-        validUntil: null
+        validUntil: null,
+        paymentPastDue: false
       });
     }
 
@@ -2107,13 +2126,23 @@ export class ProviderService {
       seenPackageClient.add(pkg.clientId);
 
       const student = getStudent(pkg.client, pkg.createdAt);
-      student.services.set("PRESENTIAL", {
-        serviceKind: "PRESENTIAL",
-        serviceLabel: serviceKindLabel("PRESENTIAL"),
+      // Épico de Frentes, Frente 6, Lote 8: pacote presencial que é a
+      // metade presencial de um combo (consultancyContractId preenchido)
+      // não vira uma entrada "PRESENTIAL" própria - o contrato de
+      // consultoria do mesmo combo (loop de contracts, abaixo) já conta
+      // esse aluno como COMBO. Duplicar aqui inflava o filtro "Presencial"
+      // com alunos que na verdade compraram um combo.
+      const serviceKey: ServiceOfferKind | "PRESENTIAL" = pkg.consultancyContractId
+        ? ServiceOfferKind.COMBO
+        : "PRESENTIAL";
+      student.services.set(serviceKey, {
+        serviceKind: serviceKey,
+        serviceLabel: serviceKindLabel(serviceKey),
         valueCents: pkg.cycleAmountCents,
         active: pkg.status === PresentialPackageStatus.ACTIVE,
         nextSessionAt: presentialNextSession.get(pkg.clientId) ?? null,
-        validUntil: pkg.validUntil
+        validUntil: pkg.validUntil,
+        paymentPastDue: pkg.status === PresentialPackageStatus.PAST_DUE
       });
     }
 
@@ -2145,7 +2174,8 @@ export class ProviderService {
           valueCents: isVigente ? price : 0,
           active: isVigente,
           nextSessionAt: null,
-          validUntil
+          validUntil,
+          paymentPastDue: false
         });
       } else {
         if (isVigente) {
@@ -2203,6 +2233,7 @@ export class ProviderService {
           fichaRenewalPending: student.fichaRenewalPending,
           fichaValidUntil: student.fichaValidUntil,
           active: services.some((service) => service.active),
+          paymentPastDue: services.some((service) => service.paymentPastDue),
           totalValueCents,
           services,
           totalBookings: student.totalBookings,
