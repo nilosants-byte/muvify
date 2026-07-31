@@ -157,7 +157,12 @@ export const createConsultancyRequestSchema = z.object({
     providerId: z.string().uuid(),
     trainingNeedText: z.string().trim().max(300).optional(),
     limitationText: z.string().trim().max(300).optional(),
-    extraInfoText: z.string().trim().max(300).optional()
+    extraInfoText: z.string().trim().max(300).optional(),
+    // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 6: campo
+    // enviado pelo mobile mas nunca declarado aqui — Zod descartava
+    // silenciosamente, então a oferta escolhida pelo cliente nunca
+    // chegava a ser usada.
+    quotedOfferId: z.string().uuid().optional()
   })
 });
 

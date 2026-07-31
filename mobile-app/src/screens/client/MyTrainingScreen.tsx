@@ -27,6 +27,7 @@ import {
   ConsultancyPaymentMethod,
   ConsultancyRequest,
   MyTrainingResponse,
+  paymentsApi,
   TrainingPlan,
   TrainingPlanExercise,
   uploadsApi,
@@ -594,17 +595,23 @@ export function MyTrainingScreen({ navigation }: Props) {
   const trainingQuery = useAuthQuery(
     queryKeys.consultancy.myTraining(),
     async (token) => {
-      const [trainingResult, requestsResult] = await Promise.all([
+      const [trainingResult, requestsResult, customerStatus] = await Promise.all([
         consultancyApi.myTraining(token),
         consultancyApi.myRequests(token),
+        paymentsApi.customerStatus(token),
       ]);
-      return { training: trainingResult, requests: requestsResult };
+      return { training: trainingResult, requests: requestsResult, clientHasDebt: customerStatus.hasOutstandingDebt };
     }
   );
 
   const loading = trainingQuery.isLoading;
   const data: MyTrainingResponse | null = trainingQuery.data?.training ?? null;
   const requests: ConsultancyRequest[] = trainingQuery.data?.requests ?? [];
+  // Frente 6 (Ofertas do profissional), Lote 6: aceitar proposta de
+  // consultoria só descobria dívida pendente depois do tap em "Aceitar" —
+  // mesmo gap de BuyPresentialPackageScreen, com custo de UX menor aqui
+  // (sem formulário longo antes do botão).
+  const clientHasDebt = trainingQuery.data?.clientHasDebt ?? false;
 
   // Frente 4 (Criação/entrega/evolução do treino), Lote 5: única tela do
   // cliente sem refetch ao voltar pro foco — ficha nova entregue pelo
@@ -917,6 +924,14 @@ export function MyTrainingScreen({ navigation }: Props) {
                         Peço o início imediato do atendimento e estou ciente de que, após a entrega da primeira ficha de treino, perco o direito de arrependimento de 7 dias previsto no CDC.
                       </Text>
                     </TouchableOpacity>
+                    {clientHasDebt ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Ionicons name="alert-circle-outline" size={14} color={theme.danger} />
+                        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.danger, flex: 1 }}>
+                          Você tem uma pendência financeira em aberto. Regularize antes de aceitar uma nova proposta.
+                        </Text>
+                      </View>
+                    ) : null}
                     <View style={{ flexDirection: "row", gap: 10 }}>
                       <TouchableOpacity onPress={() => void decideRequest(req.id, "REFUSE")} disabled={decidingRequestId === req.id} style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
                         <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Recusar</Text>
@@ -929,10 +944,12 @@ export function MyTrainingScreen({ navigation }: Props) {
                             paymentByRequestId[req.id] ?? (req.quotedOffer?.acceptsCreditCard ?? true ? "CREDIT_CARD" : "PIX")
                           )
                         }
-                        disabled={decidingRequestId === req.id || !consentByRequestId[req.id]}
-                        style={{ flex: 1.4, height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4, opacity: consentByRequestId[req.id] ? 1 : 0.5 }}
+                        disabled={decidingRequestId === req.id || !consentByRequestId[req.id] || clientHasDebt}
+                        style={{ flex: 1.4, height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4, opacity: consentByRequestId[req.id] && !clientHasDebt ? 1 : 0.5 }}
                       >
-                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Aceitar</Text>
+                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>
+                          {clientHasDebt ? "Pendência financeira" : "Aceitar"}
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   </View>

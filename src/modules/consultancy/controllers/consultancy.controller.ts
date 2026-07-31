@@ -144,7 +144,8 @@ export class ConsultancyController {
       providerId: request.body.providerId,
       trainingNeedText: request.body.trainingNeedText,
       limitationText: request.body.limitationText,
-      extraInfoText: request.body.extraInfoText
+      extraInfoText: request.body.extraInfoText,
+      quotedOfferId: request.body.quotedOfferId
     });
 
     return response.status(StatusCodes.CREATED).json(created);

@@ -141,13 +141,24 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
       const resolvedCategories = (providerDetail.categoryLinks ?? [])
         .map((link) => link.category)
         .filter((category): category is Category => Boolean(category));
-      return { provider: providerDetail, categories: resolvedCategories, paymentReady: customerStatus.hasDefaultPaymentMethod };
+      return {
+        provider: providerDetail,
+        categories: resolvedCategories,
+        paymentReady: customerStatus.hasDefaultPaymentMethod,
+        // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 6:
+        // dívida do cliente só era descoberta no submit final, depois de
+        // preencher categoria, horário semanal, endereço — mesmo padrão
+        // de aviso antecipado já usado em CreateBookingScreen (Frente 5
+        // Lote 8) pro booking avulso.
+        clientHasDebt: customerStatus.hasOutstandingDebt
+      };
     },
     { staleTime: 5 * 60 * 1000 }
   );
 
   const provider = setupQuery.data?.provider ?? null;
   const paymentReady = setupQuery.data?.paymentReady ?? false;
+  const clientHasDebt = setupQuery.data?.clientHasDebt ?? false;
 
   useEffect(() => {
     if (setupQuery.data?.categories) setCategories(setupQuery.data.categories);
@@ -235,6 +246,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   const needsLocation = Boolean(effectiveServiceMode);
 
   const canSubmit =
+    !clientHasDebt &&
     Boolean(selectedCategoryId) &&
     (!isFixedRecurring || weeklySchedule.length > 0) &&
     (paymentMethod !== "CREDIT_CARD" || paymentReady) &&
@@ -583,6 +595,18 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
           </View>
 
           {/* Card: Resumo */}
+          {clientHasDebt ? (
+            <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: "rgba(239,68,68,0.35)", backgroundColor: "rgba(239,68,68,0.08)", padding: S.cardPad, gap: 6 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="alert-circle-outline" size={18} color={theme.danger} />
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.danger }}>Pendência financeira em aberto</Text>
+              </View>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.danger, lineHeight: 18 }}>
+                Você tem uma pendência financeira em aberto. Regularize antes de assinar um novo pacote.
+              </Text>
+            </View>
+          ) : null}
+
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 6 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, marginBottom: 4 }}>Resumo</Text>
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>
@@ -622,7 +646,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
               }}
             >
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.textOnPrimary }}>
-                {purchasing ? "Processando..." : "Confirmar assinatura"}
+                {purchasing ? "Processando..." : clientHasDebt ? "Pendência financeira" : "Confirmar assinatura"}
               </Text>
             </TouchableOpacity>
           </View>

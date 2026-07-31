@@ -1620,6 +1620,12 @@ export class ConsultancyService {
       trainingNeedText?: string;
       limitationText?: string;
       extraInfoText?: string;
+      // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 6:
+      // oferta escolhida pelo cliente na tela de solicitação — antes era
+      // enviada mas nunca chegava a ser usada (nem o schema Zod declarava
+      // o campo), então o profissional sempre cotava um serviço próprio,
+      // possivelmente diferente do que o cliente selecionou.
+      quotedOfferId?: string;
     }
   ) {
     const provider = await prisma.providerProfile.findUnique({
@@ -1681,6 +1687,24 @@ export class ConsultancyService {
       );
     }
 
+    // Só usa a oferta escolhida pelo cliente se ela de fato pertencer a
+    // este profissional, estiver ativa e for um tipo de consultoria — uma
+    // escolha inválida/desatualizada (oferta apagada, por exemplo) não
+    // deve bloquear a criação da solicitação, só é ignorada.
+    let quotedOfferId: string | undefined;
+    if (input.quotedOfferId) {
+      const clientChosenOffer = await prisma.providerServiceOffer.findFirst({
+        where: {
+          id: input.quotedOfferId,
+          providerId: provider.id,
+          isActive: true,
+          kind: { in: onlineOfferKinds }
+        },
+        select: { id: true }
+      });
+      quotedOfferId = clientChosenOffer?.id;
+    }
+
     const request = await prisma.consultancyRequest.create({
       data: {
         providerId: provider.id,
@@ -1688,11 +1712,13 @@ export class ConsultancyService {
         trainingNeedText: input.trainingNeedText,
         limitationText: input.limitationText,
         extraInfoText: input.extraInfoText,
+        quotedOfferId,
         responseDeadlineAt: new Date(Date.now() + env.CONSULTANCY_DELIVERY_DEADLINE_HOURS * 60 * 60 * 1000)
       },
       include: {
         provider: {
-          include: {
+          select: {
+            ...PUBLIC_PROVIDER_SELECT,
             user: {
               select: {
                 id: true,
