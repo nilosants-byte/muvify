@@ -1164,6 +1164,7 @@ export class PresentialPackageService {
     const isFlexibleSessionPack = pkg.mode === PresentialPackageMode.FLEXIBLE_CREDITS;
 
     let refundFailed = false;
+    let refundAttempted = false;
     let releasedFutureSessions = 0;
     if (isCardFixedRecurring || isFlexibleSessionPack) {
       // Nada foi pago adiantado — não existe "último ciclo" pra reembolsar.
@@ -1198,7 +1199,14 @@ export class PresentialPackageService {
         await prisma.booking.update({ where: { id: session.id }, data: { status: BookingStatus.CANCELLED } });
         releasedFutureSessions += 1;
       }
-    } else if (isProvider) {
+    } else {
+      // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 7: este
+      // bloco (reembolso proporcional do ciclo Pix + liberação das
+      // sessões futuras já geradas) só rodava quando isProvider — cliente
+      // cancelando o mesmo tipo de pacote (FIXED_RECURRING+Pix) não
+      // recebia nada de volta, mesmo cancelando minutos após a compra,
+      // diferente da garantia de reembolso total pré-entrega que
+      // consultoria e os outros modos de pacote já têm.
       const lastCycle = await prisma.presentialPackageCycle.findFirst({
         where: { packageId: pkg.id },
         orderBy: { cycleIndex: "desc" }
@@ -1224,6 +1232,7 @@ export class PresentialPackageService {
           totalSessions > 0 ? Math.round((lastCycle.amountCents ?? 0) * (remainingSessions / totalSessions)) : 0;
 
         if (refundAmountCents > 0) {
+          refundAttempted = true;
           try {
             await mpRefundClient.create({
               payment_id: lastCycle.mpPaymentId,
@@ -1242,7 +1251,7 @@ export class PresentialPackageService {
                 mpPaymentId: lastCycle.mpPaymentId,
                 presentialPackageId: pkg.id,
                 presentialPackageCycleId: lastCycle.id,
-                contextNote: "Reembolso automático falhou ao cancelar pacote presencial (cancelamento pelo profissional)."
+                contextNote: `Reembolso automático falhou ao cancelar pacote presencial (cancelamento pelo ${isProvider ? "profissional" : "cliente"}).`
               }
             });
           }
@@ -1263,6 +1272,16 @@ export class PresentialPackageService {
     }
 
     if (notify) {
+      // Épico de Frentes, Frente 6, Lote 7: mensagem pro cliente agora
+      // reflete reembolso proporcional independente de quem cancelou
+      // (antes só existia texto de reembolso pro cancelamento pelo
+      // profissional — cliente cancelando via Pix não tinha esse retorno
+      // porque a lógica em si não rodava).
+      const cycleRefundMessage = refundFailed
+        ? "Houve uma falha ao processar o reembolso do ciclo mais recente — nossa equipe já foi avisada e vai resolver manualmente."
+        : refundAttempted
+          ? "O ciclo mais recente foi reembolsado proporcionalmente às sessões que ainda não aconteceram."
+          : "As sessões já entregues neste ciclo já estão totalmente pagas — não há valor a reembolsar.";
       await notificationService.sendToUsers([pkg.clientId], {
         preferenceType: "PAYMENTS",
         title: "Pacote presencial cancelado",
@@ -1271,10 +1290,8 @@ export class PresentialPackageService {
             ? `Pacote cancelado — ${releasedFutureSessions} sessão(ões) futura(s) foram desmarcadas e nenhuma delas será cobrada.`
             : "Seu pacote presencial foi cancelado."
           : isProvider
-            ? refundFailed
-              ? "O profissional cancelou seu pacote presencial. Houve uma falha ao processar o reembolso do ciclo mais recente — nossa equipe já foi avisada e vai resolver manualmente."
-              : "O profissional cancelou seu pacote presencial. O ciclo mais recente foi reembolsado."
-            : "Seu pacote presencial foi cancelado. As sessões já pagas neste ciclo continuam valendo.",
+            ? `O profissional cancelou seu pacote presencial. ${cycleRefundMessage}`
+            : `Seu pacote presencial foi cancelado. ${cycleRefundMessage}`,
         data: { type: "PRESENTIAL_PACKAGE_CANCELLED", packageId: pkg.id }
       });
       await notificationService.sendToUsers([pkg.provider.userId], {

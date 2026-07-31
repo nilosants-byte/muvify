@@ -47,10 +47,15 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
     if (!pkg) return;
     const isCardFixedRecurringCancel = pkg.mode === "FIXED_RECURRING" && pkg.paymentMethod === "CREDIT_CARD";
     const isFlexibleSessionPackCancel = pkg.mode === "FLEXIBLE_CREDITS";
+    // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 7: o
+    // ciclo cobrado adiantado (Pix) agora é reembolsado proporcionalmente
+    // às sessões que ainda não aconteceram, também quando é o cliente
+    // quem cancela — antes o texto prometia "continua valendo até o fim"
+    // (sem reembolso), que deixou de ser verdade.
     const cancelMessage =
       isCardFixedRecurringCancel || isFlexibleSessionPackCancel
         ? "Nenhuma sessão futura já marcada será cobrada, mas ela será desmarcada imediatamente — inclusive se estiver bem próxima. Deseja cancelar?"
-        : "Isso para as próximas cobranças - o ciclo já pago continua valendo até o fim. Deseja cancelar?";
+        : "Isso para as próximas cobranças — você será reembolsado proporcionalmente pelas sessões deste ciclo que ainda não aconteceram. Deseja cancelar?";
     Alert.alert(
       "Cancelar pacote",
       cancelMessage,
