@@ -1250,16 +1250,16 @@ export class ConsultancyService {
       offer.basePriceUpdatedAt.getTime() + BASE_PRICE_UPDATE_COOLDOWN_MS
     );
 
-    if (isPriceChanging && now < nextAllowedBasePriceChangeAt) {
-      throw new AppError(
-        `Valor base pode ser alterado apenas uma vez a cada 30 dias. Proxima alteracao em ${nextAllowedBasePriceChangeAt.toISOString()}.`,
-        StatusCodes.BAD_REQUEST
-      );
-    }
-
-    const updated = await prisma.providerServiceOffer.update({
-      where: { id: offerId },
-      data: {
+    // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 10: a
+    // checagem antiga só olhava o `offer` lido no início da função (fora de
+    // qualquer transação) - duas edições de preço quase simultâneas na
+    // mesma oferta liam o mesmo basePriceUpdatedAt "antigo", passavam as
+    // duas pela checagem, e as duas escreviam (a segunda simplesmente
+    // sobrescrevia a primeira), furando o cooldown de 30 dias. Trocado por
+    // um updateMany condicional (mesmo idioma já usado em
+    // renewalDeliveryLockedAt) que só efetiva a escrita se o
+    // basePriceUpdatedAt ainda permitir a troca NO MOMENTO da escrita.
+    const updateData = {
         title:
           nextKind === ServiceOfferKind.COMBO
             ? "Combo"
@@ -1325,8 +1325,24 @@ export class ConsultancyService {
           nextKind === ServiceOfferKind.PRESENTIAL || nextKind === ServiceOfferKind.COMBO
             ? nextOfferServiceMode
             : null
+    };
+
+    let updated: Awaited<ReturnType<typeof prisma.providerServiceOffer.update>>;
+    if (isPriceChanging) {
+      const claimed = await prisma.providerServiceOffer.updateMany({
+        where: { id: offerId, basePriceUpdatedAt: { lte: new Date(now.getTime() - BASE_PRICE_UPDATE_COOLDOWN_MS) } },
+        data: updateData
+      });
+      if (claimed.count === 0) {
+        throw new AppError(
+          `Valor base pode ser alterado apenas uma vez a cada 30 dias. Proxima alteracao em ${nextAllowedBasePriceChangeAt.toISOString()}.`,
+          StatusCodes.BAD_REQUEST
+        );
       }
-    });
+      updated = await prisma.providerServiceOffer.findUniqueOrThrow({ where: { id: offerId } });
+    } else {
+      updated = await prisma.providerServiceOffer.update({ where: { id: offerId }, data: updateData });
+    }
 
     return this.serializeOffer(updated);
   }

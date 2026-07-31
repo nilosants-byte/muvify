@@ -966,7 +966,6 @@ model ProviderServiceOffer {
   acceptsPix                 Boolean                @default(true)
   acceptsDebitCard           Boolean                @default(true)
   acceptsCreditCard          Boolean                @default(true)
-  maxCreditInstallments      Int                    @default(1)
   isActive                   Boolean                @default(true)
   // Pacote presencial (PRESENTIAL/COMBO) — vendido por assinatura, nao pagamento unico.
   presentialPackageMode      PresentialPackageMode?
@@ -1052,11 +1051,10 @@ model PresentialPackage {
   nextBillingAt             DateTime?
   consecutiveFailedCycles   Int       @default(0)
   billingCardId             String?
-  // Raio-X de pagamentos, Lote 6: parcelamento real no cartão (só se aplica
-  // a ciclos elegíveis - trimestral/semestral/anual, ver
-  // shared/utils/offer-installments.ts). Guardado no pacote pra cada
-  // cobrança de ciclo seguinte (chargeCycle, disparado depois via cron)
-  // usar o mesmo número escolhido pelo cliente na compra.
+  // Épico de Frentes, Frente 6, Lote 10: comentário antigo citava
+  // shared/utils/offer-installments.ts, um arquivo que nunca chegou a
+  // existir - parcelamento real em cartão nunca foi implementado, sempre
+  // 1x em todas as cobranças (purchasePackage, chargeCycle).
   paymentInstallments       Int       @default(1)
   creditsRemainingThisCycle Int       @default(0)
   lastBillingFailureReason  String?
