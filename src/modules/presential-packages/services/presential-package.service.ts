@@ -22,6 +22,7 @@ import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { resolveProviderMpAccessToken, requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { billingCycleDurationDays } from "../../../shared/utils/consultancy-validity";
+import { assertOfferAcceptsPaymentMethod } from "../../../shared/utils/offer-payment-method";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
 import { haversineKm } from "../../../shared/utils/geo";
@@ -1409,6 +1410,12 @@ export class PresentialPackageService {
         StatusCodes.BAD_REQUEST
       );
     }
+    // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 3: única
+    // checagem era o bloqueio incondicional de débito acima —
+    // acceptsPix/acceptsCreditCard configurados pelo profissional na
+    // oferta nunca eram validados aqui, diferente de purchasePackage e
+    // decideConsultancyRequest.
+    assertOfferAcceptsPaymentMethod(offer, input.paymentMethod, "este combo");
 
     const category = await prisma.serviceCategory.findUnique({ where: { id: input.categoryId } });
     if (!category) {

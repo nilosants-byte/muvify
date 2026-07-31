@@ -20,6 +20,7 @@ import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/pl
 import { encryptSensitiveText, decryptSensitiveText } from "../../../shared/utils/encryption";
 import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { recalculateProviderRatingAfterRefund } from "../../../shared/utils/provider-rating";
+import { assertOfferAcceptsPaymentMethod } from "../../../shared/utils/offer-payment-method";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
 
@@ -597,7 +598,16 @@ export class PaymentService {
       throw new AppError("Pagamento já finalizado; não é possível alterar o metodo.", StatusCodes.BAD_REQUEST);
     }
 
+    // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 3: a
+    // criação do booking já valida acceptsPix/acceptsDebitCard/
+    // acceptsCreditCard da oferta vinculada, mas o cliente podia trocar de
+    // método aqui depois, contornando a restrição por completo.
+    const offer = payment.booking.offerId
+      ? await prisma.providerServiceOffer.findUnique({ where: { id: payment.booking.offerId } })
+      : null;
+
     if (input.method === "PIX") {
+      if (offer) assertOfferAcceptsPaymentMethod(offer, "PIX", "este agendamento");
       const updated = await prisma.payment.update({
         where: { id: payment.id },
         data: { method: PaymentMethod.PIX, mpCardToken: null }
@@ -611,6 +621,7 @@ export class PaymentService {
     if (!card) throw new AppError("Cartão selecionado não encontrado.", StatusCodes.NOT_FOUND);
 
     const selectedMethod = this.mapFundingToPaymentMethod(card.funding);
+    if (offer) assertOfferAcceptsPaymentMethod(offer, selectedMethod, "este agendamento");
     const updated = await prisma.payment.update({
       where: { id: payment.id },
       data: { method: selectedMethod, mpCardToken: card.mpCardId }

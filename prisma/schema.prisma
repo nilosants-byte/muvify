@@ -486,6 +486,12 @@ model Booking {
   providerId                String
   categoryId                String
   packageId                 String?
+  // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 3: sem
+  // persistir qual oferta gerou o booking, não havia como reaplicar a
+  // restrição de método de pagamento da oferta (acceptsPix/
+  // acceptsDebitCard/acceptsCreditCard) na troca de método pré-captura
+  // (selectBookingPaymentMethod) — só no momento da criação.
+  offerId                   String?
   scheduledAt               DateTime
   priceCents                Int
   currency                  String               @default("BRL")
@@ -514,6 +520,7 @@ model Booking {
   provider                  ProviderProfile      @relation("ProviderBookings", fields: [providerId], references: [id], onDelete: Cascade)
   category                  ServiceCategory      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   package                   PresentialPackage?   @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  offer                     ProviderServiceOffer? @relation(fields: [offerId], references: [id], onDelete: SetNull)
   review                    Review?
   payment                   Payment?
   completionEvidences       CompletionEvidence[]
@@ -986,6 +993,7 @@ model ProviderServiceOffer {
   quotedRequests             ConsultancyRequest[]   @relation("QuotedConsultancyOffer")
   contracts                  ConsultancyContract[]
   presentialPackages         PresentialPackage[]
+  bookings                   Booking[]
 
   @@index([providerId, isActive])
   @@index([isPromotion, isActive])

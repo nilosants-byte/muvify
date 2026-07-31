@@ -20,6 +20,7 @@ import { haversineKm } from "../../../shared/utils/geo";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
 import { getPrivateObject, putPrivateObject } from "../../../shared/services/storage.service";
 import { restoreFlexibleCreditForBooking } from "../../../shared/utils/presential-package-credit";
+import { assertOfferAcceptsPaymentMethod } from "../../../shared/utils/offer-payment-method";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { PaymentService } from "../../payments/services/payment.service";
 import { DebtService } from "../../payments/services/debt.service";
@@ -439,6 +440,13 @@ export class BookingService {
           throw new AppError("Oferta selecionada não está disponível para este profissional.");
         }
 
+        // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 3:
+        // booking avulso vinculado a uma oferta nunca checava
+        // acceptsPix/acceptsDebitCard/acceptsCreditCard — único dos 3
+        // fluxos irmãos (consultoria, pacote presencial, booking avulso)
+        // sem essa validação.
+        assertOfferAcceptsPaymentMethod(offer, paymentMethod, "este agendamento");
+
         const now = new Date();
         const promotionActive =
           offer.isPromotion &&
@@ -472,6 +480,7 @@ export class BookingService {
           providerId,
           categoryId: effectiveCategoryId,
           packageId: presentialPackage?.id ?? null,
+          offerId: presentialPackage ? null : (offerId ?? null),
           scheduledAt: scheduleDate,
           priceCents: bookingPriceCents,
           notes,
