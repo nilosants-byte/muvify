@@ -7,6 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import {
+  ApiError,
   consultancyApi,
   OfferBillingCycle,
   PresentialPackageMode,
@@ -313,18 +314,43 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
       {
         text: "Excluir",
         style: "destructive",
-        onPress: () => {
-          const removed = offers.find((o) => o.id === offerId) ?? null;
-          setOffers((prev) => prev.filter((o) => o.id !== offerId));
-          showToast("Oferta excluída.", "success");
-
-          runWithAuth((token) => consultancyApi.deleteProviderOffer(token, offerId)).catch(() => {
-            if (removed) setOffers((prev) => [...prev, removed]);
-            showToast("Não foi possível excluir a oferta. Tente novamente.", "error");
-          });
+        onPress: async () => {
+          // Frente 6 (Ofertas do profissional), Lote 4: a remoção otimista
+          // (som antes da confirmação do backend) mostrava "Oferta
+          // excluída." mesmo quando a exclusão ia falhar (ex: oferta já
+          // vendida, sempre bloqueada por restrição de FK) — e o toast de
+          // erro genérico "tente novamente" sugeria que repetir podia
+          // funcionar, quando na verdade nunca vai pra essa oferta específica.
+          setDeletingOfferId(offerId);
+          try {
+            await runWithAuth((token) => consultancyApi.deleteProviderOffer(token, offerId));
+            setOffers((prev) => prev.filter((o) => o.id !== offerId));
+            showToast("Oferta excluída.", "success");
+          } catch (error) {
+            const message =
+              error instanceof ApiError
+                ? error.message
+                : "Não foi possível excluir a oferta. Tente novamente.";
+            showToast(message, "error");
+          } finally {
+            setDeletingOfferId(null);
+          }
         },
       },
     ]);
+  }
+
+  async function handleToggleOfferActive(offer: ProviderServiceOffer) {
+    const nextIsActive = !(offer.isActive !== false);
+    try {
+      const updated = await runWithAuth((token) =>
+        consultancyApi.updateProviderOffer(token, offer.id, { isActive: nextIsActive })
+      );
+      setOffers((prev) => prev.map((o) => (o.id === offer.id ? updated : o)));
+      showToast(nextIsActive ? "Oferta reativada." : "Oferta desativada — ela some da vitrine, mas contratos ativos continuam normalmente.", "success");
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Não foi possível alterar o status da oferta." });
+    }
   }
 
   async function handleCreateOffer() {
@@ -556,6 +582,18 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
                       <MvBadge label={offer.isActive !== false ? "Ativa" : "Inativa"} variant={offer.isActive !== false ? "green" : "gray"} />
                       <View style={{ flexDirection: "row", gap: 6 }}>
+                        <PressableScale
+                          onPress={() => void handleToggleOfferActive(offer)}
+                          scale={0.94}
+                          accessibilityLabel={offer.isActive !== false ? "Desativar oferta" : "Reativar oferta"}
+                          style={{
+                            width: 28, height: 28, borderRadius: 8,
+                            backgroundColor: theme.primarySubtle,
+                            alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          <Ionicons name={offer.isActive !== false ? "eye-off-outline" : "eye-outline"} size={15} color={theme.textGreen} />
+                        </PressableScale>
                         <PressableScale
                           onPress={() => startEditOffer(offer)}
                           scale={0.94}

@@ -695,7 +695,19 @@ export class ConsultancyService {
       );
     }
 
-    if (kind === ServiceOfferKind.COMBO && (input.comboPresentialShareCents || input.comboConsultancyShareCents)) {
+    if (kind === ServiceOfferKind.COMBO) {
+      // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 4: essa
+      // checagem só disparava SE um dos dois valores já tivesse vindo
+      // preenchido — omitir os dois (ou o presentialPackageMode) deixava
+      // criar um COMBO incompleto, que ainda aparecia na vitrine de
+      // Destaques mas nunca conseguia ser comprado (purchaseCombo rejeita
+      // por falta desses mesmos campos). Agora é sempre exigido pro kind.
+      if (!input.presentialPackageMode) {
+        throw new AppError(
+          "Informe o modo do pacote presencial (parte presencial do combo).",
+          StatusCodes.BAD_REQUEST
+        );
+      }
       if (!input.comboPresentialShareCents || !input.comboConsultancyShareCents) {
         throw new AppError(
           "Informe o valor de cada metade do combo (presencial e consultoria).",
@@ -1325,7 +1337,40 @@ export class ConsultancyService {
       throw new AppError("Oferta não encontrada.", StatusCodes.NOT_FOUND);
     }
 
-    await prisma.providerServiceOffer.delete({ where: { id: offerId } });
+    // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 4: excluir
+    // uma oferta com uma solicitação já cotada (RESPONDED) "puxa o tapete"
+    // do cliente sem aviso — quotedOfferId vira null silenciosamente
+    // (onDelete: SetNull) e ele recebe "Solicitação sem oferta vinculada"
+    // do nada ao tentar aceitar algo que já tinha visto um orçamento válido.
+    const pendingQuote = await prisma.consultancyRequest.findFirst({
+      where: { quotedOfferId: offerId, status: ConsultancyRequestStatus.RESPONDED },
+      select: { id: true }
+    });
+    if (pendingQuote) {
+      throw new AppError(
+        "Existe uma solicitação de cliente aguardando decisão com esta oferta cotada — não é possível excluir agora. Aguarde o cliente decidir ou desative a oferta em vez de excluir.",
+        StatusCodes.CONFLICT
+      );
+    }
+
+    try {
+      await prisma.providerServiceOffer.delete({ where: { id: offerId } });
+    } catch (err) {
+      // Épico de Frentes, Frente 6, Lote 4: ConsultancyContract/
+      // PresentialPackage têm onDelete: Restrict — qualquer oferta com 1+
+      // venda histórica (mesmo cancelada) nunca pode ser excluída. Sem
+      // esse catch, o middleware genérico de erro traduzia isso pra
+      // "Referência inválida nos dados enviados.", que não orienta o
+      // profissional a desativar em vez de excluir (e nunca vai
+      // funcionar tentar de novo, já que a venda histórica não desaparece).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+        throw new AppError(
+          "Esta oferta já tem vendas registradas e não pode ser excluída — desative-a para parar de recebê-las sem apagar o histórico.",
+          StatusCodes.CONFLICT
+        );
+      }
+      throw err;
+    }
   }
 
   async createTrainingPlan(
