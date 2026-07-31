@@ -186,6 +186,9 @@ describe("Financeiro — reembolso parcial nos repasses e renovação de ficha n
         paymentAmountCents: 30000,
         providerAmountCents: 27000,
         platformAmountCents: 3000,
+        billingCycle: "MONTHLY",
+        kind: "ONLINE_CONSULTANCY",
+        fichaValidityDays: 30,
         deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
         immediateExecutionAcknowledgedAt: new Date()
       }

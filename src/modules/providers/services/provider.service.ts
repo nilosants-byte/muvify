@@ -1965,13 +1965,6 @@ export class ProviderService {
         },
         include: {
           client: { select: clientSelect },
-          offer: {
-            select: {
-              kind: true,
-              title: true,
-              billingCycle: true
-            }
-          },
           _count: {
             select: { trainingPlans: true }
           },
@@ -2128,9 +2121,20 @@ export class ProviderService {
       const student = getStudent(contract.client, contract.createdAt);
       student.totalContracts += 1;
 
-      const kind = contract.offer.kind;
-      const validUntil = consultancyValidUntil(contract, contract.offer.billingCycle);
-      const isVigente = validUntil >= now;
+      const kind = contract.kind;
+      const validUntil = consultancyValidUntil(contract);
+      // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 2: no
+      // modelo de renovação por ficha (fichaValidityDays configurado), o
+      // contrato não tem mais um "fim" fixo por billingCycle — ele
+      // continua vigente enquanto o status for ACTIVE/DELIVERED, e é a
+      // ficha (não o contrato) que tem vigência própria. Calcular
+      // isVigente a partir de validUntil aqui marcava contratos assim
+      // como "vencidos" (billingCycle curto, ex: mensal) mesmo com
+      // renovações em dia.
+      const usesFichaValidity = Boolean(contract.fichaValidityDays);
+      const isVigente = usesFichaValidity
+        ? contract.status === ConsultancyContractStatus.ACTIVE || contract.status === ConsultancyContractStatus.DELIVERED
+        : validUntil >= now;
       const price = Number.isFinite(contract.paymentAmountCents) ? contract.paymentAmountCents : 0;
 
       const existing = student.services.get(kind);
@@ -2298,9 +2302,7 @@ export class ProviderService {
           offer: {
             select: {
               id: true,
-              kind: true,
               title: true,
-              billingCycle: true,
               priceCents: true
             }
           },
@@ -2405,9 +2407,9 @@ export class ProviderService {
 
     const serviceCounters = {
       PRESENTIAL: bookings.length,
-      ONLINE_CONSULTANCY: contracts.filter((item) => item.offer.kind === ServiceOfferKind.ONLINE_CONSULTANCY).length,
-      ONLINE_CONSULTANCY_SPECIALIZED: contracts.filter((item) => item.offer.kind === ServiceOfferKind.ONLINE_CONSULTANCY_SPECIALIZED).length,
-      COMBO: contracts.filter((item) => item.offer.kind === ServiceOfferKind.COMBO).length
+      ONLINE_CONSULTANCY: contracts.filter((item) => item.kind === ServiceOfferKind.ONLINE_CONSULTANCY).length,
+      ONLINE_CONSULTANCY_SPECIALIZED: contracts.filter((item) => item.kind === ServiceOfferKind.ONLINE_CONSULTANCY_SPECIALIZED).length,
+      COMBO: contracts.filter((item) => item.kind === ServiceOfferKind.COMBO).length
     };
 
     const now = new Date();
@@ -2416,11 +2418,19 @@ export class ProviderService {
         (contract.paymentStatus === ConsultancyPaymentStatus.AUTHORIZED ||
           contract.paymentStatus === ConsultancyPaymentStatus.CAPTURED) &&
         (contract.status === ConsultancyContractStatus.ACTIVE || contract.status === ConsultancyContractStatus.DELIVERED);
-      const validUntil = isCaptured ? consultancyValidUntil(contract, contract.offer.billingCycle) : null;
+      // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 2: no
+      // modelo de renovação por ficha (fichaValidityDays configurado), o
+      // contrato não tem vigência própria por billingCycle — fica vigente
+      // enquanto status/pagamento estiverem em dia (comentário em
+      // deliverContract); calcular isVigente a partir de billingCycle aqui
+      // escondia "+ Criar novo treino" indevidamente pra esse modelo.
+      const usesFichaValidity = Boolean(contract.fichaValidityDays);
+      const validUntil = isCaptured && !usesFichaValidity ? consultancyValidUntil(contract) : null;
+      const contractIsVigente = usesFichaValidity ? isCaptured : Boolean(validUntil && validUntil >= now);
       return {
         ...contract,
         validUntil,
-        isVigente: Boolean(validUntil && validUntil >= now),
+        isVigente: contractIsVigente,
         trainingPlans: contract.trainingPlans.map((plan) => {
           const planValidUntil = plan.validUntil ?? validUntil;
           return {

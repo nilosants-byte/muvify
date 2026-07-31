@@ -719,8 +719,7 @@ export class FinancialService {
           paymentCapturedAt: { gte: from, lte: to }
         },
         include: {
-          client: { select: { id: true, name: true } },
-          offer:  { select: { kind: true } }
+          client: { select: { id: true, name: true } }
         },
         orderBy: { paymentCapturedAt: "desc" }
       }),
@@ -785,7 +784,11 @@ export class FinancialService {
       const entry = getEntry(c.clientId, c.client.name, capturedAtIso);
       entry.completedCents += c.paymentAmountCents;
       entry.contractCount  += 1;
-      const svcName = consultancyKindLabel(c.offer.kind);
+      // Frente 6 (Ofertas do profissional), Lote 2: lê o kind congelado no
+      // contrato (não mais ao vivo da oferta) — senão, editar o kind da
+      // oferta depois da venda mudava retroativamente o rótulo de
+      // transações passadas em relatórios de faturamento já fechados.
+      const svcName = consultancyKindLabel(c.kind);
       if (!entry.services.includes(svcName)) entry.services.push(svcName);
     }
 

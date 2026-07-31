@@ -324,6 +324,9 @@ describe("Consistência de combo e visibilidade financeira de renovação (Rodad
         paymentAmountCents: 25000,
         providerAmountCents: 22500,
         platformAmountCents: 2500,
+        billingCycle: "MONTHLY",
+        kind: "ONLINE_CONSULTANCY",
+        fichaValidityDays: 30,
         deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
         immediateExecutionAcknowledgedAt: new Date()
       }
@@ -378,6 +381,9 @@ describe("Consistência de combo e visibilidade financeira de renovação (Rodad
         paymentAmountCents: 18000,
         providerAmountCents: 16200,
         platformAmountCents: 1800,
+        billingCycle: "MONTHLY",
+        kind: "ONLINE_CONSULTANCY",
+        fichaValidityDays: 30,
         deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
         immediateExecutionAcknowledgedAt: new Date()
       }

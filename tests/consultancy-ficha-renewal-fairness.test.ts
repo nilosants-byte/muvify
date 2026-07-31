@@ -119,6 +119,7 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
   }
 
   async function makeActiveContract(offerId: string) {
+    const offer = await prisma.providerServiceOffer.findUniqueOrThrow({ where: { id: offerId } });
     const request = await prisma.consultancyRequest.create({
       data: {
         providerId,
@@ -142,6 +143,9 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
         paymentAmountCents: 20000,
         providerAmountCents: 18000,
         platformAmountCents: 2000,
+        billingCycle: offer.billingCycle,
+        kind: offer.kind,
+        fichaValidityDays: offer.fichaValidityDays,
         deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
         immediateExecutionAcknowledgedAt: new Date()
       }
@@ -350,6 +354,9 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
         paymentAmountCents: 20000,
         providerAmountCents: 18000,
         platformAmountCents: 2000,
+        billingCycle: offer.billingCycle,
+        kind: offer.kind,
+        fichaValidityDays: offer.fichaValidityDays,
         deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
         immediateExecutionAcknowledgedAt: new Date(),
         createdAt: new Date(Date.now() - 27 * 60 * 60 * 1000)

@@ -203,6 +203,9 @@ describe("purchaseCombo bloqueia dívida pendente + aviso de combo no encerramen
         paymentAmountCents: 20000,
         providerAmountCents: 18000,
         platformAmountCents: 2000,
+        billingCycle: "MONTHLY",
+        kind: "COMBO",
+        fichaValidityDays: 10,
         deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
         immediateExecutionAcknowledgedAt: new Date(),
         deliveredAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000)

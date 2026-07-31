@@ -1235,6 +1235,15 @@ model ConsultancyContract {
   paymentAmountCents      Int
   providerAmountCents     Int
   platformAmountCents     Int
+  // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 2: snapshot
+  // congelado no momento da compra — sem isso, editar billingCycle/kind/
+  // fichaValidityDays da oferta depois da venda mudava retroativamente a
+  // vigência/categorização de contratos já ativos (mesma proteção que
+  // PresentialPackage já tinha pros campos equivalentes, mas nunca foi
+  // replicada aqui).
+  billingCycle            OfferBillingCycle
+  kind                    ServiceOfferKind
+  fichaValidityDays       Int?
   paymentCapturedAt       DateTime?
   paymentCanceledAt       DateTime?
   deliveryDeadlineAt      DateTime

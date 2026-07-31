@@ -114,6 +114,8 @@ describe("Frente 6, Lote 1 — vazamento de dados sensíveis entre cliente e pro
         status: ConsultancyContractStatus.ACTIVE,
         paymentStatus: ConsultancyPaymentStatus.CAPTURED,
         paymentAmountCents: 30000,
+        billingCycle: OfferBillingCycle.MONTHLY,
+        kind: ServiceOfferKind.ONLINE_CONSULTANCY,
         // Dados sensíveis que NUNCA podem chegar no cliente.
         providerAmountCents: 27000,
         platformAmountCents: 3000,

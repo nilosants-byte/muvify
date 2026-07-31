@@ -216,6 +216,9 @@ describe("Confiabilidade da conexão MP do profissional (Lote 5 do raio-x)", () 
         paymentAmountCents: 15000,
         providerAmountCents: 13500,
         platformAmountCents: 1500,
+        billingCycle: "MONTHLY",
+        kind: "ONLINE_CONSULTANCY",
+        fichaValidityDays: 30,
         deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
         immediateExecutionAcknowledgedAt: new Date()
       }

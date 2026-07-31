@@ -1538,7 +1538,12 @@ export class PresentialPackageService {
             providerAmountCents: providerSplitAmount(offer.comboConsultancyShareCents!),
             platformAmountCents: platformFeeAmount(offer.comboConsultancyShareCents!),
             deliveryDeadlineAt,
-            immediateExecutionAcknowledgedAt: now
+            immediateExecutionAcknowledgedAt: now,
+            // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 2:
+            // mesmo snapshot congelado aplicado em decideRequest.
+            billingCycle: offer.billingCycle,
+            kind: offer.kind,
+            fichaValidityDays: offer.fichaValidityDays
           }
         });
       });

@@ -114,6 +114,8 @@ describe("Contestações — entrega de consultoria e captura automática", () =
         paymentAmountCents: 20000,
         providerAmountCents: 18000,
         platformAmountCents: 2000,
+        billingCycle: "MONTHLY",
+        kind: "ONLINE_CONSULTANCY",
         deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
         immediateExecutionAcknowledgedAt: new Date(),
         deliveredAt
@@ -183,6 +185,8 @@ describe("Contestações — entrega de consultoria e captura automática", () =
         paymentAmountCents: 20000,
         providerAmountCents: 18000,
         platformAmountCents: 2000,
+        billingCycle: "MONTHLY",
+        kind: "ONLINE_CONSULTANCY",
         deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
         immediateExecutionAcknowledgedAt: new Date()
       }

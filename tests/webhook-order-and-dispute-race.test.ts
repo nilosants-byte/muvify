@@ -200,6 +200,8 @@ describe("Webhook fora de ordem e corrida em resolveCase (Rodada 3, Lote 1)", ()
         paymentAmountCents: 20000,
         providerAmountCents: 18000,
         platformAmountCents: 2000,
+        billingCycle: "MONTHLY",
+        kind: "ONLINE_CONSULTANCY",
         mpPaymentId,
         paymentCapturedAt: new Date(),
         deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),

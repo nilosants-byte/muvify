@@ -65,6 +65,12 @@ const CLIENT_SAFE_CONTRACT_SELECT = {
   deliveredAt: true,
   refundedAt: true,
   refundReason: true,
+  // Frente 6, Lote 2: snapshot congelado no momento da compra — não é
+  // sensível, e é isso que consultancyValidUntil() deve ler (nunca mais
+  // contract.offer.billingCycle ao vivo).
+  billingCycle: true,
+  kind: true,
+  fichaValidityDays: true,
   createdAt: true,
   updatedAt: true
 } as const;
@@ -1417,7 +1423,7 @@ export class ConsultancyService {
             paymentCapturedAt: true,
             createdAt: true,
             status: true,
-            offer: { select: { billingCycle: true } }
+            billingCycle: true
           }
         }
       }
@@ -1462,7 +1468,7 @@ export class ConsultancyService {
         throw new AppError("Data de vigência do treino inválida.", StatusCodes.BAD_REQUEST);
       }
       const now = new Date();
-      const contractValidUntil = consultancyValidUntil(existing.contract, existing.contract.offer.billingCycle);
+      const contractValidUntil = consultancyValidUntil(existing.contract);
       if (parsed <= now) {
         throw new AppError("A vigência do treino deve ser uma data futura.", StatusCodes.BAD_REQUEST);
       }
@@ -2078,7 +2084,14 @@ export class ConsultancyService {
           providerAmountCents: providerAmountFrom(paymentAmountCents),
           platformAmountCents: platformAmountFrom(paymentAmountCents),
           deliveryDeadlineAt,
-          immediateExecutionAcknowledgedAt: now
+          immediateExecutionAcknowledgedAt: now,
+          // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 2:
+          // snapshot congelado da oferta no momento da compra — editar a
+          // oferta depois não pode mais mudar retroativamente a vigência/
+          // categorização de um contrato já ativo.
+          billingCycle: quotedOffer.billingCycle,
+          kind: quotedOffer.kind,
+          fichaValidityDays: quotedOffer.fichaValidityDays
         },
         include: {
           offer: true
@@ -2267,12 +2280,6 @@ export class ConsultancyService {
           select: {
             id: true
           }
-        },
-        offer: {
-          select: {
-            billingCycle: true,
-            fichaValidityDays: true
-          }
         }
       }
     });
@@ -2303,10 +2310,10 @@ export class ConsultancyService {
     // padrao do treino - e deixa de ser limitada pela vigencia do contrato,
     // porque nesse modelo o contrato continua indefinidamente conforme as
     // fichas vao sendo renovadas (nao ha mais um "fim" fixo do contrato).
-    const contractValidUntil = consultancyValidUntil(contract, contract.offer.billingCycle);
-    const usesFichaValidity = Boolean(contract.offer.fichaValidityDays);
+    const contractValidUntil = consultancyValidUntil(contract);
+    const usesFichaValidity = Boolean(contract.fichaValidityDays);
     const defaultValidUntil = usesFichaValidity
-      ? new Date(now.getTime() + contract.offer.fichaValidityDays! * 24 * 60 * 60 * 1000)
+      ? new Date(now.getTime() + contract.fichaValidityDays! * 24 * 60 * 60 * 1000)
       : contractValidUntil;
     let planValidUntil = defaultValidUntil;
     if (input.validUntil) {
@@ -2655,7 +2662,7 @@ export class ConsultancyService {
       ...contract,
       trainingPlans: contract.trainingPlans.map((plan) => {
         const effectiveValidUntil =
-          plan.validUntil ?? consultancyValidUntil(contract, contract.offer.billingCycle);
+          plan.validUntil ?? consultancyValidUntil(contract);
         const isVigente = effectiveValidUntil >= now;
         return {
           ...plan,
@@ -2705,7 +2712,7 @@ export class ConsultancyService {
             status: true,
             paymentCapturedAt: true,
             createdAt: true,
-            offer: { select: { billingCycle: true } }
+            billingCycle: true
           }
         },
         provider: {
@@ -2721,7 +2728,7 @@ export class ConsultancyService {
     }
 
     const effectiveValidUntil = trainingPlan.contract
-      ? trainingPlan.validUntil ?? consultancyValidUntil(trainingPlan.contract, trainingPlan.contract.offer.billingCycle)
+      ? trainingPlan.validUntil ?? consultancyValidUntil(trainingPlan.contract)
       : trainingPlan.validUntil;
     if (effectiveValidUntil && effectiveValidUntil < new Date()) {
       throw new AppError("Este treino não está mais vigente.", StatusCodes.BAD_REQUEST);
@@ -3340,7 +3347,7 @@ export class ConsultancyService {
             id: true,
             status: true,
             clientId: true,
-            offer: { select: { fichaValidityDays: true } },
+            fichaValidityDays: true,
             provider: { select: { userId: true } }
           }
         }
@@ -3349,7 +3356,12 @@ export class ConsultancyService {
 
     for (const plan of stale) {
       if (!plan.contract || plan.contract.status !== ConsultancyContractStatus.DELIVERED) continue;
-      if (!plan.contract.offer.fichaValidityDays) continue;
+      // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 2: lê o
+      // fichaValidityDays congelado no contrato — antes lia ao vivo da
+      // oferta, então zerar esse campo na oferta depois do vencimento
+      // fazia esse job ignorar o contrato pra sempre (ficava "pendurado"
+      // em DELIVERED, com ficha vencida, sem cobrança nem cancelamento).
+      if (!plan.contract.fichaValidityDays) continue;
 
       const newerCount = await prisma.trainingPlan.count({
         where: { contractId: plan.contract.id, createdAt: { gt: plan.createdAt } }

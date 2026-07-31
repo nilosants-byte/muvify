@@ -46,6 +46,7 @@ async function createProvider(prefix: string) {
 }
 
 async function createActiveContract(providerId: string, clientId: string, offerId: string) {
+  const offer = await prisma.providerServiceOffer.findUniqueOrThrow({ where: { id: offerId } });
   const consultancyRequest = await prisma.consultancyRequest.create({
     data: {
       providerId,
@@ -69,6 +70,9 @@ async function createActiveContract(providerId: string, clientId: string, offerI
       paymentAmountCents: 20000,
       providerAmountCents: 18000,
       platformAmountCents: 2000,
+      billingCycle: offer.billingCycle,
+      kind: offer.kind,
+      fichaValidityDays: offer.fichaValidityDays,
       deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
       immediateExecutionAcknowledgedAt: new Date()
     }
