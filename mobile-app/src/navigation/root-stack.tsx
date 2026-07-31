@@ -103,12 +103,6 @@ const BOOKING_TYPES_PRO = new Set([
   "BOOKING_EXPIRED", "BOOKING_ATTENDANCE_CODE_AVAILABLE", "BOOKING_ATTENDANCE_CODE_VALIDATED",
   "BOOKING_CONFIRMATION_PENDING", "CHAT_MESSAGE", "SESSION_REMINDER",
 ]);
-const CONSULTANCY_TYPES_PRO = new Set([
-  "CONSULTANCY_REQUEST_CREATED", "CONSULTANCY_PROPOSAL_REFUSED",
-  "CONSULTANCY_CONTRACT_ACCEPTED", "CONSULTANCY_CONTRACT_EXPIRED",
-  "CONSULTANCY_AUTO_REFUND", "CONSULTANCY_EXPIRY_24H", "CONSULTANCY_EXPIRY_6H", "CONSULTANCY_EXPIRED",
-  "COMBO_CONSULTANCY_AUTO_REFUND",
-]);
 const PAYMENT_TYPES_PRO = new Set([
   "PAYMENT_AUTHORIZED", "PAYMENT_REFUNDED", "PAYMENT_AUTH_FAILED", "PAYMENT_CANCELED",
 ]);
@@ -117,6 +111,19 @@ const BOOKING_TYPES_CLIENT = new Set([
   "BOOKING_EXPIRED", "BOOKING_ATTENDANCE_CODE_AVAILABLE",
   "CHAT_MESSAGE", "SESSION_REMINDER",
 ]);
+
+// Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 9: os tipos de
+// notificação de consultoria/pacote presencial (renovação de ficha, Pix
+// expirado, contestação de entrega etc.) continuam sendo criados aos
+// montes - checar por prefixo em vez de manter uma lista literal evita que
+// um tipo novo fique esquecido de novo, tanto aqui quanto na invalidação de
+// cache abaixo.
+function isConsultancyNotificationType(type: string) {
+  return type.startsWith("CONSULTANCY_") || type.startsWith("COMBO_CONSULTANCY_");
+}
+function isPresentialPackageNotificationType(type: string) {
+  return type.startsWith("PRESENTIAL_PACKAGE_") || type.startsWith("COMBO_CONSULTANCY_");
+}
 
 function routeNotification(
   data: Record<string, unknown>,
@@ -133,8 +140,13 @@ function routeNotification(
   if (role === "PROFESSIONAL") {
     if (bookingId && BOOKING_TYPES_PRO.has(type)) {
       (navigationRef as any).navigate("BookingDetailProfessional", { bookingId });
-    } else if (CONSULTANCY_TYPES_PRO.has(type)) {
+    } else if (isConsultancyNotificationType(type)) {
       (navigationRef as any).navigate("ProfessionalConsultancyCenter");
+    } else if (isPresentialPackageNotificationType(type)) {
+      // Não há tela de detalhe de pacote presencial pro profissional (só
+      // clientId, sem packageId, chega no payload) - a lista de alunos é o
+      // destino mais próximo disponível hoje, melhor que cair no genérico.
+      (navigationRef as any).navigate("ProfessionalStudents");
     } else if (PAYMENT_TYPES_PRO.has(type)) {
       (navigationRef as any).navigate("PayoutStatus");
     } else {
@@ -146,8 +158,10 @@ function routeNotification(
   if (role === "CLIENT") {
     if (bookingId && BOOKING_TYPES_CLIENT.has(type)) {
       (navigationRef as any).navigate("ClientBookingDetail", { bookingId });
-    } else if (type === "COMBO_CONSULTANCY_AUTO_REFUND" && packageId) {
+    } else if (isPresentialPackageNotificationType(type) && packageId) {
       (navigationRef as any).navigate("PresentialPackageDetail", { packageId });
+    } else if (isConsultancyNotificationType(type)) {
+      (navigationRef as any).navigate("MyTraining");
     } else if (type === "PAYMENT_AUTH_FAILED") {
       (navigationRef as any).navigate("ClientPaymentMethod");
     } else {
@@ -722,6 +736,16 @@ export function RootNavigator() {
       if (BOOKING_TYPES_PRO.has(type) || BOOKING_TYPES_CLIENT.has(type)) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.agenda.all });
         void queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all });
+      }
+      // Épico de Frentes, Frente 6, Lote 9: mesmo gap do Frente 5 Lote 7 -
+      // notificação de consultoria/pacote presencial recebida em primeiro
+      // plano nunca invalidava as queries correspondentes, deixando a tela
+      // de consultoria/pacote aberta desatualizada até sair e voltar.
+      if (isConsultancyNotificationType(type)) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.consultancy.all });
+      }
+      if (isPresentialPackageNotificationType(type)) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.presentialPackages.all });
       }
     });
 
