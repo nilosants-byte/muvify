@@ -224,12 +224,20 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
     () => bookings.filter((b) => b.status === "PENDING" || b.status === "CONFIRMED").length,
     [bookings]
   );
-  const estimatedGross = useMemo(
+  // Épico de Frentes, Frente 7, Lote 7: "bruto" só somava sessões
+  // presenciais concluídas, enquanto "líquido" (abaixo) já vinha da API
+  // incluindo todos os tipos de receita - profissional que vende
+  // majoritariamente consultoria/pacote tinha líquido > bruto, com
+  // "comissão" (bruto - líquido) aparecendo negativa. grossCents vem do
+  // mesmo escopo completo de availableCents; o fallback (só bookings) só é
+  // usado se a API ainda não respondeu.
+  const estimatedGrossFallback = useMemo(
     () => completedBookings.reduce((s, b) => s + Number(b.priceCents ?? 0) / 100, 0),
     [completedBookings]
   );
   // Usa dados reais da API quando disponíveis; fallback para cálculo client-side
-  const estimatedNet  = payouts?.availableCents != null ? payouts.availableCents / 100 : estimatedGross * 0.9;
+  const estimatedGross = payouts?.grossCents != null ? payouts.grossCents / 100 : estimatedGrossFallback;
+  const estimatedNet  = payouts?.availableCents != null ? payouts.availableCents / 100 : estimatedGrossFallback * 0.9;
   const pendingNet    = payouts?.pendingCents != null ? payouts.pendingCents / 100 : 0;
   const commission    = estimatedGross - estimatedNet;
 

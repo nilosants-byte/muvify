@@ -1266,6 +1266,16 @@ export class FinancialService {
         + contracts.reduce((s, c) => s + c.providerAmountCents, 0)
         + packageCycles.reduce((s, c) => s + (c.providerAmountCents ?? 0), 0)
         + renewalTransactions.reduce((s, r) => s + r.providerAmountCents, 0),
+      // Épico de Frentes, Frente 7, Lote 7: "bruto" (mobile) somava só
+      // sessões presenciais concluídas, enquanto "líquido" já vinha daqui
+      // incluindo todos os tipos - profissional que vende majoritariamente
+      // consultoria/pacote via líquido > bruto, com "comissão" negativa.
+      // grossCents usa exatamente o mesmo escopo de availableCents, só sem
+      // aplicar o split.
+      grossCents: captured.reduce((s, p) => s + p.amountCents, 0)
+        + contracts.reduce((s, c) => s + c.paymentAmountCents, 0)
+        + packageCycles.reduce((s, c) => s + (c.amountCents ?? 0), 0)
+        + renewalTransactions.reduce((s, r) => s + r.amountCents, 0),
       payments: transactions
     };
   }

@@ -2647,6 +2647,8 @@ export type FinancialPayoutItem = {
 export type FinancialPayouts = {
   pendingCents: number;
   availableCents: number;
+  /** Épico de Frentes, Frente 7, Lote 7: bruto no mesmo escopo de availableCents (todos os tipos de receita, não só presencial). */
+  grossCents: number;
   payments: FinancialPayoutItem[];
 };
 
