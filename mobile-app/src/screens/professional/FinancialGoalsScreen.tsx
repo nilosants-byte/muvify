@@ -107,8 +107,15 @@ export function FinancialGoalsScreen({ navigation }: Props) {
   const effectiveRevenue = useMemo(() => {
     const d = goalsQuery.data;
     if (!d) return 0;
-    const stuRev = d.students.filter(s => s.isActive).reduce((s, st) => s + st.monthlyValueCents, 0);
-    const manRev = d.incomes.reduce((s, i) => s + i.amountCents, 0);
+    // Épico de Frentes, Frente 7, Lote 5: stuRev já soma o valor mensal do
+    // aluno manual; marcar esse aluno como "pago" cria uma FinancialIncome
+    // com studentId apontando pra ele, que manRev também somava — contando
+    // a mesma receita duas vezes. manRev agora só soma receita manual
+    // avulsa de verdade (sem studentId). billableThisMonth (não isActive)
+    // evita contar aluno fora do período de cobrança (ex: recorrência já
+    // encerrada) indefinidamente.
+    const stuRev = d.students.filter(s => s.billableThisMonth).reduce((s, st) => s + st.monthlyValueCents, 0);
+    const manRev = d.incomes.filter(i => !i.studentId).reduce((s, i) => s + i.amountCents, 0);
     const appRev = d.appClients.length > 0
       ? d.appClients.reduce((s, c) => s + c.completedCents, 0)
       : (d.dashboard?.appRevenueCents ?? 0);
