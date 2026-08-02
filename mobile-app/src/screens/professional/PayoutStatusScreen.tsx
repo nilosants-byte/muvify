@@ -4,7 +4,7 @@ import Animated, {
   useSharedValue, useAnimatedStyle,
   withTiming, withDelay, Easing,
 } from "react-native-reanimated";
-import { ScrollView, StatusBar, View } from "react-native";
+import { AppState as RNAppState, ScrollView, StatusBar, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
@@ -208,6 +208,19 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
   }, [payoutQuery.error, showToast, navigation]);
 
   useFocusEffect(useCallback(() => { void payoutQuery.refetch(); }, [payoutQuery.refetch]));
+
+  // Épico de Frentes, Frente 7, Lote 8: mesmo problema de ConnectPayoutAccountScreen -
+  // conectar/reconectar Mercado Pago abre o navegador externo sem voltar
+  // pro app via deep link, então voltar pelo multitarefas nunca dispara
+  // useFocusEffect (a tela nunca perdeu o foco de navegação).
+  useEffect(() => {
+    const subscription = RNAppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void payoutQuery.refetch();
+      }
+    });
+    return () => subscription.remove();
+  }, [payoutQuery.refetch]);
 
   const onRefresh = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

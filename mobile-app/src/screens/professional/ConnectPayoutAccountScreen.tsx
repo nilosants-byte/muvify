@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Linking, ScrollView, StatusBar, View } from "react-native";
+import { AppState as RNAppState, Linking, ScrollView, StatusBar, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,6 +32,21 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
   const [connectingMp, setConnectingMp] = useState(false);
 
   useFocusEffect(useCallback(() => { void mpStatusQuery.refetch(); }, [mpStatusQuery.refetch]));
+
+  // Épico de Frentes, Frente 7, Lote 8: o fluxo de conectar/reconectar abre
+  // o navegador externo (não é WebView in-app), sem redirecionar de volta
+  // pro app - voltar pelo multitarefas é só foreground do SO, não dispara
+  // useFocusEffect (a tela nunca perdeu o foco de navegação). Sem isso, o
+  // profissional reconectava com sucesso mas continuava vendo "Reconexão
+  // necessária" até sair e voltar manualmente.
+  useEffect(() => {
+    const subscription = RNAppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void mpStatusQuery.refetch();
+      }
+    });
+    return () => subscription.remove();
+  }, [mpStatusQuery.refetch]);
 
   useEffect(() => {
     if (mpStatusQuery.error) {

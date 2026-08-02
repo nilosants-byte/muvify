@@ -4,6 +4,7 @@ import * as Haptics from "expo-haptics";
 import {
   Alert,
   Animated,
+  AppState as RNAppState,
   Dimensions,
   Linking,
   Platform,
@@ -33,6 +34,7 @@ import {
   FinancialStudent,
   manualBlocksApi,
   notificationsApi,
+  paymentsApi,
   ProviderManualBlock as ManualBlockApi,
   ProviderTimelineResponse,
   providersApi,
@@ -209,6 +211,34 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     { retry: false },
   );
 
+  // Épico de Frentes, Frente 7, Lote 8: o aviso de conectar/reconectar
+  // Mercado Pago decidia só com `mpAccountId` (existe ou não) - quando o
+  // token é invalidado depois de conectado, esse campo continua preenchido
+  // (só mpTokenInvalidatedAt é setado), então a Home nunca mostrava nenhum
+  // aviso pro profissional com vendas pausadas. Mesma fonte já usada
+  // corretamente em PayoutStatusScreen/ConnectPayoutAccountScreen.
+  const payoutStatusQuery = useAuthQuery(
+    queryKeys.payments.providerStatus(),
+    (token) => paymentsApi.providerStatus(token).catch(() => null),
+    { retry: false },
+  );
+  const needsPayoutReconnect = Boolean(payoutStatusQuery.data?.hasAccount && payoutStatusQuery.data?.needsReconnect);
+
+  // Épico de Frentes, Frente 7, Lote 8: o fluxo de conectar/reconectar
+  // Mercado Pago abre o navegador externo (não é WebView in-app) e a MP não
+  // redireciona de volta pro app - só voltar pelo multitarefas conta como
+  // foreground do SO, não como navegação. Sem isso, o profissional
+  // reconectava com sucesso mas continuava vendo o aviso antigo até sair e
+  // voltar manualmente pra essa tela.
+  useEffect(() => {
+    const subscription = RNAppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void payoutStatusQuery.refetch();
+      }
+    });
+    return () => subscription.remove();
+  }, [payoutStatusQuery.refetch]);
+
   const bookings = useMemo(() => {
     const all = homeQuery.data?.bookings ?? [];
     return all.filter((item) => item.provider?.user?.id === user?.id);
@@ -245,12 +275,16 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     if (Boolean(profile) && crefApproved) setShowCrefBanner(false);
 
     const payoutConnected = Boolean(profile?.mpAccountId);
-    if (Boolean(profile) && crefApproved && !payoutChecked.current && !payoutConnected) {
+    // Épico de Frentes, Frente 7, Lote 8: além de nunca ter conectado,
+    // conta também o token invalidado depois de já ter conectado (mesma
+    // fonte de PayoutStatusScreen/ConnectPayoutAccountScreen).
+    const payoutOk = payoutConnected && !needsPayoutReconnect;
+    if (Boolean(profile) && crefApproved && !payoutChecked.current && !payoutOk) {
       setShowPayoutBanner(true);
       payoutChecked.current = true;
     }
-    if (payoutConnected) setShowPayoutBanner(false);
-  }, [homeQuery.data]);
+    if (payoutOk) setShowPayoutBanner(false);
+  }, [homeQuery.data, needsPayoutReconnect]);
 
   useEffect(() => {
     if (homeQuery.error) {
@@ -518,7 +552,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     const urgent: string[] = [];
     if (showProfileBanner) urgent.push("Configure seu perfil para aparecer nas buscas");
     if (showCrefBanner) urgent.push("Valide seu CREF para receber clientes");
-    if (showPayoutBanner) urgent.push("Conecte sua conta Mercado Pago para receber pagamentos");
+    if (showPayoutBanner) urgent.push(needsPayoutReconnect ? "Reconecte sua conta Mercado Pago — vendas pausadas" : "Conecte sua conta Mercado Pago para receber pagamentos");
     if (pendingCount > 0) urgent.push(`${pendingCount} solicitaç${pendingCount > 1 ? "ões" : "ão"} aguarda${pendingCount > 1 ? "m" : ""} confirmação`);
     if (unreadChatCount > 0) urgent.push(`${unreadChatCount} mensagem${unreadChatCount > 1 ? "ns" : ""} não lida${unreadChatCount > 1 ? "s" : ""}`);
     if (confirmedToday > 0) urgent.push(`${confirmedToday} atendimento${confirmedToday > 1 ? "s" : ""} confirmado${confirmedToday > 1 ? "s" : ""} hoje`);
@@ -542,7 +576,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     tips.push("Compartilhe seu perfil para atrair novos alunos");
 
     return tips[new Date().getDate() % tips.length]!;
-  }, [loading, showProfileBanner, showCrefBanner, showPayoutBanner, pendingCount, unreadChatCount, confirmedToday, nextBooking, availabilities, todayFreeSlots, activeStudents]);
+  }, [loading, showProfileBanner, showCrefBanner, showPayoutBanner, needsPayoutReconnect, pendingCount, unreadChatCount, confirmedToday, nextBooking, availabilities, todayFreeSlots, activeStudents]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -749,14 +783,18 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
             />
           ) : null}
 
-          {/* ── BANNER: MERCADO PAGO NÃO CONECTADO ── */}
+          {/* ── BANNER: MERCADO PAGO NÃO CONECTADO / RECONEXÃO NECESSÁRIA ── */}
           {showPayoutBanner ? (
             <UrgencyCard
               icon="card-outline"
               tone="amber"
-              subtitle="pagamento pendente"
-              title="Conecte sua conta Mercado Pago — sem isso você não aparece para alunos"
-              cta="Conectar"
+              subtitle={needsPayoutReconnect ? "vendas pausadas" : "pagamento pendente"}
+              title={
+                needsPayoutReconnect
+                  ? "Reconecte sua conta Mercado Pago — suas vendas estão pausadas até você reconectar"
+                  : "Conecte sua conta Mercado Pago — sem isso você não aparece para alunos"
+              }
+              cta={needsPayoutReconnect ? "Reconectar" : "Conectar"}
               onPress={() => { setShowPayoutBanner(false); goToStack("ConnectPayoutAccount"); }}
             />
           ) : null}
