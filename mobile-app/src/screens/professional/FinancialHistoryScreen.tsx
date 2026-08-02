@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator, Alert, Share,
@@ -252,7 +252,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
       const [incs, exps, payoutsRes] = await Promise.all([
         financialApi.listIncomes(token, selectedMonth),
         financialApi.listExpenses(token, selectedMonth),
-        financialApi.payouts(token).catch(() => null),
+        financialApi.payouts(token, selectedMonth).catch(() => null),
       ]);
       return { incomes: incs as FinancialIncome[], expenses: exps as FinancialExpense[], payouts: payoutsRes };
     },
@@ -264,18 +264,13 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   const reportLoading = reportQuery.isLoading;
   const txLoading = txQuery.isLoading;
 
-  // Pagamentos reais do app (Mercado Pago) capturados no mês selecionado —
-  // sem isso, o extrato mostrava um total no topo que incluia receita do app,
-  // mas a lista de lancamentos abaixo so trazia entradas manuais.
-  const appPayments = useMemo(() => {
-    const all = txQuery.data?.payouts?.payments ?? [];
-    return all.filter((p) => {
-      if (p.status !== "CAPTURED" && p.status !== "PARTIALLY_REFUNDED") return false;
-      const d = new Date(p.capturedAt ?? p.scheduledAt ?? Date.now());
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      return key === selectedMonth;
-    });
-  }, [txQuery.data, selectedMonth]);
+  // Épico de Frentes, Frente 7, Lote 3: `payouts(token, selectedMonth)` já
+  // devolve só as transações do mês selecionado (backend filtra por
+  // capturedAt/paymentCapturedAt/createdAt) - antes buscava os 50 pagamentos
+  // mais recentes de TODA a história e filtrava aqui, então um profissional
+  // com mais de 50 transações via app via o total do topo bater mas a lista
+  // de lançamentos abaixo ficar vazia/incompleta pra um mês antigo.
+  const appPayments = txQuery.data?.payouts?.payments ?? [];
 
   useEffect(() => {
     if (reportQuery.error) {

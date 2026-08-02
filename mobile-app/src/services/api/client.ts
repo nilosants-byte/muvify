@@ -2692,8 +2692,9 @@ export const financialApi = {
   report(token: string, months = 6) {
     return apiRequest<FinancialReport>(`/financial/report?months=${months}`, { token });
   },
-  payouts(token: string) {
-    return apiRequest<FinancialPayouts>("/financial/payouts", { token });
+  payouts(token: string, month?: string) {
+    const q = month ? `?month=${month}` : "";
+    return apiRequest<FinancialPayouts>(`/financial/payouts${q}`, { token });
   },
   exportTransactionsCsv(token: string) {
     return apiRequest<string>("/financial/transactions/export", { token });

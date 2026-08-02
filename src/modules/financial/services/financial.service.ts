@@ -1000,8 +1000,15 @@ export class FinancialService {
     return { months: result, bestMonth, avgRevenueCents: avgRevenue };
   }
 
-  async getPayouts(userId: string) {
-    return this.buildPayoutsData(userId, 50);
+  async getPayouts(userId: string, month?: string) {
+    // Épico de Frentes, Frente 7, Lote 3: sem `month`, mantém o
+    // comportamento antigo (top 50 mais recentes de toda a história - usado
+    // pelo card-resumo do dashboard financeiro). Com `month`, a lista de
+    // lançamentos do Extrato passa a vir filtrada pelo mês de verdade, em
+    // vez de um corte global de 50 que "sumia" com transações antigas do
+    // mês selecionado enquanto o total do topo da mesma tela (getReport)
+    // continuava contando todas elas.
+    return this.buildPayoutsData(userId, month ? 2000 : 50, month);
   }
 
   // CSV de exportação usa os mesmos dados de getPayouts, só que sem o teto
@@ -1043,8 +1050,14 @@ export class FinancialService {
     return [header, ...rows, disclaimer].join("\n");
   }
 
-  private async buildPayoutsData(userId: string, take: number) {
+  private async buildPayoutsData(userId: string, take: number, month?: string) {
     const provider = await getProviderByUserId(userId);
+    // Épico de Frentes, Frente 7, Lote 3: quando `month` é passado (Extrato),
+    // cada fonte é filtrada pela data em que realmente virou receita
+    // (capturedAt/paymentCapturedAt/createdAt) - pendente (AUTHORIZED, sem
+    // capturedAt) fica de fora, já que "pendente neste mês" não tem sentido
+    // pra uma lista de lançamentos já realizados.
+    const monthRange = month ? monthBounds(month) : null;
 
     const [payments, contracts, packageCycles, renewalPlans] = await Promise.all([
       prisma.payment.findMany({
@@ -1054,7 +1067,10 @@ export class FinancialService {
           // inteiro da lista de repasses — o profissional perdia de vista o
           // valor que ainda tinha direito a receber depois de uma disputa
           // resolvida com estorno parcial.
-          status: { in: [PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED, PaymentStatus.PARTIALLY_REFUNDED] }
+          status: monthRange
+            ? { in: [PaymentStatus.CAPTURED, PaymentStatus.PARTIALLY_REFUNDED] }
+            : { in: [PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED, PaymentStatus.PARTIALLY_REFUNDED] },
+          ...(monthRange ? { capturedAt: { gte: monthRange.from, lte: monthRange.to } } : {})
         },
         select: {
           id: true,
@@ -1075,7 +1091,8 @@ export class FinancialService {
       prisma.consultancyContract.findMany({
         where: {
           providerId: provider.id,
-          paymentStatus: ConsultancyPaymentStatus.CAPTURED
+          paymentStatus: ConsultancyPaymentStatus.CAPTURED,
+          ...(monthRange ? { paymentCapturedAt: { gte: monthRange.from, lte: monthRange.to } } : {})
         },
         select: {
           id: true,
@@ -1095,7 +1112,10 @@ export class FinancialService {
       // 3b.2, sem valor de pagamento) - o repasse dessas sessoes ja aparece
       // via bookingTransactions, uma por sessao.
       prisma.presentialPackageCycle.findMany({
-        where: { package: { providerId: provider.id }, capturedAt: { not: null } },
+        where: {
+          package: { providerId: provider.id },
+          capturedAt: monthRange ? { gte: monthRange.from, lte: monthRange.to } : { not: null }
+        },
         select: {
           id: true,
           amountCents: true,
@@ -1114,7 +1134,11 @@ export class FinancialService {
       // split (providerAmountCents/platformAmountCents) do contrato se
       // aplica igual a cada renovação.
       prisma.trainingPlan.findMany({
-        where: { providerId: provider.id, renewalMpPaymentId: { not: null } },
+        where: {
+          providerId: provider.id,
+          renewalMpPaymentId: { not: null },
+          ...(monthRange ? { createdAt: { gte: monthRange.from, lte: monthRange.to } } : {})
+        },
         select: {
           id: true,
           createdAt: true,

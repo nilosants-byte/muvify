@@ -29,7 +29,7 @@ const auth = [ensureAuthenticated, ensureRole(UserRole.PROVIDER)];
 financialRoutes.get("/dashboard",    ...auth, validate(dashboardQuerySchema), ctrl.dashboard);
 financialRoutes.get("/report",       ...auth, validate(dashboardQuerySchema), ctrl.report);
 financialRoutes.get("/app-clients",  ...auth, validate(listByMonthSchema),   ctrl.listAppClients);
-financialRoutes.get("/payouts",      ...auth, ctrl.payouts);
+financialRoutes.get("/payouts",      ...auth, validate(listByMonthSchema), ctrl.payouts);
 financialRoutes.get("/transactions/export", ...auth, ctrl.exportTransactionsCsv);
 
 financialRoutes.get("/students", ...auth, ctrl.listStudents);

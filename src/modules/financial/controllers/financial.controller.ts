@@ -11,7 +11,7 @@ export class FinancialController {
   }
 
   async payouts(req: Request, res: Response) {
-    const data = await service.getPayouts(req.user!.id);
+    const data = await service.getPayouts(req.user!.id, req.query.month as string | undefined);
     return res.json(data);
   }
 
