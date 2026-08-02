@@ -55,7 +55,7 @@ export class FinancialController {
   }
 
   async deleteIncome(req: Request, res: Response) {
-    await service.deleteIncome(req.user!.id, req.params.id);
+    await service.deleteIncome(req.user!.id, req.params.id, req.query.beforeMonth as string | undefined);
     return res.status(StatusCodes.NO_CONTENT).send();
   }
 
@@ -74,7 +74,7 @@ export class FinancialController {
   }
 
   async deleteExpense(req: Request, res: Response) {
-    await service.deleteExpense(req.user!.id, req.params.id);
+    await service.deleteExpense(req.user!.id, req.params.id, req.query.beforeMonth as string | undefined);
     return res.status(StatusCodes.NO_CONTENT).send();
   }
 

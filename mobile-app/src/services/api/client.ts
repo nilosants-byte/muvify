@@ -2725,8 +2725,9 @@ export const financialApi = {
   updateIncome(token: string, id: string, body: { description?: string; amountCents?: number; studentId?: string | null; paidAt?: string; recurrence?: FinancialRecurrence; recurrenceEndDate?: string | null; occurrenceMonth?: string }) {
     return apiRequest<FinancialIncome>(`/financial/incomes/${id}`, { method: "PATCH", token, body });
   },
-  deleteIncome(token: string, id: string) {
-    return apiRequest<void>(`/financial/incomes/${id}`, { method: "DELETE", token });
+  deleteIncome(token: string, id: string, beforeMonth?: string) {
+    const q = beforeMonth ? `?beforeMonth=${beforeMonth}` : "";
+    return apiRequest<void>(`/financial/incomes/${id}${q}`, { method: "DELETE", token });
   },
   listExpenses(token: string, month?: string) {
     const q = month ? `?month=${month}` : "";
@@ -2738,8 +2739,9 @@ export const financialApi = {
   updateExpense(token: string, id: string, body: { description?: string; amountCents?: number; category?: FinancialExpenseCategory; paidAt?: string; recurrence?: FinancialRecurrence; recurrenceEndDate?: string | null; occurrenceMonth?: string }) {
     return apiRequest<FinancialExpense>(`/financial/expenses/${id}`, { method: "PATCH", token, body });
   },
-  deleteExpense(token: string, id: string) {
-    return apiRequest<void>(`/financial/expenses/${id}`, { method: "DELETE", token });
+  deleteExpense(token: string, id: string, beforeMonth?: string) {
+    const q = beforeMonth ? `?beforeMonth=${beforeMonth}` : "";
+    return apiRequest<void>(`/financial/expenses/${id}${q}`, { method: "DELETE", token });
   },
   getGoal(token: string, month?: string) {
     const q = month ? `?month=${month}` : "";

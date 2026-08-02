@@ -140,6 +140,18 @@ function endOfMonthBefore(month: string) {
   return new Date(monthBounds(month).from.getTime() - 1);
 }
 
+// Épico de Frentes, Frente 7, Lote 4: uma edição/exclusão de recorrência
+// nunca pode fazer efeito num mês que já passou - se o mês-alvo (pedido
+// explicitamente, ou o próprio mês da âncora quando ninguém pediu outro)
+// já é anterior a hoje, o efeito real começa no mês corrente, preservando
+// os meses já registrados com os valores antigos. Sem isso, editar ou
+// excluir a própria linha-âncora de uma recorrência antiga (em vez de uma
+// projeção futura) reescrevia/apagava retroativamente meses já fechados.
+function clampToPresentOrLater(month: string) {
+  const nowMonth = currentMonth();
+  return month < nowMonth ? nowMonth : month;
+}
+
 // Épico de Frentes, Frente 7, Lote 2: resolver uma disputa como REFUNDED só
 // atualizava o Payment - o booking.status ficava COMPLETED pra sempre, e a
 // receita do módulo financeiro era somada direto do priceCents, sem olhar
@@ -623,14 +635,17 @@ export class FinancialService {
     // sobrescrever a linha real, porque ela também é a base de meses já
     // passados — isso mudaria o histórico retroativamente. Em vez disso,
     // "fecha" a série antiga no fim do mês anterior (preserva os valores já
-    // registrados) e nasce uma série nova a partir do mês editado.
+    // registrados) e nasce uma série nova a partir do mês editado. O mesmo
+    // vale, com o clamp de clampToPresentOrLater, quando o profissional edita
+    // a própria linha-âncora vendo o mês dela mesma, mas o tempo real já
+    // avançou pra depois desse mês (Frente 7, Lote 4).
     const anchorMonth = monthKeyOf(income.paidAt);
+    const requestedMonth = input.occurrenceMonth ?? anchorMonth;
     const isSplit = income.recurrence === FinancialRecurrence.RECURRING
-      && input.occurrenceMonth !== undefined
-      && input.occurrenceMonth !== anchorMonth;
+      && clampToPresentOrLater(requestedMonth) !== anchorMonth;
 
     if (isSplit) {
-      const occurrenceMonth = input.occurrenceMonth!;
+      const occurrenceMonth = clampToPresentOrLater(requestedMonth);
       await prisma.financialIncome.update({
         where: { id: incomeId },
         data: { recurrenceEndDate: endOfMonthBefore(occurrenceMonth) }
@@ -664,10 +679,29 @@ export class FinancialService {
     });
   }
 
-  async deleteIncome(userId: string, incomeId: string) {
+  async deleteIncome(userId: string, incomeId: string, beforeMonth?: string) {
     const provider = await getProviderByUserId(userId);
     const income = await prisma.financialIncome.findUnique({ where: { id: incomeId } });
     if (!income || income.providerId !== provider.id) throw new AppError("Receita não encontrada.", StatusCodes.NOT_FOUND);
+
+    // Épico de Frentes, Frente 7, Lote 4: excluir a própria linha-âncora de
+    // uma recorrência com histórico já elapsed apagava a base de TODA a
+    // projeção, inclusive meses já acontecidos. Em vez de apagar, encerra a
+    // recorrência a partir de agora (ou do mês pedido, se ainda no futuro) -
+    // mesmo mecanismo de "encerrar recorrência" já usado pra uma ocorrência
+    // virtual futura, agora protegido contra fechar antes de hoje.
+    if (income.recurrence === FinancialRecurrence.RECURRING) {
+      const anchorMonth = monthKeyOf(income.paidAt);
+      const boundaryMonth = clampToPresentOrLater(beforeMonth ?? anchorMonth);
+      if (boundaryMonth !== anchorMonth) {
+        await prisma.financialIncome.update({
+          where: { id: incomeId },
+          data: { recurrenceEndDate: endOfMonthBefore(boundaryMonth) }
+        });
+        return;
+      }
+    }
+
     await prisma.financialIncome.delete({ where: { id: incomeId } });
   }
 
@@ -698,13 +732,16 @@ export class FinancialService {
     const expense = await prisma.financialExpense.findUnique({ where: { id: expenseId } });
     if (!expense || expense.providerId !== provider.id) throw new AppError("Despesa não encontrada.", StatusCodes.NOT_FOUND);
 
+    // Épico de Frentes, Frente 7, Lote 4: mesma proteção de updateIncome —
+    // editar a própria âncora depois que o tempo já passou também precisa
+    // dividir a série, não só editar a projeção de um mês futuro explícito.
     const anchorMonth = monthKeyOf(expense.paidAt);
+    const requestedMonth = input.occurrenceMonth ?? anchorMonth;
     const isSplit = expense.recurrence === FinancialRecurrence.RECURRING
-      && input.occurrenceMonth !== undefined
-      && input.occurrenceMonth !== anchorMonth;
+      && clampToPresentOrLater(requestedMonth) !== anchorMonth;
 
     if (isSplit) {
-      const occurrenceMonth = input.occurrenceMonth!;
+      const occurrenceMonth = clampToPresentOrLater(requestedMonth);
       await prisma.financialExpense.update({
         where: { id: expenseId },
         data: { recurrenceEndDate: endOfMonthBefore(occurrenceMonth) }
@@ -735,10 +772,24 @@ export class FinancialService {
     });
   }
 
-  async deleteExpense(userId: string, expenseId: string) {
+  async deleteExpense(userId: string, expenseId: string, beforeMonth?: string) {
     const provider = await getProviderByUserId(userId);
     const expense = await prisma.financialExpense.findUnique({ where: { id: expenseId } });
     if (!expense || expense.providerId !== provider.id) throw new AppError("Despesa não encontrada.", StatusCodes.NOT_FOUND);
+
+    // Épico de Frentes, Frente 7, Lote 4: mesma proteção de deleteIncome.
+    if (expense.recurrence === FinancialRecurrence.RECURRING) {
+      const anchorMonth = monthKeyOf(expense.paidAt);
+      const boundaryMonth = clampToPresentOrLater(beforeMonth ?? anchorMonth);
+      if (boundaryMonth !== anchorMonth) {
+        await prisma.financialExpense.update({
+          where: { id: expenseId },
+          data: { recurrenceEndDate: endOfMonthBefore(boundaryMonth) }
+        });
+        return;
+      }
+    }
+
     await prisma.financialExpense.delete({ where: { id: expenseId } });
   }
 

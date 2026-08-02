@@ -73,7 +73,11 @@ export const createIncomeSchema = z.object({
 });
 
 export const incomeIdSchema = z.object({
-  params: z.object({ id: z.string().uuid() })
+  params: z.object({ id: z.string().uuid() }),
+  // Épico de Frentes, Frente 7, Lote 4: mês a partir do qual a recorrência
+  // deve encerrar (usado quando o item excluído é uma ocorrência projetada,
+  // não a âncora em si) - ver deleteIncome.
+  query: z.object({ beforeMonth: monthSchema.optional() }).optional()
 });
 
 export const updateIncomeSchema = z.object({
@@ -101,7 +105,8 @@ export const createExpenseSchema = z.object({
 });
 
 export const expenseIdSchema = z.object({
-  params: z.object({ id: z.string().uuid() })
+  params: z.object({ id: z.string().uuid() }),
+  query: z.object({ beforeMonth: monthSchema.optional() }).optional()
 });
 
 export const updateExpenseSchema = z.object({

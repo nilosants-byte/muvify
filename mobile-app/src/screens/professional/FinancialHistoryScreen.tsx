@@ -48,6 +48,9 @@ function currentMonthStr() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
+function toLocalMonthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
 function monthLabel(m: string) {
   const [y, mo] = m.split("-");
   return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
@@ -397,25 +400,25 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   }
 
   async function handleDeleteIncome(item: FinancialIncome) {
-    const message = item.isVirtual
-      ? "Isso encerra a recorrência a partir deste mês. Os meses anteriores continuam registrados."
-      : item.recurrence === "RECURRING"
-      ? "Esse lançamento se repete todo mês. Remover vai encerrar toda a recorrência, inclusive meses futuros."
+    // Épico de Frentes, Frente 7, Lote 4: excluir uma recorrência (virtual
+    // ou a própria âncora) nunca apaga meses já registrados — só encerra a
+    // recorrência dali pra frente. O backend decide sozinho, a partir de
+    // `beforeMonth`, se ainda dá pra fechar exatamente nesse mês ou se
+    // precisa proteger histórico já elapsed fechando a partir de hoje.
+    const message = item.recurrence === "RECURRING"
+      ? "Isso encerra a recorrência a partir de agora. Meses já registrados continuam guardados."
       : "Remover este lançamento?";
     Alert.alert("Remover receita", message, [
       { text: "Cancelar", style: "cancel" },
       { text: "Remover", style: "destructive", onPress: async () => {
         try {
-          if (item.isVirtual) {
-            const d = new Date(item.paidAt);
-            const endOfPrevMonth = new Date(d.getFullYear(), d.getMonth(), 0, 23, 59, 59);
-            await runWithAuth(t => financialApi.updateIncome(t, item.id, { recurrenceEndDate: endOfPrevMonth.toISOString() }));
-          } else {
-            await runWithAuth(t => financialApi.deleteIncome(t, item.id));
-          }
-          queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
-            old ? { ...old, incomes: old.incomes.filter(i => i.id !== item.id) } : old
-          );
+          const beforeMonth = toLocalMonthKey(new Date(item.paidAt));
+          await runWithAuth(t => financialApi.deleteIncome(t, item.id, beforeMonth));
+          // Não dá pra prever de forma otimista se o item some do mês
+          // selecionado (depende do backend ter feito delete de verdade ou
+          // só fechado a recorrência a partir de um mês mais à frente) -
+          // refaz a busca em vez de arriscar remover algo que continua válido.
+          await queryClient.invalidateQueries({ queryKey: queryKeys.financial.history(selectedMonth) });
         } catch { showToast("Falha ao remover.", "error"); }
       }},
     ]);
@@ -471,25 +474,17 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   }
 
   async function handleDeleteExpense(item: FinancialExpense) {
-    const message = item.isVirtual
-      ? "Isso encerra a recorrência a partir deste mês. Os meses anteriores continuam registrados."
-      : item.recurrence === "RECURRING"
-      ? "Essa despesa se repete todo mês. Remover vai encerrar toda a recorrência, inclusive meses futuros."
+    // Épico de Frentes, Frente 7, Lote 4: mesma proteção de handleDeleteIncome.
+    const message = item.recurrence === "RECURRING"
+      ? "Isso encerra a recorrência a partir de agora. Meses já registrados continuam guardados."
       : "Remover esta despesa?";
     Alert.alert("Remover despesa", message, [
       { text: "Cancelar", style: "cancel" },
       { text: "Remover", style: "destructive", onPress: async () => {
         try {
-          if (item.isVirtual) {
-            const d = new Date(item.paidAt);
-            const endOfPrevMonth = new Date(d.getFullYear(), d.getMonth(), 0, 23, 59, 59);
-            await runWithAuth(t => financialApi.updateExpense(t, item.id, { recurrenceEndDate: endOfPrevMonth.toISOString() }));
-          } else {
-            await runWithAuth(t => financialApi.deleteExpense(t, item.id));
-          }
-          queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
-            old ? { ...old, expenses: old.expenses.filter(e => e.id !== item.id) } : old
-          );
+          const beforeMonth = toLocalMonthKey(new Date(item.paidAt));
+          await runWithAuth(t => financialApi.deleteExpense(t, item.id, beforeMonth));
+          await queryClient.invalidateQueries({ queryKey: queryKeys.financial.history(selectedMonth) });
         } catch { showToast("Falha ao remover.", "error"); }
       }},
     ]);
