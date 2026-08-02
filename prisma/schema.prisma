@@ -1107,6 +1107,12 @@ model PresentialPackageCycle {
   capturedAt          DateTime?
   periodStart         DateTime
   periodEnd           DateTime
+  // Épico de Frentes, Frente 7, Lote 2: preenchidos quando uma disputa
+  // vinculada a este ciclo (presentialPackageCycleId) é resolvida como
+  // REFUNDED - sem isso, a receita do ciclo continuava contada pra sempre
+  // nos relatórios financeiros mesmo depois do reembolso.
+  refundedAt          DateTime?
+  refundedAmountCents Int?
 
   package      PresentialPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
   disputeCases DisputeCase[]
@@ -1139,6 +1145,11 @@ model TrainingPlan {
   // ConsultancyContract.mpPaymentId) - permite contestar/reembolsar a
   // renovacao certa, nao sempre a cobranca original do contrato.
   renewalMpPaymentId String?
+  // Épico de Frentes, Frente 7, Lote 2: preenchido quando uma disputa de
+  // contestação de entrega (trainingPlanId) é resolvida como REFUNDED -
+  // sem isso, a receita da renovação continuava contada pra sempre nos
+  // relatórios financeiros mesmo depois do reembolso.
+  refundedAt  DateTime?
   createdAt   DateTime                 @default(now())
   updatedAt   DateTime                 @updatedAt
   provider    ProviderProfile          @relation(fields: [providerId], references: [id], onDelete: Cascade)

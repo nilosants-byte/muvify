@@ -140,6 +140,28 @@ function endOfMonthBefore(month: string) {
   return new Date(monthBounds(month).from.getTime() - 1);
 }
 
+// Épico de Frentes, Frente 7, Lote 2: resolver uma disputa como REFUNDED só
+// atualizava o Payment - o booking.status ficava COMPLETED pra sempre, e a
+// receita do módulo financeiro era somada direto do priceCents, sem olhar
+// se o pagamento tinha sido reembolsado depois (Payment/consultoria já
+// tratados; ciclo de pacote e renovação de ficha ganham o mesmo tratamento
+// via os campos refundedAt/refundedAmountCents adicionados neste lote).
+function effectiveBookingRevenueCents(booking: {
+  priceCents: number;
+  payment: { status: PaymentStatus; refundedAmountCents: number | null } | null;
+}) {
+  if (!booking.payment) return booking.priceCents;
+  if (booking.payment.status === PaymentStatus.REFUNDED) return 0;
+  if (booking.payment.status === PaymentStatus.PARTIALLY_REFUNDED) {
+    return Math.max(0, booking.priceCents - (booking.payment.refundedAmountCents ?? 0));
+  }
+  return booking.priceCents;
+}
+
+function effectiveCycleRevenueCents(cycle: { amountCents: number | null; refundedAmountCents: number | null }) {
+  return Math.max(0, (cycle.amountCents ?? 0) - (cycle.refundedAmountCents ?? 0));
+}
+
 // Um aluno "cobra" no mês-alvo se: está ativo, e (a) é avulso e o mês-alvo é
 // o mês em que ele começou, ou (b) é recorrente, já começou e (se tiver data
 // de término) ainda não passou dela.
@@ -335,10 +357,12 @@ export class FinancialService {
       }),
       // mês anterior: receitas manuais (real + projeção de recorrentes)
       getEffectiveIncomes(provider.id, lastMonthKey),
-      // agendamentos COMPLETADOS: receita realizada pelo app (com datas para breakdown diário)
+      // agendamentos COMPLETADOS: receita realizada pelo app (com datas para
+      // breakdown diário; payment.status/refundedAmountCents pra descontar
+      // sessões reembolsadas depois via disputa - ver effectiveBookingRevenueCents)
       prisma.booking.findMany({
         where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: from, lte: to } },
-        select: { priceCents: true, scheduledAt: true },
+        select: { priceCents: true, scheduledAt: true, payment: { select: { status: true, refundedAmountCents: true } } },
         take: 2000,
       }),
       // agendamentos CONFIRMADOS: receita prevista (ainda não realizada)
@@ -347,9 +371,10 @@ export class FinancialService {
         _sum: { priceCents: true }
       }),
       // mês anterior: agendamentos completados pelo app
-      prisma.booking.aggregate({
+      prisma.booking.findMany({
         where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: lastMonthFrom, lte: lastMonthTo } },
-        _sum: { priceCents: true }
+        select: { priceCents: true, payment: { select: { status: true, refundedAmountCents: true } } },
+        take: 2000,
       }),
       // consultorias com pagamento capturado (receita realizada pelo app, com data para breakdown diário)
       prisma.consultancyContract.findMany({
@@ -363,38 +388,41 @@ export class FinancialService {
         _sum: { paymentAmountCents: true }
       }),
       // ciclos de pacote presencial capturados (receita real - nunca o valor
-      // total do pacote, so o que de fato foi cobrado), com data para breakdown diário
+      // total do pacote, so o que de fato foi cobrado), com data para breakdown
+      // diário; refundedAmountCents desconta o que voltou pro cliente via disputa
       prisma.presentialPackageCycle.findMany({
         where: { package: { providerId: provider.id }, capturedAt: { gte: from, lte: to } },
-        select: { amountCents: true, capturedAt: true },
+        select: { amountCents: true, capturedAt: true, refundedAmountCents: true },
         take: 2000,
       }),
       // mês anterior: ciclos de pacote presencial capturados
-      prisma.presentialPackageCycle.aggregate({
+      prisma.presentialPackageCycle.findMany({
         where: { package: { providerId: provider.id }, capturedAt: { gte: lastMonthFrom, lte: lastMonthTo } },
-        _sum: { amountCents: true }
+        select: { amountCents: true, refundedAmountCents: true },
+        take: 2000,
       }),
       // Raio-X de pagamentos, Rodada 2, Lote 4: renovações de ficha (2ª ficha
       // em diante) cobram de novo, mas a receita nunca aparecia aqui — só a
       // 1ª cobrança do contrato (paymentAmountCents/paymentCapturedAt) era
       // contada. renewalMpPaymentId só é preenchido em renovações de verdade,
-      // nunca na 1ª ficha (ver deliverContract).
+      // nunca na 1ª ficha (ver deliverContract). refundedAt exclui renovação
+      // contestada e reembolsada via disputa (Frente 7, Lote 2).
       prisma.trainingPlan.findMany({
-        where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: from, lte: to } },
+        where: { providerId: provider.id, renewalMpPaymentId: { not: null }, refundedAt: null, createdAt: { gte: from, lte: to } },
         select: { createdAt: true, contract: { select: { paymentAmountCents: true } } },
         take: 2000
       }),
       // mês anterior: renovações de ficha
       prisma.trainingPlan.findMany({
-        where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: lastMonthFrom, lte: lastMonthTo } },
+        where: { providerId: provider.id, renewalMpPaymentId: { not: null }, refundedAt: null, createdAt: { gte: lastMonthFrom, lte: lastMonthTo } },
         select: { contract: { select: { paymentAmountCents: true } } },
         take: 2000
       })
     ]);
 
-    const appBookingRevenueCents     = completedBookings.reduce((s, b) => s + b.priceCents, 0);
+    const appBookingRevenueCents     = completedBookings.reduce((s, b) => s + effectiveBookingRevenueCents(b), 0);
     const appConsultancyRevenueCents = capturedContracts.reduce((s, c) => s + c.paymentAmountCents, 0);
-    const appPackageRevenueCents     = capturedPackageCycles.reduce((s, c) => s + (c.amountCents ?? 0), 0);
+    const appPackageRevenueCents     = capturedPackageCycles.reduce((s, c) => s + effectiveCycleRevenueCents(c), 0);
     const appRenewalRevenueCents     = renewalPlans.reduce((s, p) => s + (p.contract?.paymentAmountCents ?? 0), 0);
     const appRevenueCents            = appBookingRevenueCents + appConsultancyRevenueCents + appPackageRevenueCents + appRenewalRevenueCents;
     const confirmedRevenueCents      = confirmedBookingsAgg._sum.priceCents ?? 0;
@@ -406,9 +434,9 @@ export class FinancialService {
     const lastMonthRenewalRevenue    = lastMonthRenewalPlans.reduce((s, p) => s + (p.contract?.paymentAmountCents ?? 0), 0);
     const lastMonthManualRevenue     = lastMonthIncomes.reduce((s, i) => s + i.amountCents, 0);
     const lastMonthAppRevenue        =
-      (lastMonthCompletedBookingsAgg._sum.priceCents ?? 0)
+      lastMonthCompletedBookingsAgg.reduce((s, b) => s + effectiveBookingRevenueCents(b), 0)
       + (lastMonthCapturedContractsAgg._sum.paymentAmountCents ?? 0)
-      + (lastMonthCapturedPackageCyclesAgg._sum.amountCents ?? 0)
+      + lastMonthCapturedPackageCyclesAgg.reduce((s, c) => s + effectiveCycleRevenueCents(c), 0)
       + lastMonthRenewalRevenue;
     const lastMonthTotalRevenueCents = lastMonthManualRevenue + lastMonthAppRevenue;
     const growthPct =
@@ -444,7 +472,7 @@ export class FinancialService {
     }
     for (const b of completedBookings) {
       const day = zonedDateKey(b.scheduledAt, env.APP_TIMEZONE);
-      dailyMap[day] = (dailyMap[day] ?? 0) + b.priceCents;
+      dailyMap[day] = (dailyMap[day] ?? 0) + effectiveBookingRevenueCents(b);
     }
     for (const c of capturedContracts) {
       const day = zonedDateKey(c.paymentCapturedAt ?? new Date(), env.APP_TIMEZONE);
@@ -456,7 +484,7 @@ export class FinancialService {
       // "capturedAt: { gte, lte }" da query ja exclui esses registros,
       // entao aqui os dois campos estao sempre preenchidos de verdade.
       const day = zonedDateKey(cycle.capturedAt!, env.APP_TIMEZONE);
-      dailyMap[day] = (dailyMap[day] ?? 0) + (cycle.amountCents ?? 0);
+      dailyMap[day] = (dailyMap[day] ?? 0) + effectiveCycleRevenueCents(cycle);
     }
     for (const p of renewalPlans) {
       const day = zonedDateKey(p.createdAt, env.APP_TIMEZONE);
@@ -923,23 +951,30 @@ export class FinancialService {
         prisma.financialClassSession.count({
           where: { providerId: provider.id, date: { gte: from, lte: to } }
         }),
-        prisma.booking.aggregate({
+        // Épico de Frentes, Frente 7, Lote 2: aggregate() somava priceCents
+        // direto, sem descontar sessão reembolsada depois via disputa
+        // (Payment.status/refundedAmountCents) - trocado por findMany +
+        // effectiveBookingRevenueCents, mesmo tratamento de getDashboard.
+        prisma.booking.findMany({
           where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: from, lte: to } },
-          _sum: { priceCents: true }
+          select: { priceCents: true, payment: { select: { status: true, refundedAmountCents: true } } },
+          take: 2000
         }),
         prisma.consultancyContract.aggregate({
           where: { providerId: provider.id, paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: { gte: from, lte: to } },
           _sum: { paymentAmountCents: true }
         }),
-        prisma.presentialPackageCycle.aggregate({
+        prisma.presentialPackageCycle.findMany({
           where: { package: { providerId: provider.id }, capturedAt: { gte: from, lte: to } },
-          _sum: { amountCents: true }
+          select: { amountCents: true, refundedAmountCents: true },
+          take: 2000
         }),
         // Raio-X de pagamentos, Rodada 3, Lote 4: getReport ficou de fora do
         // conserto que getDashboard/getPayouts já receberam na Rodada 2 —
         // renovações de ficha (2ª ficha em diante) somem do relatório anual.
+        // refundedAt exclui renovação contestada e reembolsada (Frente 7, Lote 2).
         prisma.trainingPlan.findMany({
-          where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: from, lte: to } },
+          where: { providerId: provider.id, renewalMpPaymentId: { not: null }, refundedAt: null, createdAt: { gte: from, lte: to } },
           select: { contract: { select: { paymentAmountCents: true } } },
           take: 2000
         })
@@ -948,9 +983,9 @@ export class FinancialService {
       const rev       = incomes.reduce((s, i) => s + i.amountCents, 0);
       const renewalRev = renewalPlans.reduce((s, p) => s + (p.contract?.paymentAmountCents ?? 0), 0);
       const appRev =
-        (appBookings._sum.priceCents ?? 0)
+        appBookings.reduce((s, b) => s + effectiveBookingRevenueCents(b), 0)
         + (appContracts._sum.paymentAmountCents ?? 0)
-        + (appPackageCycles._sum.amountCents ?? 0)
+        + appPackageCycles.reduce((s, c) => s + effectiveCycleRevenueCents(c), 0)
         + renewalRev;
       const exp    = expenses.reduce((s, e) => s + e.amountCents, 0);
       result.push({ month, revenueCents: rev, appRevenueCents: appRev, expensesCents: exp, netCents: rev + appRev - exp, classes });

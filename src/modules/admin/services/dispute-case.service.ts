@@ -389,8 +389,7 @@ export class DisputeCaseService {
         // local nunca era atualizado ao resolver a disputa — o admin
         // estornava de verdade no Mercado Pago, mas o registro local
         // continuava CAPTURED, contaminando qualquer relatório/tela que
-        // leia esse status depois. Pacote presencial (cycle) ainda não tem
-        // um campo de status equivalente por ciclo — fica de fora por ora.
+        // leia esse status depois.
         const isFullRefund = resolvedAmountCents === disputeCase.amountCents;
         if (disputeCase.bookingId) {
           await tx.payment.updateMany({
@@ -418,6 +417,23 @@ export class DisputeCaseService {
           await tx.consultancyContract.updateMany({
             where: { id: disputeCase.consultancyContractId },
             data: { paymentStatus: ConsultancyPaymentStatus.REFUNDED }
+          });
+        }
+        // Épico de Frentes, Frente 7, Lote 2: pacote presencial (cycle) e
+        // renovação de ficha (trainingPlan) não tinham nenhum jeito de
+        // registrar que uma disputa vinculada foi reembolsada - a receita
+        // continuava contada pra sempre nos relatórios financeiros, mesmo
+        // já tendo voltado pro cliente.
+        if (disputeCase.presentialPackageCycleId) {
+          await tx.presentialPackageCycle.updateMany({
+            where: { id: disputeCase.presentialPackageCycleId },
+            data: { refundedAt: resolvedAt, refundedAmountCents: resolvedAmountCents }
+          });
+        }
+        if (disputeCase.trainingPlanId) {
+          await tx.trainingPlan.updateMany({
+            where: { id: disputeCase.trainingPlanId },
+            data: { refundedAt: resolvedAt }
           });
         }
       }
