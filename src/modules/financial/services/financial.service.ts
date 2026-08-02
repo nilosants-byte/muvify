@@ -270,12 +270,6 @@ type UpsertGoalInput = {
   targetWeeklyClasses?: number;
 };
 
-type CreateClassSessionInput = {
-  studentId?: string;
-  date: string;
-  notes?: string;
-};
-
 // Lançamentos "efetivos" de um mês = linhas reais daquele mês + projeções
 // virtuais de lançamentos recorrentes criados em meses anteriores (a linha
 // real original nunca é duplicada — ela só aparece no mês em que foi criada;
@@ -340,7 +334,7 @@ export class FinancialService {
     const [
       incomes,
       expenses,
-      classSessions,
+      consultancyDeliveries,
       activeStudents,
       goal,
       lastMonthIncomes,
@@ -356,8 +350,14 @@ export class FinancialService {
     ] = await Promise.all([
       getEffectiveIncomes(provider.id, m),
       getEffectiveExpenses(provider.id, m),
-      prisma.financialClassSession.findMany({
-        where: { providerId: provider.id, date: { gte: from, lte: to } },
+      // Épico de Frentes, Frente 7, Lote 6: "aulas/sessões" do mês passa a
+      // contar sessões reais já rastreadas pelo app - presencial concluída
+      // (completedBookings, abaixo) + entrega de ficha de consultoria
+      // (nenhuma tela do app nunca criou um FinancialClassSession manual,
+      // então essa métrica era sempre 0).
+      prisma.trainingPlan.findMany({
+        where: { providerId: provider.id, createdAt: { gte: from, lte: to } },
+        select: { createdAt: true },
         take: 2000,
       }),
       prisma.financialStudent.findMany({
@@ -457,24 +457,24 @@ export class FinancialService {
         : Math.round(((totalRevenueCents - lastMonthTotalRevenueCents) / lastMonthTotalRevenueCents) * 100);
 
     const daysInMonth = daysInMonthOf(m);
-    const avgClassesPerDay = classSessions.length / daysInMonth;
+    const totalClasses = completedBookings.length + consultancyDeliveries.length;
+    const avgClassesPerDay = totalClasses / daysInMonth;
 
     const ticketMedio =
       activeStudents.length > 0
         ? Math.round(totalRevenueCents / activeStudents.length)
         : 0;
 
-    // Weekly classes count (current week)
-    const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay());
-    weekStart.setHours(0, 0, 0, 0);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
-    weekEnd.setHours(23, 59, 59, 999);
-    const weeklyClasses = classSessions.filter(
-      (s) => s.date >= weekStart && s.date <= weekEnd
-    ).length;
+    // Semana corrente (domingo-sábado) em APP_TIMEZONE - mesmo cuidado de
+    // fuso do Lote 1, pra não classificar uma sessão de fim de semana no dia
+    // errado quando o processo roda em UTC.
+    const nowParts = getZonedDateParts(new Date(), env.APP_TIMEZONE);
+    const weekday = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day)).getUTCDay();
+    const weekStart = zonedTimeToUtc(nowParts.year, nowParts.month, nowParts.day - weekday, 0, 0, 0, 0, env.APP_TIMEZONE);
+    const weekEnd = zonedTimeToUtc(nowParts.year, nowParts.month, nowParts.day - weekday + 6, 23, 59, 59, 999, env.APP_TIMEZONE);
+    const weeklyClasses =
+      completedBookings.filter((b) => b.scheduledAt >= weekStart && b.scheduledAt <= weekEnd).length
+      + consultancyDeliveries.filter((d) => d.createdAt >= weekStart && d.createdAt <= weekEnd).length;
 
     // Breakdown diário: receitas manuais + agendamentos completados + consultorias capturadas
     const dailyMap: Record<string, number> = {};
@@ -512,7 +512,7 @@ export class FinancialService {
       netProfitCents,
       growthPct,
       activeStudents: activeStudents.length,
-      totalClassesThisMonth: classSessions.length,
+      totalClassesThisMonth: totalClasses,
       avgClassesPerDay: Math.round(avgClassesPerDay * 10) / 10,
       weeklyClasses,
       ticketMedioCents: ticketMedio,
@@ -821,42 +821,6 @@ export class FinancialService {
     });
   }
 
-  // ─── Class Sessions ───────────────────────────────────────────────────────
-  async listClassSessions(userId: string, month?: string) {
-    const provider = await getProviderByUserId(userId);
-    const m = month ?? currentMonth();
-    const { from, to } = monthBounds(m);
-    return prisma.financialClassSession.findMany({
-      where: { providerId: provider.id, date: { gte: from, lte: to } },
-      include: { student: { select: { id: true, name: true } } },
-      orderBy: { date: "desc" }
-    });
-  }
-
-  async createClassSession(userId: string, input: CreateClassSessionInput) {
-    const provider = await getProviderByUserId(userId);
-    if (input.studentId) {
-      const s = await prisma.financialStudent.findUnique({ where: { id: input.studentId } });
-      if (!s || s.providerId !== provider.id) throw new AppError("Aluno não encontrado.", StatusCodes.BAD_REQUEST);
-    }
-    return prisma.financialClassSession.create({
-      data: {
-        providerId: provider.id,
-        studentId: input.studentId ?? null,
-        date: new Date(input.date),
-        notes: input.notes?.trim() ?? null
-      },
-      include: { student: { select: { id: true, name: true } } }
-    });
-  }
-
-  async deleteClassSession(userId: string, sessionId: string) {
-    const provider = await getProviderByUserId(userId);
-    const session = await prisma.financialClassSession.findUnique({ where: { id: sessionId } });
-    if (!session || session.providerId !== provider.id) throw new AppError("Aula não encontrada.", StatusCodes.NOT_FOUND);
-    await prisma.financialClassSession.delete({ where: { id: sessionId } });
-  }
-
   // ─── App Clients (agendamentos + consultorias pagas, agrupados por cliente) ─
   async listAppClients(userId: string, month?: string) {
     const provider = await getProviderByUserId(userId);
@@ -996,11 +960,13 @@ export class FinancialService {
       const month = addMonthsToKey(thisMonth, -i);
       const { from, to } = monthBounds(month);
 
-      const [incomes, expenses, classes, appBookings, appContracts, appPackageCycles, renewalPlans] = await Promise.all([
+      const [incomes, expenses, consultancyDeliveries, appBookings, appContracts, appPackageCycles, renewalPlans] = await Promise.all([
         getEffectiveIncomes(provider.id, month),
         getEffectiveExpenses(provider.id, month),
-        prisma.financialClassSession.count({
-          where: { providerId: provider.id, date: { gte: from, lte: to } }
+        // Épico de Frentes, Frente 7, Lote 6: mesmo critério de getDashboard
+        // - "aulas" conta sessão presencial concluída + entrega de ficha.
+        prisma.trainingPlan.count({
+          where: { providerId: provider.id, createdAt: { gte: from, lte: to } }
         }),
         // Épico de Frentes, Frente 7, Lote 2: aggregate() somava priceCents
         // direto, sem descontar sessão reembolsada depois via disputa
@@ -1039,6 +1005,7 @@ export class FinancialService {
         + appPackageCycles.reduce((s, c) => s + effectiveCycleRevenueCents(c), 0)
         + renewalRev;
       const exp    = expenses.reduce((s, e) => s + e.amountCents, 0);
+      const classes = appBookings.length + consultancyDeliveries;
       result.push({ month, revenueCents: rev, appRevenueCents: appRev, expensesCents: exp, netCents: rev + appRev - exp, classes });
     }
 

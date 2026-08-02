@@ -12,7 +12,6 @@ let categoryId = "";
 let studentId = "";
 let incomeId = "";
 let expenseId = "";
-let sessionId = "";
 
 function uid(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -56,7 +55,6 @@ describe("financial", () => {
   });
 
   afterAll(async () => {
-    await prisma.financialClassSession.deleteMany({ where: { providerId } });
     await prisma.financialIncome.deleteMany({ where: { providerId } });
     await prisma.financialExpense.deleteMany({ where: { providerId } });
     await prisma.financialGoal.deleteMany({ where: { providerId } });
@@ -211,31 +209,6 @@ describe("financial", () => {
       .get("/api/financial/goals")
       .set("Authorization", `Bearer ${providerToken}`);
     expect(res.status).toBe(200);
-  });
-
-  // ── Sessions ──────────────────────────────────────────────────────────────
-  it("POST /financial/sessions creates session", async () => {
-    const res = await request(app)
-      .post("/api/financial/sessions")
-      .set("Authorization", `Bearer ${providerToken}`)
-      .send({ studentId, date: new Date().toISOString(), notes: "Sessão de teste" });
-    expect(res.status).toBe(201);
-    expect(res.body.id).toBeTruthy();
-    sessionId = res.body.id;
-  });
-
-  it("GET /financial/sessions returns list", async () => {
-    const res = await request(app)
-      .get("/api/financial/sessions")
-      .set("Authorization", `Bearer ${providerToken}`);
-    expect(res.status).toBe(200);
-  });
-
-  it("DELETE /financial/sessions/:id removes session", async () => {
-    const res = await request(app)
-      .delete(`/api/financial/sessions/${sessionId}`)
-      .set("Authorization", `Bearer ${providerToken}`);
-    expect(res.status).toBe(204);
   });
 
   // ── Deletions ─────────────────────────────────────────────────────────────

@@ -5,8 +5,6 @@ import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { FinancialController } from "../controllers/financial.controller";
 import {
-  classSessionIdSchema,
-  createClassSessionSchema,
   createExpenseSchema,
   createIncomeSchema,
   createStudentSchema,
@@ -49,7 +47,3 @@ financialRoutes.delete("/expenses/:id", ...auth, validate(expenseIdSchema), ctrl
 
 financialRoutes.get("/goals", ...auth, validate(dashboardQuerySchema), ctrl.getGoal);
 financialRoutes.put("/goals", ...auth, validate(upsertGoalSchema), ctrl.upsertGoal);
-
-financialRoutes.get("/sessions", ...auth, validate(listByMonthSchema), ctrl.listClassSessions);
-financialRoutes.post("/sessions", ...auth, validate(createClassSessionSchema), ctrl.createClassSession);
-financialRoutes.delete("/sessions/:id", ...auth, validate(classSessionIdSchema), ctrl.deleteClassSession);

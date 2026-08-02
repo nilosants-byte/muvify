@@ -88,20 +88,6 @@ export class FinancialController {
     return res.json(data);
   }
 
-  // Class sessions
-  async listClassSessions(req: Request, res: Response) {
-    const data = await service.listClassSessions(req.user!.id, req.query.month as string | undefined);
-    return res.json(data);
-  }
-  async createClassSession(req: Request, res: Response) {
-    const data = await service.createClassSession(req.user!.id, req.body);
-    return res.status(StatusCodes.CREATED).json(data);
-  }
-  async deleteClassSession(req: Request, res: Response) {
-    await service.deleteClassSession(req.user!.id, req.params.id);
-    return res.status(StatusCodes.NO_CONTENT).send();
-  }
-
   // App clients (agendamentos completados, agrupados por cliente)
   async listAppClients(req: Request, res: Response) {
     const data = await service.listAppClients(req.user!.id, req.query.month as string | undefined);

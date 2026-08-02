@@ -430,7 +430,6 @@ model ProviderProfile {
   financialIncomes            FinancialIncome[]
   financialExpenses           FinancialExpense[]
   financialGoals              FinancialGoal[]
-  financialClassSessions      FinancialClassSession[]
   manualBlocks                ProviderManualBlock[]
   debtRecords                 DebtRecord[]
 
@@ -1367,7 +1366,6 @@ model FinancialStudent {
   updatedAt         DateTime                @updatedAt
   provider          ProviderProfile         @relation(fields: [providerId], references: [id], onDelete: Cascade)
   incomes           FinancialIncome[]
-  classSessions     FinancialClassSession[]
 
   @@unique([providerId, name])
   @@index([providerId, isActive])
@@ -1420,19 +1418,6 @@ model FinancialGoal {
 
   @@unique([providerId, month])
   @@index([providerId, month])
-}
-
-model FinancialClassSession {
-  id         String            @id @default(uuid())
-  providerId String
-  studentId  String?
-  date       DateTime
-  notes      String?
-  createdAt  DateTime          @default(now())
-  provider   ProviderProfile   @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  student    FinancialStudent? @relation(fields: [studentId], references: [id], onDelete: SetNull)
-
-  @@index([providerId, date])
 }
 
 model ProviderManualBlock {

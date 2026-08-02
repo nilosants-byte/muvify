@@ -2581,16 +2581,6 @@ export type FinancialGoal = {
   targetWeeklyClasses?: number | null;
 };
 
-export type FinancialClassSession = {
-  id: string;
-  providerId: string;
-  studentId?: string | null;
-  date: string;
-  notes?: string | null;
-  createdAt: string;
-  student?: { id: string; name: string } | null;
-};
-
 export type FinancialDashboard = {
   month: string;
   /** receitas manuais ? fora do app (aba Receitas) */
@@ -2749,16 +2739,6 @@ export const financialApi = {
   },
   upsertGoal(token: string, body: { month: string; targetRevenueCents?: number; targetStudents?: number; targetWeeklyClasses?: number }) {
     return apiRequest<FinancialGoal>("/financial/goals", { method: "PUT", token, body });
-  },
-  listSessions(token: string, month?: string) {
-    const q = month ? `?month=${month}` : "";
-    return apiRequest<FinancialClassSession[]>(`/financial/sessions${q}`, { token });
-  },
-  createSession(token: string, body: { studentId?: string; date: string; notes?: string }) {
-    return apiRequest<FinancialClassSession>("/financial/sessions", { method: "POST", token, body });
-  },
-  deleteSession(token: string, id: string) {
-    return apiRequest<void>(`/financial/sessions/${id}`, { method: "DELETE", token });
   }
 };
 

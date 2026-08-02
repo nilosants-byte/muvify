@@ -752,7 +752,6 @@ export class UserService {
         await tx.financialExpense.deleteMany({ where: { providerId: provProfile.id } });
         await tx.financialStudent.deleteMany({ where: { providerId: provProfile.id } });
         await tx.financialGoal.deleteMany({ where: { providerId: provProfile.id } });
-        await tx.financialClassSession.deleteMany({ where: { providerId: provProfile.id } });
         await tx.providerStudentAssessment.deleteMany({ where: { providerId: provProfile.id } });
         await tx.providerProfile.updateMany({
           where: { userId },

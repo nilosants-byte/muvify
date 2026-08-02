@@ -131,14 +131,8 @@ export const upsertGoalSchema = z.object({
   })
 });
 
-export const createClassSessionSchema = z.object({
-  body: z.object({
-    studentId: z.string().uuid().optional(),
-    date: z.string().datetime({ offset: true }),
-    notes: z.string().trim().max(300).optional()
-  })
-});
-
-export const classSessionIdSchema = z.object({
-  params: z.object({ id: z.string().uuid() })
-});
+// Épico de Frentes, Frente 7, Lote 6: FinancialClassSession removido -
+// nenhuma tela do app criava uma "aula" avulsa (createClassSessionSchema/
+// classSessionIdSchema ficavam sem nenhum call site real), então a meta de
+// "aulas por semana" passou a contar sessões reais já rastreadas pelo app
+// (bookings concluídos + entregas de consultoria).
