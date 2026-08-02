@@ -13,16 +13,103 @@ import { escapeCsv } from "../../../shared/utils/csv";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
+import { env } from "../../../config/env";
+
+// Épico de Frentes, Frente 7, Lote 1: todo o módulo financeiro classificava
+// transações por mês/dia usando o fuso do PROCESSO (UTC em produção), nunca
+// APP_TIMEZONE — diferente de booking/availability/pacote presencial, que já
+// usam esse padrão. Uma transação entre 21h-23h59 (Brasília) no fim do mês
+// caía no mês seguinte. Os helpers abaixo leem/constroem datas sempre
+// relativas a APP_TIMEZONE, independente do fuso do processo Node.
+
+function getZonedDateParts(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const map: Record<string, string> = {};
+  for (const part of parts) {
+    if (part.type !== "literal") map[part.type] = part.value;
+  }
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    hour: Number(map.hour),
+    minute: Number(map.minute),
+    second: Number(map.second),
+    ms: date.getMilliseconds()
+  };
+}
+
+// Offset (em ms) do fuso em relação a UTC no instante dado. Negativo pra
+// fusos atrás de UTC (ex: America/Sao_Paulo = -3h).
+function timezoneOffsetMs(instant: Date, timeZone: string) {
+  const p = getZonedDateParts(instant, timeZone);
+  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  return asUtc - instant.getTime();
+}
+
+// Converte um horário de parede (ano/mês/dia/hora... já no fuso `timeZone`)
+// no instante UTC correspondente.
+function zonedTimeToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+  ms: number,
+  timeZone: string
+) {
+  const naiveUtc = new Date(Date.UTC(year, month - 1, day, hour, minute, second, ms));
+  const offsetMs = timezoneOffsetMs(naiveUtc, timeZone);
+  return new Date(naiveUtc.getTime() - offsetMs);
+}
+
+function zonedMonthKey(date: Date, timeZone: string) {
+  const p = getZonedDateParts(date, timeZone);
+  return `${p.year}-${String(p.month).padStart(2, "0")}`;
+}
+
+function zonedDateKey(date: Date, timeZone: string) {
+  const p = getZonedDateParts(date, timeZone);
+  return `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
+}
+
+// Quantidade de dias de um mês "YYYY-MM" — cálculo de calendário puro, não
+// depende de fuso horário.
+function daysInMonthOf(month: string) {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(y, m, 0).getDate();
+}
+
+// Soma/subtrai meses de uma chave "YYYY-MM" — aritmética de calendário pura
+// (constrói e lê um Date só com componentes de ano/mês, nunca compara
+// instantes absolutos, então o fuso do processo não importa aqui).
+function addMonthsToKey(monthKey: string, delta: number) {
+  const [y, m] = monthKey.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
 
 function currentMonth() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return zonedMonthKey(new Date(), env.APP_TIMEZONE);
 }
 
 function monthBounds(month: string) {
   const [y, m] = month.split("-").map(Number);
-  const from = new Date(y, m - 1, 1);
-  const to = new Date(y, m, 0, 23, 59, 59, 999);
+  const from = zonedTimeToUtc(y, m, 1, 0, 0, 0, 0, env.APP_TIMEZONE);
+  const nextMonth = addMonthsToKey(month, 1);
+  const [ny, nm] = nextMonth.split("-").map(Number);
+  const nextMonthStart = zonedTimeToUtc(ny, nm, 1, 0, 0, 0, 0, env.APP_TIMEZONE);
+  const to = new Date(nextMonthStart.getTime() - 1);
   return { from, to };
 }
 
@@ -34,23 +121,23 @@ function consultancyKindLabel(kind: ServiceOfferKind): string {
 }
 
 function monthKeyOf(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  return zonedMonthKey(date, env.APP_TIMEZONE);
 }
 
 // Projeta a data de um lançamento recorrente pro mês-alvo, mantendo o dia
 // (e "clampando" pro último dia do mês quando o mês-alvo for mais curto).
 function clampDayToMonth(date: Date, month: string) {
   const [y, m] = month.split("-").map(Number);
-  const lastDay = new Date(y, m, 0).getDate();
-  const day = Math.min(date.getDate(), lastDay);
-  return new Date(y, m - 1, day, date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
+  const lastDay = daysInMonthOf(month);
+  const parts = getZonedDateParts(date, env.APP_TIMEZONE);
+  const day = Math.min(parts.day, lastDay);
+  return zonedTimeToUtc(y, m, day, parts.hour, parts.minute, parts.second, parts.ms, env.APP_TIMEZONE);
 }
 
 // Último instante do mês anterior a `month` — usado como corte de uma série
 // recorrente que está sendo "dividida" (ver updateIncome/updateExpense).
 function endOfMonthBefore(month: string) {
-  const { from } = monthBounds(month);
-  return new Date(from.getFullYear(), from.getMonth(), 0, 23, 59, 59, 999);
+  return new Date(monthBounds(month).from.getTime() - 1);
 }
 
 // Um aluno "cobra" no mês-alvo se: está ativo, e (a) é avulso e o mês-alvo é
@@ -213,10 +300,8 @@ export class FinancialService {
     const m = month ?? currentMonth();
     const { from, to } = monthBounds(m);
 
-    const lastMonthFrom = (() => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 2, 1); })();
-    const lastMonthTo   = (() => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 1, 0, 23, 59, 59); })();
-
-    const lastMonthKey = (() => { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo - 2, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; })();
+    const lastMonthKey = addMonthsToKey(m, -1);
+    const { from: lastMonthFrom, to: lastMonthTo } = monthBounds(lastMonthKey);
 
     const [
       incomes,
@@ -331,7 +416,7 @@ export class FinancialService {
         ? null
         : Math.round(((totalRevenueCents - lastMonthTotalRevenueCents) / lastMonthTotalRevenueCents) * 100);
 
-    const daysInMonth = to.getDate();
+    const daysInMonth = daysInMonthOf(m);
     const avgClassesPerDay = classSessions.length / daysInMonth;
 
     const ticketMedio =
@@ -354,15 +439,15 @@ export class FinancialService {
     // Breakdown diário: receitas manuais + agendamentos completados + consultorias capturadas
     const dailyMap: Record<string, number> = {};
     for (const inc of incomes) {
-      const day = inc.paidAt.toISOString().slice(0, 10);
+      const day = zonedDateKey(inc.paidAt, env.APP_TIMEZONE);
       dailyMap[day] = (dailyMap[day] ?? 0) + inc.amountCents;
     }
     for (const b of completedBookings) {
-      const day = b.scheduledAt.toISOString().slice(0, 10);
+      const day = zonedDateKey(b.scheduledAt, env.APP_TIMEZONE);
       dailyMap[day] = (dailyMap[day] ?? 0) + b.priceCents;
     }
     for (const c of capturedContracts) {
-      const day = (c.paymentCapturedAt ?? new Date()).toISOString().slice(0, 10);
+      const day = zonedDateKey(c.paymentCapturedAt ?? new Date(), env.APP_TIMEZONE);
       dailyMap[day] = (dailyMap[day] ?? 0) + c.paymentAmountCents;
     }
     for (const cycle of capturedPackageCycles) {
@@ -370,11 +455,11 @@ export class FinancialService {
       // combo cartao+horario fixo (Frente 3b.2) - a propria condicao
       // "capturedAt: { gte, lte }" da query ja exclui esses registros,
       // entao aqui os dois campos estao sempre preenchidos de verdade.
-      const day = cycle.capturedAt!.toISOString().slice(0, 10);
+      const day = zonedDateKey(cycle.capturedAt!, env.APP_TIMEZONE);
       dailyMap[day] = (dailyMap[day] ?? 0) + (cycle.amountCents ?? 0);
     }
     for (const p of renewalPlans) {
-      const day = p.createdAt.toISOString().slice(0, 10);
+      const day = zonedDateKey(p.createdAt, env.APP_TIMEZONE);
       dailyMap[day] = (dailyMap[day] ?? 0) + (p.contract?.paymentAmountCents ?? 0);
     }
 
@@ -818,7 +903,7 @@ export class FinancialService {
     const safeMon = Math.min(Math.max(Number.isInteger(months) ? months : 6, 1), 24);
     months = safeMon;
     const provider = await getProviderByUserId(userId);
-    const now = new Date();
+    const thisMonth = currentMonth();
     const result: Array<{
       month: string;
       revenueCents: number;
@@ -829,8 +914,7 @@ export class FinancialService {
     }> = [];
 
     for (let i = months - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const month = addMonthsToKey(thisMonth, -i);
       const { from, to } = monthBounds(month);
 
       const [incomes, expenses, classes, appBookings, appContracts, appPackageCycles, renewalPlans] = await Promise.all([

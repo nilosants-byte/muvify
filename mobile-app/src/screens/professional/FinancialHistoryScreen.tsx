@@ -35,6 +35,15 @@ type Period = 3 | 6 | 12;
 
 function parseCents(v: string) { return Number(v.replace(/\D/g, "")); }
 function fmtCents(cents: number) { return formatCurrencyBRL(cents / 100); }
+// Épico de Frentes, Frente 7, Lote 1: extrai ano/mês/dia LOCAIS do aparelho
+// (não `.toISOString()`, que converte pra UTC antes) - lançar "hoje" entre
+// 21h-23h59 (Brasília) gravava com a data UTC do dia seguinte.
+function toLocalDateKey(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 function currentMonthStr() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -350,7 +359,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
       const newIncome = await runWithAuth(t => financialApi.createIncome(t, {
         description: iDesc.trim(),
         amountCents: parseCents(iValue),
-        paidAt: new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
+        paidAt: new Date(toLocalDateKey(iDate) + "T12:00:00.000Z").toISOString(),
         recurrence: (iBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
         recurrenceEndDate: iBilling === "period" ? iRecurrenceEndDate.toISOString() : null,
       }));
@@ -373,7 +382,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
       const updated = await runWithAuth(t => financialApi.updateIncome(t, editingId, {
         description: iDesc.trim(),
         amountCents: parseCents(iValue),
-        paidAt: new Date(iDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
+        paidAt: new Date(toLocalDateKey(iDate) + "T12:00:00.000Z").toISOString(),
         recurrence: (iBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
         recurrenceEndDate: iBilling === "period" ? iRecurrenceEndDate.toISOString() : null,
         occurrenceMonth: selectedMonth,
@@ -426,7 +435,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
         description: eDesc.trim(),
         amountCents: parseCents(eValue),
         category: eCat,
-        paidAt: new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
+        paidAt: new Date(toLocalDateKey(eDate) + "T12:00:00.000Z").toISOString(),
         recurrence: (eBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
         recurrenceEndDate: eBilling === "period" ? eRecurrenceEndDate.toISOString() : null,
       }));
@@ -450,7 +459,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
         description: eDesc.trim(),
         amountCents: parseCents(eValue),
         category: eCat,
-        paidAt: new Date(eDate.toISOString().slice(0, 10) + "T12:00:00.000Z").toISOString(),
+        paidAt: new Date(toLocalDateKey(eDate) + "T12:00:00.000Z").toISOString(),
         recurrence: (eBilling === "one_time" ? "ONE_TIME" : "RECURRING") as FinancialRecurrence,
         recurrenceEndDate: eBilling === "period" ? eRecurrenceEndDate.toISOString() : null,
         occurrenceMonth: selectedMonth,
