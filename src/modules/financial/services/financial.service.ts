@@ -943,7 +943,10 @@ export class FinancialService {
 
   // ─── Reports ──────────────────────────────────────────────────────────────
   async getReport(userId: string, months = 6) {
-    const safeMon = Math.min(Math.max(Number.isInteger(months) ? months : 6, 1), 24);
+    // Épico de Frentes, Frente 7, Lote 9: teto elevado de 24 pra 36 - o
+    // Relatório Anual do mobile pede 36 meses (3 anos) pra alimentar o
+    // seletor de ano, mas esse clamp nunca deixava passar de 24.
+    const safeMon = Math.min(Math.max(Number.isInteger(months) ? months : 6, 1), 36);
     months = safeMon;
     const provider = await getProviderByUserId(userId);
     const thisMonth = currentMonth();

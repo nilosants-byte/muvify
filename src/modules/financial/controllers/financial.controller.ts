@@ -98,7 +98,12 @@ export class FinancialController {
   async report(req: Request, res: Response) {
     const rawMonths = req.query.months ? parseInt(req.query.months as string, 10) : 6;
     const months = Number.isNaN(rawMonths) || rawMonths < 1 ? 6 : rawMonths;
-    const data = await service.getReport(req.user!.id, Math.min(months, 12));
+    // Épico de Frentes, Frente 7, Lote 9: o mobile (Relatório Anual) já pede
+    // 36 meses (3 anos) esperando ver anos anteriores, mas esse clamp
+    // cortava em 12 antes mesmo de chegar no service - profissional ativo
+    // há mais de 1 ano nunca via o ano retrasado, inclusive na seção de
+    // Imposto de Renda. Alinhado ao teto real do service (getReport).
+    const data = await service.getReport(req.user!.id, Math.min(months, 36));
     return res.json(data);
   }
 }
