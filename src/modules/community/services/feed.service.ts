@@ -4,6 +4,7 @@ import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { checkAndUnlock } from "../../gamification/services/achievement.service";
 import { awardXp, getMonthKey, getWeekKey } from "../../gamification/services/xp.service";
+import { deleteMediaByUrl } from "../../../shared/services/storage.service";
 
 const POST_SELECT = {
   id: true,
@@ -297,13 +298,20 @@ const XP_FARM_REVERSAL_WINDOW_MS = 10 * 60 * 1000;
 export async function deletePost(postId: string, userId: string): Promise<void> {
   const post = await prisma.feedPost.findUnique({
     where: { id: postId },
-    select: { userId: true, isAutomatic: true, type: true, createdAt: true },
+    select: { userId: true, isAutomatic: true, type: true, createdAt: true, imageUrl: true },
   });
   if (!post) throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
   if (post.userId !== userId) throw new AppError("Sem permissão.", StatusCodes.FORBIDDEN);
   if (post.isAutomatic) throw new AppError("Posts automáticos não podem ser excluídos.", StatusCodes.FORBIDDEN);
 
   await prisma.feedPost.delete({ where: { id: postId } });
+
+  // Épico de Frentes, Frente 8, Lote 10: apagar o post no banco nunca
+  // apagava a mídia correspondente no R2 - ficava órfã pra sempre. Best
+  // effort: um erro de rede no storage não deve impedir a exclusão do post.
+  if (post.imageUrl) {
+    await deleteMediaByUrl(post.imageUrl).catch((e) => console.error("Falha ao apagar mídia do post no R2", e));
+  }
 
   if (post.type === "MANUAL_PHOTO" && Date.now() - post.createdAt.getTime() < XP_FARM_REVERSAL_WINDOW_MS) {
     // Épico de Frentes, Frente 8, Lote 6: reverter o XP só apagava a

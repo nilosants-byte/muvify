@@ -1,4 +1,4 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
 import { env } from "../../config/env";
 
@@ -202,6 +202,20 @@ export async function putPrivateObject(key: string, content: string): Promise<vo
       ContentType: "application/octet-stream"
     })
   );
+}
+
+// Épico de Frentes, Frente 8, Lote 10: uploadMediaFromBuffer/
+// uploadPrivateMediaFromBuffer nunca tiveram uma contraparte de delete -
+// excluir um post ou uma conta apagava o registro no banco, mas a mídia
+// ficava órfã no bucket pra sempre (custo/espaço). Best-effort por design:
+// quem chama já trata falha (a exclusão do registro no banco não deve
+// falhar por causa de um erro de rede no storage).
+export async function deleteMediaByUrl(url: string): Promise<void> {
+  const config = getR2Config();
+  const prefix = `${config.publicUrl.replace(/\/+$/, "")}/`;
+  if (!url.startsWith(prefix)) return;
+  const key = url.slice(prefix.length);
+  await getR2Client(config).send(new DeleteObjectCommand({ Bucket: config.bucketName, Key: key }));
 }
 
 export async function getPrivateObject(key: string): Promise<string> {

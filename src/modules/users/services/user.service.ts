@@ -11,6 +11,7 @@ import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
+import { deleteMediaByUrl } from "../../../shared/services/storage.service";
 import { getCache, setCache } from "../../../shared/utils/cache";
 import { resolveAccessTokenTtlSeconds, setTokenBlacklist } from "../../../shared/security/token-blacklist";
 import {
@@ -697,6 +698,15 @@ export class UserService {
     const anonymizedEmail = `deleted_${userId}@removed.invalid`;
     const newPassword = await hashValue(randomUUID());
 
+    // Épico de Frentes, Frente 8, Lote 10: precisa ler as imageUrl ANTES da
+    // transação apagar os FeedPost - excluir conta nunca limpava a mídia
+    // correspondente no R2, ficava órfã pra sempre mesmo com o registro já
+    // apagado do banco.
+    const feedPostsToCleanup = await prisma.feedPost.findMany({
+      where: { userId, imageUrl: { not: null } },
+      select: { imageUrl: true },
+    });
+
     // Interactive transaction garante atomicidade total, incluindo o lookup do providerProfile
     await prisma.$transaction(async (tx) => {
       await tx.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
@@ -774,6 +784,12 @@ export class UserService {
         data: { name: "Usuário removido", email: anonymizedEmail, phone: null, photoUrl: null, recoveryEmailEncrypted: null, password: newPassword }
       });
     }, { timeout: 30_000 }); // 30s timeout para contas com muito histórico
+
+    await Promise.all(
+      feedPostsToCleanup.map((p) =>
+        deleteMediaByUrl(p.imageUrl!).catch((e) => console.error("Falha ao apagar mídia de post no R2 (exclusão de conta)", e))
+      )
+    );
   }
 
   async exportMyData(userId: string) {
