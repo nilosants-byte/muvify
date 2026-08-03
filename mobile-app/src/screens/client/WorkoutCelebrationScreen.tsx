@@ -11,10 +11,10 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { PressableScale } from "../../components/polish/PressableScale";
-import { bookingsApi, communityApi, uploadsApi } from "../../services/api/client";
+import { bookingsApi, communityApi, gamificationApi, uploadsApi } from "../../services/api/client";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
-import { computeUserProgress, computeAchievements } from "../../utils/gamification";
+import { computeUserProgress, mapBackendAchievement } from "../../utils/gamification";
 import type { Achievement } from "../../types/gamification";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "WorkoutCelebration">;
@@ -45,6 +45,18 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
     (token) => bookingsApi.me(token),
     { staleTime: Infinity }
   );
+  // Épico de Frentes, Frente 8, Lote 5: detectar "conquista nova" usava
+  // computeAchievements local (fórmula própria, só 4 conquistas fixas) -
+  // podia celebrar uma conquista que o backend nunca desbloqueou de
+  // verdade, ou nunca celebrar uma das dezenas de conquistas reais do
+  // backend (fotos, avaliações, personais diferentes, ranking etc.) por
+  // não fazerem parte do cálculo local. Passa a usar a lista real (mesma
+  // fonte que a aba Comunidade já usa).
+  const achievementsQuery = useAuthQuery(
+    queryKeys.gamification.achievements(),
+    (token) => gamificationApi.getAchievements(token),
+    { staleTime: Infinity }
+  );
 
   // Confetti + AsyncStorage na montagem
   useEffect(() => {
@@ -68,25 +80,37 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
     })();
   }, [bookingId]);
 
-  // Calcula conquistas quando bookings carregam
+  // Conquistas novas: sempre da lista real do backend.
   useEffect(() => {
-    if (!bookingsQuery.data) return;
+    if (!achievementsQuery.data) return;
     void (async () => {
       try {
-        const prog = computeUserProgress(bookingsQuery.data as any);
-        const achievs = computeAchievements(prog);
-
         const seenRaw = await AsyncStorage.getItem(SEEN_ACHIEVEMENTS_KEY);
         const seen: string[] = seenRaw ? (JSON.parse(seenRaw) as string[]) : [];
-        const newly = achievs.filter((a) => a.unlocked && !seen.includes(a.id));
+        const unlocked = achievementsQuery.data!.filter((a) => a.unlockedAt != null);
+        const newly = unlocked.filter((a) => !seen.includes(a.id));
 
         if (newly.length > 0) {
           await AsyncStorage.setItem(
             SEEN_ACHIEVEMENTS_KEY,
             JSON.stringify([...seen, ...newly.map((a) => a.id)])
           );
-          setNewAchievements(newly);
+          setNewAchievements(
+            newly.map((a) => mapBackendAchievement(a, { totalWorkouts: 0, currentStreak: 0, currentLevel: 0, followingCount: 0 }))
+          );
         }
+      } catch { /* best effort */ }
+    })();
+  }, [achievementsQuery.data]);
+
+  // Prompt de avaliação na loja: continua usando o histórico local de
+  // bookings, é só uma heurística de "já treinou algumas vezes", não uma
+  // exibição de dado (fora do escopo do Lote 5).
+  useEffect(() => {
+    if (!bookingsQuery.data) return;
+    void (async () => {
+      try {
+        const prog = computeUserProgress(bookingsQuery.data as any);
 
         if (prog.totalWorkouts >= 3 && STORE_URL) {
           const alreadyPrompted = await AsyncStorage.getItem(STORE_REVIEW_PROMPTED_KEY);

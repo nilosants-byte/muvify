@@ -39,6 +39,7 @@ import {
   chatApi,
   ClientAnamnesisProfile,
   communityApi as communityApiImport,
+  gamificationApi,
   notificationsApi,
   PROFESSIONAL_SPECIALTIES,
   providersApi,
@@ -909,10 +910,24 @@ export function ClientHomeScreen({ navigation }: Props) {
     }).length;
   }, [bookings]);
 
+  // Épico de Frentes, Frente 8, Lote 5: nível/streak exibidos aqui vinham só
+  // do cálculo local (fórmula própria de nível, streak com hora local do
+  // device, conta só booking presencial) - divergia do valor real já
+  // calculado pelo backend (mesma fonte que a aba Comunidade já usa
+  // corretamente). computeUserProgress vira só fallback enquanto a query
+  // não carrega ou falha.
+  const gamificationQuery = useAuthQuery(
+    queryKeys.gamification.myProfile(),
+    (token) => gamificationApi.getMyProfile(token),
+  );
+  const gamificationData = gamificationQuery.data ?? null;
+
   const gamifProgress = useMemo(() => computeUserProgress(bookings as any), [bookings]);
+  const displayStreak = gamificationData?.currentStreak ?? gamifProgress.streak;
+  const displayLevel = gamificationData?.currentLevel ?? gamifProgress.level;
 
   const nextAchievement = useMemo(() => {
-    const prog = gamifProgress;
+    const prog = { ...gamifProgress, streak: displayStreak, level: displayLevel };
     const achievs = computeAchievements(prog);
     const locked = achievs.find((a) => !a.unlocked);
     if (!locked) return null;
@@ -923,7 +938,7 @@ export function ClientHomeScreen({ navigation }: Props) {
     else if (locked.id === "consistente") { current = prog.streak; total = 30; }
     else if (locked.id === "elite") { current = prog.totalWorkouts; total = 100; }
     return { ...locked, current, total, fraction: Math.min(1, current / total) };
-  }, [gamifProgress]);
+  }, [gamifProgress, displayStreak, displayLevel]);
 
   const visibleProviderCount = mapProviders.filter(
     (p) => typeof p.latitude === "number" && typeof p.longitude === "number"
@@ -1270,7 +1285,7 @@ export function ClientHomeScreen({ navigation }: Props) {
             activeOpacity={0.8}
             onPress={() => navigation.navigate("Community")}
             accessibilityRole="button"
-            accessibilityLabel={`Nível ${gamifProgress.level}, sequência de ${gamifProgress.streak} dias`}
+            accessibilityLabel={`Nível ${displayLevel}, sequência de ${displayStreak} dias`}
             style={{
               flexDirection: "row", alignItems: "center",
               marginHorizontal: S.px,
@@ -1281,17 +1296,17 @@ export function ClientHomeScreen({ navigation }: Props) {
           >
             <Ionicons name="flame" size={13} color={C.amber} />
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text1, marginLeft: 4 }}>
-              {gamifProgress.streak}
+              {displayStreak}
             </Text>
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, marginLeft: 3 }}>
-              {gamifProgress.streak === 1 ? "dia" : "dias"}
+              {displayStreak === 1 ? "dia" : "dias"}
             </Text>
 
             <View style={{ width: 1, height: 13, backgroundColor: theme.border, marginHorizontal: 10 }} />
 
             <Ionicons name="star" size={12} color={theme.primary} />
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text1, marginLeft: 4 }}>
-              Nível {gamifProgress.level}
+              Nível {displayLevel}
             </Text>
 
             <View style={{ width: 1, height: 13, backgroundColor: theme.border, marginHorizontal: 10 }} />
