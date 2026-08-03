@@ -1,4 +1,5 @@
 import { prisma } from "../../../config/prisma";
+import { env } from "../../../config/env";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { awardXp, getWeekKey, getMonthKey } from "../../gamification/services/xp.service";
 import { checkAndUnlock } from "../../gamification/services/achievement.service";
@@ -24,28 +25,47 @@ function calculateBackoffMs(failures: number) {
   return Math.min(JOB_INTERVAL_MS * 2 ** Math.max(0, failures - 1), MAX_DATABASE_BACKOFF_MS);
 }
 
-function getPreviousWeekKey(now: Date): string {
-  const d = new Date(now);
-  d.setDate(d.getDate() - 7);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
+// Épico de Frentes, Frente 8, Lote 4: getWeekKey/getMonthKey (xp.service.ts)
+// já calculam a chave do período corretamente em APP_TIMEZONE - mas o job
+// que fecha o período (getPreviousWeekKey/getPreviousMonthKey + o próprio
+// gatilho dayOfWeek/dayOfMonth abaixo) usava Date.getDay()/getDate() cru
+// (fuso do processo), podendo divergir da chave usada durante a semana/mês
+// pra acumular XP se o servidor não rodar em America/Sao_Paulo. localDateKey
+// resolve "que dia é hoje" no fuso certo; a subtração de 7 dias/1 mês em
+// cima de uma chave (uma data pura) já correta é aritmética de calendário
+// seguro, sem reintroduzir fuso do processo.
+export function localDateKey(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: env.APP_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+export function getPreviousWeekKey(now: Date): string {
+  const currentWeekKey = getWeekKey(now);
+  const d = new Date(`${currentWeekKey}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 7);
   return d.toISOString().slice(0, 10);
 }
 
-function getPreviousMonthKey(now: Date): string {
-  const d = new Date(now);
-  d.setMonth(d.getMonth() - 1);
-  return d.toISOString().slice(0, 7);
+export function getPreviousMonthKey(now: Date): string {
+  const [year, month] = getMonthKey(now).split("-").map(Number);
+  const d = new Date(Date.UTC(year, month - 2, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 async function runCommunityJobs() {
   const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday
-  const dayOfMonth = now.getDate();
+  const todayKey = localDateKey(now);
+  // Segunda-feira é o próprio dia-chave retornado por getWeekKey (que já
+  // resolve pra segunda da semana corrente no fuso certo).
+  const isMonday = getWeekKey(now) === todayKey;
+  const dayOfMonth = Number(todayKey.slice(8, 10));
 
   // ── Weekly ranking reset (runs on Mondays) ────────────────────────────────
-  if (dayOfWeek === 1) {
+  if (isMonday) {
     const prevWeekKey = getPreviousWeekKey(now);
     if (!processedWeeks.has(prevWeekKey)) {
       // Verifica TODAS as três posições para tolerar falha parcial de execução anterior
@@ -78,10 +98,9 @@ async function runCommunityJobs() {
   }
 
   // ── Daily position tracker ────────────────────────────────────────────────
-  const dateKey = now.toISOString().slice(0, 10);
-  if (!processedDates.has(dateKey)) {
+  if (!processedDates.has(todayKey)) {
     await processDailyPositionTracker(now);
-    processedDates.add(dateKey);
+    processedDates.add(todayKey);
   }
 }
 
