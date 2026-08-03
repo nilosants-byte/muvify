@@ -57,7 +57,14 @@ export async function onWorkoutCompleted(
     const newLevel = computeLevel(newTotalXp);
 
     if (newLevel.level > prevLevel.level) {
+      // Épico de Frentes, Frente 8, Lote 11: sem referenceId, dois eventos
+      // de XP quase simultâneos (ex: concluir presencial e consultoria bem
+      // próximos) podiam ler o mesmo nível anterior antes de qualquer
+      // commit e ambos concluir "subiu de nível", gerando dois posts pro
+      // mesmo salto. Dedup já existente em createAutoPost passa a valer
+      // aqui também.
       await createAutoPost(clientId, "LEVEL_UP", {
+        referenceId: `level_up:${newLevel.level}`,
         metadata: { newLevel: newLevel.level, levelName: newLevel.name, totalXp: newTotalXp },
       }).catch((e) => console.error("Gamification: LEVEL_UP post failed", e));
       await checkLevelAchievements(clientId).catch((e) => console.error("Gamification: checkLevelAchievements failed", e));
@@ -129,7 +136,10 @@ export async function onTrainingPlanCompleted(
     const newLevel = computeLevel(newTotalXp);
 
     if (newLevel.level > prevLevel.level) {
+      // Épico de Frentes, Frente 8, Lote 11: mesma proteção de dedup do
+      // onWorkoutCompleted.
       await createAutoPost(clientId, "LEVEL_UP", {
+        referenceId: `level_up:${newLevel.level}`,
         metadata: { newLevel: newLevel.level, levelName: newLevel.name, totalXp: newTotalXp },
       });
       await checkLevelAchievements(clientId);
