@@ -134,7 +134,11 @@ async function processWeeklyReset(weekKey: string) {
       metadata: { position, weekKey, xpEarned: snap.xpEarned },
     });
 
-    await checkAndUnlock(snap.userId, ["WEEKLY_TOP3_REACHED", "WEEKLY_1ST_REACHED"]);
+    // Épico de Frentes, Frente 8, Lote 13: só quem de fato fechou a semana
+    // no top 3 (este loop) é candidato a ter estendido uma sequência -
+    // único lugar do código que fecha um período semanal, então é o único
+    // lugar correto pra disparar essa checagem.
+    await checkAndUnlock(snap.userId, ["WEEKLY_TOP3_REACHED", "WEEKLY_1ST_REACHED", "WEEKLY_TOP3_CONSECUTIVE_WEEKS"]);
 
     if (position === 1) {
       const generalTop3 = await prisma.rankingSnapshot.findMany({

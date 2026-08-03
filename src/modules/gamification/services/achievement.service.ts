@@ -131,6 +131,15 @@ type Stats = {
   weeklyTop3ConsecutiveWeeks?: number;
 };
 
+// Épico de Frentes, Frente 8, Lote 13: subtrai 7 dias de uma chave de
+// semana (uma data pura, meio-dia UTC) - aritmética de calendário segura,
+// mesmo padrão já usado em getPreviousWeekKey (community.jobs.ts).
+function subtractOneWeek(weekKey: string): string {
+  const d = new Date(`${weekKey}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 7);
+  return d.toISOString().slice(0, 10);
+}
+
 async function gatherStats(userId: string, triggers: AchievementTrigger[]): Promise<Stats> {
   const stats: Stats = {};
   const needs = new Set(triggers);
@@ -193,8 +202,34 @@ async function gatherStats(userId: string, triggers: AchievementTrigger[]): Prom
         stats.weekly1stReached = betterCount === 0;
       })(),
 
+    // Épico de Frentes, Frente 8, Lote 13: stub que sempre retornava 0 -
+    // "Dupla Dominância"/"Dominante" nunca podiam ser desbloqueadas por
+    // ninguém. Percorre os snapshots semanais mais recentes do usuário em
+    // ordem decrescente (mesmo critério "top 3" já usado acima em
+    // WEEKLY_TOP3_REACHED) e conta quantas semanas seguidas ele apareceu
+    // nas 3 primeiras posições, parando na primeira semana sem snapshot ou
+    // fora do top 3.
     needs.has("WEEKLY_TOP3_CONSECUTIVE_WEEKS") &&
-      Promise.resolve().then(() => { stats.weeklyTop3ConsecutiveWeeks = 0; }),
+      (async () => {
+        const { getWeekKey } = await import("./xp.service");
+        let weekKey = subtractOneWeek(getWeekKey(new Date()));
+        let consecutive = 0;
+        // Teto de segurança - a maior conquista hoje exige só 4 semanas seguidas.
+        for (let i = 0; i < 26; i++) {
+          const userSnap = await prisma.rankingSnapshot.findUnique({
+            where: { userId_periodType_periodKey: { userId, periodType: "WEEKLY", periodKey: weekKey } },
+            select: { xpEarned: true },
+          });
+          if (!userSnap || userSnap.xpEarned === 0) break;
+          const betterCount = await prisma.rankingSnapshot.count({
+            where: { periodType: "WEEKLY", periodKey: weekKey, xpEarned: { gt: userSnap.xpEarned } },
+          });
+          if (betterCount >= 3) break;
+          consecutive++;
+          weekKey = subtractOneWeek(weekKey);
+        }
+        stats.weeklyTop3ConsecutiveWeeks = consecutive;
+      })(),
   ].filter(Boolean));
 
   return stats;
