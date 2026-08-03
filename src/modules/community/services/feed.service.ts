@@ -3,7 +3,7 @@ import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { checkAndUnlock } from "../../gamification/services/achievement.service";
-import { awardXp } from "../../gamification/services/xp.service";
+import { awardXp, getMonthKey, getWeekKey } from "../../gamification/services/xp.service";
 
 const POST_SELECT = {
   id: true,
@@ -306,8 +306,34 @@ export async function deletePost(postId: string, userId: string): Promise<void> 
   await prisma.feedPost.delete({ where: { id: postId } });
 
   if (post.type === "MANUAL_PHOTO" && Date.now() - post.createdAt.getTime() < XP_FARM_REVERSAL_WINDOW_MS) {
-    await prisma.userXpTransaction.deleteMany({
+    // Épico de Frentes, Frente 8, Lote 6: reverter o XP só apagava a
+    // UserXpTransaction (some do total exibido no perfil), mas nunca
+    // descontava o mesmo valor do RankingSnapshot (awardXp soma XP nos dois
+    // lugares junto) - o ranking ficava inflado pra sempre com XP que o
+    // perfil já não tinha mais. Usa a data do post (não "agora") pra achar a
+    // mesma semana/mês em que o XP foi originalmente somado, cobrindo o caso
+    // raro de excluir bem em cima de uma virada de semana/mês.
+    const reverted = await prisma.userXpTransaction.findFirst({
       where: { userId, reason: "POST_WORKOUT_PHOTO", referenceId: postId },
     });
+    if (reverted) {
+      const weekKey = getWeekKey(post.createdAt);
+      const monthKey = getMonthKey(post.createdAt);
+      await prisma.$transaction([
+        prisma.userXpTransaction.delete({ where: { id: reverted.id } }),
+        prisma.rankingSnapshot.updateMany({
+          where: { userId, periodType: "WEEKLY", periodKey: weekKey },
+          data: { xpEarned: { decrement: reverted.amount } },
+        }),
+        prisma.rankingSnapshot.updateMany({
+          where: { userId, periodType: "MONTHLY", periodKey: monthKey },
+          data: { xpEarned: { decrement: reverted.amount } },
+        }),
+        prisma.rankingSnapshot.updateMany({
+          where: { userId, periodType: "ALLTIME", periodKey: "alltime" },
+          data: { xpEarned: { decrement: reverted.amount } },
+        }),
+      ]);
+    }
   }
 }
