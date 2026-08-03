@@ -28,7 +28,7 @@ export async function followUser(followerId: string, followingId: string): Promi
 
   // Busca dados do seguidor para personalizar a notificação
   const [follower, target] = await Promise.all([
-    prisma.user.findUnique({ where: { id: followerId }, select: { id: true, name: true, apelido: true } }),
+    prisma.user.findUnique({ where: { id: followerId }, select: { id: true, name: true, apelido: true, role: true } }),
     prisma.user.findUnique({ where: { id: followingId }, select: { id: true, role: true, suspendedAt: true } }),
   ]);
 
@@ -40,6 +40,15 @@ export async function followUser(followerId: string, followingId: string): Promi
   }
   if (target.suspendedAt) {
     throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
+  }
+  // Épico de Frentes, Frente 8, Lote 7: só o role do ALVO era validado -
+  // um profissional podia seguir um cliente e ler o feed dele via getFeed
+  // (que só olha o role de quem é seguido), mas getFollowers só lista
+  // seguidores CLIENT, então o profissional nunca aparecia na lista de
+  // seguidores do próprio cliente - vigilância silenciosa. Bloqueia na
+  // origem em vez de só esconder da lista.
+  if (follower?.role !== "CLIENT") {
+    throw new AppError("A comunidade é exclusiva para clientes.", StatusCodes.FORBIDDEN);
   }
 
   await prisma.follow.upsert({
