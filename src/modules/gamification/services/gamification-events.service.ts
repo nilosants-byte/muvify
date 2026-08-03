@@ -4,6 +4,27 @@ import { recordTraining } from "./streak.service";
 import { awardXp, computeLevel, getTotalXp } from "./xp.service";
 import { createAutoPost } from "../../community/services/feed.service";
 import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
+import { NotificationService } from "../../notifications/services/notification.service";
+
+const notificationService = new NotificationService();
+
+// Épico de Frentes, Frente 8, Lote 8: o post automático de treino concluído
+// carrega providerName/providerPhotoUrl no metadata "para a collab UI no
+// feed", mas o profissional nunca tinha nenhuma forma de saber que apareceu
+// no post de um aluno - decisão do usuário: notificação push simples.
+async function notifyProviderOfWorkoutPost(providerUserId: string | undefined, clientId: string): Promise<void> {
+  if (!providerUserId) return;
+  const client = await prisma.user.findUnique({
+    where: { id: clientId },
+    select: { name: true, apelido: true },
+  }).catch(() => null);
+  const clientDisplay = client?.apelido ? `@${client.apelido}` : (client?.name ?? "Um aluno");
+  await notificationService.sendToUsers([providerUserId], {
+    title: "Novo post sobre o treino com você",
+    body: `${clientDisplay} postou na comunidade sobre o treino com você no Muvify.`,
+    data: { type: "STUDENT_POST_MENTION", clientId },
+  }).catch(() => { /* best effort */ });
+}
 
 // ── Tabela de XP aprovada (v2) ────────────────────────────────────────────────
 // Presencial concluído: 80 XP  (mais esforço — deslocamento + aula física)
@@ -54,7 +75,7 @@ export async function onWorkoutCompleted(
       where: { id: bookingId },
       select: {
         provider: {
-          select: { id: true, displayName: true, photoUrl: true, updatedAt: true }
+          select: { id: true, userId: true, displayName: true, photoUrl: true, updatedAt: true }
         }
       }
     }).catch(() => null);
@@ -75,6 +96,7 @@ export async function onWorkoutCompleted(
       referenceId: bookingId,
       metadata: { type: "PRESENTIAL", ...providerMeta },
     }).catch((e) => console.error("Gamification: WORKOUT_COMPLETED post failed", e));
+    await notifyProviderOfWorkoutPost(bookingForPost?.provider?.userId, clientId);
 
     await checkAndUnlock(clientId, [
       "STREAK_SESSIONS",
@@ -121,7 +143,7 @@ export async function onTrainingPlanCompleted(
 
     const provider = await prisma.providerProfile.findUnique({
       where: { id: providerId },
-      select: { id: true, displayName: true, photoUrl: true, updatedAt: true }
+      select: { id: true, userId: true, displayName: true, photoUrl: true, updatedAt: true }
     }).catch(() => null);
 
     const onlineProviderMeta = provider
@@ -136,6 +158,7 @@ export async function onTrainingPlanCompleted(
       referenceId: completionId,
       metadata: { type: "ONLINE", ...onlineProviderMeta },
     });
+    await notifyProviderOfWorkoutPost(provider?.userId, clientId);
 
     await checkAndUnlock(clientId, [
       "STREAK_SESSIONS",
