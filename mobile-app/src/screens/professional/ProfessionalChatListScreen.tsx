@@ -98,7 +98,7 @@ async function enrichMissingPhotos(
   });
 }
 
-export function ProfessionalChatListScreen({ navigation }: Props) {
+export function ProfessionalChatListScreen({ navigation, route }: Props) {
   const { runWithAuth, user, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
@@ -120,6 +120,7 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
   const lastMsgCountRef = useRef(0);
+  const autoOpenedBookingIdRef = useRef<string | null>(null);
 
   const selectedChat = useMemo(
     () => chats.find((c) => c.bookingId === selectedId) ?? null,
@@ -228,6 +229,19 @@ export function ProfessionalChatListScreen({ navigation }: Props) {
     setSelectedId(bookingId);
     void fetchMessages(bookingId, true);
   }, [fetchMessages]);
+
+  // Épico de Frentes, Frente 9, Lote 4: notificação de mensagem nova
+  // levava pro detalhe do agendamento em vez do chat (push do SO) ou abria
+  // só a lista sem selecionar a conversa (dentro do app) - openBookingId
+  // auto-seleciona a conversa certa assim que a lista carrega.
+  useEffect(() => {
+    const openBookingId = route.params?.openBookingId;
+    if (!openBookingId || autoOpenedBookingIdRef.current === openBookingId) return;
+    if (chats.some((c) => c.bookingId === openBookingId)) {
+      autoOpenedBookingIdRef.current = openBookingId;
+      openChat(openBookingId);
+    }
+  }, [chats, openChat, route.params?.openBookingId]);
 
   const closeChat = useCallback(() => {
     setSelectedId(null);

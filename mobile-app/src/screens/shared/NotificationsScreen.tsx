@@ -49,6 +49,7 @@ type NotificationAction =
   | { type: "PROVIDER_CREDENTIALS" }
   | { type: "PROVIDER_PAYOUT_SETUP" }
   | { type: "SUPPORT" }
+  | { type: "CLIENT_COMMUNITY" }
   | { type: "NONE" };
 
 type NotificationItem = {
@@ -202,6 +203,15 @@ function resolveInboxAction(
     return role === "PROVIDER"
       ? { type: "PROVIDER_CONSULTANCY_CENTER" }
       : { type: "CLIENT_TRAINING" };
+  }
+
+  // Épico de Frentes, Frente 9, Lote 4: tipos de comunidade (Frente 8) não
+  // tinham nenhum tratamento aqui e caíam no fallback genérico de agenda.
+  if (
+    role === "CLIENT" &&
+    (type === "NEW_FOLLOWER" || type === "ACHIEVEMENT_UNLOCKED" || type === "STREAK_MILESTONE")
+  ) {
+    return { type: "CLIENT_COMMUNITY" };
   }
 
   if (bookingId) {
@@ -580,12 +590,13 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
     [navigation, role]
   );
 
-  const openBookingChat = useCallback(() => {
+  const openBookingChat = useCallback((bookingId?: string) => {
     if (!navigation) return;
+    const params = bookingId ? { openBookingId: bookingId } : undefined;
     if (role === "PROVIDER") {
-      navigation.navigate("ProfessionalChatList");
+      navigation.navigate("ProfessionalChatList", params);
     } else {
-      navigation.navigate("ClientChatList");
+      navigation.navigate("ClientChatList", params);
     }
   }, [navigation, role]);
 
@@ -602,7 +613,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
       if (!navigation) return;
       switch (item.action.type) {
         case "BOOKING_DETAIL": openBookingDetail(item.action.bookingId); return;
-        case "BOOKING_CHAT": openBookingChat(); return;
+        case "BOOKING_CHAT": openBookingChat(item.action.bookingId); return;
         case "BOOKING_PAYMENT_STATUS":
           if (role === "PROVIDER") {
             if (item.action.bookingId) navigation.navigate("BookingPaymentStatus", { bookingId: item.action.bookingId });
@@ -629,6 +640,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
         case "PROVIDER_CREDENTIALS": if (role === "PROVIDER") navigation.navigate("ProfessionalCredentials"); return;
         case "PROVIDER_PAYOUT_SETUP": if (role === "PROVIDER") navigation.navigate("ConnectPayoutAccount"); return;
         case "SUPPORT": navigation.navigate("Support"); return;
+        case "CLIENT_COMMUNITY": if (role === "CLIENT") navigation.navigate("ClientTabs", { screen: "Community" }); return;
         case "NONE": return;
         default: return;
       }

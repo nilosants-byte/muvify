@@ -246,7 +246,7 @@ export function ProfessionalNotificationsDrawer({
 
       try {
         if (bookingId && type.includes("CHAT")) {
-          navigation.navigate("ProfessionalChatList");
+          navigation.navigate("ProfessionalChatList", { openBookingId: bookingId });
           return;
         }
         if (bookingId && type.includes("PAYMENT")) {

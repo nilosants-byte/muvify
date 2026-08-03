@@ -256,7 +256,10 @@ export function ClientNotificationsDrawer({
       onClose();
       if (!navigation) return;
       try {
-        if (type.includes("CHAT")) { navigation.navigate("ClientChatList"); return; }
+        if (type.includes("CHAT")) {
+          navigation.navigate("ClientChatList", bookingId ? { openBookingId: bookingId } : undefined);
+          return;
+        }
         if (bookingId && type.includes("PAYMENT")) { navigation.navigate("BookingPaymentStatus", { bookingId }); return; }
         if (bookingId) { navigation.navigate("ClientBookingDetail", { bookingId }); return; }
         if (type.includes("CONSULTANCY")) { navigation.navigate("ArchivedRequests"); return; }

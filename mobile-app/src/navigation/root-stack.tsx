@@ -144,8 +144,18 @@ function routeNotification(
   const rawPackageId = typeof data.packageId === "string" ? data.packageId : undefined;
   const packageId = rawPackageId && uuidRegex.test(rawPackageId) ? rawPackageId : undefined;
 
-  if (role === "PROFESSIONAL") {
-    if (bookingId && BOOKING_TYPES_PRO.has(type)) {
+  // Épico de Frentes, Frente 9, Lote 4: role aqui nunca é "PROFESSIONAL" -
+  // o valor real do app é "PROVIDER" (ver UserRole em AppState.tsx). Esse
+  // branch inteiro nunca executava, então TODO deep link de notificação
+  // pro profissional caía silenciosamente em nada (routeNotification
+  // simplesmente não fazia nada, sem navegar pra lugar nenhum).
+  if (role === "PROVIDER") {
+    // Mensagem de chat sempre foi tratada como um tipo de agendamento
+    // qualquer (BOOKING_TYPES_PRO inclui CHAT_MESSAGE) e levava pro
+    // detalhe do agendamento em vez do chat - checa isso primeiro.
+    if (type === "CHAT_MESSAGE") {
+      (navigationRef as any).navigate("ProfessionalChatList", bookingId ? { openBookingId: bookingId } : undefined);
+    } else if (bookingId && BOOKING_TYPES_PRO.has(type)) {
       (navigationRef as any).navigate("BookingDetailProfessional", { bookingId });
     } else if (isConsultancyNotificationType(type)) {
       (navigationRef as any).navigate("ProfessionalConsultancyCenter");
@@ -163,7 +173,9 @@ function routeNotification(
   }
 
   if (role === "CLIENT") {
-    if (bookingId && BOOKING_TYPES_CLIENT.has(type)) {
+    if (type === "CHAT_MESSAGE") {
+      (navigationRef as any).navigate("ClientChatList", bookingId ? { openBookingId: bookingId } : undefined);
+    } else if (bookingId && BOOKING_TYPES_CLIENT.has(type)) {
       (navigationRef as any).navigate("ClientBookingDetail", { bookingId });
     } else if (isPresentialPackageNotificationType(type) && packageId) {
       (navigationRef as any).navigate("PresentialPackageDetail", { packageId });
@@ -171,6 +183,11 @@ function routeNotification(
       (navigationRef as any).navigate("MyTraining");
     } else if (type === "PAYMENT_AUTH_FAILED") {
       (navigationRef as any).navigate("ClientPaymentMethod");
+    } else if (type === "NEW_FOLLOWER" || type === "ACHIEVEMENT_UNLOCKED" || type === "STREAK_MILESTONE") {
+      // Épico de Frentes, Frente 9, Lote 4: tipos de comunidade não tinham
+      // nenhum tratamento aqui e caíam no fallback genérico (central de
+      // avisos) mesmo com um destino óbvio disponível.
+      (navigationRef as any).navigate("ClientTabs", { screen: "Community" });
     } else {
       (navigationRef as any).navigate("Notifications");
     }
