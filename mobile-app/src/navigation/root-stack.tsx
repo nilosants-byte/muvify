@@ -740,6 +740,11 @@ export function RootNavigator() {
     const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data as Record<string, unknown>;
       const type = typeof data.type === "string" ? data.type : "";
+      // Épico de Frentes, Frente 9, Lote 3: notificação recebida em primeiro
+      // plano nunca invalidava a central de avisos nem o badge do sino - só
+      // recalculavam ao focar a Home. Toda notificação recebida invalida
+      // a query canônica, sem depender do tipo.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all });
       if (BOOKING_TYPES_PRO.has(type) || BOOKING_TYPES_CLIENT.has(type)) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.agenda.all });
         void queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all });
