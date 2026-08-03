@@ -22,8 +22,12 @@ const POST_SELECT = {
 export async function getFeed(viewerId: string, page: number, limit: number) {
   const skip = (page - 1) * limit;
 
+  // Épico de Frentes, Frente 8, Lote 3: suspender uma conta não removia o
+  // Follow já existente, e a checagem de role nunca olhava suspendedAt -
+  // posts de um usuário suspenso continuavam aparecendo indefinidamente
+  // pra quem já o seguia.
   const following = await prisma.follow.findMany({
-    where: { followerId: viewerId, following: { role: "CLIENT" } },
+    where: { followerId: viewerId, following: { role: "CLIENT", suspendedAt: null } },
     select: { followingId: true },
   });
   const visibleUserIds = [viewerId, ...following.map((f) => f.followingId)];
@@ -141,6 +145,14 @@ async function assertFollowsOrOwnsPost(authorId: string, viewerId: string): Prom
     where: { followerId_followingId: { followerId: viewerId, followingId: authorId } },
   });
   if (!follows) {
+    throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
+  }
+  // Épico de Frentes, Frente 8, Lote 3: suspender o autor não invalida o
+  // Follow já existente - sem essa checagem, curtir/comentar/ler um post
+  // dele continuava funcionando via postId direto mesmo depois de sumir do
+  // getFeed (que já filtra suspendedAt).
+  const author = await prisma.user.findUnique({ where: { id: authorId }, select: { suspendedAt: true } });
+  if (author?.suspendedAt) {
     throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
   }
 }

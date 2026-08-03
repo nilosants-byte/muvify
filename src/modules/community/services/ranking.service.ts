@@ -17,10 +17,13 @@ export async function getRanking(
 ) {
   const periodKey = getCurrentPeriodKey(period);
 
+  // Épico de Frentes, Frente 8, Lote 3: usuário suspenso continuava
+  // aparecendo no ranking de amigos indefinidamente - suspender uma conta
+  // nunca removia o Follow já existente nem era checado aqui.
   // Apenas seguidores MÚTUOS: viewer segue E é seguido de volta
   const [following, followers] = await Promise.all([
-    prisma.follow.findMany({ where: { followerId: viewerId, following: { role: "CLIENT" } }, select: { followingId: true }, take: 5000 }),
-    prisma.follow.findMany({ where: { followingId: viewerId, follower: { role: "CLIENT" } }, select: { followerId: true }, take: 5000 }),
+    prisma.follow.findMany({ where: { followerId: viewerId, following: { role: "CLIENT", suspendedAt: null } }, select: { followingId: true }, take: 5000 }),
+    prisma.follow.findMany({ where: { followingId: viewerId, follower: { role: "CLIENT", suspendedAt: null } }, select: { followerId: true }, take: 5000 }),
   ]);
   const followingSet = new Set(following.map((f) => f.followingId));
   const followerSet = new Set(followers.map((f) => f.followerId));

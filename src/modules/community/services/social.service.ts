@@ -12,6 +12,13 @@ const hiddenFromCommunity = () =>
     ? { email: { notIn: env.ADMIN_ALLOWED_EMAILS } }
     : {};
 
+// Épico de Frentes, Frente 8, Lote 3: suspender uma conta (admin.service.ts::
+// suspendUser) só bloqueava o próprio login dela (via blacklist de token) -
+// nenhuma consulta da comunidade filtrava suspendedAt, então o usuário
+// suspenso continuava 100% visível pra quem já estava logado (feed, busca,
+// sugestões, perfil, follow, ranking).
+const notSuspended = { suspendedAt: null };
+
 const notificationService = new NotificationService();
 
 export async function followUser(followerId: string, followingId: string): Promise<void> {
@@ -22,13 +29,16 @@ export async function followUser(followerId: string, followingId: string): Promi
   // Busca dados do seguidor para personalizar a notificação
   const [follower, target] = await Promise.all([
     prisma.user.findUnique({ where: { id: followerId }, select: { id: true, name: true, apelido: true } }),
-    prisma.user.findUnique({ where: { id: followingId }, select: { id: true, role: true } }),
+    prisma.user.findUnique({ where: { id: followingId }, select: { id: true, role: true, suspendedAt: true } }),
   ]);
 
   if (!target) throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
 
   // A comunidade é exclusiva para clientes — ADMIN e PROVIDER não são membros visíveis
   if (target.role !== "CLIENT") {
+    throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
+  }
+  if (target.suspendedAt) {
     throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
   }
 
@@ -63,7 +73,7 @@ export async function unfollowUser(followerId: string, followingId: string): Pro
 
 export async function getFollowers(userId: string, page: number, limit: number) {
   const skip = (page - 1) * limit;
-  const clientOnlyFilter = { follower: { role: "CLIENT" as const } };
+  const clientOnlyFilter = { follower: { role: "CLIENT" as const, ...notSuspended } };
   const [items, total] = await Promise.all([
     prisma.follow.findMany({
       where: { followingId: userId, ...clientOnlyFilter },
@@ -87,7 +97,7 @@ export async function getFollowers(userId: string, page: number, limit: number) 
 
 export async function getFollowing(userId: string, page: number, limit: number) {
   const skip = (page - 1) * limit;
-  const clientOnlyFilter = { following: { role: "CLIENT" as const } };
+  const clientOnlyFilter = { following: { role: "CLIENT" as const, ...notSuspended } };
   const [items, total] = await Promise.all([
     prisma.follow.findMany({
       where: { followerId: userId, ...clientOnlyFilter },
@@ -122,6 +132,7 @@ export async function searchUsers(
   const where = {
     id: { not: requesterId },
     role: "CLIENT" as const,
+    ...notSuspended,
     ...hiddenFromCommunity(),
     OR: [
       { name: { contains: normalizedQuery, mode: "insensitive" as const } },
@@ -224,6 +235,7 @@ export async function getSuggestions(userId: string, limit: number) {
       where: {
         id: { notIn: [...excludeIds, ...candidateIds] },
         role: "CLIENT",
+        ...notSuspended,
         ...hiddenFromCommunity(),
       },
       select: { id: true },
@@ -237,7 +249,7 @@ export async function getSuggestions(userId: string, limit: number) {
   if (ids.length === 0) return [];
 
   return prisma.user.findMany({
-    where: { id: { in: ids }, role: "CLIENT", ...hiddenFromCommunity() },
+    where: { id: { in: ids }, role: "CLIENT", ...notSuspended, ...hiddenFromCommunity() },
     select: { id: true, name: true, apelido: true, photoUrl: true },
   });
 }
@@ -245,7 +257,7 @@ export async function getSuggestions(userId: string, limit: number) {
 export async function getUserPublicProfile(requesterId: string, targetId: string) {
   const [user, followerCount, followingCount, isFollowing] = await Promise.all([
     prisma.user.findUnique({
-      where: { id: targetId, role: "CLIENT" },
+      where: { id: targetId, role: "CLIENT", ...notSuspended },
       select: { id: true, name: true, apelido: true, photoUrl: true, createdAt: true },
     }),
     prisma.follow.count({ where: { followingId: targetId } }),
