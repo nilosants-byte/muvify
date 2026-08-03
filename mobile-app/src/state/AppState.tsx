@@ -33,6 +33,7 @@ type AppStateContextValue = {
   isAuthenticated: boolean;
   themeMode: ThemeMode;
   analyticsEnabled: boolean;
+  pushNotificationsEnabled: boolean;
   role: UserRole | null;
   user: AuthUser | null;
   toast: ToastPayload | null;
@@ -40,6 +41,7 @@ type AppStateContextValue = {
   chooseRole: (role: UserRole) => Promise<void>;
   setThemePreference: (mode: ThemeMode) => Promise<void>;
   setAnalyticsPreference: (enabled: boolean) => Promise<void>;
+  setPushNotificationsPreference: (enabled: boolean) => Promise<void>;
   login: (input: { email: string; password: string }) => Promise<{ requiresTwoFactor: true; challengeToken: string } | void>;
   completeTwoFactorLogin: (challengeToken: string, code: string) => Promise<void>;
   register: (input: {
@@ -68,6 +70,7 @@ const STORAGE_KEYS = {
   roleUserId: "@personalapp/roleUserId",
   pushToken: "@personalapp/pushToken",
   pushTokenUserId: "@personalapp/pushTokenUserId",
+  pushNotificationsEnabled: "@personalapp/pushNotificationsEnabled",
   userCache: "@personalapp/userCache"
 } as const;
 
@@ -196,6 +199,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [themeMode, setThemeModeState] = useState<ThemeMode>("dark");
   const [analyticsEnabled, setAnalyticsEnabledState] = useState(true);
+  // Épico de Frentes, Frente 9, Lote 1: até aqui, o toggle "Notificações
+  // push" das Configurações só gravava uma chave local (ou nem isso, no
+  // app do profissional) - não afetava o registro real do dispositivo
+  // (PushDevice.isActive), então desativar o toggle não impedia nenhum
+  // push de chegar de fato.
+  const [pushNotificationsEnabled, setPushNotificationsEnabledState] = useState(true);
   const [role, setRole] = useState<UserRole | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -362,13 +371,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     const bootstrapTimeout = setTimeout(() => setBootstrapping(false), 10_000);
     async function hydrate() {
       try {
-        const [storedOnboarding, storedAccessToken, storedRefreshToken, storedThemeMode, storedAnalyticsEnabled, cachedUser] =
+        const [storedOnboarding, storedAccessToken, storedRefreshToken, storedThemeMode, storedAnalyticsEnabled, storedPushEnabled, cachedUser] =
           await Promise.all([
             AsyncStorage.getItem(STORAGE_KEYS.onboardingDone),
             secureGet(SECURE_KEYS.accessToken, WEB_SECURE_FALLBACK_KEYS.accessToken),
             secureGet(SECURE_KEYS.refreshToken, WEB_SECURE_FALLBACK_KEYS.refreshToken),
             AsyncStorage.getItem(STORAGE_KEYS.themeMode),
             AsyncStorage.getItem(STORAGE_KEYS.analyticsEnabled),
+            AsyncStorage.getItem(STORAGE_KEYS.pushNotificationsEnabled),
             loadUserCache()
           ]);
 
@@ -376,6 +386,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         const resolvedAnalyticsEnabled = storedAnalyticsEnabled !== "0";
         setAnalyticsEnabledState(resolvedAnalyticsEnabled);
         applyAnalyticsPreference(resolvedAnalyticsEnabled);
+        setPushNotificationsEnabledState(storedPushEnabled !== "0");
 
         // Usuário com sessão existente mas sem onboarding marcado = usuário antigo.
         // Auto-completa silenciosamente para não forçar onboarding em quem já usa o app.
@@ -454,6 +465,39 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setAnalyticsEnabledState(enabled);
     applyAnalyticsPreference(enabled);
     await AsyncStorage.setItem(STORAGE_KEYS.analyticsEnabled, enabled ? "1" : "0");
+  }
+
+  // Épico de Frentes, Frente 9, Lote 1: desativar de fato desregistra o
+  // dispositivo atual (PushDevice.isActive = false) - sendToUsers já
+  // filtra por isso na entrega, então isso já basta pra parar o
+  // recebimento sem precisar mexer em NotificationPreference por
+  // categoria (fora do escopo deste lote). Reativar registra de novo, no
+  // mesmo molde já usado por syncPushToken.
+  async function setPushNotificationsPreference(enabled: boolean) {
+    setPushNotificationsEnabledState(enabled);
+    await AsyncStorage.setItem(STORAGE_KEYS.pushNotificationsEnabled, enabled ? "1" : "0");
+
+    const currentAccessToken = accessTokenRef.current;
+    if (!currentAccessToken) return;
+
+    try {
+      if (enabled) {
+        const payload = await getPushRegistrationPayload();
+        if (!payload) return;
+        await notificationsApi.registerDevice(currentAccessToken, payload);
+        await Promise.all([
+          AsyncStorage.setItem(STORAGE_KEYS.pushToken, payload.token),
+          AsyncStorage.setItem(STORAGE_KEYS.pushTokenUserId, user?.id ?? "")
+        ]);
+      } else {
+        const storedPushToken = await AsyncStorage.getItem(STORAGE_KEYS.pushToken);
+        if (storedPushToken) {
+          await notificationsApi.unregisterDevice(currentAccessToken, storedPushToken);
+        }
+      }
+    } catch (error) {
+      captureException(error, { stage: "app_state_set_push_notifications_preference" });
+    }
   }
 
   async function chooseRole(nextRole: UserRole) {
@@ -646,6 +690,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated,
       themeMode,
       analyticsEnabled,
+      pushNotificationsEnabled,
       role,
       user,
       toast,
@@ -653,6 +698,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       chooseRole,
       setThemePreference,
       setAnalyticsPreference,
+      setPushNotificationsPreference,
       login: login as AppStateContextValue["login"],
       completeTwoFactorLogin,
       register,
@@ -670,6 +716,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated,
       themeMode,
       analyticsEnabled,
+      pushNotificationsEnabled,
       role,
       user,
       toast,

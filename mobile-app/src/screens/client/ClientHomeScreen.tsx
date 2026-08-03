@@ -105,7 +105,6 @@ function getCachedRadiusKm(): number {
 
 const CLIENT_SEARCH_RADIUS_KEY = "@personalapp/clientSearchRadiusKm";
 const CLIENT_SEARCH_CENTER_KEY = "@personalapp/clientSearchCenter";
-const CLIENT_PUSH_ENABLED_KEY = "@personalapp/clientPushEnabled";
 const BRAZIL_STATE_CODES: Record<string, string> = {
   acre: "AC",
   alagoas: "AL",
@@ -271,7 +270,10 @@ function providerMatchesServiceModeFilter(
 
 
 export function ClientHomeScreen({ navigation }: Props) {
-  const { runWithAuth, showToast, signOut, user, setCurrentUser, role } = useAppState();
+  const {
+    runWithAuth, showToast, signOut, user, setCurrentUser, role,
+    pushNotificationsEnabled, setPushNotificationsPreference
+  } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const isLight = theme.mode === "light";
@@ -334,7 +336,6 @@ export function ClientHomeScreen({ navigation }: Props) {
     () => typeof (globalThis as any).__mvLastSearchRadiusKm === "number"
   );
   const [selectedSpecialties, setSelectedSpecialties] = useState<string[]>([]);
-  const [pushEnabled, setPushEnabled] = useState(true);
   const [anamnesisPopup, setAnamnesisPopup] = useState<"incomplete" | "outdated" | null>(null);
   const [anamnesisStatus, setAnamnesisStatus] = useState<"incomplete" | "outdated" | null>(null);
   const anamnesisPopupShownRef = useRef(false);
@@ -534,23 +535,6 @@ export function ClientHomeScreen({ navigation }: Props) {
       active = false;
     };
   }, []);
-  useEffect(() => {
-    let active = true;
-    AsyncStorage.getItem(CLIENT_PUSH_ENABLED_KEY)
-      .then((saved) => {
-        if (!active || !saved) return;
-        setPushEnabled(saved !== "0");
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
-  useEffect(() => {
-    void AsyncStorage.setItem(CLIENT_PUSH_ENABLED_KEY, pushEnabled ? "1" : "0").catch(() => {});
-  }, [pushEnabled]);
-
-
   const requestLocation = useCallback(async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -991,9 +975,9 @@ export function ClientHomeScreen({ navigation }: Props) {
     {
       key: "notifications",
       label: "Notificações",
-      subtitle: pushEnabled ? "Push ativado" : "Push desativado",
+      subtitle: pushNotificationsEnabled ? "Push ativado" : "Push desativado",
       icon: "notifications-outline",
-      right: <MvToggle value={pushEnabled} onValueChange={setPushEnabled} />,
+      right: <MvToggle value={pushNotificationsEnabled} onValueChange={(v) => void setPushNotificationsPreference(v)} />,
     },
     {
       key: "security",

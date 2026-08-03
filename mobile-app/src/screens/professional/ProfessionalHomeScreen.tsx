@@ -143,7 +143,10 @@ function StatStrip({ items }: { items: { label: string; value: string | number; 
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
 export function ProfessionalHomeScreen({ navigation }: Props) {
-  const { runWithAuth, setCurrentUser, showToast, user, signOut } = useAppState();
+  const {
+    runWithAuth, setCurrentUser, showToast, user, signOut,
+    pushNotificationsEnabled, setPushNotificationsPreference
+  } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
   const isLight = theme.mode === "light";
   const insets = useSafeAreaInsets();
@@ -161,7 +164,6 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [notificationsDrawerOpen, setNotificationsDrawerOpen] = useState(false);
   const [sideDrawerOpen, setSideDrawerOpen] = useState(false);
-  const [pushEnabled, setPushEnabled] = useState(true);
   const [weatherIcon, setWeatherIcon] = useState<WeatherIconData>(timeBasedWeatherIcon);
   const [locationCity, setLocationCity] = useState<string | null>(null);
   const drawerAnim = useRef(new Animated.Value(-DRAWER_W)).current;
@@ -1266,7 +1268,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                     <Ionicons name="notifications-outline" size={16} color={theme.textGreen} />
                   </View>
                   <MvText variant="semi2" style={{ flex: 1, color: drawerText }}>Notificações</MvText>
-                  <MvToggle value={pushEnabled} onValueChange={setPushEnabled} />
+                  <MvToggle value={pushNotificationsEnabled} onValueChange={(v) => void setPushNotificationsPreference(v)} />
                 </TouchableOpacity>
 
                 {/* ─ Grupo: Mais ─ */}

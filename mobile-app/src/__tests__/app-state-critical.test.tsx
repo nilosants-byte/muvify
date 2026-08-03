@@ -3,7 +3,7 @@ import { act, render, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import { AppStateProvider, useAppState } from "../state/AppState";
-import { ApiError, authApi, AuthUser, userApi } from "../services/api/client";
+import { ApiError, authApi, AuthUser, notificationsApi, userApi } from "../services/api/client";
 import { getPushRegistrationPayload } from "../services/notifications/push";
 
 jest.mock("../services/notifications/push", () => ({
@@ -277,6 +277,67 @@ describe("AppStateProvider - fluxos criticos", () => {
 
     expect((trulyExpiredError as Error).message).toContain("Sessão expirada. Faça login novamente.");
     await waitFor(() => expect(context.isAuthenticated).toBe(false));
+  });
+
+  // Épico de Frentes, Frente 9, Lote 1: o toggle "Notificações push" das
+  // Configurações só gravava uma chave local (client) ou nem isso
+  // (profissional) - não afetava o registro real do dispositivo, então
+  // desativar o toggle não impedia nenhum push de chegar.
+  it("setPushNotificationsPreference(false) desregistra o dispositivo atual de verdade", async () => {
+    jest.spyOn(authApi, "login").mockResolvedValue(
+      buildSession(
+        { id: "u5", name: "Push User", email: "push@test.com", role: "CLIENT" },
+        "access-push",
+        "refresh-push"
+      )
+    );
+    const unregisterSpy = jest.spyOn(notificationsApi, "unregisterDevice").mockResolvedValue(undefined);
+
+    await renderProvider();
+    await act(async () => {
+      await context.login({ email: "push@test.com", password: "StrongPass123" });
+    });
+
+    asyncStore["@personalapp/pushToken"] = "ExponentPushToken[stored-token]";
+
+    await act(async () => {
+      await context.setPushNotificationsPreference(false);
+    });
+
+    expect(context.pushNotificationsEnabled).toBe(false);
+    expect(unregisterSpy).toHaveBeenCalledWith("access-push", "ExponentPushToken[stored-token]");
+    expect(asyncStore["@personalapp/pushNotificationsEnabled"]).toBe("0");
+  });
+
+  it("setPushNotificationsPreference(true) registra o dispositivo de novo", async () => {
+    jest.spyOn(authApi, "login").mockResolvedValue(
+      buildSession(
+        { id: "u6", name: "Push User 2", email: "push2@test.com", role: "CLIENT" },
+        "access-push-2",
+        "refresh-push-2"
+      )
+    );
+    (getPushRegistrationPayload as jest.Mock).mockResolvedValue({
+      token: "ExponentPushToken[new-token]",
+      platform: "ios"
+    });
+    const registerSpy = jest.spyOn(notificationsApi, "registerDevice").mockResolvedValue({} as any);
+
+    await renderProvider();
+    await act(async () => {
+      await context.login({ email: "push2@test.com", password: "StrongPass123" });
+    });
+
+    await act(async () => {
+      await context.setPushNotificationsPreference(true);
+    });
+
+    expect(context.pushNotificationsEnabled).toBe(true);
+    expect(registerSpy).toHaveBeenCalledWith(
+      "access-push-2",
+      expect.objectContaining({ token: "ExponentPushToken[new-token]" })
+    );
+    expect(asyncStore["@personalapp/pushNotificationsEnabled"]).toBe("1");
   });
 });
 

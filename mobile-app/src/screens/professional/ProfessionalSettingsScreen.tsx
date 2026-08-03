@@ -30,9 +30,11 @@ function rateApp() {
 }
 
 export function ProfessionalSettingsScreen({ navigation }: Props) {
-  const { signOut, user, runWithAuth, analyticsEnabled, setAnalyticsPreference, setThemePreference } = useAppState();
+  const {
+    signOut, user, runWithAuth, analyticsEnabled, setAnalyticsPreference,
+    pushNotificationsEnabled, setPushNotificationsPreference, setThemePreference
+  } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
-  const [pushEnabled, setPushEnabled] = useState(true);
   const [showDeletePasswordModal, setShowDeletePasswordModal] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const lightModeEnabled = !isDark;
@@ -234,7 +236,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
           <MenuItem
             icon="notifications-outline"
             label="Notificações"
-            right={<MvToggle value={pushEnabled} onValueChange={setPushEnabled} />}
+            right={<MvToggle value={pushNotificationsEnabled} onValueChange={(v) => void setPushNotificationsPreference(v)} />}
           />
           <MenuItem
             icon={lightModeEnabled ? "sunny-outline" : "moon-outline"}

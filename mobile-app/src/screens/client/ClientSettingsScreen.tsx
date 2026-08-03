@@ -1,5 +1,4 @@
-﻿import React, { useEffect, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+﻿import React, { useState } from "react";
 import Constants from "expo-constants";
 import { Alert, Modal, Pressable, ScrollView, Share, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,7 +14,6 @@ import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { AuthOnboardingScreen } from "../auth/AuthOnboardingScreen";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ClientSettings">;
-const PUSH_KEY = "@personalapp/clientPushEnabled";
 
 // Componente de linha de configuração V2
 function ConfigRow({
@@ -77,10 +75,13 @@ function ConfigGroup({ title, children }: { title: string; children: React.React
 }
 
 export function ClientSettingsScreen({ navigation }: Props) {
-  const { signOut, runWithAuth, analyticsEnabled, setAnalyticsPreference, setThemePreference, user, showToast } = useAppState();
+  const {
+    signOut, runWithAuth, analyticsEnabled, setAnalyticsPreference,
+    pushNotificationsEnabled, setPushNotificationsPreference,
+    setThemePreference, user, showToast
+  } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
   const insets = useSafeAreaInsets();
-  const [pushEnabled, setPushEnabled] = useState(true);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [showDeletePasswordModal, setShowDeletePasswordModal] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -142,16 +143,6 @@ export function ClientSettingsScreen({ navigation }: Props) {
       Alert.alert("Erro", "Não foi possível exportar seus dados.");
     }
   }
-
-  useEffect(() => {
-    let active = true;
-    AsyncStorage.getItem(PUSH_KEY).then((saved) => { if (active && saved) setPushEnabled(saved !== "0"); }).catch(() => {});
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    void AsyncStorage.setItem(PUSH_KEY, pushEnabled ? "1" : "0").catch(() => {});
-  }, [pushEnabled]);
 
   function handleSignOut() {
     Alert.alert("Sair da conta", "Tem certeza que deseja sair?", [
@@ -267,9 +258,9 @@ export function ClientSettingsScreen({ navigation }: Props) {
           <ConfigRow
             icon="notifications-outline"
             title="Notificações push"
-            subtitle={pushEnabled ? "Ativadas" : "Desativadas"}
-            toggle={pushEnabled}
-            onToggle={setPushEnabled}
+            subtitle={pushNotificationsEnabled ? "Ativadas" : "Desativadas"}
+            toggle={pushNotificationsEnabled}
+            onToggle={(v) => void setPushNotificationsPreference(v)}
           />
           <ConfigRow
             icon="globe-outline"
