@@ -74,14 +74,13 @@ export function FinancialGoalsScreen({ navigation }: Props) {
   const goalsQuery = useAuthQuery(
     queryKeys.financial.goal(month),
     async (token) => {
-      const [gl, dash, studs, incs, appCl] = await Promise.all([
+      const [gl, dash, studs, incs] = await Promise.all([
         financialApi.getGoal(token, month),
         financialApi.dashboard(token, month),
         financialApi.listStudents(token),
         financialApi.listIncomes(token, month),
-        financialApi.listAppClients(token, month),
       ]);
-      return { goal: gl as FinancialGoal | null, dashboard: dash as FinancialDashboard, students: studs, incomes: incs, appClients: appCl };
+      return { goal: gl as FinancialGoal | null, dashboard: dash as FinancialDashboard, students: studs, incomes: incs };
     },
   );
 
@@ -122,9 +121,13 @@ export function FinancialGoalsScreen({ navigation }: Props) {
     // encerrada) indefinidamente.
     const stuRev = d.students.filter(s => s.billableThisMonth).reduce((s, st) => s + st.monthlyValueCents, 0);
     const manRev = d.incomes.filter(i => !i.studentId).reduce((s, i) => s + i.amountCents, 0);
-    const appRev = d.appClients.length > 0
-      ? d.appClients.reduce((s, c) => s + c.completedCents, 0)
-      : (d.dashboard?.appRevenueCents ?? 0);
+    // Épico de Frentes, Frente 7, Lote 12: appRev trocava de fórmula
+    // silenciosamente (somava appClients quando havia algum, senão caía pro
+    // dashboard) — appClients não inclui renovação de ficha, então o
+    // faturamento da tela de Metas podia ficar mais baixo que o mesmo mês no
+    // dashboard/extrato dependendo de qual ramo rodava. dashboard.appRevenueCents
+    // já cobre todos os tipos de receita pelo app, sempre.
+    const appRev = d.dashboard?.appRevenueCents ?? 0;
     return appRev + stuRev + manRev;
   }, [goalsQuery.data]);
 

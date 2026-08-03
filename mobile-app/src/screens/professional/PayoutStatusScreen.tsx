@@ -13,7 +13,8 @@ import { ProfessionalStackParamList } from "../../navigation/route-types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Booking, FinancialDashboard, FinancialExpense, FinancialExpenseCategory, FinancialIncome,
-  FinancialPayouts, FinancialRecurrence, FinancialStudent, ProviderAccountStatus, bookingsApi, financialApi, paymentsApi,
+  FinancialPayouts, FinancialRecurrence, FinancialStudent, ProviderAccountStatus, ProviderDashboardStudentsResponse,
+  bookingsApi, financialApi, paymentsApi, providersApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
@@ -176,7 +177,7 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
   const payoutQuery = useAuthQuery(
     queryKeys.payments.providerPayouts(),
     async (token) => {
-      const [accountResponse, bookingsResponse, payoutsResponse, dashboardResponse, incomesResponse, expensesResponse, studentsResponse] = await Promise.all([
+      const [accountResponse, bookingsResponse, payoutsResponse, dashboardResponse, incomesResponse, expensesResponse, studentsResponse, dashboardStudentsResponse] = await Promise.all([
         paymentsApi.providerStatus(token).catch(() => null as ProviderAccountStatus | null),
         bookingsApi.me(token),
         financialApi.payouts(token).catch(() => null as FinancialPayouts | null),
@@ -184,11 +185,12 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
         financialApi.listIncomes(token, currentMonth).catch(() => [] as FinancialIncome[]),
         financialApi.listExpenses(token, currentMonth).catch(() => [] as FinancialExpense[]),
         financialApi.listStudents(token).catch(() => [] as FinancialStudent[]),
+        providersApi.dashboardStudents(token).catch(() => null as ProviderDashboardStudentsResponse | null),
       ]);
       return {
         account: accountResponse, bookings: bookingsResponse, payouts: payoutsResponse,
         dashboard: dashboardResponse, incomes: incomesResponse, expenses: expensesResponse,
-        students: studentsResponse,
+        students: studentsResponse, dashboardStudents: dashboardStudentsResponse,
       };
     },
   );
@@ -254,14 +256,13 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
   const pendingNet    = payouts?.pendingCents != null ? payouts.pendingCents / 100 : 0;
   const commission    = estimatedGross - estimatedNet;
 
-  const uniqueStudents = useMemo(() => {
-    const ids = new Set(
-      completedBookings
-        .map((b) => (b as any).clientId ?? (b as any).client?.id)
-        .filter(Boolean)
-    );
-    return ids.size;
-  }, [completedBookings]);
+  // Épico de Frentes, Frente 7, Lote 12: "Clientes atendidos" contava só
+  // clientId único de booking presencial COMPLETED — profissional que vende
+  // majoritariamente consultoria/pacote (mesma classe de bug do Lote 7,
+  // bruto/líquido) via essa métrica travada em 0. Agora usa a mesma fonte já
+  // usada em Home/Metas (dashboardStudents), que cobre todos os tipos de
+  // serviço.
+  const totalStudentsServed = payoutQuery.data?.dashboardStudents?.totalStudents ?? 0;
 
   const currentMonthGross = useMemo(() => {
     const now = new Date();
@@ -612,7 +613,7 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
         <MvText variant="eyebrow" color="secondary" style={{ marginBottom: -4 }}>Acumulado</MvText>
         <View style={{ gap: 8 }}>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <MetricCard label="Clientes atendidos" value={String(uniqueStudents)} />
+            <MetricCard label="Clientes atendidos" value={String(totalStudentsServed)} />
             <MetricCard label="Concluídas" value={String(completedCount)} />
             <MetricCard label="Pendentes" value={String(pendingCount)} highlight={pendingCount > 0} />
           </View>
