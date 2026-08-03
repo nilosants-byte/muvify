@@ -545,7 +545,11 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
         <View style={{ flexDirection: "row", gap: 4 }}>
           <QuickChip icon="receipt-outline" label="Extrato" onPress={() => navigation.navigate("FinancialHistory")} />
           <QuickChip icon="flag-outline" label="Metas" onPress={() => navigation.navigate("FinancialGoals")} />
-          <QuickChip icon="people-outline" label="Alunos" onPress={() => navigation.navigate("FinancialStudents")} />
+          {/* Épico de Frentes, Frente 7, Lote 13: essa tela já convive com o
+              "Alunos" do menu inferior (ProfessionalStudents, CRM completo) -
+              "Cobranças" deixa explícito que este atalho vai pra lista
+              manual de mensalidades (FinancialStudents), não pro CRM. */}
+          <QuickChip icon="people-outline" label="Cobranças" onPress={() => navigation.navigate("FinancialStudents")} />
           <QuickChip icon="document-text-outline" label="Relatório" onPress={() => navigation.navigate("AnnualReport")} />
         </View>
 

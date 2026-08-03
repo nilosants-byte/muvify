@@ -2596,7 +2596,6 @@ export type FinancialDashboard = {
   totalClassesThisMonth: number;
   avgClassesPerDay: number;
   weeklyClasses: number;
-  ticketMedioCents: number;
   goal: FinancialGoal | null;
   dailyRevenue: Record<string, number>;
 };

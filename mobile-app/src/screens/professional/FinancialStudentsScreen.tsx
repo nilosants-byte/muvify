@@ -400,7 +400,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
       <ProfessionalScreenHeader
-        title="Alunos"
+        title="Cobranças"
         onBack={() => navigation.goBack()}
         action={{ icon: "add-outline", label: "Novo", onPress: () => setAddStudentModal(true) }}
       />

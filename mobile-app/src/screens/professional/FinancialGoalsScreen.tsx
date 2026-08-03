@@ -3,7 +3,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator,
-  ScrollView, StatusBar, View,
+  ScrollView, StatusBar, TouchableOpacity, View,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
@@ -69,7 +69,22 @@ export function FinancialGoalsScreen({ navigation }: Props) {
   const green = isDark ? theme.primary : "#16A34A";
   const queryClient = useQueryClient();
 
-  const month = currentMonthStr();
+  // Épico de Frentes, Frente 7, Lote 13: tela de Metas não tinha seletor de
+  // mês (única entre as telas financeiras sem esse controle) - profissional
+  // não conseguia conferir a meta de um mês passado ou já planejar a de um
+  // mês futuro.
+  const [month, setMonth] = useState(currentMonthStr());
+
+  function prevMonth() {
+    const [y, m] = month.split("-").map(Number);
+    const d = new Date(y, m - 2, 1);
+    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  function nextMonth() {
+    const [y, m] = month.split("-").map(Number);
+    const d = new Date(y, m, 1);
+    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
 
   const goalsQuery = useAuthQuery(
     queryKeys.financial.goal(month),
@@ -200,10 +215,19 @@ export function FinancialGoalsScreen({ navigation }: Props) {
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
       <ProfessionalScreenHeader
         title="Metas"
-        subtitle={monthLabel(month)}
         onBack={() => navigation.goBack()}
         action={{ icon: "pencil-outline", label: "Editar", onPress: () => setEditModal(true) }}
       />
+
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingVertical: 6 }}>
+        <TouchableOpacity onPress={prevMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="chevron-back" size={20} color={theme.text3} />
+        </TouchableOpacity>
+        <MvText variant="semi2" style={{ fontSize: 14, letterSpacing: -0.3 }}>{monthLabel(month)}</MvText>
+        <TouchableOpacity onPress={nextMonth} disabled={month >= currentMonthStr()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ opacity: month >= currentMonthStr() ? 0.3 : 1 }}>
+          <Ionicons name="chevron-forward" size={20} color={theme.text3} />
+        </TouchableOpacity>
+      </View>
 
       {loading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>

@@ -281,6 +281,7 @@ async function getEffectiveIncomes(providerId: string, month: string) {
     prisma.financialIncome.findMany({
       where: { providerId, paidAt: { gte: from, lte: to } },
       include: { student: { select: { id: true, name: true } } },
+      orderBy: { paidAt: "desc" },
       take: 2000,
     }),
     prisma.financialIncome.findMany({
@@ -291,9 +292,14 @@ async function getEffectiveIncomes(providerId: string, month: string) {
         OR: [{ recurrenceEndDate: null }, { recurrenceEndDate: { gte: from } }]
       },
       include: { student: { select: { id: true, name: true } } },
+      orderBy: { paidAt: "desc" },
       take: 2000,
     })
   ]);
+  // Épico de Frentes, Frente 7, Lote 13: sem orderBy, um `take: 2000` roda
+  // sem ordem determinística - se um profissional acumular mais de 2000
+  // lançamentos recorrentes de fato, o corte podia descartar registros
+  // arbitrários (não necessariamente os mais antigos/irrelevantes).
   const virtual = templates.map((t) => ({ ...t, paidAt: clampDayToMonth(t.paidAt, month), isVirtual: true as const }));
   return [...real.map((r) => ({ ...r, isVirtual: false as const })), ...virtual]
     .sort((a, b) => b.paidAt.getTime() - a.paidAt.getTime());
@@ -304,6 +310,7 @@ async function getEffectiveExpenses(providerId: string, month: string) {
   const [real, templates] = await Promise.all([
     prisma.financialExpense.findMany({
       where: { providerId, paidAt: { gte: from, lte: to } },
+      orderBy: { paidAt: "desc" },
       take: 2000,
     }),
     prisma.financialExpense.findMany({
@@ -313,6 +320,7 @@ async function getEffectiveExpenses(providerId: string, month: string) {
         paidAt: { lt: from },
         OR: [{ recurrenceEndDate: null }, { recurrenceEndDate: { gte: from } }]
       },
+      orderBy: { paidAt: "desc" },
       take: 2000,
     })
   ]);
@@ -460,11 +468,6 @@ export class FinancialService {
     const totalClasses = completedBookings.length + consultancyDeliveries.length;
     const avgClassesPerDay = totalClasses / daysInMonth;
 
-    const ticketMedio =
-      activeStudents.length > 0
-        ? Math.round(totalRevenueCents / activeStudents.length)
-        : 0;
-
     // Semana corrente (domingo-sábado) em APP_TIMEZONE - mesmo cuidado de
     // fuso do Lote 1, pra não classificar uma sessão de fim de semana no dia
     // errado quando o processo roda em UTC.
@@ -515,7 +518,6 @@ export class FinancialService {
       totalClassesThisMonth: totalClasses,
       avgClassesPerDay: Math.round(avgClassesPerDay * 10) / 10,
       weeklyClasses,
-      ticketMedioCents: ticketMedio,
       goal: goal ?? null,
       dailyRevenue: dailyMap
     };
@@ -650,22 +652,35 @@ export class FinancialService {
 
     if (isSplit) {
       const occurrenceMonth = clampToPresentOrLater(requestedMonth);
-      await prisma.financialIncome.update({
-        where: { id: incomeId },
-        data: { recurrenceEndDate: endOfMonthBefore(occurrenceMonth) }
-      });
-      return prisma.financialIncome.create({
-        data: {
-          providerId: provider.id,
-          studentId: input.studentId !== undefined ? input.studentId : income.studentId,
-          description: (input.description ?? income.description).trim(),
-          amountCents: input.amountCents ?? income.amountCents,
-          source: "MANUAL",
-          paidAt: input.paidAt !== undefined ? new Date(input.paidAt) : clampDayToMonth(income.paidAt, occurrenceMonth),
-          recurrence: input.recurrence ?? FinancialRecurrence.RECURRING,
-          recurrenceEndDate: input.recurrenceEndDate !== undefined ? (input.recurrenceEndDate ? new Date(input.recurrenceEndDate) : null) : income.recurrenceEndDate
-        },
-        include: { student: { select: { id: true, name: true } } }
+      // Épico de Frentes, Frente 7, Lote 13: fechar a série antiga e criar a
+      // nova eram duas chamadas Prisma separadas, sem nenhuma proteção contra
+      // duas edições quase simultâneas da mesma âncora - ambas liam o mesmo
+      // recurrenceEndDate original e cada uma criava sua própria série nova,
+      // duplicando a recorrência. O updateMany condicional (mesmo padrão já
+      // usado no fechamento de conexão MP) só fecha a âncora se ela ainda
+      // estiver exatamente como foi lida; se outra requisição já mexeu nela
+      // nesse meio tempo, aborta em vez de duplicar.
+      return prisma.$transaction(async (tx) => {
+        const closed = await tx.financialIncome.updateMany({
+          where: { id: incomeId, recurrenceEndDate: income.recurrenceEndDate },
+          data: { recurrenceEndDate: endOfMonthBefore(occurrenceMonth) }
+        });
+        if (closed.count === 0) {
+          throw new AppError("Este lançamento já foi editado em outra requisição. Recarregue e tente novamente.", StatusCodes.CONFLICT);
+        }
+        return tx.financialIncome.create({
+          data: {
+            providerId: provider.id,
+            studentId: input.studentId !== undefined ? input.studentId : income.studentId,
+            description: (input.description ?? income.description).trim(),
+            amountCents: input.amountCents ?? income.amountCents,
+            source: "MANUAL",
+            paidAt: input.paidAt !== undefined ? new Date(input.paidAt) : clampDayToMonth(income.paidAt, occurrenceMonth),
+            recurrence: input.recurrence ?? FinancialRecurrence.RECURRING,
+            recurrenceEndDate: input.recurrenceEndDate !== undefined ? (input.recurrenceEndDate ? new Date(input.recurrenceEndDate) : null) : income.recurrenceEndDate
+          },
+          include: { student: { select: { id: true, name: true } } }
+        });
       });
     }
 
@@ -746,20 +761,29 @@ export class FinancialService {
 
     if (isSplit) {
       const occurrenceMonth = clampToPresentOrLater(requestedMonth);
-      await prisma.financialExpense.update({
-        where: { id: expenseId },
-        data: { recurrenceEndDate: endOfMonthBefore(occurrenceMonth) }
-      });
-      return prisma.financialExpense.create({
-        data: {
-          providerId: provider.id,
-          description: (input.description ?? expense.description).trim(),
-          amountCents: input.amountCents ?? expense.amountCents,
-          category: input.category ?? expense.category,
-          paidAt: input.paidAt !== undefined ? new Date(input.paidAt) : clampDayToMonth(expense.paidAt, occurrenceMonth),
-          recurrence: input.recurrence ?? FinancialRecurrence.RECURRING,
-          recurrenceEndDate: input.recurrenceEndDate !== undefined ? (input.recurrenceEndDate ? new Date(input.recurrenceEndDate) : null) : expense.recurrenceEndDate
+      // Épico de Frentes, Frente 7, Lote 13: mesma proteção de updateIncome —
+      // updateMany condicional garante que só uma das duas edições quase
+      // simultâneas da mesma âncora consiga fechar a série e criar a nova; a
+      // outra recebe um conflito em vez de duplicar a recorrência.
+      return prisma.$transaction(async (tx) => {
+        const closed = await tx.financialExpense.updateMany({
+          where: { id: expenseId, recurrenceEndDate: expense.recurrenceEndDate },
+          data: { recurrenceEndDate: endOfMonthBefore(occurrenceMonth) }
+        });
+        if (closed.count === 0) {
+          throw new AppError("Esta despesa já foi editada em outra requisição. Recarregue e tente novamente.", StatusCodes.CONFLICT);
         }
+        return tx.financialExpense.create({
+          data: {
+            providerId: provider.id,
+            description: (input.description ?? expense.description).trim(),
+            amountCents: input.amountCents ?? expense.amountCents,
+            category: input.category ?? expense.category,
+            paidAt: input.paidAt !== undefined ? new Date(input.paidAt) : clampDayToMonth(expense.paidAt, occurrenceMonth),
+            recurrence: input.recurrence ?? FinancialRecurrence.RECURRING,
+            recurrenceEndDate: input.recurrenceEndDate !== undefined ? (input.recurrenceEndDate ? new Date(input.recurrenceEndDate) : null) : expense.recurrenceEndDate
+          }
+        });
       });
     }
 
