@@ -134,9 +134,12 @@ async function gatherStats(userId: string, triggers: AchievementTrigger[]): Prom
         .count({ where: { userId } })
         .then((c) => { stats.totalReviews = c; }),
 
+    // Épico de Frentes, Frente 8, Lote 1: MANUAL_PHOTO podia ser um post
+    // só-texto (schema aceita imageUrl OU caption) - contar sem exigir
+    // imageUrl inflava "TOTAL_PHOTO_POSTS" com posts que nunca tiveram foto.
     needs.has("TOTAL_PHOTO_POSTS") &&
       prisma.feedPost
-        .count({ where: { userId, type: "MANUAL_PHOTO" } })
+        .count({ where: { userId, type: "MANUAL_PHOTO", imageUrl: { not: null } } })
         .then((c) => { stats.totalPhotoPosts = c; }),
 
     needs.has("DISTINCT_PROVIDERS_TRAINED") &&

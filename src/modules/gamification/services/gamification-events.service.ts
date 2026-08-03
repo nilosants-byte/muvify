@@ -11,13 +11,11 @@ import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
 // Serviço contratado:   25 XP  (pré-auth/pagamento de qualquer tipo)
 // Avaliação enviada:    15 XP
 // Primeira sessão c/ novo provider: 25 XP (bônus, já existia)
-// Foto pós-treino:      15 XP
+// Foto pós-treino:      10 XP (concedido só em createManualPhotoPost, ver community/feed.service.ts)
 
 export async function onWorkoutCompleted(
   clientId: string,
-  bookingId: string,
-  includePhoto: boolean,
-  photoUrl?: string
+  bookingId: string
 ): Promise<void> {
   try {
     const isFirstSessionWithProvider = await checkFirstSessionWithProvider(clientId, bookingId);
@@ -30,10 +28,6 @@ export async function onWorkoutCompleted(
 
     if (isFirstSessionWithProvider) {
       await awardXp(clientId, 25, "NEW_PROVIDER_FIRST_SESSION", bookingId);
-    }
-
-    if (includePhoto && photoUrl) {
-      await awardXp(clientId, 15, "POST_WORKOUT_PHOTO", bookingId);
     }
 
     const { milestoneHit, alreadyTrainedToday } = await recordTraining(clientId);
@@ -79,7 +73,6 @@ export async function onWorkoutCompleted(
 
     await createAutoPost(clientId, "WORKOUT_COMPLETED", {
       referenceId: bookingId,
-      imageUrl: includePhoto ? photoUrl : undefined,
       metadata: { type: "PRESENTIAL", ...providerMeta },
     }).catch((e) => console.error("Gamification: WORKOUT_COMPLETED post failed", e));
 
@@ -181,16 +174,6 @@ export async function onServicePurchased(clientId: string, referenceId: string):
     await awardXp(clientId, 25, "SERVICE_PURCHASED", referenceId);
   } catch (error) {
     console.error("Gamification: onServicePurchased failed", error);
-  }
-}
-
-/** 15 XP ao postar foto de treino no feed. */
-export async function onPhotoPosted(userId: string, postId: string): Promise<void> {
-  try {
-    await awardXp(userId, 15, "POST_WORKOUT_PHOTO", postId);
-    await checkAndUnlock(userId, ["TOTAL_PHOTO_POSTS"]);
-  } catch (error) {
-    console.error("Gamification: onPhotoPosted failed", error);
   }
 }
 

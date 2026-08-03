@@ -76,11 +76,18 @@ export async function createManualPhotoPost(
     },
   });
 
-  // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 1: referenceId ativa a
-  // deduplicação de XP já existente em awardXp — antes, sem esse valor,
-  // cada chamada sempre criava uma transação de XP nova.
-  await awardXp(userId, 10, "POST_WORKOUT_PHOTO", post.id);
-  await checkAndUnlock(userId, ["TOTAL_PHOTO_POSTS"]);
+  // Épico de Frentes, Frente 8, Lote 1: o schema aceita imageUrl OU
+  // caption, então um post só-texto (sem nenhuma foto de treino de
+  // verdade) chegava a ganhar o mesmo XP de "postou foto do treino" — dava
+  // pra farmar XP só digitando legenda, sem nenhum vínculo com um treino
+  // real. Post só-texto continua permitido, só não concede mais esse XP.
+  if (imageUrl) {
+    // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 1: referenceId ativa a
+    // deduplicação de XP já existente em awardXp — antes, sem esse valor,
+    // cada chamada sempre criava uma transação de XP nova.
+    await awardXp(userId, 10, "POST_WORKOUT_PHOTO", post.id);
+    await checkAndUnlock(userId, ["TOTAL_PHOTO_POSTS"]);
+  }
 }
 
 export async function createAutoPost(

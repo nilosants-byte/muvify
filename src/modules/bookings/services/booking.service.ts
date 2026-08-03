@@ -1557,7 +1557,7 @@ export class BookingService {
         onFirstBookingCompleted,
         onEvery10BookingsCompleted,
       } = await import("../../gamification/services/gamification-events.service");
-      void onWorkoutCompleted(updated.clientId, bookingId, false);
+      void onWorkoutCompleted(updated.clientId, bookingId);
       void onFirstBookingCompleted(updated.clientId);
       void onEvery10BookingsCompleted(updated.clientId);
 

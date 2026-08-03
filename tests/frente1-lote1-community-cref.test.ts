@@ -295,7 +295,10 @@ describe("Frente 1, Lote 1 — farm de XP via post manual", () => {
     const create = await request(app)
       .post("/api/community/feed/posts")
       .set("Authorization", `Bearer ${token}`)
-      .send({ caption: "post pra farmar XP" });
+      // Épico de Frentes, Frente 8, Lote 1: XP de POST_WORKOUT_PHOTO só é
+      // concedido quando o post tem imageUrl de verdade (antes, um post só
+      // com caption já farmava o mesmo XP de "foto de treino").
+      .send({ caption: "post pra farmar XP", imageUrl: "https://fake-r2-public.test/feed-photos/farm1.jpg" });
     expect(create.status).toBe(201);
     const post = await prisma.feedPost.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } });
 
@@ -344,13 +347,13 @@ describe("Frente 1, Lote 1 — farm de XP via post manual", () => {
     await request(app)
       .post("/api/community/feed/posts")
       .set("Authorization", `Bearer ${token}`)
-      .send({ caption: "post 1" });
+      .send({ caption: "post 1", imageUrl: "https://fake-r2-public.test/feed-photos/farm2.jpg" });
     const post1 = await prisma.feedPost.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } });
 
     await request(app)
       .post("/api/community/feed/posts")
       .set("Authorization", `Bearer ${token}`)
-      .send({ caption: "post 2" });
+      .send({ caption: "post 2", imageUrl: "https://fake-r2-public.test/feed-photos/farm3.jpg" });
     const post2 = await prisma.feedPost.findFirst({
       where: { userId, id: { not: post1!.id } },
       orderBy: { createdAt: "desc" }
