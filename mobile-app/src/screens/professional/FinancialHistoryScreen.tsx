@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator, Alert, Share,
@@ -261,6 +262,14 @@ export function FinancialHistoryScreen({ navigation }: Props) {
     },
   );
 
+  // Épico de Frentes, Frente 7, Lote 10: Extrato ficava sem recarregar ao
+  // voltar de outra tela (ex: editar um lançamento em outro lugar, ou
+  // voltar da tela de conexão MP) - só dashboard e Home tinham esse padrão.
+  useFocusEffect(useCallback(() => {
+    void reportQuery.refetch();
+    void txQuery.refetch();
+  }, [reportQuery.refetch, txQuery.refetch]));
+
   const report = (reportQuery.data ?? null) as FinancialReport | null;
   const incomes = txQuery.data?.incomes ?? ([] as FinancialIncome[]);
   const expenses = txQuery.data?.expenses ?? ([] as FinancialExpense[]);
@@ -364,6 +373,12 @@ export function FinancialHistoryScreen({ navigation }: Props) {
       queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
         old ? { ...old, incomes: [...old.incomes, newIncome as FinancialIncome] } : old
       );
+      // Épico de Frentes, Frente 7, Lote 10: o topo da tela (total/gráfico)
+      // vem de uma query separada (financial.report) que nunca era
+      // invalidada por essas mutações - podia ficar mostrando um total
+      // desatualizado em relação à lista de lançamentos logo abaixo, na
+      // mesma tela, até sair e voltar.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.financial.report(12) });
       setAddIncomeModal(false);
       setIDesc(""); setIValue("100,00"); setIDate(new Date()); setIBilling("one_time");
       showToast("Receita registrada.", "success");
@@ -391,6 +406,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
       queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
         old ? { ...old, incomes: old.incomes.map(i => i.id === editingId ? updated as FinancialIncome : i) } : old
       );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.financial.report(12) });
       setEditingIncome(null);
       setIDesc(""); setIValue("100,00"); setIDate(new Date()); setIBilling("one_time");
       showToast("Receita atualizada.", "success");
@@ -419,6 +435,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
           // só fechado a recorrência a partir de um mês mais à frente) -
           // refaz a busca em vez de arriscar remover algo que continua válido.
           await queryClient.invalidateQueries({ queryKey: queryKeys.financial.history(selectedMonth) });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.financial.report(12) });
         } catch { showToast("Falha ao remover.", "error"); }
       }},
     ]);
@@ -440,6 +457,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
       queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
         old ? { ...old, expenses: [...old.expenses, newExpense as FinancialExpense] } : old
       );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.financial.report(12) });
       setAddExpenseModal(false);
       setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); setEBilling("one_time");
       showToast("Despesa registrada.", "success");
@@ -465,6 +483,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
       queryClient.setQueryData<TxData>(queryKeys.financial.history(selectedMonth), (old) =>
         old ? { ...old, expenses: old.expenses.map(e => e.id === editingId ? updated as FinancialExpense : e) } : old
       );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.financial.report(12) });
       setEditingExpense(null);
       setEDesc(""); setEValue("50,00"); setECat("OTHER"); setEDate(new Date()); setEBilling("one_time");
       showToast("Despesa atualizada.", "success");
@@ -485,6 +504,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
           const beforeMonth = toLocalMonthKey(new Date(item.paidAt));
           await runWithAuth(t => financialApi.deleteExpense(t, item.id, beforeMonth));
           await queryClient.invalidateQueries({ queryKey: queryKeys.financial.history(selectedMonth) });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.financial.report(12) });
         } catch { showToast("Falha ao remover.", "error"); }
       }},
     ]);

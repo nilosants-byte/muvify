@@ -124,6 +124,13 @@ function isConsultancyNotificationType(type: string) {
 function isPresentialPackageNotificationType(type: string) {
   return type.startsWith("PRESENTIAL_PACKAGE_") || type.startsWith("COMBO_CONSULTANCY_");
 }
+// Épico de Frentes, Frente 7, Lote 10: notificação de pagamento (captura,
+// reembolso, falha de captura, disputa etc.) recebida em primeiro plano
+// nunca invalidava o dashboard financeiro - o profissional olhando a tela
+// no momento exato de uma captura/reembolso não via o saldo mudar sozinho.
+function isPaymentNotificationType(type: string) {
+  return type.startsWith("PAYMENT_");
+}
 
 function routeNotification(
   data: Record<string, unknown>,
@@ -746,6 +753,10 @@ export function RootNavigator() {
       }
       if (isPresentialPackageNotificationType(type)) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.presentialPackages.all });
+      }
+      if (isPaymentNotificationType(type)) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.payments.providerPayouts() });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.financial.all });
       }
     });
 

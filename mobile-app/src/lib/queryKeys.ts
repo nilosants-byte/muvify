@@ -118,7 +118,6 @@ export const queryKeys = {
     incomes: (month?: string) => ["financial", "incomes", month] as const,
     expenses: (month?: string) => ["financial", "expenses", month] as const,
     goal: (month?: string) => ["financial", "goal", month] as const,
-    sessions: (month?: string) => ["financial", "sessions", month] as const,
     financePage: (month?: string) => ["financial", "financePage", month] as const,
     history: (month?: string) => ["financial", "history", month] as const,
   },

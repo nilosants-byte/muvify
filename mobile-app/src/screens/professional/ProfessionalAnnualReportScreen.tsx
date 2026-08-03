@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { financialApi } from "../../services/api/client";
@@ -62,6 +63,10 @@ export function ProfessionalAnnualReportScreen({ navigation }: Props) {
       handleScreenError({ error: reportQuery.error, showToast, fallbackMessage: "Falha ao carregar relatório.", navigation });
     }
   }, [reportQuery.error, showToast, navigation]);
+
+  // Épico de Frentes, Frente 7, Lote 10: Relatório Anual não recarregava ao
+  // voltar de outra tela - só dashboard e Home tinham esse padrão.
+  useFocusEffect(useCallback(() => { void reportQuery.refetch(); }, [reportQuery.refetch]));
 
   const availableYears = [...new Set(allMonths.map(m => Number(m.month.split("-")[0])))].sort((a, b) => b - a);
   if (!availableYears.includes(new Date().getFullYear())) availableYears.unshift(new Date().getFullYear());

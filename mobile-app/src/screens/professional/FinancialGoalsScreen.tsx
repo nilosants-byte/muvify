@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator,
@@ -86,7 +87,6 @@ export function FinancialGoalsScreen({ navigation }: Props) {
 
   const goal = goalsQuery.data?.goal ?? null;
   const dashboard = goalsQuery.data?.dashboard ?? null;
-  const loading = goalsQuery.isLoading;
 
   // Épico de Frentes, Frente 6, Lote 8: "alunos ativos" usa a mesma fonte de
   // verdade da Home/Gestão de Alunos (dashboardStudents, considera
@@ -99,6 +99,12 @@ export function FinancialGoalsScreen({ navigation }: Props) {
     (token) => providersApi.dashboardStudents(token),
     { retry: false },
   );
+  // Épico de Frentes, Frente 7, Lote 10: `loading` só considerava
+  // goalsQuery - como "alunos ativos" vem de studentsQuery (query
+  // separada), a barra de progresso podia renderizar com current=0 por um
+  // instante (ou pra sempre, se studentsQuery falhasse) mesmo com o resto
+  // da tela já carregado, sem nenhum aviso.
+  const loading = goalsQuery.isLoading || studentsQuery.isLoading;
   const activeStudentsCount = useMemo(
     () => studentsQuery.data?.students.filter((s) => s.active).length ?? 0,
     [studentsQuery.data]
@@ -142,6 +148,23 @@ export function FinancialGoalsScreen({ navigation }: Props) {
       handleScreenError({ error: goalsQuery.error, showToast, fallbackMessage: "Falha ao carregar metas.", navigation });
     }
   }, [goalsQuery.error, showToast, navigation]);
+
+  // Épico de Frentes, Frente 7, Lote 10: studentsQuery (retry: false) tinha
+  // erro só ignorado silenciosamente - "Alunos ativos" ficava travado em 0
+  // pra sempre sem nenhum aviso de que era uma falha, não o valor real.
+  useEffect(() => {
+    if (studentsQuery.error) {
+      showToast("Falha ao carregar alunos ativos.", "error");
+    }
+  }, [studentsQuery.error, showToast]);
+
+  // Épico de Frentes, Frente 7, Lote 10: tela de Metas não recarregava ao
+  // voltar de outra tela (ex: registrar um pagamento em Alunos Financeiros)
+  // - só dashboard e Home tinham esse padrão de useFocusEffect.
+  useFocusEffect(useCallback(() => {
+    void goalsQuery.refetch();
+    void studentsQuery.refetch();
+  }, [goalsQuery.refetch, studentsQuery.refetch]));
 
   async function handleSave() {
     try {

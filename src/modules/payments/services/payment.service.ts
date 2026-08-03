@@ -800,16 +800,27 @@ export class PaymentService {
           // de uma falha 5xx/rede passageira. Marca e avisa o profissional
           // uma única vez (só na transição de "ok" pra "inválido").
           if ((response.status === 400 || response.status === 401) && !provider.mpTokenInvalidatedAt) {
-            await prisma.providerProfile.update({
-              where: { id: provider.id },
+            // Épico de Frentes, Frente 7, Lote 10: `provider` aqui é um
+            // snapshot lido no início do job (findMany, acima) - se o
+            // profissional reconectou a conta bem no meio dessa janela
+            // (entre o findMany e este ponto), o refresh token que acabamos
+            // de tentar usar já está obsoleto, e essa falha 400/401 não
+            // reflete o estado real da conexão. `updateMany` condicionado
+            // ao mpRefreshToken ainda ser o mesmo do snapshot vira um no-op
+            // nesse caso — evita marcar mpTokenInvalidatedAt (e notificar
+            // "reconecte") logo depois de uma reconexão bem-sucedida.
+            const claimed = await prisma.providerProfile.updateMany({
+              where: { id: provider.id, mpRefreshToken: provider.mpRefreshToken, mpTokenInvalidatedAt: null },
               data: { mpTokenInvalidatedAt: new Date() }
             });
-            void notificationService.sendToUsers([provider.userId], {
-              preferenceType: "PAYMENTS",
-              title: "Reconecte sua conta do Mercado Pago",
-              body: "Perdemos a conexão com sua conta do Mercado Pago — suas vendas não estão sendo repassadas. Reconecte em Recebimentos para voltar a vender.",
-              data: { type: "MP_TOKEN_INVALIDATED" }
-            });
+            if (claimed.count > 0) {
+              void notificationService.sendToUsers([provider.userId], {
+                preferenceType: "PAYMENTS",
+                title: "Reconecte sua conta do Mercado Pago",
+                body: "Perdemos a conexão com sua conta do Mercado Pago — suas vendas não estão sendo repassadas. Reconecte em Recebimentos para voltar a vender.",
+                data: { type: "MP_TOKEN_INVALIDATED" }
+              });
+            }
           }
           continue;
         }
