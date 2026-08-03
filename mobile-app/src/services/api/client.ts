@@ -2695,8 +2695,9 @@ export const financialApi = {
     const q = month ? `?month=${month}` : "";
     return apiRequest<FinancialAppClient[]>(`/financial/app-clients${q}`, { token });
   },
-  listStudents(token: string) {
-    return apiRequest<FinancialStudent[]>("/financial/students", { token });
+  listStudents(token: string, month?: string) {
+    const q = month ? `?month=${month}` : "";
+    return apiRequest<FinancialStudent[]>(`/financial/students${q}`, { token });
   },
   createStudent(token: string, body: { name: string; monthlyValueCents: number; type: FinancialStudentType; weeklyFrequency?: number; paymentDueDay?: number; notes?: string; location?: string; weeklySchedule?: WeeklyScheduleSlot[]; recurrence?: FinancialRecurrence; startDate?: string; recurrenceEndDate?: string | null }) {
     return apiRequest<FinancialStudent>("/financial/students", { method: "POST", token, body });
@@ -2739,7 +2740,7 @@ export const financialApi = {
     const q = month ? `?month=${month}` : "";
     return apiRequest<FinancialGoal | null>(`/financial/goals${q}`, { token });
   },
-  upsertGoal(token: string, body: { month: string; targetRevenueCents?: number; targetStudents?: number; targetWeeklyClasses?: number }) {
+  upsertGoal(token: string, body: { month: string; targetRevenueCents?: number | null; targetStudents?: number | null; targetWeeklyClasses?: number | null }) {
     return apiRequest<FinancialGoal>("/financial/goals", { method: "PUT", token, body });
   }
 };

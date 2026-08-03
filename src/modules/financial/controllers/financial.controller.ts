@@ -24,7 +24,7 @@ export class FinancialController {
 
   // Students
   async listStudents(req: Request, res: Response) {
-    const data = await service.listStudents(req.user!.id);
+    const data = await service.listStudents(req.user!.id, req.query.month as string | undefined);
     return res.json(data);
   }
   async createStudent(req: Request, res: Response) {

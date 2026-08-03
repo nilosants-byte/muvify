@@ -265,9 +265,9 @@ type UpdateExpenseInput = {
 
 type UpsertGoalInput = {
   month: string;
-  targetRevenueCents?: number;
-  targetStudents?: number;
-  targetWeeklyClasses?: number;
+  targetRevenueCents?: number | null;
+  targetStudents?: number | null;
+  targetWeeklyClasses?: number | null;
 };
 
 // Lançamentos "efetivos" de um mês = linhas reais daquele mês + projeções
@@ -522,15 +522,19 @@ export class FinancialService {
   }
 
   // ─── Students ─────────────────────────────────────────────────────────────
-  async listStudents(userId: string) {
+  async listStudents(userId: string, month?: string) {
     const provider = await getProviderByUserId(userId);
     const students = await prisma.financialStudent.findMany({
       where: { providerId: provider.id },
       orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
       take: 500,
     });
-    const month = currentMonth();
-    return students.map((s) => ({ ...s, billableThisMonth: isStudentBillableForMonth(s, month) }));
+    // Épico de Frentes, Frente 7, Lote 11: `billableThisMonth` sempre
+    // calculado contra o mês real de hoje, mesmo a tela tendo navegação de
+    // mês - status de pendência/atraso mostrado pra um mês passado não
+    // correspondia àquele mês.
+    const m = month ?? currentMonth();
+    return students.map((s) => ({ ...s, billableThisMonth: isStudentBillableForMonth(s, m) }));
   }
 
   async createStudent(userId: string, input: CreateStudentInput) {
@@ -806,10 +810,14 @@ export class FinancialService {
     const provider = await getProviderByUserId(userId);
     return prisma.financialGoal.upsert({
       where: { providerId_month: { providerId: provider.id, month: input.month } },
+      // Épico de Frentes, Frente 7, Lote 11: campo omitido (undefined) não
+      // mexe na coluna; `null` explícito limpa a meta - antes os dois casos
+      // eram tratados igual (undefined direto no Prisma também vira "não
+      // mexer"), então limpar um campo pelo app nunca removia a meta antiga.
       update: {
-        targetRevenueCents: input.targetRevenueCents,
-        targetStudents: input.targetStudents,
-        targetWeeklyClasses: input.targetWeeklyClasses
+        ...(input.targetRevenueCents !== undefined ? { targetRevenueCents: input.targetRevenueCents } : {}),
+        ...(input.targetStudents !== undefined ? { targetStudents: input.targetStudents } : {}),
+        ...(input.targetWeeklyClasses !== undefined ? { targetWeeklyClasses: input.targetWeeklyClasses } : {})
       },
       create: {
         providerId: provider.id,

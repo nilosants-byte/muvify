@@ -125,9 +125,13 @@ export const updateExpenseSchema = z.object({
 export const upsertGoalSchema = z.object({
   body: z.object({
     month: monthSchema,
-    targetRevenueCents: z.number().int().min(0).optional(),
-    targetStudents: z.number().int().min(0).optional(),
-    targetWeeklyClasses: z.number().int().min(0).optional()
+    // Épico de Frentes, Frente 7, Lote 11: `.nullable()` permite o
+    // profissional limpar uma meta explicitamente (null) — antes só dava
+    // pra "não mexer" (campo omitido/undefined), então limpar o campo e
+    // salvar nunca removia a meta antiga de fato.
+    targetRevenueCents: z.number().int().min(0).nullable().optional(),
+    targetStudents: z.number().int().min(0).nullable().optional(),
+    targetWeeklyClasses: z.number().int().min(0).nullable().optional()
   })
 });
 

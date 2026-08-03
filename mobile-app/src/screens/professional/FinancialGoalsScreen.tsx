@@ -169,11 +169,15 @@ export function FinancialGoalsScreen({ navigation }: Props) {
   async function handleSave() {
     try {
       setSaving(true);
+      // Épico de Frentes, Frente 7, Lote 11: envia `null` (não `undefined`)
+      // quando o campo fica vazio - o texto da tela promete "deixe em
+      // branco pra não monitorar", mas undefined faz o backend só "não
+      // mexer" na meta antiga, nunca removê-la de fato.
       const savedGoal = await runWithAuth(t => financialApi.upsertGoal(t, {
         month,
-        targetRevenueCents: gRevenue ? parseCents(gRevenue) : undefined,
-        targetStudents: gStudents ? Number(gStudents) : undefined,
-        targetWeeklyClasses: gClasses ? Number(gClasses) : undefined,
+        targetRevenueCents: gRevenue ? parseCents(gRevenue) : null,
+        targetStudents: gStudents ? Number(gStudents) : null,
+        targetWeeklyClasses: gClasses ? Number(gClasses) : null,
       }));
       queryClient.setQueryData<typeof goalsQuery.data>(queryKeys.financial.goal(month), (old) =>
         old ? { ...old, goal: savedGoal as FinancialGoal } : old

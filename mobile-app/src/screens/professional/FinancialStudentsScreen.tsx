@@ -133,7 +133,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
     queryKeys.financial.studentsPage(month),
     async (token) => {
       const [studs, incs, appCl] = await Promise.all([
-        financialApi.listStudents(token),
+        financialApi.listStudents(token, month),
         financialApi.listIncomes(token, month),
         financialApi.listAppClients(token, month),
       ]);
@@ -286,11 +286,20 @@ export function FinancialStudentsScreen({ navigation }: Props) {
         showToast("Mensalidade desmarcada.", "success");
       } else {
         if (s.monthlyValueCents === 0) { showToast("Configure o valor mensal do aluno.", "error"); return; }
+        // Épico de Frentes, Frente 7, Lote 11: gravava sempre a data real de
+        // hoje, ignorando o mês navegado - marcar uma cobrança atrasada de
+        // um mês passado como paga fazia a receita "sumir" desse mês e
+        // aparecer no mês corrente. Usa o dia de hoje (clampado) dentro do
+        // mês que a tela está mostrando.
+        const [payYear, payMonth] = month.split("-").map(Number);
+        const lastDayOfMonth = new Date(payYear, payMonth, 0).getDate();
+        const payDay = Math.min(new Date().getDate(), lastDayOfMonth);
+        const paidAt = `${payYear}-${String(payMonth).padStart(2, "0")}-${String(payDay).padStart(2, "0")}T12:00:00.000Z`;
         const newIncome = await runWithAuth(t => financialApi.createIncome(t, {
           description: `Mensalidade — ${s.name}`,
           amountCents: s.monthlyValueCents,
           studentId: s.id,
-          paidAt: `${new Date().toISOString().slice(0, 10)}T12:00:00.000Z`,
+          paidAt,
         }));
         queryClient.setQueryData<StudentsPageData>(queryKeys.financial.studentsPage(month), (old) =>
           old ? { ...old, incomes: [...old.incomes, newIncome as FinancialIncome] } : old
@@ -309,6 +318,11 @@ export function FinancialStudentsScreen({ navigation }: Props) {
   const inactive = students.filter(s => !s.isActive);
   const pending  = active.filter(s => s.billableThisMonth && !paidStudentIds.has(s.id));
   const pendingAmount = pending.reduce((sum, s) => sum + s.monthlyValueCents, 0);
+  // Épico de Frentes, Frente 7, Lote 11: comparar o dia real de hoje contra
+  // paymentDueDay só faz sentido vendo o mês corrente - olhando um mês
+  // passado, "Atrasado Xd" mostrava um número sem sentido baseado no dia
+  // atual do calendário real, não no mês sendo visto.
+  const isViewingCurrentMonth = month === currentMonthStr();
   const todayDay = new Date().getDate();
 
   function StudentRow({ s, dim }: { s: FinancialStudent; dim?: boolean }) {
@@ -326,7 +340,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
       : billing === "period" && s.recurrenceEndDate ? `Até ${new Date(s.recurrenceEndDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}`
       : null;
     const isPaid = paidStudentIds.has(s.id);
-    const daysOverdue = s.paymentDueDay && !isPaid ? Math.max(0, todayDay - s.paymentDueDay) : 0;
+    const daysOverdue = s.paymentDueDay && !isPaid && isViewingCurrentMonth ? Math.max(0, todayDay - s.paymentDueDay) : 0;
 
     return (
       <MvCard style={{ opacity: dim ? 0.5 : 1 }}>

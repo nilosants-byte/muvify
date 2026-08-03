@@ -30,7 +30,7 @@ financialRoutes.get("/app-clients",  ...auth, validate(listByMonthSchema),   ctr
 financialRoutes.get("/payouts",      ...auth, validate(listByMonthSchema), ctrl.payouts);
 financialRoutes.get("/transactions/export", ...auth, ctrl.exportTransactionsCsv);
 
-financialRoutes.get("/students", ...auth, ctrl.listStudents);
+financialRoutes.get("/students", ...auth, validate(listByMonthSchema), ctrl.listStudents);
 financialRoutes.post("/students", ...auth, validate(createStudentSchema), ctrl.createStudent);
 financialRoutes.patch("/students/:id", ...auth, validate(updateStudentSchema), ctrl.updateStudent);
 financialRoutes.delete("/students/:id", ...auth, validate(studentIdSchema), ctrl.deleteStudent);
