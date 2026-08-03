@@ -736,6 +736,17 @@ export class UserService {
       // já ter sido excluída. O usuário já fica anonimizado na própria
       // tabela User logo abaixo; o ticket não precisa de nenhuma ação aqui.
       await tx.follow.deleteMany({ where: { OR: [{ followerId: userId }, { followingId: userId }] } });
+      // Épico de Frentes, Frente 8, Lote 14: os posts do próprio usuário
+      // (linha abaixo) cascateiam a limpeza de likes/comments NELES, mas
+      // comentários que esse usuário deixou em posts DE OUTRAS PESSOAS
+      // continuavam intactos com o conteúdo original, atribuídos ao
+      // registro já anonimizado - inconsistente com o padrão já usado pros
+      // outros campos neste mesmo método (mensagem, review, textos de
+      // solicitação, todos anulados explicitamente).
+      await tx.feedPostComment.updateMany({
+        where: { userId, post: { userId: { not: userId } } },
+        data: { content: "[Comentário removido]" }
+      });
       await tx.feedPost.deleteMany({ where: { userId } });
       await tx.review.updateMany({ where: { userId }, data: { comment: null } });
       await tx.providerStudentAssessment.deleteMany({ where: { clientId: userId } });
