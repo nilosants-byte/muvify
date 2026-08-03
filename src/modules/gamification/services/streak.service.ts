@@ -32,6 +32,16 @@ export async function recordTraining(userId: string): Promise<StreakResult> {
     where: { id: userId },
     select: { trainingDaysPerWeek: true },
   });
+  // Épico de Frentes, Frente 8, Lote 15: trainingDaysPerWeek foi desenhado
+  // pra ser uma meta pessoal configurável (PATCH /gamification/training-days
+  // já existe no backend), mas nenhuma tela do app hoje deixa o usuário
+  // mudar esse valor - todo mundo fica travado no default de 3 (maxRestDays
+  // = 4), então a folga abaixo NÃO reflete uma meta escolhida de fato hoje,
+  // só o comportamento padrão fixo. O usuário confirmou que o modelo
+  // correto de streak é outro (avaliação semanal contra uma meta de dias
+  // configurável, não folga por dia corrido) - fica registrado como
+  // iniciativa própria a ser desenhada depois do épico de Frentes, não um
+  // ajuste pequeno deste lote.
   const rawDays = user?.trainingDaysPerWeek ?? 3;
   const trainingDaysPerWeek = Math.max(1, Math.min(rawDays, 7));
   const maxRestDays = 7 - trainingDaysPerWeek;
