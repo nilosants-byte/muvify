@@ -159,6 +159,12 @@ enum NotificationPreferenceType {
   MARKETING
   CONSULTANCY
   SYSTEM
+  // Épico de Frentes, Frente 8, Lote 12: novo seguidor, marco de streak,
+  // conquista desbloqueada e menção em post - antes desse valor existir,
+  // o push de "novo seguidor" não passava nenhum preferenceType, e sem
+  // categoria o filtro de preferência é pulado por completo (usuário não
+  // conseguia desativar).
+  COMMUNITY
 }
 
 enum SupportTicketStatus {

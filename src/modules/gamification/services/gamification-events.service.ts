@@ -23,6 +23,7 @@ async function notifyProviderOfWorkoutPost(providerUserId: string | undefined, c
     title: "Novo post sobre o treino com você",
     body: `${clientDisplay} postou na comunidade sobre o treino com você no Muvify.`,
     data: { type: "STUDENT_POST_MENTION", clientId },
+    preferenceType: "COMMUNITY",
   }).catch(() => { /* best effort */ });
 }
 
@@ -224,6 +225,15 @@ export async function onStreakMilestone(userId: string, sessions: number): Promi
     // referenceId inclui o dia: permite reconquista em dias diferentes, previne duplicata intra-dia
     const dayKey = new Date().toISOString().slice(0, 10);
     await awardXp(userId, entry.xp, entry.reason, `${dayKey}:milestone_${sessions}`);
+    // Épico de Frentes, Frente 8, Lote 12: marco de streak não gerava push
+    // nenhum, só o FeedPost automático (visto só se o usuário abrisse a
+    // aba Comunidade por conta própria).
+    await notificationService.sendToUsers([userId], {
+      title: "Sequência em alta!",
+      body: `${sessions} dias seguidos treinando. Continue assim!`,
+      data: { type: "STREAK_MILESTONE", sessions: String(sessions) },
+      preferenceType: "COMMUNITY",
+    }).catch(() => { /* best effort */ });
   } catch (error) {
     console.error("Gamification: onStreakMilestone failed", error);
   }

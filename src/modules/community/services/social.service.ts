@@ -76,6 +76,10 @@ export async function followUser(followerId: string, followingId: string): Promi
       followerApelido: follower?.apelido ?? "",
       followerName: follower?.name ?? "",
     },
+    // Épico de Frentes, Frente 8, Lote 12: sem preferenceType, o filtro de
+    // preferência em sendToUsers é pulado por completo - usuário não tinha
+    // como desativar esse aviso.
+    preferenceType: "COMMUNITY",
   }).catch(() => { /* best effort */ });
 }
 

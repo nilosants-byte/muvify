@@ -1,6 +1,7 @@
 import { AchievementConditionType } from "@prisma/client";
 import { prisma } from "../../../config/prisma";
 import { awardXp, computeLevel, getTotalXp } from "./xp.service";
+import { NotificationService } from "../../notifications/services/notification.service";
 
 export type AchievementTrigger = AchievementConditionType;
 
@@ -10,6 +11,24 @@ export type UnlockedAchievement = {
   medalType: string;
   xpRewarded: number;
 };
+
+const notificationService = new NotificationService();
+
+// Épico de Frentes, Frente 8, Lote 12: nível, streak, conquista e ranking
+// não geravam push nenhum - só criavam o FeedPost automático, visto só se
+// o usuário abrisse a aba Comunidade por conta própria. Centralizado aqui
+// (em vez de em cada call site de checkAndUnlock/checkLevelAchievements)
+// pra cobrir todo mundo que desbloqueia uma conquista, não só um fluxo.
+async function notifyAchievementsUnlocked(userId: string, unlocked: UnlockedAchievement[]): Promise<void> {
+  for (const achievement of unlocked) {
+    await notificationService.sendToUsers([userId], {
+      title: "Conquista desbloqueada!",
+      body: `Você desbloqueou "${achievement.name}" no Muvify.`,
+      data: { type: "ACHIEVEMENT_UNLOCKED", achievementKey: achievement.key },
+      preferenceType: "COMMUNITY",
+    }).catch(() => { /* best effort */ });
+  }
+}
 
 export async function checkAndUnlock(
   userId: string,
@@ -55,6 +74,10 @@ export async function checkAndUnlock(
     }
   }
 
+  if (unlocked.length > 0) {
+    await notifyAchievementsUnlocked(userId, unlocked);
+  }
+
   return unlocked;
 }
 
@@ -83,12 +106,16 @@ export async function checkLevelAchievements(userId: string): Promise<UnlockedAc
     skipDuplicates: true,
   });
 
-  return candidates.map((achievement) => ({
+  const unlocked = candidates.map((achievement) => ({
     key: achievement.key,
     name: achievement.name,
     medalType: achievement.medalType,
     xpRewarded: 0,
   }));
+
+  await notifyAchievementsUnlocked(userId, unlocked);
+
+  return unlocked;
 }
 
 type Stats = {
