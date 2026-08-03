@@ -27,9 +27,12 @@ export async function followUser(followerId: string, followingId: string): Promi
   }
 
   // Busca dados do seguidor para personalizar a notificação
+  // Épico de Frentes, Frente 8, Lote 9: buscas/sugestões já ocultam contas
+  // admin corretamente (hiddenFromCommunity), mas seguir por ID direto não
+  // aplicava o mesmo filtro - dava pra seguir um admin diretamente.
   const [follower, target] = await Promise.all([
     prisma.user.findUnique({ where: { id: followerId }, select: { id: true, name: true, apelido: true, role: true } }),
-    prisma.user.findUnique({ where: { id: followingId }, select: { id: true, role: true, suspendedAt: true } }),
+    prisma.user.findFirst({ where: { id: followingId, ...hiddenFromCommunity() }, select: { id: true, role: true, suspendedAt: true } }),
   ]);
 
   if (!target) throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
@@ -264,9 +267,11 @@ export async function getSuggestions(userId: string, limit: number) {
 }
 
 export async function getUserPublicProfile(requesterId: string, targetId: string) {
+  // Épico de Frentes, Frente 8, Lote 9: mesmo achado do followUser - acesso
+  // direto por ID ao perfil público não aplicava hiddenFromCommunity().
   const [user, followerCount, followingCount, isFollowing] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: targetId, role: "CLIENT", ...notSuspended },
+    prisma.user.findFirst({
+      where: { id: targetId, role: "CLIENT", ...notSuspended, ...hiddenFromCommunity() },
       select: { id: true, name: true, apelido: true, photoUrl: true, createdAt: true },
     }),
     prisma.follow.count({ where: { followingId: targetId } }),
