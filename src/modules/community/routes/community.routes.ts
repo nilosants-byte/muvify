@@ -2,7 +2,7 @@ import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
 import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
-import { commentPost, createPost, deleteCommentCtrl, editCommentCtrl, feed, likePost, listComments, removePost } from "../controllers/feed.controller";
+import { commentPost, createPost, deleteCommentCtrl, editCommentCtrl, feed, likePost, listComments, removePost, reportPostCtrl } from "../controllers/feed.controller";
 import { follow, listFollowers, listFollowing, publicProfile, search, suggestions, unfollow } from "../controllers/social.controller";
 import { ranking } from "../controllers/ranking.controller";
 import {
@@ -12,6 +12,7 @@ import {
   paginationSchema,
   postIdParamSchema,
   rankingQuerySchema,
+  reportPostSchema,
   searchUsersSchema,
   suggestionsQuerySchema,
   userIdParamSchema,
@@ -39,6 +40,7 @@ communityRoutes.get("/feed/posts/:postId/comments", validate(postIdParamSchema),
 communityRoutes.post("/feed/posts/:postId/comments", uploadRateLimiter, validate(postIdParamSchema), validate(addCommentSchema), commentPost);
 communityRoutes.delete("/feed/posts/:postId/comments/:commentId", validate(commentIdParamSchema), deleteCommentCtrl);
 communityRoutes.patch("/feed/posts/:postId/comments/:commentId", validate(commentIdParamSchema), validate(addCommentSchema), editCommentCtrl);
+communityRoutes.post("/feed/posts/:postId/report", uploadRateLimiter, validate(reportPostSchema), reportPostCtrl);
 
 // ── Ranking ───────────────────────────────────────────────────────────────────
 communityRoutes.get("/ranking", validate(rankingQuerySchema), ranking);

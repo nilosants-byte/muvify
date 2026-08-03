@@ -28,15 +28,23 @@ export async function getFeed(viewerId: string, page: number, limit: number) {
   });
   const visibleUserIds = [viewerId, ...following.map((f) => f.followingId)];
 
+  // Épico de Frentes, Frente 8, Lote 2: post denunciado passa a sumir do
+  // feed de quem denunciou (sem afetar a visão de outros seguidores) - o
+  // "Denunciar" do app não fazia nada até este lote.
+  const where = {
+    userId: { in: visibleUserIds },
+    reports: { none: { reporterId: viewerId } },
+  };
+
   const [posts, total] = await Promise.all([
     prisma.feedPost.findMany({
-      where: { userId: { in: visibleUserIds } },
+      where,
       orderBy: { createdAt: "desc" },
       skip,
       take: limit,
       select: POST_SELECT,
     }),
-    prisma.feedPost.count({ where: { userId: { in: visibleUserIds } } }),
+    prisma.feedPost.count({ where }),
   ]);
 
   const postIds = posts.map((p) => p.id);
@@ -127,7 +135,7 @@ export async function createAutoPost(
 // getComments só checavam se o post existia — um postId vazado por
 // qualquer canal permitia curtir/comentar/ler comentários fora do feed do
 // usuário. Mesmo critério de visibilidade do getFeed, aplicado por post.
-async function assertPostVisibleToViewer(authorId: string, viewerId: string): Promise<void> {
+async function assertFollowsOrOwnsPost(authorId: string, viewerId: string): Promise<void> {
   if (authorId === viewerId) return;
   const follows = await prisma.follow.findUnique({
     where: { followerId_followingId: { followerId: viewerId, followingId: authorId } },
@@ -137,10 +145,28 @@ async function assertPostVisibleToViewer(authorId: string, viewerId: string): Pr
   }
 }
 
+// Épico de Frentes, Frente 8, Lote 2: mesmo critério de "sumiu do feed"
+// aplicado individualmente por post - sem isso, curtir/comentar/ler um post
+// já denunciado continuava funcionando normalmente mesmo depois dele sumir
+// da listagem principal.
+async function assertNotReportedByViewer(postId: string, viewerId: string): Promise<void> {
+  const reported = await prisma.feedPostReport.findUnique({
+    where: { postId_reporterId: { postId, reporterId: viewerId } },
+  });
+  if (reported) {
+    throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
+  }
+}
+
+async function assertPostVisibleToViewer(postId: string, authorId: string, viewerId: string): Promise<void> {
+  await assertFollowsOrOwnsPost(authorId, viewerId);
+  await assertNotReportedByViewer(postId, viewerId);
+}
+
 export async function toggleLike(postId: string, userId: string): Promise<{ liked: boolean }> {
   const post = await prisma.feedPost.findUnique({ where: { id: postId }, select: { userId: true } });
   if (!post) throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
-  await assertPostVisibleToViewer(post.userId, userId);
+  await assertPostVisibleToViewer(postId, post.userId, userId);
 
   const existing = await prisma.feedPostLike.findUnique({
     where: { postId_userId: { postId, userId } },
@@ -158,7 +184,7 @@ export async function toggleLike(postId: string, userId: string): Promise<{ like
 export async function addComment(postId: string, userId: string, content: string) {
   const post = await prisma.feedPost.findUnique({ where: { id: postId }, select: { userId: true } });
   if (!post) throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
-  await assertPostVisibleToViewer(post.userId, userId);
+  await assertPostVisibleToViewer(postId, post.userId, userId);
 
   return prisma.feedPostComment.create({
     data: { postId, userId, content },
@@ -174,7 +200,7 @@ export async function addComment(postId: string, userId: string, content: string
 export async function getComments(postId: string, viewerId: string, page: number, limit: number) {
   const post = await prisma.feedPost.findUnique({ where: { id: postId }, select: { userId: true } });
   if (!post) throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
-  await assertPostVisibleToViewer(post.userId, viewerId);
+  await assertPostVisibleToViewer(postId, post.userId, viewerId);
 
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
@@ -226,6 +252,27 @@ export async function editComment(postId: string, commentId: string, userId: str
       createdAt: true,
       user: { select: { id: true, name: true, photoUrl: true } },
     },
+  });
+}
+
+// Épico de Frentes, Frente 8, Lote 2: denúncia real - antes o botão do app
+// não persistia nada em lugar nenhum. `upsert` torna a chamada idempotente
+// (denunciar o mesmo post duas vezes não duplica nem quebra, graças ao
+// @@unique([postId, reporterId])). Só valida visibilidade por follow (não
+// "já denunciado" - senão a 2ª denúncia do mesmo post falharia com 404 em
+// vez de simplesmente não fazer nada de novo).
+export async function reportPost(postId: string, reporterId: string, reason?: string): Promise<void> {
+  const post = await prisma.feedPost.findUnique({ where: { id: postId }, select: { userId: true } });
+  if (!post) throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
+  await assertFollowsOrOwnsPost(post.userId, reporterId);
+  if (post.userId === reporterId) {
+    throw new AppError("Você não pode denunciar o próprio post.", StatusCodes.BAD_REQUEST);
+  }
+
+  await prisma.feedPostReport.upsert({
+    where: { postId_reporterId: { postId, reporterId } },
+    create: { postId, reporterId, reason },
+    update: {},
   });
 }
 

@@ -56,6 +56,13 @@ export const addCommentSchema = z.object({
   }),
 });
 
+export const reportPostSchema = z.object({
+  params: z.object({ postId: z.string().uuid() }),
+  body: z.object({
+    reason: z.string().trim().min(1).max(300).optional(),
+  }),
+});
+
 export const rankingQuerySchema = z.object({
   query: z.object({
     ...pagination,

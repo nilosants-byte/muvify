@@ -8,6 +8,7 @@ import {
   editComment,
   getComments,
   getFeed,
+  reportPost,
   toggleLike,
 } from "../services/feed.service";
 
@@ -53,5 +54,11 @@ export async function editCommentCtrl(req: Request, res: Response) {
 
 export async function removePost(req: Request, res: Response) {
   await deletePost(req.params.postId, req.user!.id);
+  res.status(StatusCodes.NO_CONTENT).send();
+}
+
+export async function reportPostCtrl(req: Request, res: Response) {
+  const { reason } = req.body as { reason?: string };
+  await reportPost(req.params.postId, req.user!.id, reason);
   res.status(StatusCodes.NO_CONTENT).send();
 }

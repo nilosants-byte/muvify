@@ -309,6 +309,7 @@ model User {
   feedPosts                FeedPost[]
   feedPostLikes            FeedPostLike[]
   feedPostComments         FeedPostComment[]
+  feedPostReports          FeedPostReport[]
   rankingSnapshots         RankingSnapshot[]
   adminAuditLogs           AdminAuditLog[]
   noShowReportsReceived    NoShowReport[]              @relation("NoShowReported")
@@ -1596,6 +1597,7 @@ model FeedPost {
   user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   likes       FeedPostLike[]
   comments    FeedPostComment[]
+  reports     FeedPostReport[]
 
   @@index([userId, createdAt])
   @@index([userId, isAutomatic, createdAt])
@@ -1626,6 +1628,23 @@ model FeedPostComment {
 
   @@index([postId, createdAt])
   @@index([userId, createdAt])
+}
+
+// Épico de Frentes, Frente 8, Lote 2: o botão "Denunciar" do app não
+// persistia nada - o post denunciado passa a sumir da visão de quem
+// denunciou (assertPostVisibleToViewer/getFeed em feed.service.ts). A fila
+// de revisão do admin fica para a Frente 10 (Operação administrativa).
+model FeedPostReport {
+  id         String   @id @default(uuid())
+  postId     String
+  reporterId String
+  reason     String?
+  createdAt  DateTime @default(now())
+  post       FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reporter   User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, reporterId])
+  @@index([postId])
 }
 
 model RankingSnapshot {

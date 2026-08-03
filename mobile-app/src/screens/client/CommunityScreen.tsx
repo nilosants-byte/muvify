@@ -877,7 +877,20 @@ const FeedPostCard = React.memo(function FeedPostCard({
             {/* Denunciar — só para posts de outros */}
             {!isOwner && (
               <TouchableOpacity
-                onPress={() => { setShowMenu(false); showToast("Denúncia recebida. Obrigado por nos avisar.", "info"); }}
+                onPress={async () => {
+                  setShowMenu(false);
+                  try {
+                    // Épico de Frentes, Frente 8, Lote 2: antes só mostrava o
+                    // toast sem chamar nenhuma API — a denúncia não era
+                    // persistida em lugar nenhum. Post denunciado some do
+                    // próprio feed do denunciante a partir de agora.
+                    await runWithAuth((token) => communityApi.reportPost(token, post.id));
+                    onDeletePost(post.id);
+                    showToast("Denúncia recebida. Obrigado por nos avisar.", "info");
+                  } catch {
+                    showToast("Não foi possível enviar a denúncia. Tente novamente.", "error");
+                  }
+                }}
                 style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 24, paddingVertical: 16 }}
               >
                 <Ionicons name="flag-outline" size={22} color={theme.text2} />

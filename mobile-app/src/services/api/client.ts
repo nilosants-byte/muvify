@@ -3395,6 +3395,13 @@ export const communityApi = {
       body: { content },
     });
   },
+  reportPost(token: string, postId: string, reason?: string) {
+    return apiRequest<void>(`/community/feed/posts/${postId}/report`, {
+      method: "POST",
+      token,
+      body: { reason },
+    });
+  },
   getSuggestions(token: string, limit = 10) {
     return apiRequest<CommunityUser[]>(`/community/suggestions?limit=${limit}`, { token });
   },
