@@ -143,6 +143,9 @@ function routeNotification(
   const bookingId = rawBookingId && uuidRegex.test(rawBookingId) ? rawBookingId : undefined;
   const rawPackageId = typeof data.packageId === "string" ? data.packageId : undefined;
   const packageId = rawPackageId && uuidRegex.test(rawPackageId) ? rawPackageId : undefined;
+  const rawClientId = typeof data.clientId === "string" ? data.clientId : undefined;
+  const clientId = rawClientId && uuidRegex.test(rawClientId) ? rawClientId : undefined;
+  const clientName = typeof data.clientName === "string" && data.clientName ? data.clientName : "Aluno";
 
   // Épico de Frentes, Frente 9, Lote 4: role aqui nunca é "PROFESSIONAL" -
   // o valor real do app é "PROVIDER" (ver UserRole em AppState.tsx). Esse
@@ -157,6 +160,11 @@ function routeNotification(
       (navigationRef as any).navigate("ProfessionalChatList", bookingId ? { openBookingId: bookingId } : undefined);
     } else if (bookingId && BOOKING_TYPES_PRO.has(type)) {
       (navigationRef as any).navigate("BookingDetailProfessional", { bookingId });
+    } else if (type === "STUDENT_POST_MENTION" && clientId) {
+      // Épico de Frentes, Frente 9, Lote 5: não existe tela de comunidade
+      // no app do profissional - o detalhe do aluno é o destino mais
+      // próximo já disponível pra essa notificação.
+      (navigationRef as any).navigate("ProfessionalStudentAnamnesis", { clientId, clientName });
     } else if (isConsultancyNotificationType(type)) {
       (navigationRef as any).navigate("ProfessionalConsultancyCenter");
     } else if (isPresentialPackageNotificationType(type)) {

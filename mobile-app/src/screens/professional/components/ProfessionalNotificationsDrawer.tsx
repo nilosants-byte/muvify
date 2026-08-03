@@ -257,6 +257,15 @@ export function ProfessionalNotificationsDrawer({
           navigation.navigate("BookingDetailProfessional", { bookingId });
           return;
         }
+        // Épico de Frentes, Frente 9, Lote 5: notificação de post do aluno
+        // (Frente 8, Lote 8) não tinha nenhum destino - clientId chegava no
+        // payload e nunca era usado. Não existe tela de comunidade no app
+        // do profissional, então o detalhe do aluno é o destino mais
+        // próximo já disponível.
+        if (type === "STUDENT_POST_MENTION" && clientId) {
+          navigation.navigate("ProfessionalStudentAnamnesis", { clientId, clientName });
+          return;
+        }
         if (type.includes("CONSULTANCY")) {
           navigation.navigate("ProfessionalConsultancyCenter");
           return;

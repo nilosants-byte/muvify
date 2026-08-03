@@ -24,8 +24,9 @@ function chatSummary(bookingId: string): ChatSummary {
     isOpen: true,
     otherUser: { name: "Fulano", photoUrl: "https://example.com/photo.png" },
     clientId: "client-1",
-    lastMessage: null
-  } as ChatSummary;
+    unreadCount: 0,
+    lastMessage: { content: "Oi", createdAt: "2026-08-01T10:00:00.000Z", isMine: false, isSystem: false }
+  };
 }
 
 // Épico de Frentes, Frente 9, Lote 4: tocar numa notificação de mensagem
