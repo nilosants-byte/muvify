@@ -7,7 +7,7 @@ import { NotificationService } from "../../notifications/services/notification.s
 
 // Emails de admin nunca devem aparecer como membros visíveis da comunidade,
 // independentemente do role armazenado no banco (que é CLIENT por design)
-const hiddenFromCommunity = () =>
+export const hiddenFromCommunity = () =>
   env.ADMIN_ALLOWED_EMAILS.length > 0
     ? { email: { notIn: env.ADMIN_ALLOWED_EMAILS } }
     : {};

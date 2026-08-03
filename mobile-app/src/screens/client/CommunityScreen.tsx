@@ -430,8 +430,8 @@ const FeedPostCard = React.memo(function FeedPostCard({
   const postUser = post.user;
 
   const [liked, setLiked] = useState(post.likedByViewer ?? false);
-  const [likesCount, setLikesCount] = useState<number>(post.likesCount ?? (post as any)._count?.likes ?? 0);
-  const [commentsCount, setCommentsCount] = useState<number>(post.commentsCount ?? (post as any)._count?.comments ?? 0);
+  const [likesCount, setLikesCount] = useState<number>(post.likesCount ?? 0);
+  const [commentsCount, setCommentsCount] = useState<number>(post.commentsCount ?? 0);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState<FeedComment[]>([]);
   const [commentsPage, setCommentsPage] = useState(0);

@@ -1,6 +1,7 @@
 import { RankingPeriodType } from "@prisma/client";
 import { prisma } from "../../../config/prisma";
 import { computeLevel, getMonthKey, getWeekKey } from "../../gamification/services/xp.service";
+import { hiddenFromCommunity } from "./social.service";
 
 function getCurrentPeriodKey(period: RankingPeriodType): string {
   const now = new Date();
@@ -72,6 +73,57 @@ export async function getRanking(
     items: pageItems,
     viewerPosition: viewerEntry?.position ?? null,
     viewerXp: viewerEntry?.xpEarned ?? 0,
+    total,
+    page,
+    totalPages: Math.ceil(total / limit),
+    period,
+    periodKey,
+  };
+}
+
+// Épico de Frentes, Frente 8, Lote 16: getRanking sempre filtra pra
+// seguidores mútuos ("ranking de amigos") - não existia nenhum ranking
+// geral (todos os usuários) exposto ao app, mesmo o dado global já
+// existindo internamente pra distribuir os prêmios de 1º-3º lugar
+// (getTopNForPeriod). Reaproveita o mesmo RankingSnapshot, sem filtro de
+// follow, com os mesmos filtros de visibilidade já usados em outras
+// consultas da comunidade (suspenso, admin disfarçado).
+export async function getGeneralRanking(
+  viewerId: string,
+  period: RankingPeriodType,
+  page: number,
+  limit: number
+) {
+  const periodKey = getCurrentPeriodKey(period);
+  const skip = (page - 1) * limit;
+
+  const visibilityFilter = {
+    user: { role: "CLIENT" as const, suspendedAt: null, ...hiddenFromCommunity() },
+  };
+
+  const [snapshots, total] = await Promise.all([
+    prisma.rankingSnapshot.findMany({
+      where: { periodType: period, periodKey, xpEarned: { gt: 0 }, ...visibilityFilter },
+      orderBy: { xpEarned: "desc" },
+      skip,
+      take: limit,
+      include: { user: { select: { id: true, name: true, apelido: true, photoUrl: true } } },
+    }),
+    prisma.rankingSnapshot.count({ where: { periodType: period, periodKey, xpEarned: { gt: 0 }, ...visibilityFilter } }),
+  ]);
+
+  const items = snapshots.map((snap, index) => ({
+    position: skip + index + 1,
+    userId: snap.userId,
+    name: snap.user.name,
+    apelido: snap.user.apelido,
+    photoUrl: snap.user.photoUrl,
+    xpEarned: snap.xpEarned,
+    isViewer: snap.userId === viewerId,
+  }));
+
+  return {
+    items,
     total,
     page,
     totalPages: Math.ceil(total / limit),

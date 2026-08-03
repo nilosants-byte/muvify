@@ -185,12 +185,32 @@ export async function toggleLike(postId: string, userId: string): Promise<{ like
     where: { postId_userId: { postId, userId } },
   });
 
+  // Épico de Frentes, Frente 8, Lote 16: find-then-write não era atômico -
+  // duas chamadas quase simultâneas do mesmo usuário podiam colidir no
+  // @@unique([postId, userId]) e a que perdesse a corrida vazava o erro
+  // cru do Prisma (P2002/P2025) em vez de terminar num estado previsível.
+  // Mitigado hoje pelo debounce local no mobile, mas o service em si
+  // continua não sendo atômico sem isso.
   if (existing) {
-    await prisma.feedPostLike.delete({ where: { postId_userId: { postId, userId } } });
+    try {
+      await prisma.feedPostLike.delete({ where: { postId_userId: { postId, userId } } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
+        return { liked: false }; // outra chamada concorrente já removeu
+      }
+      throw err;
+    }
     return { liked: false };
   }
 
-  await prisma.feedPostLike.create({ data: { postId, userId } });
+  try {
+    await prisma.feedPostLike.create({ data: { postId, userId } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return { liked: true }; // outra chamada concorrente já curtiu
+    }
+    throw err;
+  }
   return { liked: true };
 }
 

@@ -241,6 +241,10 @@ enum FeedPostType {
   RANKING_MONTH_ENDED_TOP3
   RANKING_ENTERED_MONTHLY_TOP5
   RANKING_ENTERED_GENERAL_TOP5
+  // Épico de Frentes, Frente 8, Lote 16: o nome sugere que sempre tem foto,
+  // mas createPhotoPostSchema aceita imageUrl OU caption - pode ser um post
+  // só-texto (só não concede mais XP de "foto de treino" nesse caso, ver
+  // Lote 1). O nome ficou por compatibilidade com posts já existentes.
   MANUAL_PHOTO
 }
 

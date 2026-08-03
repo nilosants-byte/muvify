@@ -4,7 +4,7 @@ import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { commentPost, createPost, deleteCommentCtrl, editCommentCtrl, feed, likePost, listComments, removePost, reportPostCtrl } from "../controllers/feed.controller";
 import { follow, listFollowers, listFollowing, publicProfile, search, suggestions, unfollow } from "../controllers/social.controller";
-import { ranking } from "../controllers/ranking.controller";
+import { generalRanking, ranking } from "../controllers/ranking.controller";
 import {
   addCommentSchema,
   commentIdParamSchema,
@@ -44,3 +44,4 @@ communityRoutes.post("/feed/posts/:postId/report", uploadRateLimiter, validate(r
 
 // ── Ranking ───────────────────────────────────────────────────────────────────
 communityRoutes.get("/ranking", validate(rankingQuerySchema), ranking);
+communityRoutes.get("/ranking/general", validate(rankingQuerySchema), generalRanking);
