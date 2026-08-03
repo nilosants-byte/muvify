@@ -26,6 +26,10 @@ export const unregisterPushDeviceSchema = z.object({
   })
 });
 
+export const notificationIdParamSchema = z.object({
+  params: z.object({ id: z.string().uuid() })
+});
+
 export const pushTestSchema = z.object({
   body: z.object({
     title: z.string().trim().min(2).max(120),

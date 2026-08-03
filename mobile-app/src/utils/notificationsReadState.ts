@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NotificationInboxItem } from "../services/api/client";
 
-const SEEN_NOTIFICATIONS_KEY_PREFIX = "@muvify/notifications/seen";
 // v2 resets stale dismiss data created by old notification behaviors.
 const DISMISSED_NOTIFICATIONS_KEY_PREFIX = "@muvify/notifications/dismissed/v2";
 
@@ -27,14 +26,6 @@ async function persistIdSet(key: string, value: Set<string>) {
   await AsyncStorage.setItem(key, JSON.stringify(items));
 }
 
-export async function loadSeenNotificationIds(userId?: string | null) {
-  return loadIdSet(buildKey(SEEN_NOTIFICATIONS_KEY_PREFIX, userId));
-}
-
-export async function saveSeenNotificationIds(userId: string | null | undefined, value: Set<string>) {
-  return persistIdSet(buildKey(SEEN_NOTIFICATIONS_KEY_PREFIX, userId), value);
-}
-
 export async function loadDismissedNotificationIds(userId?: string | null) {
   return loadIdSet(buildKey(DISMISSED_NOTIFICATIONS_KEY_PREFIX, userId));
 }
@@ -43,16 +34,17 @@ export async function saveDismissedNotificationIds(userId: string | null | undef
   return persistIdSet(buildKey(DISMISSED_NOTIFICATIONS_KEY_PREFIX, userId), value);
 }
 
+// Épico de Frentes, Frente 9, Lote 2: "lido" agora vem sempre do banco
+// (readAt), nunca mais de um set local separado - "visto" e "lido" eram
+// duas fontes de verdade divergentes.
 export function countUnreadNotifications(
   inbox: NotificationInboxItem[] | undefined | null,
-  seenIds: Set<string>,
   dismissedIds: Set<string>
 ) {
   if (!Array.isArray(inbox)) return 0;
   return inbox.reduce((total, item) => {
     if (dismissedIds.has(item.id)) return total;
     if (item.readAt) return total;
-    if (seenIds.has(item.id)) return total;
     return total + 1;
   }, 0);
 }

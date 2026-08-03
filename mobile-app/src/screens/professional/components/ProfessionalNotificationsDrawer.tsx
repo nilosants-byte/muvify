@@ -20,9 +20,7 @@ import type { MvTheme } from "../../../theme/MvColors";
 import {
   countUnreadNotifications,
   loadDismissedNotificationIds,
-  loadSeenNotificationIds,
   saveDismissedNotificationIds,
-  saveSeenNotificationIds,
 } from "../../../utils/notificationsReadState";
 
 type DrawerNotification = NotificationInboxItem & {
@@ -113,7 +111,6 @@ export function ProfessionalNotificationsDrawer({
 
   const [loading, setLoading] = useState(false);
   const [notifications, setNotifications] = useState<DrawerNotification[]>([]);
-  const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [activeCategory, setActiveCategory] = useState<NotifCategory>("Todas");
   const loadSeqRef = useRef(0);
@@ -121,8 +118,8 @@ export function ProfessionalNotificationsDrawer({
   const userId = user?.id ?? "anonymous";
 
   const updateUnreadCount = useCallback(
-    (items: NotificationInboxItem[], seen: Set<string>, dismissed: Set<string>) => {
-      const unread = countUnreadNotifications(items, seen, dismissed);
+    (items: NotificationInboxItem[], dismissed: Set<string>) => {
+      const unread = countUnreadNotifications(items, dismissed);
       onUnreadCountChange?.(unread);
     },
     [onUnreadCountChange]
@@ -132,9 +129,8 @@ export function ProfessionalNotificationsDrawer({
     const loadSeq = ++loadSeqRef.current;
     try {
       setLoading(true);
-      const [inbox, initialSeen, initialDismissed] = await Promise.all([
+      const [inbox, initialDismissed] = await Promise.all([
         runWithAuth((token) => notificationsApi.inbox(token, 120)),
-        loadSeenNotificationIds(userId),
         loadDismissedNotificationIds(userId),
       ]);
 
@@ -144,16 +140,15 @@ export function ProfessionalNotificationsDrawer({
         .filter((item) => !initialDismissed.has(item.id))
         .map<DrawerNotification>((item) => ({
           ...item,
-          unread: !item.readAt && !initialSeen.has(item.id),
+          unread: !item.readAt,
           createdAtMs: toMs(item.createdAt) ?? Date.now(),
           dataRecord: normalizeDataRecord(item.data),
         }))
         .sort((a, b) => b.createdAtMs - a.createdAtMs);
 
-      setSeenIds(initialSeen);
       setDismissedIds(initialDismissed);
       setNotifications(filtered);
-      updateUnreadCount(filtered, initialSeen, initialDismissed);
+      updateUnreadCount(filtered, initialDismissed);
     } catch {
       // best effort
     } finally {
@@ -175,43 +170,39 @@ export function ProfessionalNotificationsDrawer({
     void loadNotifications();
   }, [loadNotifications, panelWidth, slideAnim, visible]);
 
-  const persistSeen = useCallback(
-    async (next: Set<string>) => {
-      await saveSeenNotificationIds(userId, next);
-      setSeenIds(next);
-      updateUnreadCount(notifications, next, dismissedIds);
-    },
-    [dismissedIds, notifications, updateUnreadCount, userId]
-  );
-
   const persistDismissed = useCallback(
     async (next: Set<string>, nextItems: DrawerNotification[]) => {
       await saveDismissedNotificationIds(userId, next);
       setDismissedIds(next);
       setNotifications(nextItems);
-      updateUnreadCount(nextItems, seenIds, next);
+      updateUnreadCount(nextItems, next);
     },
-    [seenIds, updateUnreadCount, userId]
+    [updateUnreadCount, userId]
   );
 
-  const markVisibleAsRead = useCallback(
+  // Épico de Frentes, Frente 9, Lote 2: marcar como lida agora chama o
+  // endpoint real (banco) em vez de só gravar um set local - a tela cheia
+  // e a Home passam a enxergar a mesma mudança sem precisar sair-e-voltar.
+  const markIdsAsRead = useCallback(
     (ids: string[]) => {
       if (ids.length === 0) return;
-      const unreadVisibleIds = ids.filter((id) => !seenIds.has(id));
-      if (unreadVisibleIds.length === 0) return;
-      const nextSeen = new Set(seenIds);
-      unreadVisibleIds.forEach((id) => nextSeen.add(id));
+      const unreadIds = ids.filter((id) => notifications.some((item) => item.id === id && item.unread));
+      if (unreadIds.length === 0) return;
+      const nowIso = new Date().toISOString();
       const nextNotifications = notifications.map((item) =>
-        unreadVisibleIds.includes(item.id) ? { ...item, unread: false } : item
+        unreadIds.includes(item.id) ? { ...item, unread: false, readAt: nowIso } : item
       );
       setNotifications(nextNotifications);
-      void persistSeen(nextSeen);
+      updateUnreadCount(nextNotifications, dismissedIds);
+      unreadIds.forEach((id) => {
+        runWithAuth((token) => notificationsApi.markAsRead(token, id)).catch(() => {});
+      });
     },
-    [notifications, persistSeen, seenIds]
+    [dismissedIds, notifications, runWithAuth, updateUnreadCount]
   );
 
-  const markVisibleAsReadRef = useRef(markVisibleAsRead);
-  useEffect(() => { markVisibleAsReadRef.current = markVisibleAsRead; }, [markVisibleAsRead]);
+  const markVisibleAsReadRef = useRef(markIdsAsRead);
+  useEffect(() => { markVisibleAsReadRef.current = markIdsAsRead; }, [markIdsAsRead]);
 
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -228,12 +219,12 @@ export function ProfessionalNotificationsDrawer({
   });
 
   const markAllRead = useCallback(() => {
-    const nextSeen = new Set(seenIds);
-    notifications.forEach((item) => nextSeen.add(item.id));
-    const nextNotifications = notifications.map((item) => ({ ...item, unread: false }));
+    const nowIso = new Date().toISOString();
+    const nextNotifications = notifications.map((item) => ({ ...item, unread: false, readAt: nowIso }));
     setNotifications(nextNotifications);
-    void persistSeen(nextSeen);
-  }, [notifications, persistSeen, seenIds]);
+    updateUnreadCount(nextNotifications, dismissedIds);
+    void runWithAuth((token) => notificationsApi.markAllRead(token)).catch(() => {});
+  }, [dismissedIds, notifications, runWithAuth, updateUnreadCount]);
 
   const clearAll = useCallback(() => {
     const nextDismissed = new Set(dismissedIds);
@@ -248,12 +239,7 @@ export function ProfessionalNotificationsDrawer({
       const clientId = item.dataRecord.clientId;
       const clientName = item.dataRecord.clientName ?? "Aluno";
 
-      if (!seenIds.has(item.id)) {
-        const nextSeen = new Set(seenIds);
-        nextSeen.add(item.id);
-        setNotifications((prev) => prev.map((n) => n.id === item.id ? { ...n, unread: false } : n));
-        void persistSeen(nextSeen);
-      }
+      markIdsAsRead([item.id]);
       onClose();
 
       if (!navigation) return;
@@ -286,7 +272,7 @@ export function ProfessionalNotificationsDrawer({
         navigation.navigate("ProfessionalTabs", { screen: "ProfessionalHome" } as any);
       }
     },
-    [navigation, onClose, persistSeen, seenIds]
+    [markIdsAsRead, navigation, onClose]
   );
 
   const unreadCount = useMemo(

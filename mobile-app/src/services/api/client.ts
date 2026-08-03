@@ -2760,6 +2760,13 @@ export const notificationsApi = {
       body: {}
     });
   },
+  markAsRead(token: string, id: string) {
+    return apiRequest<void>(`/notifications/inbox/${id}/read`, {
+      method: "PATCH",
+      token,
+      body: {}
+    });
+  },
   listDevices(token: string) {
     return apiRequest<PushDevice[]>("/notifications/devices", { token });
   },

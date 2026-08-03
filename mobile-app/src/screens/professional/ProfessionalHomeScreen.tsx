@@ -60,7 +60,6 @@ import { ProfessionalOnboardingWizard } from "./components/ProfessionalOnboardin
 import {
   countUnreadNotifications,
   loadDismissedNotificationIds,
-  loadSeenNotificationIds,
 } from "../../utils/notificationsReadState";
 
 type Props = BottomTabScreenProps<ProfessionalTabParamList, "ProfessionalHome">;
@@ -306,12 +305,11 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const refreshUnreadNotificationCount = useCallback(async () => {
     try {
       const userId = user?.id ?? "anonymous";
-      const [inbox, seenIds, dismissedIds] = await Promise.all([
+      const [inbox, dismissedIds] = await Promise.all([
         runWithAuth((token) => notificationsApi.inbox(token, 120)),
-        loadSeenNotificationIds(userId),
         loadDismissedNotificationIds(userId),
       ]);
-      setUnreadNotifCount(countUnreadNotifications(inbox, seenIds, dismissedIds));
+      setUnreadNotifCount(countUnreadNotifications(inbox, dismissedIds));
     } catch {
       // best effort
     }

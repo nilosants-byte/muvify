@@ -121,6 +121,25 @@ export class NotificationService {
     });
   }
 
+  // Épico de Frentes, Frente 9, Lote 2: a tela de notificações calculava o
+  // contador via readAt do banco, mas marcar UMA como lida nunca chamava
+  // nenhuma API (só cache local) - não existia esse endpoint até agora. O
+  // drawer do sino, por sua vez, nem olhava o banco (AsyncStorage local).
+  // As duas UIs precisam da mesma operação real pra convergir numa única
+  // fonte de verdade.
+  async markAsRead(userId: string, notificationId: string) {
+    await prisma.userNotification.updateMany({
+      where: {
+        id: notificationId,
+        userId,
+        readAt: null
+      },
+      data: {
+        readAt: new Date()
+      }
+    });
+  }
+
   async unreadCount(userId: string) {
     return prisma.userNotification.count({
       where: {

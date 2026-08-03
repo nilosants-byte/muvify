@@ -4,6 +4,7 @@ import { validate } from "../../../middlewares/validate.middleware";
 import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { NotificationController } from "../controllers/notification.controller";
 import {
+  notificationIdParamSchema,
   pushTestSchema,
   registerPushDeviceSchema,
   unregisterPushDeviceSchema
@@ -17,6 +18,7 @@ notificationRoutes.use(ensureAuthenticated);
 notificationRoutes.get("/inbox", notificationController.listInbox);
 notificationRoutes.get("/inbox/unread-count", notificationController.unreadCount);
 notificationRoutes.patch("/inbox/read-all", notificationController.markAllAsRead);
+notificationRoutes.patch("/inbox/:id/read", validate(notificationIdParamSchema), notificationController.markAsRead);
 notificationRoutes.get("/devices", notificationController.listDevices);
 notificationRoutes.post(
   "/devices",

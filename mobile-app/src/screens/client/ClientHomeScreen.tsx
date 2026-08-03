@@ -10,7 +10,6 @@ import { ClientProviderCard } from "./components/ClientProviderCard";
 import {
   countUnreadNotifications,
   loadDismissedNotificationIds,
-  loadSeenNotificationIds,
 } from "../../utils/notificationsReadState";
 import { usePlaceSuggestions } from "../../hooks/usePlaceSuggestions";
 import { useGooglePlacesSearch } from "../../hooks/useGooglePlacesSearch";
@@ -771,11 +770,10 @@ export function ClientHomeScreen({ navigation }: Props) {
         .catch(() => {});
       Promise.all([
         runWithAuth((token) => notificationsApi.inbox(token, 120)),
-        loadSeenNotificationIds(user?.id ?? "anonymous"),
         loadDismissedNotificationIds(user?.id ?? "anonymous"),
       ])
-        .then(([inbox, seen, dismissed]) =>
-          setUnreadNotifCount(countUnreadNotifications(inbox, seen, dismissed))
+        .then(([inbox, dismissed]) =>
+          setUnreadNotifCount(countUnreadNotifications(inbox, dismissed))
         )
         .catch(() => {});
     }, [runWithAuth])

@@ -17,6 +17,11 @@ export class NotificationController {
     return response.status(StatusCodes.NO_CONTENT).send();
   }
 
+  async markAsRead(request: Request, response: Response) {
+    await notificationService.markAsRead(request.user!.id, request.params.id);
+    return response.status(StatusCodes.NO_CONTENT).send();
+  }
+
   async unreadCount(request: Request, response: Response) {
     const unread = await notificationService.unreadCount(request.user!.id);
     return response.json({ unread });

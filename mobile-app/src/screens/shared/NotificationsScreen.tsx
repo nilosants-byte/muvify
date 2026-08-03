@@ -16,6 +16,7 @@ import {
   providersApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
+import { queryKeys } from "../../lib/queryKeys";
 import { handleScreenError } from "./api-helpers";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { MvButton } from "../../components/mv/MvButton";
@@ -62,6 +63,7 @@ type NotificationItem = {
   createdAtMs: number;
   action: NotificationAction;
   data?: Record<string, string>;
+  rawId?: string;
 };
 
 type ScreenCategory = "Todas" | "Agenda" | "Mercado" | "Aviso";
@@ -314,6 +316,7 @@ function toInboxNotification(
     createdAtMs: toMs(item.createdAt) ?? Date.now(),
     action: resolveInboxAction(data, role),
     data,
+    rawId: item.id,
   };
 }
 
@@ -375,7 +378,11 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
   const { runWithAuth, showToast, role } = useAppState();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const notifQueryKey = ["notifications", "inbox", role] as const;
+  // Épico de Frentes, Frente 9, Lote 2: usa a chave canônica de
+  // queryKeys.notifications.inbox — antes essa tela usava uma chave local
+  // divergente, então nenhuma invalidação feita em outro lugar do app
+  // (ex: badge da Home, listener de push em primeiro plano) chegava aqui.
+  const notifQueryKey = queryKeys.notifications.inbox(120);
   const [activeCategory, setActiveCategory] = useState<ScreenCategory>("Todas");
 
   const loadNearbyMarketNotifications = useCallback(async (): Promise<NotificationItem[]> => {
@@ -584,9 +591,14 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
 
   const handleNotificationPress = useCallback(
     (item: NotificationItem) => {
-      queryClient.setQueryData<NotificationItem[]>(notifQueryKey, (old) =>
-        (old ?? []).map((entry) => entry.id === item.id ? { ...entry, unread: false } : entry)
-      );
+      if (item.unread) {
+        queryClient.setQueryData<NotificationItem[]>(notifQueryKey, (old) =>
+          (old ?? []).map((entry) => entry.id === item.id ? { ...entry, unread: false } : entry)
+        );
+        if (item.source === "inbox" && item.rawId) {
+          runWithAuth((token) => notificationsApi.markAsRead(token, item.rawId!)).catch(() => {});
+        }
+      }
       if (!navigation) return;
       switch (item.action.type) {
         case "BOOKING_DETAIL": openBookingDetail(item.action.bookingId); return;
@@ -621,7 +633,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
         default: return;
       }
     },
-    [navigation, openBookingChat, openBookingDetail, role]
+    [navigation, notifQueryKey, openBookingChat, openBookingDetail, queryClient, role, runWithAuth]
   );
 
   const filteredNotifications = useMemo(() => {
