@@ -921,6 +921,43 @@ export class BookingService {
     }
   }
 
+  // Épico de Frentes, Frente 9, Lote 15 (decisão do usuário: construir):
+  // não existia lembrete de "avalie sua sessão" - cliente só avaliava se
+  // lembrasse sozinho. Dispara 24h depois da sessão concluída, uma única
+  // vez, se ainda não avaliada. Mesmo molde de sendBookingConfirmationReminders
+  // (mark-before-notify via updateMany condicional).
+  async sendReviewReminders(referenceDate = new Date()) {
+    const reviewReminderDelayMs = 24 * 60 * 60 * 1000;
+    const dueBookings = await prisma.booking.findMany({
+      where: {
+        status: BookingStatus.COMPLETED,
+        completedAt: { lte: new Date(referenceDate.getTime() - reviewReminderDelayMs) },
+        reviewReminderSentAt: null,
+        review: null
+      },
+      select: { id: true, clientId: true, provider: { select: { displayName: true } } }
+    });
+
+    if (dueBookings.length === 0) {
+      return;
+    }
+
+    await prisma.booking.updateMany({
+      where: { id: { in: dueBookings.map((b) => b.id) }, reviewReminderSentAt: null },
+      data: { reviewReminderSentAt: referenceDate }
+    });
+    for (const booking of dueBookings) {
+      void notificationService
+        .sendToUsers([booking.clientId], {
+          preferenceType: "BOOKINGS",
+          title: "Como foi sua sessão?",
+          body: `Conte pra gente como foi o atendimento com ${booking.provider.displayName} — sua avaliação ajuda outros alunos a escolher.`,
+          data: { type: "REVIEW_REMINDER", bookingId: booking.id }
+        })
+        .catch((e) => console.error("Review reminder failed:", e));
+    }
+  }
+
   async autoExpireStaleBookings(referenceDate = new Date()) {
     // Raio-X de pagamentos, Rodada 4, Lote 4: PENDING que passou do prazo de
     // confirmação mas cujo horário da sessão ainda não chegou — cancela e

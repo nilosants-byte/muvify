@@ -527,6 +527,9 @@ model Booking {
   // horário da sessão já tinha passado.
   confirmationDeadlineAt      DateTime?
   confirmationReminderSentAt  DateTime?
+  // Épico de Frentes, Frente 9, Lote 15: lembrete de avaliação pendente -
+  // cliente só avaliava se lembrasse sozinho, sem nenhum aviso proativo.
+  reviewReminderSentAt        DateTime?
   createdAt                 DateTime             @default(now())
   updatedAt                 DateTime             @updatedAt
   client                    User                 @relation("ClientBookings", fields: [clientId], references: [id], onDelete: Cascade)

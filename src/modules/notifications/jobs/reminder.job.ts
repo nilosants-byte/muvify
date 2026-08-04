@@ -64,6 +64,7 @@ export function startReminderJob() {
             () => bookingService.sendBookingConfirmationReminders(),
             "sendBookingConfirmationReminders"
           ),
+          isolateReminderSubJob(() => bookingService.sendReviewReminders(), "sendReviewReminders"),
           isolateReminderSubJob(
             () => consultancyService.sendConsultancyExpiryReminders(),
             "sendConsultancyExpiryReminders"
