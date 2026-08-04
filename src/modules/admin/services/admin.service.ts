@@ -1542,6 +1542,30 @@ export class AdminService {
       select: { id: true, name: true, email: true, role: true }
     });
 
+    // Épico de Frentes, Frente 10, Lote 3: o JWT emitido antes continuava
+    // valendo com o role antigo até expirar sozinho (auth.middleware.ts lê
+    // o role do payload, não do banco) - rebaixar PROVIDER→CLIENT deixava
+    // acesso PROVIDER completo até então. Mesmo padrão já usado em
+    // suspendUser (revoga sessão + blacklist do token corrente).
+    const changedAt = new Date();
+    await prisma.session.updateMany({
+      where: { userId: target.id, revokedAt: null },
+      data: { revokedAt: changedAt }
+    });
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    await setTokenBlacklist(target.id, nowSeconds, resolveAccessTokenTtlSeconds()).catch(() => {/* best effort */});
+
+    void this.notificationService
+      .sendToUsers([target.id], {
+        preferenceType: "SYSTEM",
+        title: "Tipo de conta atualizado",
+        body: "Seu tipo de conta no Muvify foi alterado por um administrador. Faça login novamente para continuar.",
+        data: { type: "ACCOUNT_ROLE_CHANGED" }
+      })
+      .catch((error) => {
+        console.error("Falha ao notificar troca de tipo de conta:", error);
+      });
+
     void writeAdminAuditLog({
       adminId: admin.id,
       action: "USER_ROLE_CHANGED",

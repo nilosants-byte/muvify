@@ -77,7 +77,13 @@ describe("Frente 8, Lote 12 — notificações de gamificação respeitam a pref
     expect(achievementNotif).toBeDefined();
   });
 
-  it("usuário com preferência COMMUNITY desativada não recebe push de conquista", async () => {
+  // Épico de Frentes, Frente 10, Lote 3: preferência desativada passou a
+  // controlar só o envio do PUSH, não mais o registro na central - antes,
+  // desligar uma categoria fazia a UserNotification nem ser criada (o
+  // aviso desaparecia por completo do histórico/badge, não só do push).
+  // A asserção deste teste mudou de propósito: a linha continua sendo
+  // criada mesmo com a preferência desligada.
+  it("usuário com preferência COMMUNITY desativada ainda registra o aviso na central (só o push é que respeita a preferência)", async () => {
     const userId = await createUser("Usuário Sem Push Frente Oito Lote Doze");
     userIds.push(userId);
     const someoneToFollow = await createUser("Alguém pra seguir 2 Frente Oito Lote Doze");
@@ -92,10 +98,10 @@ describe("Frente 8, Lote 12 — notificações de gamificação respeitam a pref
 
     const notifications = await prisma.userNotification.findMany({ where: { userId } });
     const achievementNotif = notifications.find((n) => (n.data as any)?.type === "ACHIEVEMENT_UNLOCKED");
-    expect(achievementNotif).toBeUndefined();
+    expect(achievementNotif).toBeDefined();
   });
 
-  it("marco de streak notifica o usuário (categoria COMMUNITY), respeitando a preferência desativada", async () => {
+  it("marco de streak registra o aviso na central pros dois usuários, com ou sem a preferência COMMUNITY desativada", async () => {
     const userWithPush = await createUser("Usuário Streak Com Push Frente Oito Lote Doze");
     userIds.push(userWithPush);
     const userWithoutPush = await createUser("Usuário Streak Sem Push Frente Oito Lote Doze");
@@ -113,6 +119,6 @@ describe("Frente 8, Lote 12 — notificações de gamificação respeitam a pref
     ]);
 
     expect(withPushNotifs.some((n) => (n.data as any)?.type === "STREAK_MILESTONE")).toBe(true);
-    expect(withoutPushNotifs.some((n) => (n.data as any)?.type === "STREAK_MILESTONE")).toBe(false);
+    expect(withoutPushNotifs.some((n) => (n.data as any)?.type === "STREAK_MILESTONE")).toBe(true);
   });
 });

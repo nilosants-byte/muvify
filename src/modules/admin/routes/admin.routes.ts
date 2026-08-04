@@ -1,7 +1,11 @@
 import { UserRole } from "@prisma/client";
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
-import { uploadRateLimiter, writeRateLimiter } from "../../../middlewares/rate-limit.middleware";
+// Épico de Frentes, Frente 10, Lote 3: as rotas de escrita do admin usavam
+// uploadRateLimiter (20/hora, mensagem sobre "upload" sem sentido nesse
+// contexto) - writeRateLimiter já existe desde a Frente 5 exatamente pra
+// esse padrão.
+import { writeRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { AdminController } from "../controllers/admin.controller";
@@ -63,7 +67,7 @@ adminRoutes.get(
 
 adminRoutes.patch(
   "/cref/requests/:providerId",
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(reviewProviderCrefSchema),
   adminController.reviewProviderCref
 );
@@ -76,7 +80,7 @@ adminRoutes.get(
 
 adminRoutes.patch(
   "/support/tickets/:ticketId/respond",
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(adminSupportReplySchema),
   adminController.replySupportTicket
 );
@@ -89,7 +93,7 @@ adminRoutes.get(
 
 adminRoutes.post(
   "/data-retention/run",
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(adminRunDataRetentionSchema),
   adminController.runDataRetention
 );
@@ -118,37 +122,37 @@ adminRoutes.get(
 
 adminRoutes.post(
   "/users/:userId/suspend",
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(adminSuspendUserSchema),
   adminController.suspendUser
 );
 adminRoutes.post(
   "/users/:userId/reactivate",
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(adminReactivateUserSchema),
   adminController.reactivateUser
 );
 adminRoutes.patch(
   "/users/:userId/role",
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(adminChangeUserRoleSchema),
   adminController.changeUserRole
 );
 adminRoutes.post(
   "/users/:userId/legal-hold",
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(adminSetLegalHoldSchema),
   adminController.setLegalHold
 );
 adminRoutes.delete(
   "/users/:userId/legal-hold",
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(adminClearLegalHoldSchema),
   adminController.clearLegalHold
 );
 adminRoutes.post(
   "/users/:userId/export-data",
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(adminExportUserDataSchema),
   adminController.exportUserData
 );
@@ -171,7 +175,7 @@ adminRoutes.get(
 );
 adminRoutes.post(
   "/debts/:debtId/write-off",
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(adminWriteOffDebtSchema),
   adminController.writeOffDebt
 );
@@ -188,7 +192,7 @@ adminRoutes.get(
 );
 adminRoutes.post(
   "/disputes/:caseId/resolve",
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(adminResolveDisputeCaseSchema),
   adminController.resolveDisputeCase
 );
@@ -211,6 +215,6 @@ adminRoutes.patch(
 );
 
 adminRoutes.get("/exercises", validate(listExercisesSchema), adminController.listPrebuiltExercises.bind(adminController));
-adminRoutes.post("/exercises", uploadRateLimiter, validate(createPrebuiltExerciseSchema), adminController.createPrebuiltExercise.bind(adminController));
-adminRoutes.patch("/exercises/:exerciseId", uploadRateLimiter, validate(updatePrebuiltExerciseSchema), adminController.updatePrebuiltExercise.bind(adminController));
-adminRoutes.delete("/exercises/:exerciseId", uploadRateLimiter, validate(exerciseIdSchema), adminController.deletePrebuiltExercise.bind(adminController));
+adminRoutes.post("/exercises", writeRateLimiter, validate(createPrebuiltExerciseSchema), adminController.createPrebuiltExercise.bind(adminController));
+adminRoutes.patch("/exercises/:exerciseId", writeRateLimiter, validate(updatePrebuiltExerciseSchema), adminController.updatePrebuiltExercise.bind(adminController));
+adminRoutes.delete("/exercises/:exerciseId", writeRateLimiter, validate(exerciseIdSchema), adminController.deletePrebuiltExercise.bind(adminController));

@@ -223,6 +223,25 @@ export class NotificationService {
       );
     }
 
+    // Épico de Frentes, Frente 10, Lote 3: a preferência filtrava ANTES de
+    // criar a UserNotification - desligar uma categoria (ex: SYSTEM) fazia
+    // resposta de suporte, suspensão e reativação de conta desaparecerem
+    // por completo, nem ficavam na central/badge. A preferência deveria
+    // controlar só o push, não o histórico de notificações - registro
+    // sempre é criado pra todo mundo, só o envio do push respeita o toggle.
+    const DB_CHUNK_SIZE = 500;
+    for (let i = 0; i < uniqueUserIds.length; i += DB_CHUNK_SIZE) {
+      const chunk = uniqueUserIds.slice(i, i + DB_CHUNK_SIZE);
+      await prisma.userNotification.createMany({
+        data: chunk.map((userId) => ({
+          userId,
+          title: input.title,
+          body: input.body,
+          data: input.data ?? undefined
+        }))
+      });
+    }
+
     let targetUserIds = uniqueUserIds;
     if (input.preferenceType) {
       const savedPreferences = await prisma.notificationPreference.findMany({
@@ -242,19 +261,6 @@ export class NotificationService {
       if (targetUserIds.length === 0) {
         return { attempted: 0, delivered: 0, deactivated: 0, disabled: false };
       }
-    }
-
-    const DB_CHUNK_SIZE = 500;
-    for (let i = 0; i < targetUserIds.length; i += DB_CHUNK_SIZE) {
-      const chunk = targetUserIds.slice(i, i + DB_CHUNK_SIZE);
-      await prisma.userNotification.createMany({
-        data: chunk.map((userId) => ({
-          userId,
-          title: input.title,
-          body: input.body,
-          data: input.data ?? undefined
-        }))
-      });
     }
 
     if (!env.PUSH_NOTIFICATIONS_ENABLED || env.NODE_ENV === "test") {
