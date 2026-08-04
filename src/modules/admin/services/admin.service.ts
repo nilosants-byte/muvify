@@ -1407,11 +1407,16 @@ export class AdminService {
   // booking.service.ts quando um dos lados reporta a falta do outro. Nenhuma
   // consequência automática é aplicada — cabe a um admin revisar os casos
   // recorrentes (minStrikes) e decidir manualmente.
+  // Épico de Frentes, Frente 10, Lote 5: minStrikes filtrava em memória
+  // DEPOIS do take:200 - reincidente grave fora dos 200 reports mais
+  // recentes nunca aparecia, mesmo existindo. Filtro movido pro where do
+  // Prisma, antes do take.
   async listNoShowReports(adminId: string, minStrikes = 1) {
     await this.ensureAdminAccess(adminId);
     console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=listNoShowReports minStrikes=${minStrikes}`);
 
-    const reports = await prisma.noShowReport.findMany({
+    return prisma.noShowReport.findMany({
+      where: { reportedUser: { noShowStrikes: { gte: minStrikes } } },
       orderBy: { createdAt: "desc" },
       take: 200,
       select: {
@@ -1422,8 +1427,6 @@ export class AdminService {
         reportedByUser: { select: { id: true, name: true, email: true } }
       }
     });
-
-    return reports.filter((r) => r.reportedUser.noShowStrikes >= minStrikes);
   }
 
   // ─── Suspensão de conta (Rodada 3, Lote 3) ───────────────────────────────
@@ -1536,12 +1539,18 @@ export class AdminService {
     return updated;
   }
 
-  async reactivateUser(adminId: string, targetUserId: string) {
+  // Épico de Frentes, Frente 10, Lote 5: reativar apagava suspensionReason
+  // sem deixar nenhum rastro rápido do motivo original - com o audit log
+  // até então write-only (sem GET, ver getAuditLogs abaixo), reincidência
+  // de um usuário (3ª suspensão em 2 meses) ficava invisível sem consultar
+  // o banco na mão. Motivo anterior e o motivo da reativação (opcional)
+  // agora vão pro metadata do audit log antes de limpar o campo.
+  async reactivateUser(adminId: string, targetUserId: string, reason?: string) {
     const admin = await this.ensureAdminAccess(adminId);
 
     const target = await prisma.user.findUnique({
       where: { id: targetUserId },
-      select: { id: true, name: true, email: true, suspendedAt: true }
+      select: { id: true, name: true, email: true, suspendedAt: true, suspensionReason: true }
     });
     if (!target) {
       throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
@@ -1560,7 +1569,11 @@ export class AdminService {
       adminId: admin.id,
       action: "USER_REACTIVATED",
       targetType: "USER",
-      targetId: target.id
+      targetId: target.id,
+      metadata: {
+        previousSuspensionReason: target.suspensionReason,
+        reactivationReason: reason?.trim() || null
+      }
     });
 
     void this.notificationService
@@ -1751,6 +1764,44 @@ export class AdminService {
     return data;
   }
 
+  // Épico de Frentes, Frente 10, Lote 5: AdminAuditLog só era escrito,
+  // nunca lido - não existia GET /admin/audit-logs, nem exibição no
+  // detalhe do usuário. Reincidência de um usuário (3ª suspensão em 2
+  // meses, por exemplo) ficava invisível sem consultar o banco na mão.
+  async getAuditLogs(
+    adminId: string,
+    input: { targetId?: string; action?: string; take?: number; skip?: number } = {}
+  ) {
+    await this.ensureAdminAccess(adminId);
+    const take = Math.min(Math.max(input.take ?? 50, 1), 200);
+    const skip = Math.max(input.skip ?? 0, 0);
+    const where: Prisma.AdminAuditLogWhereInput = {
+      ...(input.targetId ? { targetId: input.targetId } : {}),
+      ...(input.action ? { action: input.action } : {})
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.adminAuditLog.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take,
+        skip,
+        select: {
+          id: true,
+          action: true,
+          targetType: true,
+          targetId: true,
+          metadata: true,
+          createdAt: true,
+          admin: { select: { id: true, name: true, email: true } }
+        }
+      }),
+      prisma.adminAuditLog.count({ where })
+    ]);
+
+    return { items, total };
+  }
+
   // Raio-X de pagamentos, Rodada 4, Lote 3: não existia nenhuma tela pra
   // buscar um usuário por nome/e-mail e ver tudo relacionado a ele num
   // lugar só — a única busca disponível exigia CPF, e suspender só era
@@ -1916,6 +1967,23 @@ export class AdminService {
         : Promise.resolve([])
     ]);
 
+    // Épico de Frentes, Frente 10, Lote 5: histórico de moderação (últimas
+    // ações administrativas que tiveram ESTE usuário como alvo) nunca
+    // aparecia em lugar nenhum - reincidência ficava invisível sem
+    // consultar o AdminAuditLog no banco na mão.
+    const recentModerationHistory = await prisma.adminAuditLog.findMany({
+      where: { targetId: userId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        action: true,
+        metadata: true,
+        createdAt: true,
+        admin: { select: { id: true, name: true, email: true } }
+      }
+    });
+
     return {
       id: user.id,
       name: user.name,
@@ -1944,7 +2012,8 @@ export class AdminService {
       providerDisputes,
       supportTicketsCount,
       reportsFiledCount,
-      reportsAgainstCount
+      reportsAgainstCount,
+      recentModerationHistory
     };
   }
 }

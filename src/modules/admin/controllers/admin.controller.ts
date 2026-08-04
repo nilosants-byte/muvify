@@ -157,7 +157,17 @@ export class AdminController {
   }
 
   async reactivateUser(request: Request, response: Response) {
-    const payload = await adminService.reactivateUser(request.user!.id, request.params.userId);
+    const payload = await adminService.reactivateUser(request.user!.id, request.params.userId, request.body?.reason);
+    return response.json(payload);
+  }
+
+  async getAuditLogs(request: Request, response: Response) {
+    const payload = await adminService.getAuditLogs(request.user!.id, {
+      targetId: request.query.targetId ? String(request.query.targetId) : undefined,
+      action: request.query.action ? String(request.query.action) : undefined,
+      take: request.query.take ? Number(request.query.take) : undefined,
+      skip: request.query.skip ? Number(request.query.skip) : undefined
+    });
     return response.json(payload);
   }
 

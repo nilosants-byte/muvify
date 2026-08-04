@@ -366,6 +366,25 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
               </MvCard>
             ) : null}
 
+            {/* Épico de Frentes, Frente 10, Lote 5: AdminAuditLog era write-only -
+                reincidência de um usuário (3ª suspensão em 2 meses, por exemplo)
+                ficava invisível sem consultar o banco na mão. */}
+            {detail.recentModerationHistory.length > 0 ? (
+              <MvCard>
+                <View style={{ gap: 8 }}>
+                  <MvText variant="semi2">Histórico de moderação</MvText>
+                  {detail.recentModerationHistory.map((entry) => (
+                    <View key={entry.id} style={{ gap: 2, paddingTop: 6, borderTopWidth: 1, borderTopColor: theme.border }}>
+                      <MvText variant="body4">{entry.action}</MvText>
+                      <MvText variant="caption" color="secondary">
+                        {entry.admin.name} · {formatDate(entry.createdAt)}
+                      </MvText>
+                    </View>
+                  ))}
+                </View>
+              </MvCard>
+            ) : null}
+
             <MvCard>
               <View style={{ gap: 10 }}>
                 <MvText variant="semi2">Ações administrativas</MvText>

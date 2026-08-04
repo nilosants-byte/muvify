@@ -386,6 +386,10 @@ model AdminAuditLog {
   @@index([adminId])
   @@index([createdAt])
   @@index([action])
+  // Épico de Frentes, Frente 10, Lote 5: novo GET /admin/audit-logs?targetId=
+  // consulta por alvo (ex: histórico de moderação de um usuário) - sem
+  // índice, cresce em table scan à medida que a trilha de auditoria acumula.
+  @@index([targetId])
 }
 
 model ProviderProfile {

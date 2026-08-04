@@ -1919,6 +1919,13 @@ export type AdminUserDetail = {
   supportTicketsCount: number;
   reportsFiledCount: number;
   reportsAgainstCount: number;
+  recentModerationHistory: Array<{
+    id: string;
+    action: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: string;
+    admin: { id: string; name: string; email: string };
+  }>;
 };
 
 export type AdminLegalHoldResult = {

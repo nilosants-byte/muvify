@@ -33,6 +33,7 @@ import {
   adminRunDataRetentionSchema,
   adminSearchUsersSchema,
   adminSetLegalHoldSchema,
+  adminAuditLogsQuerySchema,
   adminSuspendUserSchema,
   adminSupportQueueQuerySchema,
   adminSupportReplySchema,
@@ -58,6 +59,14 @@ adminRoutes.get(
   "/dashboard/overview",
   validate(adminDashboardOverviewSchema),
   adminController.dashboardOverview
+);
+
+// Épico de Frentes, Frente 10, Lote 5: AdminAuditLog só era escrito, nunca
+// lido - não existia nenhum endpoint de consulta.
+adminRoutes.get(
+  "/audit-logs",
+  validate(adminAuditLogsQuerySchema),
+  adminController.getAuditLogs
 );
 
 adminRoutes.get(

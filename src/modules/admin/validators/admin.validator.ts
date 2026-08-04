@@ -154,7 +154,21 @@ export const adminSuspendUserSchema = z.object({
 });
 
 export const adminReactivateUserSchema = z.object({
-  params: z.object({ userId: z.string().uuid() })
+  params: z.object({ userId: z.string().uuid() }),
+  body: z
+    .object({
+      reason: z.string().trim().max(500).optional()
+    })
+    .optional()
+});
+
+export const adminAuditLogsQuerySchema = z.object({
+  query: z.object({
+    targetId: z.string().uuid().optional(),
+    action: z.string().trim().min(1).max(60).optional(),
+    take: z.coerce.number().int().min(1).max(200).optional(),
+    skip: z.coerce.number().int().min(0).optional()
+  })
 });
 
 export const adminChangeUserRoleSchema = z.object({

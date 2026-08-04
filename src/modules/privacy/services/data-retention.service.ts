@@ -1,7 +1,8 @@
 import {
   AnamnesisStatus,
   BookingStatus,
-  Prisma
+  Prisma,
+  SupportTicketStatus
 } from "@prisma/client";
 import { prisma } from "../../../config/prisma";
 
@@ -551,11 +552,18 @@ export class DataRetentionService {
     );
   }
 
+  // Épico de Frentes, Frente 10, Lote 5: filtro não checava status - um
+  // ticket que ficou OPEN por 5 anos (cenário real dado o backlog sem
+  // paginação corrigido no Lote 4) tinha o conteúdo apagado por retenção e
+  // ficava irrespondível pra sempre. Mesmo raciocínio já usado em
+  // cleanupDisputeCaseNarratives (abaixo): só redige o que já está
+  // encerrado, nunca o que ainda está em aberto pro admin decidir.
   private async cleanupSupportTickets(now: Date, dryRun: boolean) {
     const retentionDays = RETENTION_WINDOWS_DAYS.supportTickets;
     const cutoff = this.cutoffFromDays(now, retentionDays);
     const where: Prisma.SupportTicketWhereInput = {
       ...this.getUserFilter("userId"),
+      status: SupportTicketStatus.ANSWERED,
       createdAt: { lt: cutoff },
       OR: [{ message: { not: "" } }, { adminResponse: { not: null } }]
     };
