@@ -920,10 +920,17 @@ model SupportTicket {
   adminResponse     String?             @db.VarChar(300)
   respondedAt       DateTime?
   respondedByUserId String?
+  // Épico de Frentes, Frente 10, Lote 2: reabrir um assunto criava um
+  // ticket novo sem vínculo nenhum com o anterior - admin perdia o
+  // histórico da conversa. Aponta pro ticket ANSWERED mais recente do
+  // mesmo usuário, se existir um recente o suficiente na hora da criação.
+  parentTicketId    String?
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   user              User                @relation("SupportTicketRequester", fields: [userId], references: [id], onDelete: Cascade)
   respondedBy       User?               @relation("SupportTicketResponder", fields: [respondedByUserId], references: [id], onDelete: SetNull)
+  parentTicket      SupportTicket?      @relation("SupportTicketThread", fields: [parentTicketId], references: [id], onDelete: SetNull)
+  childTickets      SupportTicket[]     @relation("SupportTicketThread")
 
   @@index([status, createdAt])
   @@index([userId, createdAt])

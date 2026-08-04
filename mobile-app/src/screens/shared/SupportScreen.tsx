@@ -4,15 +4,17 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppState } from "../../state/AppState";
 import { userApi } from "../../services/api/client";
-import { useAuthMutation } from "../../hooks/useAuthQuery";
-import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { useAuthMutation, useAuthQuery } from "../../hooks/useAuthQuery";
+import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { useMvTheme } from "../../theme/MvThemeContext";
+import { queryKeys } from "../../lib/queryKeys";
+import { formatBRDateTime } from "../../utils/formatters";
 
 const SUPPORT_EMAIL = "suporte@muvify.com.br";
-const SUPPORT_WHATSAPP = "5511999999999"; // substituir pelo número real quando disponível
+const SUPPORT_WHATSAPP = "5511999999999"; // substituir pelo número real quando disponível (removido na Frente 10, Lote 7)
 
 export function SupportScreen({ navigation }: { navigation?: any }) {
   const { theme } = useMvTheme();
@@ -37,13 +39,26 @@ export function SupportScreen({ navigation }: { navigation?: any }) {
   );
   const sending = supportMutation.isPending;
 
+  // Épico de Frentes, Frente 10, Lote 2: não existia nenhum jeito de ler a
+  // resposta do suporte dentro do app - só push (truncado em 300
+  // caracteres) ou e-mail (condicional a SMTP configurado). Esta é a
+  // mesma tela pra onde o deep-link SUPPORT_REPLY já navega.
+  const myTicketsQuery = useAuthQuery(
+    queryKeys.user.mySupportTickets(),
+    (token) => userApi.listMySupportTickets(token)
+  );
+  const myTickets = myTicketsQuery.data ?? [];
+
   function submitTicket() {
     const normalizedMessage = message.trim();
     if (!normalizedMessage) {
       showToast("Descreva o problema para enviar suporte.", "error");
       return;
     }
-    supportMutation.mutate({ subject: subject.trim() || undefined, message: normalizedMessage });
+    supportMutation.mutate(
+      { subject: subject.trim() || undefined, message: normalizedMessage },
+      { onSuccess: () => void myTicketsQuery.refetch() }
+    );
   }
 
   return (
@@ -164,6 +179,37 @@ export function SupportScreen({ navigation }: { navigation?: any }) {
             />
           </MvCard>
         )}
+
+        {myTickets.length > 0 ? (
+          <View style={{ gap: 10 }}>
+            <MvText variant="semi2">Meus chamados</MvText>
+            {myTickets.map((ticket) => (
+              <MvCard key={ticket.id} style={{ gap: 6 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <MvText variant="semi3" style={{ flex: 1 }}>
+                    {ticket.subject?.trim() || "Solicitação sem assunto"}
+                  </MvText>
+                  <MvBadge
+                    label={ticket.status === "ANSWERED" ? "Respondido" : "Em análise"}
+                    variant={ticket.status === "ANSWERED" ? "green" : "orange"}
+                  />
+                </View>
+                <MvText variant="body4" color="secondary" numberOfLines={3}>{ticket.message}</MvText>
+                <MvText variant="caption" color="secondary">Enviado em {formatBRDateTime(ticket.createdAt)}</MvText>
+                {ticket.adminResponse ? (
+                  <View style={{
+                    marginTop: 4, borderRadius: 10, borderWidth: 1, borderColor: theme.border,
+                    backgroundColor: theme.mode === "dark" ? "rgba(34,197,94,0.06)" : "rgba(34,197,94,0.05)",
+                    padding: 10, gap: 4,
+                  }}>
+                    <MvText variant="caption" color="secondary">Resposta do suporte</MvText>
+                    <MvText variant="body4">{ticket.adminResponse}</MvText>
+                  </View>
+                ) : null}
+              </MvCard>
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
       </ScreenEntrance>
     </View>

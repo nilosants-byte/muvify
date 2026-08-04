@@ -20,6 +20,7 @@ export const queryKeys = {
     recoveryEmail: () => ["user", "recoveryEmail"] as const,
     bankAccount: () => ["user", "bankAccount"] as const,
     profilePage: () => ["user", "profilePage"] as const,
+    mySupportTickets: () => ["user", "mySupportTickets"] as const,
   },
 
   // ── Notificações ───────────────────────────────────────────────────────────

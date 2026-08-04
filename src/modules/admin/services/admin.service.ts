@@ -994,6 +994,7 @@ export class AdminService {
         userId: true,
         subject: true,
         message: true,
+        status: true,
         user: {
           select: {
             id: true,
@@ -1010,14 +1011,30 @@ export class AdminService {
 
     const responseMessage = input.responseMessage.trim();
     const respondedAt = new Date();
-    const updated = await prisma.supportTicket.update({
-      where: { id: ticket.id },
+
+    // Épico de Frentes, Frente 10, Lote 2: adminResponse é campo único (não
+    // é thread) - sem essa checagem, um segundo admin respondendo o mesmo
+    // ticket sobrescrevia a resposta do primeiro sem nenhum aviso, perdida
+    // pra sempre. A UI mobile já escondia o botão pra ticket ANSWERED, mas
+    // a API aceitava mesmo assim - proteção só cosmética.
+    const guardedUpdate = await prisma.supportTicket.updateMany({
+      where: { id: ticket.id, status: SupportTicketStatus.OPEN },
       data: {
         status: SupportTicketStatus.ANSWERED,
         adminResponse: responseMessage,
         respondedAt,
         respondedByUserId: admin.id
-      },
+      }
+    });
+    if (guardedUpdate.count === 0) {
+      throw new AppError(
+        "Este chamado já foi respondido por outro administrador.",
+        StatusCodes.CONFLICT
+      );
+    }
+
+    const updated = await prisma.supportTicket.findUniqueOrThrow({
+      where: { id: ticket.id },
       select: {
         id: true,
         subject: true,

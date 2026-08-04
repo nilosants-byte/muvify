@@ -477,12 +477,23 @@ export class UserService {
     const normalizedSubject = input.subject?.trim() || null;
     const emailSubject = normalizedSubject ?? "Solicitacao enviada pelo app";
 
+    // Épico de Frentes, Frente 10, Lote 2: reabrir um assunto criava um
+    // ticket novo sem vínculo nenhum com o anterior - admin perdia o
+    // histórico da conversa ao responder. Vincula ao ANSWERED mais
+    // recente do usuário, se existir.
+    const mostRecentAnswered = await prisma.supportTicket.findFirst({
+      where: { userId: user.id, status: SupportTicketStatus.ANSWERED },
+      orderBy: { respondedAt: "desc" },
+      select: { id: true }
+    });
+
     const ticket = await prisma.supportTicket.create({
       data: {
         userId: user.id,
         subject: normalizedSubject,
         message: normalizedMessage,
-        status: SupportTicketStatus.OPEN
+        status: SupportTicketStatus.OPEN,
+        parentTicketId: mostRecentAnswered?.id
       },
       select: {
         id: true
@@ -512,6 +523,28 @@ export class UserService {
     });
 
     return { ticketId: ticket.id, delivered: true, queued: false };
+  }
+
+  // Épico de Frentes, Frente 10, Lote 2: não existia nenhum endpoint pro
+  // próprio usuário listar os tickets que abriu e ler a resposta do admin
+  // - só POST de criação. O deep-link SUPPORT_REPLY (Frente 9/Lote 18)
+  // navegava pra um formulário de abrir chamado novo, não pra resposta.
+  async listMySupportTickets(userId: string) {
+    return prisma.supportTicket.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        subject: true,
+        message: true,
+        status: true,
+        adminResponse: true,
+        respondedAt: true,
+        parentTicketId: true,
+        createdAt: true
+      }
+    });
   }
 
   async getPhotoById(userId: string): Promise<{ buffer: Buffer; mimeType: string }> {

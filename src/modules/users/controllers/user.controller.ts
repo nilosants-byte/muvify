@@ -72,6 +72,11 @@ export class UserController {
     return response.json(result);
   }
 
+  async listMySupportTickets(request: Request, response: Response) {
+    const tickets = await userService.listMySupportTickets(request.user!.id);
+    return response.json(tickets);
+  }
+
   async deleteMe(request: Request, response: Response) {
     const { password } = request.body as { password: string };
     await userService.deleteMe(request.user!.id, password);

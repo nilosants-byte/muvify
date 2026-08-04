@@ -539,6 +539,17 @@ export type AdminCrefQueuePage = {
   hasMore: boolean;
 };
 
+export type MySupportTicket = {
+  id: string;
+  subject?: string | null;
+  message: string;
+  status: "OPEN" | "ANSWERED";
+  adminResponse?: string | null;
+  respondedAt?: string | null;
+  parentTicketId?: string | null;
+  createdAt: string;
+};
+
 export type AdminSupportTicket = {
   id: string;
   subject?: string | null;
@@ -1524,6 +1535,11 @@ export const userApi = {
       token,
       body: input
     });
+  },
+  // Épico de Frentes, Frente 10, Lote 2: usuário não tinha como ler a
+  // resposta do suporte dentro do app.
+  listMySupportTickets(token: string) {
+    return apiRequest<MySupportTicket[]>("/users/me/support-tickets", { token });
   },
   deleteMe(token: string, password: string) {
     return apiRequest<void>("/users/me", { method: "DELETE", token, body: { password } });

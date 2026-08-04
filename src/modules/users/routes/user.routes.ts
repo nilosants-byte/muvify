@@ -61,6 +61,9 @@ userRoutes.post(
   validate(sendSupportMessageSchema),
   userController.sendSupportMessage
 );
+// Épico de Frentes, Frente 10, Lote 2: usuário não tinha como ler a
+// resposta do suporte dentro do app - só push (truncado)/e-mail.
+userRoutes.get("/me/support-tickets", userController.listMySupportTickets);
 
 userRoutes.delete("/me", uploadRateLimiter, validate(deleteMeSchema), userController.deleteMe);
 userRoutes.get("/me/data-export", uploadRateLimiter, userController.exportMyData);
