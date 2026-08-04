@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
-import { emitNewBookingMessage } from "../../../realtime/socket";
+import { emitNewBookingMessage, isUserInBookingRoom } from "../../../realtime/socket";
 import { AppError } from "../../../shared/errors/app-error";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
@@ -324,18 +324,21 @@ export class ChatController {
     // Avisa em tempo real quem estiver com a conversa aberta (best-effort, nunca bloqueia a resposta)
     emitNewBookingMessage(bookingId, message);
 
-    // Notify the other participant
+    // Notify the other participant — pula o push se ele já estiver com a
+    // sala aberta (vendo a mensagem chegar ao vivo pelo socket).
     const recipientId = isClient ? booking.provider.userId : booking.client.id;
     const senderName = isClient ? booking.client.name : booking.provider.displayName;
 
-    void notificationService
-      .sendToUsers([recipientId], {
-        preferenceType: "BOOKINGS",
-        title: `💬 ${senderName}`,
-        body: content.trim().length > 80 ? content.trim().slice(0, 80) + "…" : content.trim(),
-        data: { type: "CHAT_MESSAGE", bookingId, messageId: message.id },
-      })
-      .catch(() => undefined);
+    if (!isUserInBookingRoom(bookingId, recipientId)) {
+      void notificationService
+        .sendToUsers([recipientId], {
+          preferenceType: "BOOKINGS",
+          title: `💬 ${senderName}`,
+          body: content.trim().length > 80 ? content.trim().slice(0, 80) + "…" : content.trim(),
+          data: { type: "CHAT_MESSAGE", bookingId, messageId: message.id },
+        })
+        .catch(() => undefined);
+    }
 
     return res.status(StatusCodes.CREATED).json(message);
   };

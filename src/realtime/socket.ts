@@ -157,6 +157,33 @@ export async function initSocketServer(httpServer: HttpServer) {
   return io;
 }
 
+// Épico de Frentes, Frente 9, Lote 9: enviar mensagem sempre disparava push
+// pro destinatário, mesmo que ele já estivesse com a sala aberta (vendo a
+// mensagem chegar ao vivo pelo socket) - checa presença antes de notificar.
+// Best-effort: com o adaptador Redis (múltiplas instâncias), um destinatário
+// conectado em OUTRA instância não aparece aqui - o pior caso é so um push
+// redundante, não uma notificação perdida.
+function isUserInRoom(room: string, userId: string): boolean {
+  if (!io) return false;
+  const socketIds = io.sockets.adapter.rooms.get(room);
+  if (!socketIds) return false;
+  for (const socketId of socketIds) {
+    const socket = io.sockets.sockets.get(socketId);
+    if (socket && (socket.data as SocketData).userId === userId) return true;
+  }
+  return false;
+}
+
+/** Indica se o usuário está com a sala do agendamento aberta (socket conectado e na sala). */
+export function isUserInBookingRoom(bookingId: string, userId: string): boolean {
+  return isUserInRoom(bookingRoom(bookingId), userId);
+}
+
+/** Indica se o usuário está com a sala do contrato de consultoria aberta (socket conectado e na sala). */
+export function isUserInConsultancyRoom(contractId: string, userId: string): boolean {
+  return isUserInRoom(consultancyRoom(contractId), userId);
+}
+
 /** Emite uma mensagem nova para quem estiver na sala do agendamento. Best-effort: nunca lança erro. */
 export function emitNewBookingMessage(bookingId: string, message: NewBookingMessagePayload) {
   if (!io || !ENABLE_REALTIME_CHAT) {

@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
-import { emitNewConsultancyMessage } from "../../../realtime/socket";
+import { emitNewConsultancyMessage, isUserInConsultancyRoom } from "../../../realtime/socket";
 import { AppError } from "../../../shared/errors/app-error";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
@@ -287,17 +287,22 @@ export class ConsultancyChatController {
     // Avisa em tempo real quem estiver com a conversa aberta (best-effort, nunca bloqueia a resposta)
     emitNewConsultancyMessage(contractId, message);
 
+    // Épico de Frentes, Frente 9, Lote 9: mesmo achado do chat de
+    // agendamento - pula o push se o destinatário já estiver com a sala
+    // aberta (vendo a mensagem chegar ao vivo pelo socket).
     const recipientId = isClient ? contract.provider.userId : contract.client.id;
     const senderName = isClient ? contract.client.name : contract.provider.displayName;
 
-    void notificationService
-      .sendToUsers([recipientId], {
-        preferenceType: "CONSULTANCY",
-        title: `💬 ${senderName}`,
-        body: content.trim().length > 80 ? content.trim().slice(0, 80) + "…" : content.trim(),
-        data: { type: "CHAT_MESSAGE", contractId, messageId: message.id },
-      })
-      .catch(() => undefined);
+    if (!isUserInConsultancyRoom(contractId, recipientId)) {
+      void notificationService
+        .sendToUsers([recipientId], {
+          preferenceType: "CONSULTANCY",
+          title: `💬 ${senderName}`,
+          body: content.trim().length > 80 ? content.trim().slice(0, 80) + "…" : content.trim(),
+          data: { type: "CHAT_MESSAGE", contractId, messageId: message.id },
+        })
+        .catch(() => undefined);
+    }
 
     return res.status(StatusCodes.CREATED).json(message);
   };
