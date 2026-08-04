@@ -1054,7 +1054,12 @@ export class PresentialPackageService {
         validUntil: { gte: referenceDate, lte: soon },
         expiryReminderSentAt: null
       },
-      select: { id: true, clientId: true, creditsRemainingThisCycle: true }
+      select: {
+        id: true,
+        clientId: true,
+        creditsRemainingThisCycle: true,
+        provider: { select: { userId: true } }
+      }
     });
     if (expiringSoon.length > 0) {
       await prisma.presentialPackage.updateMany({
@@ -1069,7 +1074,18 @@ export class PresentialPackageService {
             body: `Seu pacote com ${pkg.creditsRemainingThisCycle} sessão(ões) restante(s) vence em breve — agende antes que a validade acabe.`,
             data: { type: "PRESENTIAL_PACKAGE_EXPIRING", packageId: pkg.id }
           })
-          .catch((e) => console.error("Flexible session pack expiring reminder failed:", e));
+          .catch((e) => console.error("Flexible session pack expiring reminder (client) failed:", e));
+        // Épico de Frentes, Frente 9, Lote 18: só o cliente era avisado -
+        // o profissional nunca sabia que o pacote de um aluno estava perto
+        // de vencer, mesmo raciocínio já usado em sendFichaExpiryReminders.
+        void notificationService
+          .sendToUsers([pkg.provider.userId], {
+            preferenceType: "PAYMENTS",
+            title: "Pacote de um aluno está vencendo",
+            body: `O pacote de sessões de um aluno com ${pkg.creditsRemainingThisCycle} sessão(ões) restante(s) vence em breve.`,
+            data: { type: "PRESENTIAL_PACKAGE_EXPIRING", packageId: pkg.id }
+          })
+          .catch((e) => console.error("Flexible session pack expiring reminder (provider) failed:", e));
       }
     }
 
@@ -1082,7 +1098,12 @@ export class PresentialPackageService {
         status: PresentialPackageStatus.ACTIVE,
         validUntil: { lt: referenceDate }
       },
-      select: { id: true, clientId: true, creditsRemainingThisCycle: true }
+      select: {
+        id: true,
+        clientId: true,
+        creditsRemainingThisCycle: true,
+        provider: { select: { userId: true } }
+      }
     });
     if (expired.length > 0) {
       await prisma.presentialPackage.updateMany({
@@ -1099,7 +1120,17 @@ export class PresentialPackageService {
               : "Seu pacote de sessões venceu.",
             data: { type: "PRESENTIAL_PACKAGE_EXPIRED", packageId: pkg.id }
           })
-          .catch((e) => console.error("Flexible session pack expired notice failed:", e));
+          .catch((e) => console.error("Flexible session pack expired notice (client) failed:", e));
+        void notificationService
+          .sendToUsers([pkg.provider.userId], {
+            preferenceType: "PAYMENTS",
+            title: "Pacote de um aluno venceu",
+            body: pkg.creditsRemainingThisCycle > 0
+              ? `O pacote de sessões de um aluno venceu com ${pkg.creditsRemainingThisCycle} sessão(ões) ainda não usada(s).`
+              : "O pacote de sessões de um aluno venceu.",
+            data: { type: "PRESENTIAL_PACKAGE_EXPIRED", packageId: pkg.id }
+          })
+          .catch((e) => console.error("Flexible session pack expired notice (provider) failed:", e));
       }
     }
   }
@@ -1120,7 +1151,12 @@ export class PresentialPackageService {
         nextBillingAt: { gte: referenceDate, lte: soon },
         billingReminderSentAt: null
       },
-      select: { id: true, clientId: true, cycleAmountCents: true }
+      select: {
+        id: true,
+        clientId: true,
+        cycleAmountCents: true,
+        provider: { select: { userId: true } }
+      }
     });
     if (dueSoon.length > 0) {
       await prisma.presentialPackage.updateMany({
@@ -1128,14 +1164,23 @@ export class PresentialPackageService {
         data: { billingReminderSentAt: referenceDate }
       });
       for (const pkg of dueSoon) {
+        const amountLabel = (pkg.cycleAmountCents / 100).toFixed(2).replace(".", ",");
         void notificationService
           .sendToUsers([pkg.clientId], {
             preferenceType: "PAYMENTS",
             title: "Próxima cobrança do seu pacote está chegando",
-            body: `Sua próxima cobrança de ${(pkg.cycleAmountCents / 100).toFixed(2).replace(".", ",")} será processada em breve.`,
+            body: `Sua próxima cobrança de R$ ${amountLabel} será processada em breve.`,
             data: { type: "PRESENTIAL_PACKAGE_BILLING_DUE_SOON", packageId: pkg.id }
           })
-          .catch((e) => console.error("Presential package billing reminder failed:", e));
+          .catch((e) => console.error("Presential package billing reminder (client) failed:", e));
+        void notificationService
+          .sendToUsers([pkg.provider.userId], {
+            preferenceType: "PAYMENTS",
+            title: "Cobrança de um aluno está chegando",
+            body: `A próxima cobrança do pacote de um aluno (R$ ${amountLabel}) será processada em breve.`,
+            data: { type: "PRESENTIAL_PACKAGE_BILLING_DUE_SOON", packageId: pkg.id }
+          })
+          .catch((e) => console.error("Presential package billing reminder (provider) failed:", e));
       }
     }
   }

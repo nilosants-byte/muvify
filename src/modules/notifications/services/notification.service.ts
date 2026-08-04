@@ -301,6 +301,21 @@ export class NotificationService {
         for (const token of result.invalidTokens) {
           invalidTokens.add(token);
         }
+        // Épico de Frentes, Frente 9, Lote 18: mensagens com erro individual
+        // de rate-limit do Expo (MessageRateExceeded) eram só logadas e
+        // descartadas - iam pra fila de retry só quando o chunk inteiro
+        // falhava (erro de rede/HTTP), nunca quando o Expo aceitava a
+        // requisição mas rejeitava mensagens específicas por excesso de taxa.
+        if (result.rateLimitedMessages.length > 0) {
+          await prisma.pushNotificationQueue.create({
+            data: {
+              messages: result.rateLimitedMessages,
+              lastError: "MessageRateExceeded"
+            }
+          }).catch((enqueueError) => {
+            console.error("Failed to enqueue rate-limited notifications for retry:", enqueueError);
+          });
+        }
       }
     }
 
@@ -327,6 +342,7 @@ export class NotificationService {
   private async deliverChunk(messages: ExpoMessage[]): Promise<{
     delivered: number;
     invalidTokens: string[];
+    rateLimitedMessages: ExpoMessage[];
     failed: boolean;
     lastError?: string;
   }> {
@@ -349,7 +365,7 @@ export class NotificationService {
     } catch (error) {
       const lastError = error instanceof Error ? error.message : String(error);
       console.error("Expo push delivery failed:", lastError);
-      return { delivered: 0, invalidTokens: [], failed: true, lastError };
+      return { delivered: 0, invalidTokens: [], rateLimitedMessages: [], failed: true, lastError };
     } finally {
       clearTimeout(timeoutId);
     }
@@ -358,13 +374,14 @@ export class NotificationService {
       const body = await response.text();
       const lastError = `HTTP ${response.status}: ${body.slice(0, 200)}`;
       console.error("Expo push request failed:", lastError);
-      return { delivered: 0, invalidTokens: [], failed: true, lastError };
+      return { delivered: 0, invalidTokens: [], rateLimitedMessages: [], failed: true, lastError };
     }
 
     const payload = (await response.json()) as { data?: ExpoPushTicket[] };
     const tickets = Array.isArray(payload.data) ? payload.data : [];
     let delivered = 0;
     const invalidTokens: string[] = [];
+    const rateLimitedMessages: ExpoMessage[] = [];
 
     for (let index = 0; index < tickets.length; index += 1) {
       const ticket = tickets[index];
@@ -375,6 +392,11 @@ export class NotificationService {
       const token = messages[index]?.to;
       if (ticket.details?.error === "DeviceNotRegistered" && token) {
         invalidTokens.push(token);
+      } else if (ticket.details?.error === "MessageRateExceeded") {
+        const message = messages[index];
+        if (message) {
+          rateLimitedMessages.push(message);
+        }
       }
       console.error("Expo push ticket error:", {
         message: ticket.message,
@@ -383,7 +405,22 @@ export class NotificationService {
       });
     }
 
-    return { delivered, invalidTokens, failed: false };
+    return { delivered, invalidTokens, rateLimitedMessages, failed: false };
+  }
+
+  // Épico de Frentes, Frente 9, Lote 18: PushDevice desativado (token
+  // inválido, ex: DeviceNotRegistered) nunca era removido - ficava pra
+  // sempre na tabela, só sem receber push. Expurga o que está inativo há
+  // muito tempo, mesmo espírito do purgeOldFailures da fila de e-mail.
+  async purgeStaleDevices(referenceDate = new Date(), olderThanDays = 90): Promise<number> {
+    const cutoff = new Date(referenceDate.getTime() - olderThanDays * 24 * 60 * 60 * 1000);
+    const { count } = await prisma.pushDevice.deleteMany({
+      where: {
+        isActive: false,
+        invalidAt: { lt: cutoff }
+      }
+    });
+    return count;
   }
 
   async processRetryQueue(): Promise<void> {
@@ -422,7 +459,25 @@ export class NotificationService {
                 data: { isActive: false, invalidAt: now }
               }).catch((error) => console.error("Failed to deactivate invalid tokens during retry:", error));
             }
-            await prisma.pushNotificationQueue.delete({ where: { id: entry.id } });
+            if (result.rateLimitedMessages.length > 0) {
+              // Ainda tem mensagens rejeitadas por rate-limit — mantém só
+              // essas na fila (não a entrada inteira) e agenda novo retry.
+              const newAttempts = entry.attempts + 1;
+              const delaySeconds = RETRY_DELAY_SECONDS[newAttempts] ?? RETRY_DELAY_SECONDS[RETRY_DELAY_SECONDS.length - 1]!;
+              const nextRetryAt = new Date(now.getTime() + delaySeconds * 1000);
+              await prisma.pushNotificationQueue.update({
+                where: { id: entry.id },
+                data: {
+                  messages: result.rateLimitedMessages,
+                  attempts: newAttempts,
+                  nextRetryAt,
+                  lastError: "MessageRateExceeded",
+                  failedAt: newAttempts >= MAX_RETRY_ATTEMPTS ? now : null
+                }
+              });
+            } else {
+              await prisma.pushNotificationQueue.delete({ where: { id: entry.id } });
+            }
           }
         })
       );

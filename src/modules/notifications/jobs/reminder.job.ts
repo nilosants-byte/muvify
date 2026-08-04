@@ -5,10 +5,12 @@ import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-e
 import { BookingService } from "../../bookings/services/booking.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
+import { NotificationService } from "../services/notification.service";
 
 const bookingService = new BookingService();
 const consultancyService = new ConsultancyService();
 const presentialPackageService = new PresentialPackageService();
+const notificationService = new NotificationService();
 
 let timer: NodeJS.Timeout | null = null;
 let running = false;
@@ -93,6 +95,10 @@ export function startReminderJob() {
           isolateReminderSubJob(
             () => presentialPackageService.sendPresentialPackageBillingReminders(),
             "sendPresentialPackageBillingReminders"
+          ),
+          isolateReminderSubJob(
+            () => notificationService.purgeStaleDevices().then(() => undefined),
+            "purgeStaleDevices"
           ),
         ]),
         new Promise<never>((_, reject) =>

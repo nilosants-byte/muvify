@@ -3269,14 +3269,26 @@ export class ConsultancyService {
         data: { expiry24hSentAt: referenceDate },
       });
       for (const contract of due24h) {
+        // Épico de Frentes, Frente 9, Lote 18: texto único ("seu plano de
+        // treino") não fazia sentido pro profissional, que é quem PRECISA
+        // entregar o plano, não quem vai recebê-lo - mesmo padrão de texto
+        // por papel já usado em sendFichaExpiryReminders.
         void notificationService
-          .sendToUsers([contract.clientId, contract.provider.userId], {
+          .sendToUsers([contract.clientId], {
             preferenceType: "CONSULTANCY",
             title: "Consultoria expira em 24 horas",
             body: "O prazo de entrega do seu plano de treino expira em 24 horas.",
             data: { type: "CONSULTANCY_EXPIRY_24H", contractId: contract.id },
           })
-          .catch((e) => console.error("Consultancy 24h reminder failed:", e));
+          .catch((e) => console.error("Consultancy 24h reminder (client) failed:", e));
+        void notificationService
+          .sendToUsers([contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: "Prazo de entrega expira em 24 horas",
+            body: "O prazo para entregar o plano de treino de um aluno expira em 24 horas.",
+            data: { type: "CONSULTANCY_EXPIRY_24H", contractId: contract.id },
+          })
+          .catch((e) => console.error("Consultancy 24h reminder (provider) failed:", e));
       }
     }
 
@@ -3299,13 +3311,21 @@ export class ConsultancyService {
       });
       for (const contract of due6h) {
         void notificationService
-          .sendToUsers([contract.clientId, contract.provider.userId], {
+          .sendToUsers([contract.clientId], {
             preferenceType: "CONSULTANCY",
             title: "Consultoria expira em breve",
             body: "O prazo de entrega do seu plano de treino expira em 6 horas.",
             data: { type: "CONSULTANCY_EXPIRY_6H", contractId: contract.id },
           })
-          .catch((e) => console.error("Consultancy 6h reminder failed:", e));
+          .catch((e) => console.error("Consultancy 6h reminder (client) failed:", e));
+        void notificationService
+          .sendToUsers([contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: "Prazo de entrega expira em breve",
+            body: "O prazo para entregar o plano de treino de um aluno expira em 6 horas.",
+            data: { type: "CONSULTANCY_EXPIRY_6H", contractId: contract.id },
+          })
+          .catch((e) => console.error("Consultancy 6h reminder (provider) failed:", e));
       }
     }
 

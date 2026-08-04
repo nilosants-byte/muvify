@@ -182,6 +182,13 @@ function routeNotification(
       // (por prefixo) já é usado pra invalidação de cache; agora também
       // pro roteamento, uma única fonte de verdade.
       (navigationRef as any).navigate("PayoutStatus");
+    } else if (type === "DISPUTE_CASE_RESOLVED") {
+      // Épico de Frentes, Frente 9, Lote 18: sem tratamento, caía no
+      // fallback genérico - o histórico financeiro é o destino mais
+      // próximo já disponível.
+      (navigationRef as any).navigate("PayoutStatus");
+    } else if (type === "SUPPORT_REPLY") {
+      (navigationRef as any).navigate("Support");
     } else {
       (navigationRef as any).navigate("Notifications");
     }
@@ -205,6 +212,12 @@ function routeNotification(
       // nenhum tratamento aqui e caíam no fallback genérico (central de
       // avisos) mesmo com um destino óbvio disponível.
       (navigationRef as any).navigate("ClientTabs", { screen: "Community" });
+    } else if (type === "DISPUTE_CASE_RESOLVED") {
+      // Épico de Frentes, Frente 9, Lote 18: sem tratamento, caía no
+      // fallback genérico.
+      (navigationRef as any).navigate("MyDisputes");
+    } else if (type === "SUPPORT_REPLY") {
+      (navigationRef as any).navigate("Support");
     } else {
       (navigationRef as any).navigate("Notifications");
     }
