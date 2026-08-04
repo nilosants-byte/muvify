@@ -812,16 +812,26 @@ export class BookingService {
   async sendSessionReminders(referenceDate = new Date()) {
     const oneHourMs = 60 * 60 * 1000;
     const thirtyMinMs = 30 * 60 * 1000;
-    const windowMs = 5 * 60 * 1000;
 
-    const hour1Lower = new Date(referenceDate.getTime() + oneHourMs - windowMs);
-    const hour1Upper = new Date(referenceDate.getTime() + oneHourMs + windowMs);
-
+    // Épico de Frentes, Frente 9, Lote 13: a janela fixa de ±5min ao redor
+    // do ponto exato (ex: exatamente 60min antes) não tinha nenhum
+    // mecanismo de recuperação - se o job atrasasse mais que isso (deploy,
+    // crash, RUN_REMINDER_JOBS desligado e religado), a sessão passava pela
+    // janela sem nenhum lembrete ser enviado, silenciosamente. Substituído
+    // por um modelo de cruzamento de limiar: due60 pega qualquer sessão que
+    // já entrou na janela "dentro de 1h" mas ainda não entrou em "dentro de
+    // 30min" (evita mandar "em 1 hora" quando já é bem menos que isso);
+    // due30 pega o resto até o início da sessão. Isso é auto-recuperável
+    // pra qualquer atraso do job até o próximo limiar, sem precisar de
+    // nenhum estado extra de "última execução".
     const due60 = await prisma.booking.findMany({
       where: {
         status: BookingStatus.CONFIRMED,
         reminder60SentAt: null,
-        scheduledAt: { gte: hour1Lower, lte: hour1Upper },
+        scheduledAt: {
+          gt: new Date(referenceDate.getTime() + thirtyMinMs),
+          lte: new Date(referenceDate.getTime() + oneHourMs),
+        },
       },
       select: { id: true, clientId: true, provider: { select: { userId: true } } },
     });
@@ -843,14 +853,14 @@ export class BookingService {
       }
     }
 
-    const min30Lower = new Date(referenceDate.getTime() + thirtyMinMs - windowMs);
-    const min30Upper = new Date(referenceDate.getTime() + thirtyMinMs + windowMs);
-
     const due30 = await prisma.booking.findMany({
       where: {
         status: BookingStatus.CONFIRMED,
         reminder30SentAt: null,
-        scheduledAt: { gte: min30Lower, lte: min30Upper },
+        scheduledAt: {
+          gt: referenceDate,
+          lte: new Date(referenceDate.getTime() + thirtyMinMs),
+        },
       },
       select: { id: true, clientId: true, provider: { select: { userId: true } } },
     });

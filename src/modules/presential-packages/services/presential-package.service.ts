@@ -1041,47 +1041,66 @@ export class PresentialPackageService {
   async sendFlexibleSessionPackExpiryReminders(referenceDate = new Date()) {
     const soon = new Date(referenceDate.getTime() + 3 * 24 * 60 * 60 * 1000);
 
+    // Épico de Frentes, Frente 9, Lote 13: marcava DEPOIS de notificar - se
+    // o processo caísse entre as duas operações, o próximo run encontrava
+    // expiryReminderSentAt ainda null e notificava de novo. Mesmo padrão já
+    // usado em sendFichaExpiryReminders (consultancy.service.ts): marca
+    // primeiro via updateMany condicional (idempotente mesmo sob execução
+    // concorrente), notifica depois.
     const expiringSoon = await prisma.presentialPackage.findMany({
       where: {
         mode: PresentialPackageMode.FLEXIBLE_CREDITS,
         status: PresentialPackageStatus.ACTIVE,
         validUntil: { gte: referenceDate, lte: soon },
         expiryReminderSentAt: null
-      }
+      },
+      select: { id: true, clientId: true, creditsRemainingThisCycle: true }
     });
-    for (const pkg of expiringSoon) {
-      await notificationService.sendToUsers([pkg.clientId], {
-        preferenceType: "PAYMENTS",
-        title: "Seu pacote de sessões está vencendo",
-        body: `Seu pacote com ${pkg.creditsRemainingThisCycle} sessão(ões) restante(s) vence em breve — agende antes que a validade acabe.`,
-        data: { type: "PRESENTIAL_PACKAGE_EXPIRING", packageId: pkg.id }
+    if (expiringSoon.length > 0) {
+      await prisma.presentialPackage.updateMany({
+        where: { id: { in: expiringSoon.map((pkg) => pkg.id) }, expiryReminderSentAt: null },
+        data: { expiryReminderSentAt: referenceDate }
       });
-      await prisma.presentialPackage.update({
-        where: { id: pkg.id },
-        data: { expiryReminderSentAt: new Date() }
-      });
+      for (const pkg of expiringSoon) {
+        void notificationService
+          .sendToUsers([pkg.clientId], {
+            preferenceType: "PAYMENTS",
+            title: "Seu pacote de sessões está vencendo",
+            body: `Seu pacote com ${pkg.creditsRemainingThisCycle} sessão(ões) restante(s) vence em breve — agende antes que a validade acabe.`,
+            data: { type: "PRESENTIAL_PACKAGE_EXPIRING", packageId: pkg.id }
+          })
+          .catch((e) => console.error("Flexible session pack expiring reminder failed:", e));
+      }
     }
 
+    // Mesmo raciocínio: marca status EXPIRED primeiro (a transição de
+    // status ACTIVE -> EXPIRED já é, por si só, a trava de idempotência -
+    // um pacote já marcado EXPIRED nunca mais casa com o where abaixo).
     const expired = await prisma.presentialPackage.findMany({
       where: {
         mode: PresentialPackageMode.FLEXIBLE_CREDITS,
         status: PresentialPackageStatus.ACTIVE,
         validUntil: { lt: referenceDate }
-      }
+      },
+      select: { id: true, clientId: true, creditsRemainingThisCycle: true }
     });
-    for (const pkg of expired) {
-      await prisma.presentialPackage.update({
-        where: { id: pkg.id },
+    if (expired.length > 0) {
+      await prisma.presentialPackage.updateMany({
+        where: { id: { in: expired.map((pkg) => pkg.id) }, status: PresentialPackageStatus.ACTIVE },
         data: { status: PresentialPackageStatus.EXPIRED }
       });
-      await notificationService.sendToUsers([pkg.clientId], {
-        preferenceType: "PAYMENTS",
-        title: "Seu pacote de sessões venceu",
-        body: pkg.creditsRemainingThisCycle > 0
-          ? `Seu pacote venceu com ${pkg.creditsRemainingThisCycle} sessão(ões) ainda não usada(s).`
-          : "Seu pacote de sessões venceu.",
-        data: { type: "PRESENTIAL_PACKAGE_EXPIRED", packageId: pkg.id }
-      });
+      for (const pkg of expired) {
+        void notificationService
+          .sendToUsers([pkg.clientId], {
+            preferenceType: "PAYMENTS",
+            title: "Seu pacote de sessões venceu",
+            body: pkg.creditsRemainingThisCycle > 0
+              ? `Seu pacote venceu com ${pkg.creditsRemainingThisCycle} sessão(ões) ainda não usada(s).`
+              : "Seu pacote de sessões venceu.",
+            data: { type: "PRESENTIAL_PACKAGE_EXPIRED", packageId: pkg.id }
+          })
+          .catch((e) => console.error("Flexible session pack expired notice failed:", e));
+      }
     }
   }
 
@@ -1092,25 +1111,32 @@ export class PresentialPackageService {
   async sendPresentialPackageBillingReminders(referenceDate = new Date()) {
     const soon = new Date(referenceDate.getTime() + 3 * 24 * 60 * 60 * 1000);
 
+    // Épico de Frentes, Frente 9, Lote 13: mesmo achado do reminder de
+    // vencimento acima - marca antes de notificar.
     const dueSoon = await prisma.presentialPackage.findMany({
       where: {
         mode: PresentialPackageMode.FIXED_RECURRING,
         status: PresentialPackageStatus.ACTIVE,
         nextBillingAt: { gte: referenceDate, lte: soon },
         billingReminderSentAt: null
-      }
+      },
+      select: { id: true, clientId: true, cycleAmountCents: true }
     });
-    for (const pkg of dueSoon) {
-      await notificationService.sendToUsers([pkg.clientId], {
-        preferenceType: "PAYMENTS",
-        title: "Próxima cobrança do seu pacote está chegando",
-        body: `Sua próxima cobrança de ${(pkg.cycleAmountCents / 100).toFixed(2).replace(".", ",")} será processada em breve.`,
-        data: { type: "PRESENTIAL_PACKAGE_BILLING_DUE_SOON", packageId: pkg.id }
+    if (dueSoon.length > 0) {
+      await prisma.presentialPackage.updateMany({
+        where: { id: { in: dueSoon.map((pkg) => pkg.id) }, billingReminderSentAt: null },
+        data: { billingReminderSentAt: referenceDate }
       });
-      await prisma.presentialPackage.update({
-        where: { id: pkg.id },
-        data: { billingReminderSentAt: new Date() }
-      });
+      for (const pkg of dueSoon) {
+        void notificationService
+          .sendToUsers([pkg.clientId], {
+            preferenceType: "PAYMENTS",
+            title: "Próxima cobrança do seu pacote está chegando",
+            body: `Sua próxima cobrança de ${(pkg.cycleAmountCents / 100).toFixed(2).replace(".", ",")} será processada em breve.`,
+            data: { type: "PRESENTIAL_PACKAGE_BILLING_DUE_SOON", packageId: pkg.id }
+          })
+          .catch((e) => console.error("Presential package billing reminder failed:", e));
+      }
     }
   }
 
