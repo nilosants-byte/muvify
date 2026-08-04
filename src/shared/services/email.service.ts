@@ -173,6 +173,12 @@ function buildEmailLayout(body: string): string {
 </html>`;
 }
 
+// Épico de Frentes, Frente 9, Lote 19: nenhum template deste serviço tem
+// mecanismo de opt-out (unsubscribe). Documentado como aceitável hoje -
+// todo template existente é transacional/de segurança (verificação de
+// conta, redefinição de senha, aviso de troca de senha, e-mail de
+// recuperação alterado), nunca marketing. Se um template de marketing for
+// adicionado no futuro, opt-out deixa de ser opcional (CAN-SPAM/LGPD).
 export class EmailService {
   canSendEmail() {
     return isSmtpConfigured();

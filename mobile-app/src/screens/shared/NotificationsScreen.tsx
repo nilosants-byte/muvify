@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FlatList, RefreshControl, StatusBar, View } from "react-native";
@@ -30,6 +30,8 @@ const CLIENT_SEARCH_RADIUS_KEY = "@personalapp/clientSearchRadiusKm";
 const CLIENT_SEARCH_CENTER_KEY = "@personalapp/clientSearchCenter";
 const MARKET_LOOKBACK_DAYS = 21;
 const MAX_NEARBY_PROVIDERS = 12;
+const INITIAL_INBOX_TAKE = 120;
+const LOAD_MORE_INBOX_TAKE = 40;
 
 type NotificationVariant = "green" | "orange" | "red" | "blue" | "gray";
 
@@ -531,16 +533,28 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
     return [] as NotificationItem[];
   }, [role, runWithAuth]);
 
-  const { data: notifications = [], isLoading: loading, refetch, error } = useQuery<NotificationItem[]>({
+  // Épico de Frentes, Frente 9, Lote 19: a lista não tinha paginação real
+  // (take=120 fixo, sem skip) - histórico além disso nunca aparecia.
+  // lastInboxRawLengthRef guarda quantos itens de inbox vieram na página
+  // "base" pra saber se há mais pra carregar (mesmo heurística de
+  // FriendsListScreen: página cheia = pode ter mais).
+  const lastInboxRawLengthRef = useRef(0);
+  const [extraInboxItems, setExtraInboxItems] = useState<NotificationItem[]>([]);
+  const [inboxSkip, setInboxSkip] = useState(INITIAL_INBOX_TAKE);
+  const [hasMoreInbox, setHasMoreInbox] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const { data: baseNotifications = [], isLoading: loading, refetch, error } = useQuery<NotificationItem[]>({
     queryKey: notifQueryKey,
     queryFn: async () => {
       const { bookings, inbox } = await runWithAuth(async (token) => {
         const [bookingResult, inboxResult] = await Promise.all([
           bookingsApi.me(token),
-          notificationsApi.inbox(token, 120),
+          notificationsApi.inbox(token, INITIAL_INBOX_TAKE),
         ]);
         return { bookings: bookingResult, inbox: inboxResult };
       });
+      lastInboxRawLengthRef.current = inbox.length;
       const inboxNotifications = inbox.map((item) => toInboxNotification(item, role));
       const hasBookingContext = inboxNotifications.some((item) =>
         item.action.type === "BOOKING_DETAIL" ||
@@ -567,6 +581,37 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
     if (error) handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar notificações." });
   }, [error, showToast]);
 
+  // Toda vez que a página base recarrega (carregamento inicial ou
+  // refetch), o histórico "extra" acumulado por carregar-mais fica
+  // obsoleto - reseta a paginação.
+  useEffect(() => {
+    setExtraInboxItems([]);
+    setInboxSkip(INITIAL_INBOX_TAKE);
+    setHasMoreInbox(lastInboxRawLengthRef.current === INITIAL_INBOX_TAKE);
+  }, [baseNotifications]);
+
+  const notifications = useMemo(
+    () => uniqueById([...baseNotifications, ...extraInboxItems]).sort((a, b) => b.createdAtMs - a.createdAtMs),
+    [baseNotifications, extraInboxItems]
+  );
+
+  const loadMoreInbox = useCallback(async () => {
+    if (loadingMore || !hasMoreInbox) return;
+    setLoadingMore(true);
+    try {
+      const skip = inboxSkip;
+      const more = await runWithAuth((token) => notificationsApi.inbox(token, LOAD_MORE_INBOX_TAKE, skip));
+      const mapped = more.map((item) => toInboxNotification(item, role));
+      setExtraInboxItems((prev) => uniqueById([...prev, ...mapped]));
+      setInboxSkip(skip + LOAD_MORE_INBOX_TAKE);
+      setHasMoreInbox(more.length === LOAD_MORE_INBOX_TAKE);
+    } catch {
+      // best effort — carregar mais é opcional, mantém a lista atual
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMoreInbox, inboxSkip, role, runWithAuth]);
+
   const unreadCount = useMemo(
     () => notifications.filter((item) => item.unread).length,
     [notifications]
@@ -577,6 +622,8 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
       await runWithAuth((token) => notificationsApi.markAllRead(token));
     } catch { /* best effort */ }
     queryClient.setQueryData(notifQueryKey, []);
+    setExtraInboxItems([]);
+    setHasMoreInbox(false);
   }, [notifQueryKey, queryClient, runWithAuth]);
 
   const openBookingDetail = useCallback(
@@ -610,6 +657,9 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
       if (item.unread) {
         queryClient.setQueryData<NotificationItem[]>(notifQueryKey, (old) =>
           (old ?? []).map((entry) => entry.id === item.id ? { ...entry, unread: false } : entry)
+        );
+        setExtraInboxItems((prev) =>
+          prev.map((entry) => entry.id === item.id ? { ...entry, unread: false } : entry)
         );
         if (item.source === "inbox" && item.rawId) {
           runWithAuth((token) => notificationsApi.markAsRead(token, item.rawId!)).catch(() => {});
@@ -973,6 +1023,22 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
             <View style={{ paddingTop: 60, alignItems: "center", gap: 8 }}>
               <Ionicons name="notifications-off-outline" size={38} color={theme.text3} />
               <MvText variant="body4" color="tertiary">Nenhuma notificação encontrada.</MvText>
+            </View>
+          ) : null
+        }
+        // Épico de Frentes, Frente 9, Lote 19: scroll infinito - chegar
+        // perto do fim da lista carrega mais itens de inbox (skip real),
+        // em vez do take fixo que escondia todo histórico além dele. Só
+        // faz sentido na aba "Todas" - filtrar por categoria sobre uma
+        // lista parcialmente carregada confundiria mais do que ajudaria.
+        onEndReachedThreshold={0.4}
+        onEndReached={() => {
+          if (activeCategory === "Todas") void loadMoreInbox();
+        }}
+        ListFooterComponent={
+          activeCategory === "Todas" && loadingMore ? (
+            <View style={{ paddingVertical: 20, alignItems: "center" }}>
+              <MvText variant="body4" color="tertiary">Carregando mais...</MvText>
             </View>
           ) : null
         }

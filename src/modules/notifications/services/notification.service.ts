@@ -93,11 +93,15 @@ function chunk<T>(items: T[], size: number) {
 }
 
 export class NotificationService {
-  async listInbox(userId: string, take = 100) {
+  // Épico de Frentes, Frente 9, Lote 19: lista sem paginação real (take
+  // fixo, sem skip) - usuário com histórico extenso nunca via nada além
+  // dos itens mais recentes até o limite. skip habilita "carregar mais".
+  async listInbox(userId: string, take = 100, skip = 0) {
     return prisma.userNotification.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
       take: Math.min(Math.max(take, 1), 200),
+      skip: Math.max(skip, 0),
       select: {
         id: true,
         title: true,

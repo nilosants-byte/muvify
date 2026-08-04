@@ -296,7 +296,10 @@ export class ConsultancyChatController {
     if (!isUserInConsultancyRoom(contractId, recipientId)) {
       void notificationService
         .sendToUsers([recipientId], {
-          preferenceType: "CONSULTANCY",
+          // Épico de Frentes, Frente 9, Lote 19: mesmo achado do chat de
+          // agendamento - CONSULTANCY não deveria controlar mensagem de
+          // chat, categoria própria.
+          preferenceType: "CHAT",
           title: `💬 ${senderName}`,
           body: content.trim().length > 80 ? content.trim().slice(0, 80) + "…" : content.trim(),
           data: { type: "CHAT_MESSAGE", contractId, messageId: message.id },

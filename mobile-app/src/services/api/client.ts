@@ -2798,8 +2798,8 @@ export const financialApi = {
 };
 
 export const notificationsApi = {
-  inbox(token: string, take = 100) {
-    return apiRequest<NotificationInboxItem[]>(`/notifications/inbox?take=${take}`, {
+  inbox(token: string, take = 100, skip = 0) {
+    return apiRequest<NotificationInboxItem[]>(`/notifications/inbox?take=${take}&skip=${skip}`, {
       token
     });
   },

@@ -165,6 +165,11 @@ enum NotificationPreferenceType {
   // categoria o filtro de preferência é pulado por completo (usuário não
   // conseguia desativar).
   COMMUNITY
+  // Épico de Frentes, Frente 9, Lote 19: mensagem nova de chat (agendamento
+  // e consultoria) reaproveitava BOOKINGS/CONSULTANCY sem necessidade -
+  // desativar avisos de sessão/consultoria também silenciava chat, e
+  // vice-versa. Categoria própria.
+  CHAT
 }
 
 enum SupportTicketStatus {

@@ -15,7 +15,12 @@ const chatController = new ChatController();
 export const chatRoutes = Router();
 
 chatRoutes.use(ensureAuthenticated);
-chatRoutes.use(ensureRole(UserRole.CLIENT, UserRole.PROVIDER, UserRole.ADMIN));
+// Épico de Frentes, Frente 9, Lote 19: ADMIN estava na lista sem nenhum
+// efeito real - todo controller aqui autoriza comparando clientId/
+// providerId com o usuário autenticado (isClient/isProvider), nunca o
+// role. Um ADMIN sempre caía em 403/404 de qualquer forma, a menos que
+// literalmente fosse o cliente ou profissional do agendamento.
+chatRoutes.use(ensureRole(UserRole.CLIENT, UserRole.PROVIDER));
 chatRoutes.get("/me/chats", chatController.listMyChats);
 chatRoutes.get("/:bookingId/other-user", validate(chatBookingIdParamSchema), chatController.getOtherUser);
 chatRoutes.get("/:bookingId/other-user-photo", validate(chatBookingIdParamSchema), chatController.streamOtherUserPhoto);

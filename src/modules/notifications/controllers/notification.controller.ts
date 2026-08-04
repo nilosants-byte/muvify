@@ -8,7 +8,9 @@ export class NotificationController {
   async listInbox(request: Request, response: Response) {
     const rawTake = request.query.take ? Number(request.query.take) : undefined;
     const take = rawTake && Number.isFinite(rawTake) && rawTake > 0 ? rawTake : undefined;
-    const items = await notificationService.listInbox(request.user!.id, take);
+    const rawSkip = request.query.skip ? Number(request.query.skip) : undefined;
+    const skip = rawSkip && Number.isFinite(rawSkip) && rawSkip > 0 ? rawSkip : undefined;
+    const items = await notificationService.listInbox(request.user!.id, take, skip);
     return response.json(items);
   }
 
