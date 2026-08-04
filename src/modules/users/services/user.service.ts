@@ -11,6 +11,7 @@ import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
+import { EmailQueueService } from "../../../shared/services/email-queue.service";
 import { deleteMediaByUrl } from "../../../shared/services/storage.service";
 import { getCache, setCache } from "../../../shared/utils/cache";
 import { resolveAccessTokenTtlSeconds, setTokenBlacklist } from "../../../shared/security/token-blacklist";
@@ -73,6 +74,7 @@ type NotificationPreferenceInput = {
 };
 
 const emailService = new EmailService();
+const emailQueueService = new EmailQueueService();
 const ALLOWED_PHOTO_MIMES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 
 function checkImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
@@ -320,14 +322,17 @@ export class UserService {
     const nowSeconds = Math.floor(Date.now() / 1000);
     await setTokenBlacklist(user.id, nowSeconds, resolveAccessTokenTtlSeconds()).catch(() => {/* best effort */});
 
+    // Épico de Frentes, Frente 9, Lote 11: era um envio síncrono sem retry -
+    // se o SMTP caísse justamente nesse instante (ex: troca de senha
+    // indevida por invasor), a vítima nunca era avisada por nenhum canal.
     if (emailService.canSendEmail()) {
-      void emailService
-        .sendPasswordChangedEmail({
+      await emailQueueService
+        .enqueuePasswordChanged({
           to: user.email,
           name: user.name
         })
         .catch((error) => {
-          console.error("Falha ao enviar e-mail de confirmação de troca de senha:", error);
+          console.error("Falha ao enfileirar e-mail de confirmação de troca de senha:", error);
         });
     }
 
@@ -414,25 +419,27 @@ export class UserService {
     if (emailService.canSendEmail()) {
       // Avisa tanto o endereço novo quanto o e-mail de login real da conta -
       // antes só o novo era avisado, então o dono legítimo nunca ficava
-      // sabendo que essa troca aconteceu.
-      void emailService
-        .sendRecoveryEmailUpdated({
+      // sabendo que essa troca aconteceu. Épico de Frentes, Frente 9, Lote
+      // 11: passa a usar a fila com retry (mesmo motivo do e-mail de senha
+      // alterada acima).
+      await emailQueueService
+        .enqueueRecoveryEmailUpdated({
           to: recoveryEmail,
           name: user.name,
           recoveryEmail
         })
         .catch((error) => {
-          console.error("Falha ao enviar confirmação de e-mail de recuperação:", error);
+          console.error("Falha ao enfileirar confirmação de e-mail de recuperação:", error);
         });
       if (accountEmail !== recoveryEmail) {
-        void emailService
-          .sendRecoveryEmailUpdated({
+        await emailQueueService
+          .enqueueRecoveryEmailUpdated({
             to: user.email,
             name: user.name,
             recoveryEmail
           })
           .catch((error) => {
-            console.error("Falha ao avisar conta sobre troca de e-mail de recuperação:", error);
+            console.error("Falha ao enfileirar aviso à conta sobre troca de e-mail de recuperação:", error);
           });
       }
     }

@@ -19,10 +19,6 @@ function uid(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 describe("Frente 3, Lote 1 — troca de e-mail de recuperação exige senha", () => {
   let token = "";
   let userId = "";
@@ -101,7 +97,6 @@ describe("Frente 3, Lote 1 — troca de e-mail de recuperação exige senha", ()
 
   it("com a senha certa, troca com sucesso e avisa tanto o e-mail novo quanto o e-mail de login real", async () => {
     vi.spyOn(EmailService.prototype, "canSendEmail").mockReturnValue(true);
-    const sendSpy = vi.spyOn(EmailService.prototype, "sendRecoveryEmailUpdated").mockResolvedValue();
 
     const newRecoveryEmail = `recovery_${uid("ok")}@test.com`;
     const res = await request(app)
@@ -112,11 +107,18 @@ describe("Frente 3, Lote 1 — troca de e-mail de recuperação exige senha", ()
     expect(res.status).toBe(200);
     expect(res.body.recoveryEmail).toBe(newRecoveryEmail);
 
-    // Espera as duas notificações fire-and-forget serem disparadas.
-    await sleep(50);
-    const recipients = sendSpy.mock.calls.map((call) => call[0].to);
+    // Épico de Frentes, Frente 9, Lote 11: o aviso não é mais um envio
+    // síncrono - passa a usar a fila com retry, então a verificação aqui
+    // é sobre o que foi enfileirado, não sobre uma chamada direta ao envio.
+    const queuedRows = await prisma.emailDeliveryQueue.findMany({
+      where: { template: "RECOVERY_EMAIL_UPDATED" },
+      orderBy: { createdAt: "desc" },
+      take: 2
+    });
+    const recipients = queuedRows.map((row) => (row.payload as { to: string }).to);
     expect(recipients).toContain(newRecoveryEmail);
     expect(recipients).toContain(userEmail);
+    await prisma.emailDeliveryQueue.deleteMany({ where: { id: { in: queuedRows.map((row) => row.id) } } });
   });
 });
 

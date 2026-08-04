@@ -5,7 +5,13 @@ const MAX_RETRY_ATTEMPTS = 6;
 // 30s -> 5min -> 30min -> 2h -> 12h -> 24h
 const RETRY_DELAY_SECONDS = [30, 300, 1800, 7200, 43200, 86400];
 
-type EmailQueueTemplate = "EMAIL_VERIFICATION" | "PASSWORD_RESET";
+// Épico de Frentes, Frente 9, Lote 11: PASSWORD_CHANGED/RECOVERY_EMAIL_UPDATED
+// avisam sobre uma troca de credencial de segurança - se o SMTP cair
+// justamente nesse instante (ex: troca de senha indevida por invasor), a
+// vítima nunca era avisada por nenhum canal, já que o envio era síncrono
+// sem retry. Passam a usar a mesma fila já usada por EMAIL_VERIFICATION/
+// PASSWORD_RESET.
+type EmailQueueTemplate = "EMAIL_VERIFICATION" | "PASSWORD_RESET" | "PASSWORD_CHANGED" | "RECOVERY_EMAIL_UPDATED";
 
 type VerificationPayload = {
   to: string;
@@ -17,6 +23,17 @@ type PasswordResetPayload = {
   to: string;
   name: string;
   resetToken: string;
+};
+
+type PasswordChangedPayload = {
+  to: string;
+  name: string;
+};
+
+type RecoveryEmailUpdatedPayload = {
+  to: string;
+  name: string;
+  recoveryEmail: string;
 };
 
 export class EmailQueueService {
@@ -35,6 +52,24 @@ export class EmailQueueService {
     return prisma.emailDeliveryQueue.create({
       data: {
         template: "PASSWORD_RESET",
+        payload: input
+      }
+    });
+  }
+
+  async enqueuePasswordChanged(input: PasswordChangedPayload) {
+    return prisma.emailDeliveryQueue.create({
+      data: {
+        template: "PASSWORD_CHANGED",
+        payload: input
+      }
+    });
+  }
+
+  async enqueueRecoveryEmailUpdated(input: RecoveryEmailUpdatedPayload) {
+    return prisma.emailDeliveryQueue.create({
+      data: {
+        template: "RECOVERY_EMAIL_UPDATED",
         payload: input
       }
     });
@@ -96,6 +131,16 @@ export class EmailQueueService {
       await this.emailService.sendPasswordResetEmail(parsed);
       return;
     }
+    if (template === "PASSWORD_CHANGED") {
+      const parsed = this.parsePasswordChangedPayload(payload);
+      await this.emailService.sendPasswordChangedEmail(parsed);
+      return;
+    }
+    if (template === "RECOVERY_EMAIL_UPDATED") {
+      const parsed = this.parseRecoveryEmailUpdatedPayload(payload);
+      await this.emailService.sendRecoveryEmailUpdated(parsed);
+      return;
+    }
     throw new Error(`Unsupported email queue template: ${template}`);
   }
 
@@ -126,6 +171,27 @@ export class EmailQueueService {
     }
     this.validateEmail(to);
     return { to, name, resetToken };
+  }
+
+  private parsePasswordChangedPayload(payload: Record<string, unknown>): PasswordChangedPayload {
+    const to = typeof payload.to === "string" ? payload.to : "";
+    const name = typeof payload.name === "string" ? payload.name : "";
+    if (!to || !name) {
+      throw new Error("Invalid PASSWORD_CHANGED payload.");
+    }
+    this.validateEmail(to);
+    return { to, name };
+  }
+
+  private parseRecoveryEmailUpdatedPayload(payload: Record<string, unknown>): RecoveryEmailUpdatedPayload {
+    const to = typeof payload.to === "string" ? payload.to : "";
+    const name = typeof payload.name === "string" ? payload.name : "";
+    const recoveryEmail = typeof payload.recoveryEmail === "string" ? payload.recoveryEmail : "";
+    if (!to || !name || !recoveryEmail) {
+      throw new Error("Invalid RECOVERY_EMAIL_UPDATED payload.");
+    }
+    this.validateEmail(to);
+    return { to, name, recoveryEmail };
   }
 
   async purgeOldFailures(olderThanDays = 30): Promise<number> {

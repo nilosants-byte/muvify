@@ -37,6 +37,16 @@ describe("email-queue", () => {
     });
     trackedQueueIds.add(queued.id);
 
+    // processRetryQueue só processa os 50 primeiros por nextRetryAt - outros
+    // arquivos da suíte deixam um backlog real de EMAIL_VERIFICATION na
+    // fila (nenhum deles chama processRetryQueue), então sem isso esse
+    // teste starva de forma intermitente dependendo de quantos arquivos já
+    // rodaram antes dele na mesma suíte (era o "flake" documentado antes).
+    await prisma.emailDeliveryQueue.update({
+      where: { id: queued.id },
+      data: { nextRetryAt: new Date(0) }
+    });
+
     await emailQueueService.processRetryQueue();
 
     const stored = await prisma.emailDeliveryQueue.findUnique({
@@ -62,6 +72,10 @@ describe("email-queue", () => {
       resetToken: "token-123"
     });
     trackedQueueIds.add(queued.id);
+    await prisma.emailDeliveryQueue.update({
+      where: { id: queued.id },
+      data: { nextRetryAt: new Date(0) }
+    });
 
     const before = Date.now();
     await emailQueueService.processRetryQueue();
@@ -97,7 +111,7 @@ describe("email-queue", () => {
           resetToken: "token-456"
         },
         attempts: 5,
-        nextRetryAt: new Date(Date.now() - 1_000)
+        nextRetryAt: new Date(0)
       }
     });
     trackedQueueIds.add(queued.id);
