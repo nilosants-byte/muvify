@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { prisma } from "../../config/prisma";
 import { EmailService } from "./email.service";
 
@@ -107,15 +108,28 @@ export class EmailQueueService {
         const nextRetryAt = new Date(Date.now() + delaySeconds * 1000);
         const lastError = (error instanceof Error ? error.message : String(error)).slice(0, 1000);
 
+        const exhausted = attempts >= MAX_RETRY_ATTEMPTS;
         await prisma.emailDeliveryQueue.update({
           where: { id: entry.id },
           data: {
             attempts,
             nextRetryAt,
             lastError,
-            failedAt: attempts >= MAX_RETRY_ATTEMPTS ? new Date() : null
+            failedAt: exhausted ? new Date() : null
           }
         });
+
+        // Épico de Frentes, Frente 9, Lote 12: item que esgota as tentativas
+        // ficava marcado como falho sem gerar nenhum alerta - só era
+        // descoberto no expurgo de 30 dias (purgeOldFailures), muito tarde
+        // pra ser útil (o e-mail nunca chega ao destinatário de qualquer
+        // forma, mas ninguém ficava sabendo que isso aconteceu).
+        if (exhausted) {
+          Sentry.captureException(error, {
+            tags: { area: "email-queue" },
+            extra: { queueId: entry.id, template: entry.template, attempts }
+          });
+        }
       }
     }
   }

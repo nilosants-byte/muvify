@@ -10,6 +10,7 @@ import { startDataRetentionJob, stopDataRetentionJob } from "./modules/privacy/j
 import { startCommunityJobs, stopCommunityJobs } from "./modules/community/jobs/community.jobs";
 import { startReminderJob, stopReminderJob } from "./modules/notifications/jobs/reminder.job";
 import { initSocketServer, stopSocketServer } from "./realtime/socket";
+import * as Sentry from "@sentry/node";
 import { initSentry } from "./config/sentry";
 import { EmailService } from "./shared/services/email.service";
 
@@ -96,6 +97,18 @@ async function bootstrap() {
     console.warn(
       "Redis indisponivel no bootstrap. Seguindo em modo degradado (fallback local por instancia)."
     );
+  }
+
+  // Épico de Frentes, Frente 9, Lote 12: SMTP totalmente ausente em
+  // produção pulava a verificação de boot em silêncio (o if abaixo nem
+  // entra), e todo envio subsequente falhava sem nenhum aviso visível -
+  // ninguém ficava sabendo que e-mail (verificação, redefinição de senha,
+  // avisos de segurança) simplesmente parou de funcionar.
+  if (env.NODE_ENV === "production" && !emailService.canSendEmail()) {
+    const message =
+      "SMTP nao configurado em producao - nenhum e-mail sera enviado (verificacao de conta, redefinicao de senha, avisos de seguranca, etc).";
+    console.error(`[SMTP] ${message}`);
+    Sentry.captureMessage(message, "error");
   }
 
   if (env.SMTP_VERIFY_ON_STARTUP && emailService.canSendEmail()) {
