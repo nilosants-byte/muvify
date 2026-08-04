@@ -501,7 +501,23 @@ export type AdminDashboardOverview = {
     pendingDebtsAmountCents: number;
     crefInReviewCount: number;
     openTicketsCount: number;
+    pendingReportsCount: number;
   };
+};
+
+export type AdminReportType = "feed-post" | "booking-message" | "consultancy-message";
+
+export type AdminReport = {
+  type: AdminReportType;
+  reportId: string;
+  reason: string | null;
+  status: "PENDING" | "DISMISSED" | "ACTIONED";
+  createdAt: string;
+  reporter: { id: string; name: string; email: string };
+  contentId: string;
+  contentPreview: string;
+  contentAuthor: { id: string; name: string; email: string } | null;
+  contentHidden: boolean;
 };
 
 export type AdminCrefQueueItem = ProviderCredentials & {
@@ -1579,6 +1595,25 @@ export const adminApi = {
       token,
       body: { responseMessage }
     });
+  },
+  // Épico de Frentes, Frente 10, Lote 1: fila unificada de moderação de
+  // denúncias (post, chat de agendamento, chat de consultoria).
+  listReports(
+    token: string,
+    params?: { status?: "PENDING" | "DISMISSED" | "ACTIONED"; take?: number; skip?: number }
+  ) {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (typeof params?.take === "number") query.set("take", String(params.take));
+    if (typeof params?.skip === "number") query.set("skip", String(params.skip));
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<{ items: AdminReport[]; total: number }>(`/admin/reports${suffix}`, { token });
+  },
+  dismissReport(token: string, type: AdminReportType, reportId: string) {
+    return apiRequest<void>(`/admin/reports/${type}/${reportId}/dismiss`, { method: "PATCH", token });
+  },
+  hideReportedContent(token: string, type: AdminReportType, reportId: string) {
+    return apiRequest<void>(`/admin/reports/${type}/${reportId}/hide-content`, { method: "PATCH", token });
   },
   listChatAuditSessions(
     token: string,

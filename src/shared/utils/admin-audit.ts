@@ -16,7 +16,9 @@ export type AdminAuditAction =
   | "EXERCISE_PREBUILT_DELETED"
   | "USER_LEGAL_HOLD_SET"
   | "USER_LEGAL_HOLD_CLEARED"
-  | "ADMIN_USER_DATA_EXPORTED";
+  | "ADMIN_USER_DATA_EXPORTED"
+  | "REPORT_DISMISSED"
+  | "REPORT_CONTENT_HIDDEN";
 
 export async function writeAdminAuditLog(params: {
   adminId: string;

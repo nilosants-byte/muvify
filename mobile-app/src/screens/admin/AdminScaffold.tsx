@@ -55,6 +55,12 @@ export function AdminScaffold({
         action: () => navigation.navigate("AdminSupport")
       },
       {
+        key: "AdminModeration" as const,
+        label: "Moderação de denúncias",
+        icon: "flag-outline" as const,
+        action: () => navigation.navigate("AdminModeration")
+      },
+      {
         key: "AdminChatAudit" as const,
         label: "Auditoria de chats",
         icon: "chatbubbles-outline" as const,
@@ -230,6 +236,7 @@ export function AdminScaffold({
                 (item.key === "AdminHome" ||
                   item.key === "AdminCrefValidation" ||
                   item.key === "AdminSupport" ||
+                  item.key === "AdminModeration" ||
                   item.key === "AdminChatAudit" ||
                   item.key === "AdminConsultas" ||
                   item.key === "AdminExercises" ||

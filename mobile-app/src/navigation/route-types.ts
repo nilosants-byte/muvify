@@ -145,6 +145,7 @@ export type AdminStackParamList = {
   AdminDisputeDetail: { caseId: string };
   AdminNoShowReports: undefined;
   AdminDataRetention: undefined;
+  AdminModeration: undefined;
   Security: undefined;
 };
 

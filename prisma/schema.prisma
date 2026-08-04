@@ -177,6 +177,16 @@ enum SupportTicketStatus {
   ANSWERED
 }
 
+// Épico de Frentes, Frente 10, Lote 1: as 3 filas de denúncia (post, chat de
+// agendamento, chat de consultoria) só persistiam o registro, sem status
+// nenhum de revisão - nada indicava se um admin já olhou, descartou ou agiu
+// sobre a denúncia.
+enum ContentReportStatus {
+  PENDING
+  DISMISSED
+  ACTIONED
+}
+
 enum XpReason {
   PRESENTIAL_WORKOUT_COMPLETED
   ONLINE_WORKOUT_COMPLETED
@@ -328,6 +338,12 @@ model User {
   feedPostLikes            FeedPostLike[]
   feedPostComments         FeedPostComment[]
   feedPostReports          FeedPostReport[]
+  feedPostReportsReviewed   FeedPostReport[]           @relation("FeedPostReportReviewer")
+  bookingMessageReportsReviewed BookingMessageReport[]  @relation("BookingMessageReportReviewer")
+  consultancyMessageReportsReviewed ConsultancyMessageReport[] @relation("ConsultancyMessageReportReviewer")
+  feedPostsHiddenByAdmin    FeedPost[]                  @relation("FeedPostHiddenByAdmin")
+  bookingMessagesHiddenByAdmin BookingMessage[]          @relation("BookingMessageHiddenByAdmin")
+  consultancyMessagesHiddenByAdmin ConsultancyMessage[]  @relation("ConsultancyMessageHiddenByAdmin")
   rankingSnapshots         RankingSnapshot[]
   adminAuditLogs           AdminAuditLog[]
   noShowReportsReceived    NoShowReport[]              @relation("NoShowReported")
@@ -1486,10 +1502,13 @@ model BookingMessage {
   content   String
   readAt    DateTime?
   createdAt DateTime  @default(now())
+  hiddenByAdminAt DateTime?
+  hiddenByAdminId String?
 
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   sender  User?   @relation(fields: [senderId], references: [id], onDelete: SetNull)
   reports BookingMessageReport[]
+  hiddenByAdmin User? @relation("BookingMessageHiddenByAdmin", fields: [hiddenByAdminId], references: [id], onDelete: SetNull)
 
   @@index([bookingId, createdAt])
   @@index([senderId, createdAt])
@@ -1502,12 +1521,17 @@ model BookingMessageReport {
   messageId  String
   reporterId String
   reason     String?
+  status       ContentReportStatus @default(PENDING)
+  reviewedAt   DateTime?
+  reviewedById String?
   createdAt  DateTime @default(now())
   message    BookingMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   reporter   User           @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  reviewedBy User?          @relation("BookingMessageReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   @@unique([messageId, reporterId])
   @@index([messageId])
+  @@index([status, createdAt])
 }
 
 // Épico de Frentes, Frente 9, Lote 7: chat de consultoria - espelha
@@ -1522,10 +1546,13 @@ model ConsultancyMessage {
   content    String
   readAt     DateTime?
   createdAt  DateTime  @default(now())
+  hiddenByAdminAt DateTime?
+  hiddenByAdminId String?
 
   contract ConsultancyContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   sender   User?                @relation(fields: [senderId], references: [id], onDelete: SetNull)
   reports  ConsultancyMessageReport[]
+  hiddenByAdmin User? @relation("ConsultancyMessageHiddenByAdmin", fields: [hiddenByAdminId], references: [id], onDelete: SetNull)
 
   @@index([contractId, createdAt])
   @@index([senderId, createdAt])
@@ -1538,12 +1565,17 @@ model ConsultancyMessageReport {
   messageId  String
   reporterId String
   reason     String?
+  status       ContentReportStatus @default(PENDING)
+  reviewedAt   DateTime?
+  reviewedById String?
   createdAt  DateTime @default(now())
   message    ConsultancyMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   reporter   User               @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  reviewedBy User?              @relation("ConsultancyMessageReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   @@unique([messageId, reporterId])
   @@index([messageId])
+  @@index([status, createdAt])
 }
 
 model NotificationPreference {
@@ -1668,10 +1700,13 @@ model FeedPost {
   metadata    Json?
   isAutomatic Boolean           @default(true)
   createdAt   DateTime          @default(now())
+  hiddenByAdminAt DateTime?
+  hiddenByAdminId String?
   user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   likes       FeedPostLike[]
   comments    FeedPostComment[]
   reports     FeedPostReport[]
+  hiddenByAdmin User?           @relation("FeedPostHiddenByAdmin", fields: [hiddenByAdminId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([userId, isAutomatic, createdAt])
@@ -1713,12 +1748,17 @@ model FeedPostReport {
   postId     String
   reporterId String
   reason     String?
+  status       ContentReportStatus @default(PENDING)
+  reviewedAt   DateTime?
+  reviewedById String?
   createdAt  DateTime @default(now())
   post       FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
   reporter   User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  reviewedBy User?    @relation("FeedPostReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   @@unique([postId, reporterId])
   @@index([postId])
+  @@index([status, createdAt])
 }
 
 model RankingSnapshot {

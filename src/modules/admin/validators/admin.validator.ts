@@ -203,6 +203,21 @@ export const adminListNoShowReportsSchema = z.object({
   })
 });
 
+export const adminListReportsSchema = z.object({
+  query: z.object({
+    status: z.enum(["PENDING", "DISMISSED", "ACTIONED"]).optional(),
+    take: z.coerce.number().int().min(1).max(100).optional(),
+    skip: z.coerce.number().int().min(0).optional()
+  })
+});
+
+export const adminReportActionSchema = z.object({
+  params: z.object({
+    type: z.enum(["feed-post", "booking-message", "consultancy-message"]),
+    id: z.string().uuid()
+  })
+});
+
 export const adminWriteOffDebtSchema = z.object({
   params: z.object({ debtId: z.string().uuid() }),
   body: z.object({

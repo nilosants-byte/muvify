@@ -158,6 +158,17 @@ export function AdminHomeScreen({ navigation }: Props) {
               <MvText variant="body3">Tickets de suporte abertos</MvText>
               <MvText variant="semi3">{overview?.attentionNeeded?.openTicketsCount ?? 0}</MvText>
             </TouchableOpacity>
+            {/* Épico de Frentes, Frente 10, Lote 1: denúncia (post/chat) não
+                aparecia em lugar nenhum do painel - fila unificada nova. */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AdminModeration")}
+              style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderTopWidth: 1, borderTopColor: theme.border }}
+            >
+              <MvText variant="body3">Denúncias pendentes</MvText>
+              <MvText variant="semi3" color={(overview?.attentionNeeded?.pendingReportsCount ?? 0) > 0 ? "danger" : "secondary"}>
+                {overview?.attentionNeeded?.pendingReportsCount ?? 0}
+              </MvText>
+            </TouchableOpacity>
           </View>
         </MvCard>
 

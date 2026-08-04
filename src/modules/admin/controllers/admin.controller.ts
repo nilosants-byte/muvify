@@ -2,12 +2,14 @@ import { DebtRecordStatus, DisputeCaseStatus } from "@prisma/client";
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { AdminService } from "../services/admin.service";
+import { ModerationService } from "../services/moderation.service";
 import { DisputeCaseService } from "../services/dispute-case.service";
 import { ProviderService } from "../../providers/services/provider.service";
 import { ExerciseService } from "../../exercises/services/exercise.service";
 import { DebtService } from "../../payments/services/debt.service";
 
 const adminService = new AdminService();
+const moderationService = new ModerationService();
 const disputeCaseService = new DisputeCaseService();
 const providerService = new ProviderService();
 const exerciseService = new ExerciseService();
@@ -223,6 +225,33 @@ export class AdminController {
   async resolveDisputeCase(request: Request, response: Response) {
     const payload = await disputeCaseService.resolveCase(request.user!.id, request.params.caseId, request.body);
     return response.json(payload);
+  }
+
+  async listReports(request: Request, response: Response) {
+    const payload = await moderationService.listReports(request.user!.id, {
+      status: request.query.status as "PENDING" | "DISMISSED" | "ACTIONED" | undefined,
+      take: request.query.take ? Number(request.query.take) : undefined,
+      skip: request.query.skip ? Number(request.query.skip) : undefined
+    });
+    return response.json(payload);
+  }
+
+  async dismissReport(request: Request, response: Response) {
+    await moderationService.dismissReport(
+      request.user!.id,
+      request.params.type as "feed-post" | "booking-message" | "consultancy-message",
+      request.params.id
+    );
+    return response.status(StatusCodes.NO_CONTENT).send();
+  }
+
+  async hideReportedContent(request: Request, response: Response) {
+    await moderationService.hideReportedContent(
+      request.user!.id,
+      request.params.type as "feed-post" | "booking-message" | "consultancy-message",
+      request.params.id
+    );
+    return response.status(StatusCodes.NO_CONTENT).send();
   }
 
   async listPrebuiltExercises(request: Request, response: Response) {

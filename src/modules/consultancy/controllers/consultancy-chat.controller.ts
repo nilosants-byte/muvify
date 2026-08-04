@@ -190,6 +190,9 @@ export class ConsultancyChatController {
     const messages = await prisma.consultancyMessage.findMany({
       where: {
         contractId,
+        // Épico de Frentes, Frente 10, Lote 1: mensagem ocultada por um
+        // admin (denúncia procedente) some do chat pra todo mundo.
+        hiddenByAdminAt: null,
         ...(rawCursor ? { createdAt: { lt: new Date(rawCursor) } } : {}),
       },
       orderBy: { createdAt: "asc" },

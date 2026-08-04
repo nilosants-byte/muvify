@@ -1,4 +1,4 @@
-﻿import { BookingStatus, ConsultancyContractStatus, ConsultancyPaymentStatus, CrefValidationStatus, DisputeCaseStatus, PresentialPackageStatus, Prisma, SupportTicketStatus, UserRole } from "@prisma/client";
+﻿import { BookingStatus, ConsultancyContractStatus, ConsultancyPaymentStatus, ContentReportStatus, CrefValidationStatus, DisputeCaseStatus, PresentialPackageStatus, Prisma, SupportTicketStatus, UserRole } from "@prisma/client";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
@@ -436,7 +436,10 @@ export class AdminService {
       openDisputesCount,
       pendingDebtsAgg,
       crefInReviewCount,
-      openTicketsCount
+      openTicketsCount,
+      pendingFeedPostReportsCount,
+      pendingBookingMessageReportsCount,
+      pendingConsultancyMessageReportsCount
     ] = await Promise.all([
       prisma.booking.aggregate({
         where: { status: BookingStatus.COMPLETED, scheduledAt: { gte: start, lt: end } },
@@ -466,7 +469,12 @@ export class AdminService {
         _count: true
       }),
       prisma.providerProfile.count({ where: { crefValidationStatus: CrefValidationStatus.IN_REVIEW } }),
-      prisma.supportTicket.count({ where: { status: SupportTicketStatus.OPEN } })
+      prisma.supportTicket.count({ where: { status: SupportTicketStatus.OPEN } }),
+      // Épico de Frentes, Frente 10, Lote 1: denúncias pendentes de revisão
+      // não apareciam em lugar nenhum do painel admin.
+      prisma.feedPostReport.count({ where: { status: ContentReportStatus.PENDING } }),
+      prisma.bookingMessageReport.count({ where: { status: ContentReportStatus.PENDING } }),
+      prisma.consultancyMessageReport.count({ where: { status: ContentReportStatus.PENDING } })
     ]);
 
     const renewalRevenueThisMonth = renewalPlansThisMonth.reduce((s, p) => s + (p.contract?.paymentAmountCents ?? 0), 0);
@@ -516,7 +524,9 @@ export class AdminService {
         pendingDebtsCount: pendingDebtsAgg._count,
         pendingDebtsAmountCents: pendingDebtsAgg._sum.amountCents ?? 0,
         crefInReviewCount,
-        openTicketsCount
+        openTicketsCount,
+        pendingReportsCount:
+          pendingFeedPostReportsCount + pendingBookingMessageReportsCount + pendingConsultancyMessageReportsCount
       }
     };
   }

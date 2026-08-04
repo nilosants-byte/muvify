@@ -1,7 +1,7 @@
 import { UserRole } from "@prisma/client";
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
-import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
+import { uploadRateLimiter, writeRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { AdminController } from "../controllers/admin.controller";
@@ -18,6 +18,8 @@ import {
   adminListDebtsQuerySchema,
   adminListNoShowReportsSchema,
   adminListDisputeCasesQuerySchema,
+  adminListReportsSchema,
+  adminReportActionSchema,
   adminLookupBookingDetailSchema,
   adminLookupBookingsSchema,
   adminLookupChatsSchema,
@@ -189,6 +191,23 @@ adminRoutes.post(
   uploadRateLimiter,
   validate(adminResolveDisputeCaseSchema),
   adminController.resolveDisputeCase
+);
+
+// Épico de Frentes, Frente 10, Lote 1: fila unificada de moderação de
+// denúncias (post, chat de agendamento, chat de consultoria) - antes não
+// existia nenhum endpoint que lesse essas 3 tabelas.
+adminRoutes.get("/reports", validate(adminListReportsSchema), adminController.listReports);
+adminRoutes.patch(
+  "/reports/:type/:id/dismiss",
+  writeRateLimiter,
+  validate(adminReportActionSchema),
+  adminController.dismissReport
+);
+adminRoutes.patch(
+  "/reports/:type/:id/hide-content",
+  writeRateLimiter,
+  validate(adminReportActionSchema),
+  adminController.hideReportedContent
 );
 
 adminRoutes.get("/exercises", validate(listExercisesSchema), adminController.listPrebuiltExercises.bind(adminController));

@@ -143,6 +143,7 @@ export const queryKeys = {
     debts: (params?: object) => ["admin", "debts", params] as const,
     noShowReports: (params?: object) => ["admin", "noShowReports", params] as const,
     dataRetentionRuns: (params?: object) => ["admin", "dataRetentionRuns", params] as const,
+    reports: (params?: object) => ["admin", "reports", params] as const,
   },
 
   // ── Exercícios ─────────────────────────────────────────────────────────────

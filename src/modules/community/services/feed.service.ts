@@ -36,9 +36,12 @@ export async function getFeed(viewerId: string, page: number, limit: number) {
   // Épico de Frentes, Frente 8, Lote 2: post denunciado passa a sumir do
   // feed de quem denunciou (sem afetar a visão de outros seguidores) - o
   // "Denunciar" do app não fazia nada até este lote.
+  // Frente 10, Lote 1: post ocultado por um admin (denúncia procedente)
+  // some pra todo mundo, não só pra quem denunciou.
   const where = {
     userId: { in: visibleUserIds },
     reports: { none: { reporterId: viewerId } },
+    hiddenByAdminAt: null,
   };
 
   const [posts, total] = await Promise.all([
@@ -171,9 +174,22 @@ async function assertNotReportedByViewer(postId: string, viewerId: string): Prom
   }
 }
 
+// Épico de Frentes, Frente 10, Lote 1: post ocultado por um admin (denúncia
+// procedente) precisa desaparecer de curtir/comentar/ler comentários pra
+// todo mundo, não só da listagem principal do feed - mesmo raciocínio já
+// aplicado a post denunciado (assertNotReportedByViewer, por viewer) e a
+// post de autor suspenso (assertFollowsOrOwnsPost).
+async function assertNotHiddenByAdmin(postId: string): Promise<void> {
+  const post = await prisma.feedPost.findUnique({ where: { id: postId }, select: { hiddenByAdminAt: true } });
+  if (post?.hiddenByAdminAt) {
+    throw new AppError("Post não encontrado.", StatusCodes.NOT_FOUND);
+  }
+}
+
 async function assertPostVisibleToViewer(postId: string, authorId: string, viewerId: string): Promise<void> {
   await assertFollowsOrOwnsPost(authorId, viewerId);
   await assertNotReportedByViewer(postId, viewerId);
+  await assertNotHiddenByAdmin(postId);
 }
 
 export async function toggleLike(postId: string, userId: string): Promise<{ liked: boolean }> {
