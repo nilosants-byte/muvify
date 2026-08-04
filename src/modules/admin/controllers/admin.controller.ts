@@ -53,8 +53,15 @@ export class AdminController {
   async listSupportTickets(request: Request, response: Response) {
     const payload = await adminService.listSupportTickets(request.user!.id, {
       status: request.query.status as "OPEN" | "ANSWERED" | undefined,
-      take: request.query.take ? Number(request.query.take) : undefined
+      take: request.query.take ? Number(request.query.take) : undefined,
+      skip: request.query.skip ? Number(request.query.skip) : undefined,
+      q: request.query.q ? String(request.query.q) : undefined
     });
+    return response.json(payload);
+  }
+
+  async getSupportTicketDetail(request: Request, response: Response) {
+    const payload = await adminService.getSupportTicketDetail(request.user!.id, request.params.ticketId);
     return response.json(payload);
   }
 
@@ -185,7 +192,12 @@ export class AdminController {
   }
 
   async searchUsers(request: Request, response: Response) {
-    const payload = await adminService.searchUsers(request.user!.id, String(request.query.q ?? ""));
+    const payload = await adminService.searchUsers(request.user!.id, String(request.query.q ?? ""), {
+      page: request.query.page ? Number(request.query.page) : undefined,
+      limit: request.query.limit ? Number(request.query.limit) : undefined,
+      role: request.query.role as "CLIENT" | "PROVIDER" | "ADMIN" | undefined,
+      suspended: typeof request.query.suspended === "string" ? request.query.suspended === "true" : undefined
+    });
     return response.json(payload);
   }
 

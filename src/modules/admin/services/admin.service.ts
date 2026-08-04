@@ -24,6 +24,8 @@ type DashboardInput = {
 type SupportQueueInput = {
   status?: "OPEN" | "ANSWERED";
   take?: number;
+  skip?: number;
+  q?: string;
 };
 
 type SupportReplyInput = {
@@ -439,7 +441,8 @@ export class AdminService {
       openTicketsCount,
       pendingFeedPostReportsCount,
       pendingBookingMessageReportsCount,
-      pendingConsultancyMessageReportsCount
+      pendingConsultancyMessageReportsCount,
+      overdueSupportTicketsCount
     ] = await Promise.all([
       prisma.booking.aggregate({
         where: { status: BookingStatus.COMPLETED, scheduledAt: { gte: start, lt: end } },
@@ -474,7 +477,14 @@ export class AdminService {
       // não apareciam em lugar nenhum do painel admin.
       prisma.feedPostReport.count({ where: { status: ContentReportStatus.PENDING } }),
       prisma.bookingMessageReport.count({ where: { status: ContentReportStatus.PENDING } }),
-      prisma.consultancyMessageReport.count({ where: { status: ContentReportStatus.PENDING } })
+      prisma.consultancyMessageReport.count({ where: { status: ContentReportStatus.PENDING } }),
+      // Épico de Frentes, Frente 10, Lote 4: openTicketsCount não distinguia
+      // "aberto agora" de "aberto há uma semana" - mesmo threshold de 48h
+      // já prometido ao usuário na tela de Suporte ("resposta em até 2 dias
+      // úteis").
+      prisma.supportTicket.count({
+        where: { status: SupportTicketStatus.OPEN, createdAt: { lte: new Date(Date.now() - 48 * 60 * 60 * 1000) } }
+      })
     ]);
 
     const renewalRevenueThisMonth = renewalPlansThisMonth.reduce((s, p) => s + (p.contract?.paymentAmountCents ?? 0), 0);
@@ -525,6 +535,7 @@ export class AdminService {
         pendingDebtsAmountCents: pendingDebtsAgg._sum.amountCents ?? 0,
         crefInReviewCount,
         openTicketsCount,
+        overdueSupportTicketsCount,
         pendingReportsCount:
           pendingFeedPostReportsCount + pendingBookingMessageReportsCount + pendingConsultancyMessageReportsCount
       }
@@ -535,6 +546,10 @@ export class AdminService {
   // nada sobre o contexto financeiro/disciplinar do usuário — um admin podia
   // responder um ticket de reclamação sem saber que esse mesmo usuário tem
   // dívida em aberto, disputa em julgamento ou está suspenso.
+  // Épico de Frentes, Frente 10, Lote 4: take fixo (máx 200) sem skip/total
+  // - com backlog grande, os tickets mais antigos (justamente os que mais
+  // estouraram prazo, já que orderBy é desc) ficavam permanentemente
+  // inalcançáveis. Ganha paginação real e busca por nome/e-mail do usuário.
   async listSupportTickets(adminId: string, input: SupportQueueInput) {
     await this.ensureAdminAccess(adminId);
     const status =
@@ -543,41 +558,60 @@ export class AdminService {
         : SupportTicketStatus.OPEN;
 
     const take = Math.min(Math.max(input.take ?? 100, 1), 200);
-    const tickets = await prisma.supportTicket.findMany({
-      where: {
-        status
-      },
-      orderBy: {
-        createdAt: "desc"
-      },
-      take,
-      select: {
-        id: true,
-        subject: true,
-        message: true,
-        status: true,
-        adminResponse: true,
-        respondedAt: true,
-        createdAt: true,
-        updatedAt: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-            suspendedAt: true
+    const skip = Math.max(input.skip ?? 0, 0);
+    const q = input.q?.trim();
+
+    const where: Prisma.SupportTicketWhereInput = {
+      status,
+      ...(q
+        ? {
+            user: {
+              OR: [
+                { name: { contains: q, mode: "insensitive" } },
+                { email: { contains: q, mode: "insensitive" } }
+              ]
+            }
           }
+        : {})
+    };
+
+    const [tickets, total] = await Promise.all([
+      prisma.supportTicket.findMany({
+        where,
+        orderBy: {
+          createdAt: "desc"
         },
-        respondedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true
+        take,
+        skip,
+        select: {
+          id: true,
+          subject: true,
+          message: true,
+          status: true,
+          adminResponse: true,
+          respondedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              suspendedAt: true
+            }
+          },
+          respondedBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
           }
         }
-      }
-    });
+      }),
+      prisma.supportTicket.count({ where })
+    ]);
 
     const userIds = Array.from(new Set(tickets.map((t) => t.user.id)));
     const [debts, disputes] = userIds.length
@@ -610,14 +644,61 @@ export class AdminService {
       if (d.provider?.userId) disputeUserIds.add(d.provider.userId);
     });
 
-    return tickets.map((ticket) => ({
-      ...ticket,
-      indicators: {
-        hasOpenDebt: debtUserIds.has(ticket.user.id),
-        hasOpenDispute: disputeUserIds.has(ticket.user.id),
-        isSuspended: Boolean(ticket.user.suspendedAt)
+    return {
+      items: tickets.map((ticket) => ({
+        ...ticket,
+        indicators: {
+          hasOpenDebt: debtUserIds.has(ticket.user.id),
+          hasOpenDispute: disputeUserIds.has(ticket.user.id),
+          isSuspended: Boolean(ticket.user.suspendedAt)
+        }
+      })),
+      total
+    };
+  }
+
+  // Épico de Frentes, Frente 10, Lote 4: não existia endpoint de detalhe
+  // de um ticket - só a listagem.
+  async getSupportTicketDetail(adminId: string, ticketId: string) {
+    await this.ensureAdminAccess(adminId);
+
+    const ticket = await prisma.supportTicket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        subject: true,
+        message: true,
+        status: true,
+        adminResponse: true,
+        respondedAt: true,
+        parentTicketId: true,
+        createdAt: true,
+        updatedAt: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            suspendedAt: true
+          }
+        },
+        respondedBy: {
+          select: { id: true, name: true, email: true }
+        },
+        parentTicket: {
+          select: { id: true, subject: true, adminResponse: true, respondedAt: true }
+        },
+        childTickets: {
+          orderBy: { createdAt: "desc" },
+          select: { id: true, subject: true, status: true, createdAt: true }
+        }
       }
-    }));
+    });
+    if (!ticket) {
+      throw new AppError("Chamado de suporte não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    return ticket;
   }
 
   async listDataRetentionRuns(adminUserId: string, input: DataRetentionRunsInput) {
@@ -1674,42 +1755,68 @@ export class AdminService {
   // buscar um usuário por nome/e-mail e ver tudo relacionado a ele num
   // lugar só — a única busca disponível exigia CPF, e suspender só era
   // possível a partir do detalhe de uma disputa já aberta.
-  async searchUsers(adminId: string, query: string) {
+  // Épico de Frentes, Frente 10, Lote 4: take fixo (30) sem paginação real,
+  // sem filtro por role/suspensão - sem digitar >=3 caracteres o admin não
+  // via ninguém, e resultado além dos 30 primeiros ficava inalcançável.
+  async searchUsers(
+    adminId: string,
+    query: string,
+    input: { page?: number; limit?: number; role?: "CLIENT" | "PROVIDER" | "ADMIN"; suspended?: boolean } = {}
+  ) {
     await this.ensureAdminAccess(adminId);
     const q = query.trim();
     if (q.length < 3) {
       throw new AppError("Digite pelo menos 3 caracteres para buscar.", StatusCodes.BAD_REQUEST);
     }
 
-    const users = await prisma.user.findMany({
-      where: {
-        OR: [
-          { name: { contains: q, mode: "insensitive" } },
-          { email: { contains: q, mode: "insensitive" } }
-        ]
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        suspendedAt: true,
-        createdAt: true,
-        providerProfile: { select: { id: true } }
-      },
-      orderBy: { createdAt: "desc" },
-      take: 30
-    });
+    const page = Math.max(input.page ?? 1, 1);
+    const limit = Math.min(Math.max(input.limit ?? 30, 1), 100);
+    const skip = (page - 1) * limit;
 
-    return users.map((u) => ({
-      id: u.id,
-      name: u.name,
-      email: u.email,
-      role: u.role,
-      suspendedAt: u.suspendedAt,
-      createdAt: u.createdAt,
-      isProvider: Boolean(u.providerProfile)
-    }));
+    const where: Prisma.UserWhereInput = {
+      OR: [
+        { name: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } }
+      ],
+      ...(input.role ? { role: input.role } : {}),
+      ...(typeof input.suspended === "boolean"
+        ? { suspendedAt: input.suspended ? { not: null } : null }
+        : {})
+    };
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          suspendedAt: true,
+          createdAt: true,
+          providerProfile: { select: { id: true } }
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit
+      }),
+      prisma.user.count({ where })
+    ]);
+
+    return {
+      items: users.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        suspendedAt: u.suspendedAt,
+        createdAt: u.createdAt,
+        isProvider: Boolean(u.providerProfile)
+      })),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit)
+    };
   }
 
   async getUserDetail(adminId: string, userId: string) {
@@ -1721,6 +1828,7 @@ export class AdminService {
         id: true,
         name: true,
         email: true,
+        phone: true,
         role: true,
         suspendedAt: true,
         suspensionReason: true,
@@ -1728,6 +1836,8 @@ export class AdminService {
         createdAt: true,
         legalHoldUntil: true,
         legalHoldReason: true,
+        emailVerifiedAt: true,
+        twoFactorEnabled: true,
         providerProfile: {
           select: { id: true, displayName: true, crefValidationStatus: true, mpAccountId: true }
         }
@@ -1738,6 +1848,42 @@ export class AdminService {
     }
 
     const providerId = user.providerProfile?.id ?? null;
+
+    // Épico de Frentes, Frente 10, Lote 4: getUserDetail só trazia
+    // dívida/disputa - nada de tickets de suporte, denúncias feitas/
+    // recebidas. Praticamente inútil pra operação não-financeira.
+    const [supportTicketsCount, reportsFiledCount, postsAuthoredIds, messagesAuthoredIds] = await Promise.all([
+      prisma.supportTicket.count({ where: { userId } }),
+      Promise.all([
+        prisma.feedPostReport.count({ where: { reporterId: userId } }),
+        prisma.bookingMessageReport.count({ where: { reporterId: userId } }),
+        prisma.consultancyMessageReport.count({ where: { reporterId: userId } })
+      ]).then(([a, b, c]) => a + b + c),
+      prisma.feedPost.findMany({ where: { userId }, select: { id: true } }),
+      Promise.all([
+        prisma.bookingMessage.findMany({ where: { senderId: userId }, select: { id: true } }),
+        prisma.consultancyMessage.findMany({ where: { senderId: userId }, select: { id: true } })
+      ])
+    ]);
+    const [bookingMessagesAuthored, consultancyMessagesAuthored] = messagesAuthoredIds;
+    const [reportsAgainstFromPosts, reportsAgainstFromBookingMessages, reportsAgainstFromConsultancyMessages] =
+      await Promise.all([
+        postsAuthoredIds.length
+          ? prisma.feedPostReport.count({ where: { postId: { in: postsAuthoredIds.map((p) => p.id) } } })
+          : Promise.resolve(0),
+        bookingMessagesAuthored.length
+          ? prisma.bookingMessageReport.count({
+              where: { messageId: { in: bookingMessagesAuthored.map((m) => m.id) } }
+            })
+          : Promise.resolve(0),
+        consultancyMessagesAuthored.length
+          ? prisma.consultancyMessageReport.count({
+              where: { messageId: { in: consultancyMessagesAuthored.map((m) => m.id) } }
+            })
+          : Promise.resolve(0)
+      ]);
+    const reportsAgainstCount =
+      reportsAgainstFromPosts + reportsAgainstFromBookingMessages + reportsAgainstFromConsultancyMessages;
 
     const [clientDebts, clientDisputes, providerDebts, providerDisputes] = await Promise.all([
       prisma.debtRecord.findMany({
@@ -1774,6 +1920,7 @@ export class AdminService {
       id: user.id,
       name: user.name,
       email: user.email,
+      phone: user.phone,
       role: user.role,
       suspendedAt: user.suspendedAt,
       suspensionReason: user.suspensionReason,
@@ -1781,6 +1928,8 @@ export class AdminService {
       createdAt: user.createdAt,
       legalHoldUntil: user.legalHoldUntil,
       legalHoldReason: user.legalHoldReason,
+      emailVerifiedAt: user.emailVerifiedAt,
+      twoFactorEnabled: user.twoFactorEnabled,
       provider: user.providerProfile
         ? {
             id: user.providerProfile.id,
@@ -1792,7 +1941,10 @@ export class AdminService {
       clientDebts,
       clientDisputes,
       providerDebts,
-      providerDisputes
+      providerDisputes,
+      supportTicketsCount,
+      reportsFiledCount,
+      reportsAgainstCount
     };
   }
 }

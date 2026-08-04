@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Alert, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
-import { adminApi } from "../../services/api/client";
+import { adminApi, AdminSupportTicket } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { AdminScaffold } from "./AdminScaffold";
@@ -17,21 +17,67 @@ type Props = {
 
 type SupportStatus = "OPEN" | "ANSWERED";
 
+const PAGE_SIZE = 30;
+// Épico de Frentes, Frente 10, Lote 4: mesmo threshold de 48h já usado no
+// attentionNeeded (overdueSupportTicketsCount) - mesma promessa de "2 dias
+// úteis" já feita na tela de Suporte do usuário.
+const OVERDUE_THRESHOLD_MS = 48 * 60 * 60 * 1000;
+
+function isOverdue(createdAt: string) {
+  return Date.now() - new Date(createdAt).getTime() > OVERDUE_THRESHOLD_MS;
+}
+
 export function AdminSupportScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const [status, setStatus] = useState<SupportStatus>("OPEN");
+  const [searchInput, setSearchInput] = useState("");
+  const [q, setQ] = useState("");
   const [answeringId, setAnsweringId] = useState<string | null>(null);
   const [responseMessage, setResponseMessage] = useState("");
   const [submittingId, setSubmittingId] = useState<string | null>(null);
 
+  // Épico de Frentes, Frente 10, Lote 4: take fixo (100) sem skip - tickets
+  // mais antigos (justamente os que mais estouraram prazo) ficavam
+  // permanentemente inalcançáveis. "Carregar mais" no mesmo padrão de
+  // FriendsListScreen.
+  const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
+  const [total, setTotal] = useState(0);
+  const [skip, setSkip] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const ticketsQuery = useAuthQuery(
-    queryKeys.admin.supportTickets({ status, take: 100 }),
-    (token) => adminApi.listSupportTickets(token, { status, take: 100 })
+    queryKeys.admin.supportTickets({ status, q, take: PAGE_SIZE }),
+    (token) => adminApi.listSupportTickets(token, { status, q: q || undefined, take: PAGE_SIZE })
   );
 
   const loading = ticketsQuery.isLoading;
-  const tickets = ticketsQuery.data ?? [];
+
+  useEffect(() => {
+    if (!ticketsQuery.data) return;
+    setTickets(ticketsQuery.data.items);
+    setTotal(ticketsQuery.data.total);
+    setSkip(ticketsQuery.data.items.length);
+  }, [ticketsQuery.data]);
+
+  const hasMore = tickets.length < total;
+
+  async function loadMore() {
+    if (loadingMore || !hasMore) return;
+    try {
+      setLoadingMore(true);
+      const page = await runWithAuth((token) =>
+        adminApi.listSupportTickets(token, { status, q: q || undefined, take: PAGE_SIZE, skip })
+      );
+      setTickets((prev) => [...prev, ...page.items]);
+      setTotal(page.total);
+      setSkip((prev) => prev + page.items.length);
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar mais chamados." });
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     if (ticketsQuery.error) {
@@ -44,6 +90,10 @@ export function AdminSupportScreen({ navigation }: Props) {
     setResponseMessage("");
     void ticketsQuery.refetch();
   }, [ticketsQuery.refetch]));
+
+  function submitSearch() {
+    setQ(searchInput.trim());
+  }
 
   async function submitReply(ticketId: string) {
     const message = responseMessage.trim();
@@ -89,6 +139,18 @@ export function AdminSupportScreen({ navigation }: Props) {
         }
         contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 10 }}
       >
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <MvInput
+            style={{ flex: 1 }}
+            placeholder="Buscar por nome ou e-mail do usuário"
+            value={searchInput}
+            onChangeText={setSearchInput}
+            autoCapitalize="none"
+            onSubmitEditing={submitSearch}
+          />
+          <MvButton label="Buscar" onPress={submitSearch} />
+        </View>
+
         <View style={{ flexDirection: "row", gap: 8 }}>
           {(["OPEN", "ANSWERED"] as const).map((option) => (
             <TouchableOpacity
@@ -136,6 +198,9 @@ export function AdminSupportScreen({ navigation }: Props) {
               <View style={{ gap: 8 }}>
                 <MvText variant="semi2">{ticket.subject?.trim() || "Solicitação sem assunto"}</MvText>
                 <MvText variant="body4" color="secondary">{ticket.user.name ?? "Usuário"} - {ticket.user.email ?? "—"}</MvText>
+                {status === "OPEN" && isOverdue(ticket.createdAt) ? (
+                  <MvBadge label="Vencido (+48h sem resposta)" variant="red" />
+                ) : null}
                 {ticket.indicators?.isSuspended || ticket.indicators?.hasOpenDebt || ticket.indicators?.hasOpenDispute ? (
                   <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
                     {ticket.indicators.isSuspended ? (
@@ -205,6 +270,15 @@ export function AdminSupportScreen({ navigation }: Props) {
             </MvCard>
           );
         })}
+
+        {hasMore ? (
+          <MvButton
+            variant="outline"
+            label={loadingMore ? "Carregando..." : "Carregar mais"}
+            loading={loadingMore}
+            onPress={() => void loadMore()}
+          />
+        ) : null}
       </ScrollView>
     </AdminScaffold>
   );

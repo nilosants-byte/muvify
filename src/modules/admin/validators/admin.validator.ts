@@ -33,8 +33,14 @@ export const reviewProviderCrefSchema = z.object({
 export const adminSupportQueueQuerySchema = z.object({
   query: z.object({
     status: z.enum(["OPEN", "ANSWERED"]).optional(),
-    take: z.coerce.number().int().min(1).max(200).optional()
+    take: z.coerce.number().int().min(1).max(200).optional(),
+    skip: z.coerce.number().int().min(0).optional(),
+    q: z.string().trim().min(1).max(200).optional()
   })
+});
+
+export const adminSupportTicketDetailSchema = z.object({
+  params: z.object({ ticketId: z.string().uuid() })
 });
 
 export const adminSupportReplySchema = z.object({
@@ -177,7 +183,11 @@ export const adminExportUserDataSchema = z.object({
 
 export const adminSearchUsersSchema = z.object({
   query: z.object({
-    q: z.string().trim().min(3).max(200)
+    q: z.string().trim().min(3).max(200),
+    page: z.coerce.number().int().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    role: z.enum(["CLIENT", "PROVIDER", "ADMIN"]).optional(),
+    suspended: z.enum(["true", "false"]).optional()
   })
 });
 

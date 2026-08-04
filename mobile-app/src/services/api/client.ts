@@ -501,6 +501,7 @@ export type AdminDashboardOverview = {
     pendingDebtsAmountCents: number;
     crefInReviewCount: number;
     openTicketsCount: number;
+    overdueSupportTicketsCount: number;
     pendingReportsCount: number;
   };
 };
@@ -1592,18 +1593,42 @@ export const adminApi = {
       body: input
     });
   },
+  // Épico de Frentes, Frente 10, Lote 4: ganha skip (paginação real) e q
+  // (busca por nome/e-mail do usuário) - antes o take fixo (máx 200) sem
+  // skip deixava os tickets mais antigos permanentemente inalcançáveis.
   listSupportTickets(
     token: string,
     params?: {
       status?: "OPEN" | "ANSWERED";
       take?: number;
+      skip?: number;
+      q?: string;
     }
   ) {
     const query = new URLSearchParams();
     if (params?.status) query.set("status", params.status);
     if (typeof params?.take === "number") query.set("take", String(params.take));
+    if (typeof params?.skip === "number") query.set("skip", String(params.skip));
+    if (params?.q) query.set("q", params.q);
     const suffix = query.toString() ? `?${query}` : "";
-    return apiRequest<AdminSupportTicket[]>(`/admin/support/tickets${suffix}`, { token });
+    return apiRequest<{ items: AdminSupportTicket[]; total: number }>(`/admin/support/tickets${suffix}`, { token });
+  },
+  getSupportTicketDetail(token: string, ticketId: string) {
+    return apiRequest<{
+      id: string;
+      subject: string | null;
+      message: string;
+      status: "OPEN" | "ANSWERED";
+      adminResponse: string | null;
+      respondedAt: string | null;
+      parentTicketId: string | null;
+      createdAt: string;
+      updatedAt: string;
+      user: { id: string; name: string; email: string; role: UserRole; suspendedAt: string | null };
+      respondedBy: { id: string; name: string; email: string } | null;
+      parentTicket: { id: string; subject: string | null; adminResponse: string | null; respondedAt: string | null } | null;
+      childTickets: Array<{ id: string; subject: string | null; status: "OPEN" | "ANSWERED"; createdAt: string }>;
+    }>(`/admin/support/tickets/${ticketId}`, { token });
   },
   replySupportTicket(token: string, ticketId: string, responseMessage: string) {
     return apiRequest<AdminSupportTicket>(`/admin/support/tickets/${ticketId}/respond`, {
@@ -1759,11 +1784,35 @@ export const adminApi = {
       body: params
     });
   },
-  searchUsers(token: string, q: string) {
-    return apiRequest<AdminUserSearchResult[]>(`/admin/users/search?q=${encodeURIComponent(q)}`, { token });
+  // Épico de Frentes, Frente 10, Lote 4: take fixo (30) sem paginação real
+  // e sem filtro por role/suspensão - resultado além dos 30 primeiros
+  // ficava inalcançável.
+  searchUsers(
+    token: string,
+    q: string,
+    params?: { page?: number; limit?: number; role?: "CLIENT" | "PROVIDER" | "ADMIN"; suspended?: boolean }
+  ) {
+    const query = new URLSearchParams({ q });
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.role) query.set("role", params.role);
+    if (typeof params?.suspended === "boolean") query.set("suspended", String(params.suspended));
+    return apiRequest<{ items: AdminUserSearchResult[]; total: number; page: number; totalPages: number }>(
+      `/admin/users/search?${query}`,
+      { token }
+    );
   },
   getUserDetail(token: string, userId: string) {
     return apiRequest<AdminUserDetail>(`/admin/users/${userId}`, { token });
+  },
+  // Épico de Frentes, Frente 10, Lote 4: rota existe desde a Frente 3 mas
+  // nunca ganhou tela no mobile - só era acessível via chamada HTTP direta.
+  changeUserRole(token: string, userId: string, role: "CLIENT" | "PROVIDER", reason: string) {
+    return apiRequest<{ id: string; name: string; email: string; role: UserRole }>(`/admin/users/${userId}/role`, {
+      method: "PATCH",
+      token,
+      body: { role, reason }
+    });
   },
   listDebts(token: string, params?: { status?: DebtRecordStatus; skip?: number; take?: number }) {
     const query = new URLSearchParams();
@@ -1847,6 +1896,7 @@ export type AdminUserDetail = {
   id: string;
   name: string;
   email: string;
+  phone: string | null;
   role: "CLIENT" | "PROVIDER" | "ADMIN";
   suspendedAt: string | null;
   suspensionReason: string | null;
@@ -1854,6 +1904,8 @@ export type AdminUserDetail = {
   createdAt: string;
   legalHoldUntil: string | null;
   legalHoldReason: string | null;
+  emailVerifiedAt: string | null;
+  twoFactorEnabled: boolean;
   provider: {
     id: string;
     displayName: string;
@@ -1864,6 +1916,9 @@ export type AdminUserDetail = {
   clientDisputes: AdminUserDetailDispute[];
   providerDebts: AdminUserDetailDebt[];
   providerDisputes: AdminUserDetailDispute[];
+  supportTicketsCount: number;
+  reportsFiledCount: number;
+  reportsAgainstCount: number;
 };
 
 export type AdminLegalHoldResult = {

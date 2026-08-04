@@ -119,7 +119,7 @@ describe("Suspensão de conta propaga pra busca e novo negócio (Rodada 4, Lote 
   }
 
   it("busca de usuário 360° encontra cliente e profissional por nome/e-mail parcial, e getUserDetail agrega dívidas/disputas", async () => {
-    const results = await adminService.searchUsers(adminId, providerEmail.split("@")[0]);
+    const { items: results } = await adminService.searchUsers(adminId, providerEmail.split("@")[0]);
     expect(results.some((r) => r.id === providerUserId)).toBe(true);
 
     const detail = await adminService.getUserDetail(adminId, providerUserId);

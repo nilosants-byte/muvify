@@ -147,7 +147,7 @@ describe("Bundle de moderados — Admin + Segurança (Rodada 4, Lote 12)", () =>
       }
     });
 
-    const tickets = await adminService.listSupportTickets(adminId, { status: "OPEN", take: 200 });
+    const { items: tickets } = await adminService.listSupportTickets(adminId, { status: "OPEN", take: 200 });
     const found = tickets.find((t) => t.id === ticket.id);
     expect(found).toBeDefined();
     expect(found?.indicators.hasOpenDispute).toBe(true);

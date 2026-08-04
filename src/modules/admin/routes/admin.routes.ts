@@ -36,6 +36,7 @@ import {
   adminSuspendUserSchema,
   adminSupportQueueQuerySchema,
   adminSupportReplySchema,
+  adminSupportTicketDetailSchema,
   adminUserDetailSchema,
   adminWriteOffDebtSchema,
   reviewProviderCrefSchema
@@ -76,6 +77,11 @@ adminRoutes.get(
   "/support/tickets",
   validate(adminSupportQueueQuerySchema),
   adminController.listSupportTickets
+);
+adminRoutes.get(
+  "/support/tickets/:ticketId",
+  validate(adminSupportTicketDetailSchema),
+  adminController.getSupportTicketDetail
 );
 
 adminRoutes.patch(

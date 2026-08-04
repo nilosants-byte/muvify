@@ -28,6 +28,12 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
   const [query, setQuery] = useState(initialQuery ?? "");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<AdminUserSearchResult[] | null>(null);
+  // Épico de Frentes, Frente 10, Lote 4: take fixo (30) sem paginação real
+  // - resultado além dos 30 primeiros ficava inalcançável.
+  const [resultsTotal, setResultsTotal] = useState(0);
+  const [resultsPage, setResultsPage] = useState(1);
+  const [loadingMoreResults, setLoadingMoreResults] = useState(false);
+  const RESULTS_PAGE_SIZE = 20;
 
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
@@ -43,6 +49,12 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
   const [holdReason, setHoldReason] = useState("");
   const [exporting, setExporting] = useState(false);
 
+  // Épico de Frentes, Frente 10, Lote 4: changeUserRole existe desde a
+  // Frente 3 mas nunca ganhou tela mobile - só chamada HTTP direta.
+  const [changingRole, setChangingRole] = useState(false);
+  const [showRoleForm, setShowRoleForm] = useState(false);
+  const [roleReason, setRoleReason] = useState("");
+
   async function search() {
     const trimmed = query.trim();
     if (trimmed.length < 3) {
@@ -53,12 +65,33 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
       setSearching(true);
       setSelectedUserId(null);
       setDetail(null);
-      const found = await runWithAuth((token) => adminApi.searchUsers(token, trimmed));
-      setResults(found);
+      const found = await runWithAuth((token) => adminApi.searchUsers(token, trimmed, { page: 1, limit: RESULTS_PAGE_SIZE }));
+      setResults(found.items);
+      setResultsTotal(found.total);
+      setResultsPage(1);
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao buscar usuários.", navigation });
     } finally {
       setSearching(false);
+    }
+  }
+
+  async function loadMoreResults() {
+    const trimmed = query.trim();
+    if (loadingMoreResults || !results || results.length >= resultsTotal) return;
+    try {
+      setLoadingMoreResults(true);
+      const nextPage = resultsPage + 1;
+      const found = await runWithAuth((token) =>
+        adminApi.searchUsers(token, trimmed, { page: nextPage, limit: RESULTS_PAGE_SIZE })
+      );
+      setResults((prev) => [...(prev ?? []), ...found.items]);
+      setResultsTotal(found.total);
+      setResultsPage(nextPage);
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar mais usuários." });
+    } finally {
+      setLoadingMoreResults(false);
     }
   }
 
@@ -164,6 +197,28 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
     }
   }
 
+  async function submitChangeRole() {
+    if (!detail) return;
+    const trimmedReason = roleReason.trim();
+    if (trimmedReason.length < 5) {
+      showToast("Explique o motivo da troca de tipo de conta (mínimo 5 caracteres).", "error");
+      return;
+    }
+    const newRole = detail.role === "PROVIDER" ? "CLIENT" : "PROVIDER";
+    try {
+      setChangingRole(true);
+      await runWithAuth((token) => adminApi.changeUserRole(token, detail.id, newRole, trimmedReason));
+      showToast("Tipo de conta atualizado. A sessão atual do usuário foi encerrada.", "success");
+      setShowRoleForm(false);
+      setRoleReason("");
+      await openUser(detail.id);
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao trocar o tipo de conta.", navigation });
+    } finally {
+      setChangingRole(false);
+    }
+  }
+
   async function exportData() {
     if (!detail) return;
     try {
@@ -220,6 +275,15 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
             ))
           : null}
 
+        {results && !selectedUserId && results.length < resultsTotal ? (
+          <MvButton
+            variant="outline"
+            label={loadingMoreResults ? "Carregando..." : "Carregar mais"}
+            loading={loadingMoreResults}
+            onPress={() => void loadMoreResults()}
+          />
+        ) : null}
+
         {selectedUserId ? (
           <MvButton variant="ghost" label="← Voltar aos resultados" onPress={() => { setSelectedUserId(null); setDetail(null); }} />
         ) : null}
@@ -236,8 +300,20 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
               <View style={{ gap: 6 }}>
                 <MvText variant="h2">{detail.name}</MvText>
                 <MvText variant="body4" color="secondary">{detail.email}</MvText>
+                {detail.phone ? (
+                  <MvText variant="body4" color="secondary">{detail.phone}</MvText>
+                ) : null}
                 <MvText variant="body4">
                   {detail.provider ? "Profissional" : "Cliente"} · desde {formatDate(detail.createdAt)}
+                </MvText>
+                {/* Épico de Frentes, Frente 10, Lote 4: getUserDetail só trazia
+                    dívida/disputa - nada do lado operacional (verificação,
+                    tickets, denúncias). */}
+                <MvText variant="caption" color="secondary">
+                  E-mail {detail.emailVerifiedAt ? "verificado" : "não verificado"} · 2FA {detail.twoFactorEnabled ? "ativo" : "inativo"}
+                </MvText>
+                <MvText variant="caption" color="secondary">
+                  {detail.supportTicketsCount} chamado(s) de suporte · {detail.reportsFiledCount} denúncia(s) feita(s) · {detail.reportsAgainstCount} denúncia(s) recebida(s)
                 </MvText>
                 {detail.noShowStrikes > 0 ? (
                   <MvText variant="body4" color="secondary">Faltas registradas: {detail.noShowStrikes}</MvText>
@@ -348,6 +424,39 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
                 ) : (
                   <MvButton variant="outline" label="Aplicar legal hold" onPress={() => setShowHoldForm(true)} />
                 )}
+
+                {detail.role !== "ADMIN" ? (
+                  showRoleForm ? (
+                    <View style={{ gap: 4 }}>
+                      <MvText variant="caption" color="secondary">
+                        Troca {detail.role === "PROVIDER" ? "Profissional → Cliente" : "Cliente → Profissional"}. A
+                        sessão atual do usuário será encerrada (precisa fazer login de novo).
+                      </MvText>
+                      <MvInput
+                        multiline
+                        numberOfLines={3}
+                        maxLength={500}
+                        placeholder="Explique o motivo da troca"
+                        value={roleReason}
+                        onChangeText={setRoleReason}
+                        style={{ textAlignVertical: "top" } as any}
+                      />
+                      <MvButton
+                        variant="primary"
+                        label="Confirmar troca de tipo de conta"
+                        loading={changingRole}
+                        onPress={() => void submitChangeRole()}
+                      />
+                      <MvButton variant="ghost" label="Cancelar" onPress={() => { setShowRoleForm(false); setRoleReason(""); }} />
+                    </View>
+                  ) : (
+                    <MvButton
+                      variant="outline"
+                      label={detail.role === "PROVIDER" ? "Trocar para Cliente" : "Trocar para Profissional"}
+                      onPress={() => setShowRoleForm(true)}
+                    />
+                  )
+                ) : null}
 
                 <MvButton variant="ghost" label="Exportar dados deste usuário" loading={exporting} onPress={() => void exportData()} />
               </View>

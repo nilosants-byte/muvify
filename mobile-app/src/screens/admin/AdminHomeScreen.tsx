@@ -155,8 +155,18 @@ export function AdminHomeScreen({ navigation }: Props) {
               onPress={() => navigation.navigate("AdminSupport")}
               style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderTopWidth: 1, borderTopColor: theme.border }}
             >
-              <MvText variant="body3">Tickets de suporte abertos</MvText>
-              <MvText variant="semi3">{overview?.attentionNeeded?.openTicketsCount ?? 0}</MvText>
+              <MvText variant="body3">
+                Tickets de suporte abertos
+                {(overview?.attentionNeeded?.overdueSupportTicketsCount ?? 0) > 0
+                  ? ` (${overview?.attentionNeeded?.overdueSupportTicketsCount} vencido${overview!.attentionNeeded!.overdueSupportTicketsCount > 1 ? "s" : ""})`
+                  : ""}
+              </MvText>
+              <MvText
+                variant="semi3"
+                color={(overview?.attentionNeeded?.overdueSupportTicketsCount ?? 0) > 0 ? "danger" : "primary"}
+              >
+                {overview?.attentionNeeded?.openTicketsCount ?? 0}
+              </MvText>
             </TouchableOpacity>
             {/* Épico de Frentes, Frente 10, Lote 1: denúncia (post/chat) não
                 aparecia em lugar nenhum do painel - fila unificada nova. */}
