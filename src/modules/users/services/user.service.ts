@@ -8,6 +8,7 @@ import {
 } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { env } from "../../../config/env";
+import { CURRENT_TERMS_VERSION } from "../../../config/legal";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
@@ -64,8 +65,16 @@ type SendSupportMessageInput = {
 };
 
 type RecordConsentInput = {
-  termsVersion: string;
+  // Épico de Frentes, Frente 11, Lote 1: termsVersion/acceptedAt enviados
+  // pelo corpo NUNCA são usados pra gravar - existiam antes só porque o
+  // endpoint pedia o cliente mandar, sem nenhuma comparação contra uma
+  // versão vigente conhecida pelo servidor. O tipo mantém os campos (o
+  // validator ainda aceita o corpo antigo, pra não quebrar clientes já em
+  // produção) mas o service ignora e sempre grava a versão canônica.
+  termsVersion?: string;
   acceptedAt?: string;
+  ip?: string;
+  userAgent?: string;
 };
 
 type NotificationPreferenceInput = {
@@ -166,6 +175,7 @@ export class UserService {
         role: true,
         emailVerifiedAt: true,
         twoFactorEnabled: true,
+        termsVersion: true,
         createdAt: true,
         updatedAt: true,
         providerProfile: {
@@ -214,6 +224,10 @@ export class UserService {
       ...user,
       photoUrl: this.mapUserPhotoUrl(user),
       role: effectiveRole,
+      // Épico de Frentes, Frente 11, Lote 1: nada indicava ao app que os
+      // termos vigentes mudaram - usuário antigo ficava sob versão
+      // desatualizada indefinidamente, sem nenhum gate de re-aceite.
+      needsReconsent: user.termsVersion !== CURRENT_TERMS_VERSION,
       providerProfile: user.providerProfile
         ? {
             ...user.providerProfile,
@@ -997,14 +1011,25 @@ export class UserService {
   }
 
   async recordConsent(userId: string, input: RecordConsentInput) {
-    const acceptedAt = input.acceptedAt ? new Date(input.acceptedAt) : new Date();
+    const acceptedAt = new Date();
+
+    await prisma.consentRecord.create({
+      data: {
+        userId,
+        termsVersion: CURRENT_TERMS_VERSION,
+        privacyPolicyVersion: CURRENT_TERMS_VERSION,
+        acceptedAt,
+        ip: input.ip,
+        userAgent: input.userAgent
+      }
+    });
 
     return prisma.user.update({
       where: { id: userId },
       data: {
         termsAcceptedAt: acceptedAt,
         privacyPolicyAcceptedAt: acceptedAt,
-        termsVersion: input.termsVersion
+        termsVersion: CURRENT_TERMS_VERSION
       },
       select: {
         id: true,

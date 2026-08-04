@@ -316,6 +316,7 @@ model User {
   notifications            UserNotification[]
   passwordResetTokens      PasswordResetToken[]
   emailVerificationTokens  EmailVerificationToken[]
+  consentRecords           ConsentRecord[]
   twoFactorLoginChallenges TwoFactorLoginChallenge[]
   twoFactorBackupCodes     TwoFactorBackupCode[]
   anamnesisProfile         ClientAnamnesis?
@@ -814,6 +815,25 @@ model EmailVerificationToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+// Épico de Frentes, Frente 11, Lote 1: User.termsAcceptedAt/
+// privacyPolicyAcceptedAt/termsVersion são 3 campos MUTÁVEIS, sobrescritos
+// a cada novo aceite - impossível provar qual texto foi aceito, quando, ou
+// consultar histórico (LGPD art. 8º §2º põe o ônus da prova no
+// controlador). Append-only - nunca é atualizado ou apagado, só criado.
+model ConsentRecord {
+  id                    String   @id @default(uuid())
+  userId                String
+  termsVersion          String
+  privacyPolicyVersion  String
+  acceptedAt            DateTime
+  ip                    String?
+  userAgent             String?
+  createdAt             DateTime @default(now())
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model Payment {

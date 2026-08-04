@@ -89,7 +89,11 @@ export class UserController {
   }
 
   async recordConsent(request: Request, response: Response) {
-    const result = await userService.recordConsent(request.user!.id, request.body);
+    const result = await userService.recordConsent(request.user!.id, {
+      ...request.body,
+      ip: request.ip,
+      userAgent: typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : undefined
+    });
     return response.json(result);
   }
 

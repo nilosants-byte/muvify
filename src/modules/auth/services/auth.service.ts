@@ -1,6 +1,7 @@
 import { Prisma, UserRole } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { env } from "../../../config/env";
+import { CURRENT_TERMS_VERSION } from "../../../config/legal";
 import { prisma } from "../../../config/prisma";
 import { connectRedis, redis } from "../../../config/redis";
 import { AppError } from "../../../shared/errors/app-error";
@@ -27,8 +28,14 @@ type RegisterInput = {
   password: string;
   phone: string;
   role?: "CLIENT" | "PROVIDER";
+  // Épico de Frentes, Frente 11, Lote 1: termsVersion enviado pelo corpo
+  // nunca é usado pra gravar - o validator ainda exige o campo (não quebra
+  // clientes já em produção), mas o servidor sempre grava a versão
+  // canônica (CURRENT_TERMS_VERSION), nunca o que o cliente mandou.
   termsVersion: string;
   consentAccepted: true;
+  ip?: string;
+  userAgent?: string;
 };
 
 /** Gera um apelido único a partir do nome + prefixo do UUID. */
@@ -211,8 +218,9 @@ export class AuthService {
     password,
     phone,
     role,
-    termsVersion,
-    consentAccepted
+    consentAccepted,
+    ip,
+    userAgent
   }: RegisterInput) {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedPhone = phone.replace(/\D/g, "");
@@ -244,6 +252,7 @@ export class AuthService {
       throw new AppError("Apelido já está em uso. Escolha outro.", StatusCodes.CONFLICT);
     }
 
+    const acceptedAt = new Date();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let user: any;
     try {
@@ -256,9 +265,18 @@ export class AuthService {
         phone: normalizedPhone,
         password: await hashValue(password),
         role: persistedRole,
-        termsAcceptedAt: new Date(),
-        privacyPolicyAcceptedAt: new Date(),
-        termsVersion: termsVersion.trim()
+        termsAcceptedAt: acceptedAt,
+        privacyPolicyAcceptedAt: acceptedAt,
+        termsVersion: CURRENT_TERMS_VERSION,
+        consentRecords: {
+          create: {
+            termsVersion: CURRENT_TERMS_VERSION,
+            privacyPolicyVersion: CURRENT_TERMS_VERSION,
+            acceptedAt,
+            ip,
+            userAgent
+          }
+        }
       },
       select: {
         id: true,

@@ -4,7 +4,11 @@ import { AuthService } from "../services/auth.service";
 const authService = new AuthService();
 export class AuthController {
   async register(request: Request, response: Response) {
-    const result = await authService.register(request.body);
+    const result = await authService.register({
+      ...request.body,
+      ip: request.ip,
+      userAgent: typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : undefined
+    });
     return response.status(StatusCodes.CREATED).json(result);
   }
   async login(request: Request, response: Response) {
