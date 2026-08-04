@@ -723,7 +723,23 @@ export class UserService {
         data: { mpPaymentId: null, mpCardToken: null, mpChargeId: null, failureReason: null }
       });
       await tx.clientAnamnesis.deleteMany({ where: { clientId: userId } });
+      // Épico de Frentes, Frente 9, Lote 6: anonimizar o BookingMessage não
+      // era suficiente - a UserNotification já entregue ao destinatário
+      // (título/corpo com o nome do remetente e um trecho da mensagem, ver
+      // chat.controller.ts::sendMessage) pertence ao destinatário, não ao
+      // autor excluído, e nunca era tocada por essa exclusão.
+      const sentMessageIds = (
+        await tx.bookingMessage.findMany({ where: { senderId: userId }, select: { id: true } })
+      ).map((m) => m.id);
       await tx.bookingMessage.updateMany({ where: { senderId: userId }, data: { content: "[Mensagem removida]", senderId: null } });
+      if (sentMessageIds.length > 0) {
+        await tx.$executeRaw`
+          UPDATE "UserNotification"
+          SET "title" = '💬 Usuário removido', "body" = '[Mensagem removida]'
+          WHERE "data"->>'type' = 'CHAT_MESSAGE'
+            AND "data"->>'messageId' IN (${Prisma.join(sentMessageIds)})
+        `;
+      }
       await tx.completionEvidence.deleteMany({ where: { userId } });
       // Raio-X de pagamentos, Rodada 3, Lote 6: a Política de Privacidade
       // promete reter o conteúdo de tickets de suporte por 5 anos pra defesa
