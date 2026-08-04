@@ -103,9 +103,6 @@ const BOOKING_TYPES_PRO = new Set([
   "BOOKING_EXPIRED", "BOOKING_ATTENDANCE_CODE_AVAILABLE", "BOOKING_ATTENDANCE_CODE_VALIDATED",
   "BOOKING_CONFIRMATION_PENDING", "CHAT_MESSAGE", "SESSION_REMINDER",
 ]);
-const PAYMENT_TYPES_PRO = new Set([
-  "PAYMENT_AUTHORIZED", "PAYMENT_REFUNDED", "PAYMENT_AUTH_FAILED", "PAYMENT_CANCELED",
-]);
 const BOOKING_TYPES_CLIENT = new Set([
   "BOOKING_CONFIRMED", "BOOKING_CANCELLED", "BOOKING_COMPLETED",
   "BOOKING_EXPIRED", "BOOKING_ATTENDANCE_CODE_AVAILABLE",
@@ -177,7 +174,13 @@ function routeNotification(
       // clientId, sem packageId, chega no payload) - a lista de alunos é o
       // destino mais próximo disponível hoje, melhor que cair no genérico.
       (navigationRef as any).navigate("ProfessionalStudents");
-    } else if (PAYMENT_TYPES_PRO.has(type)) {
+    } else if (isPaymentNotificationType(type)) {
+      // Épico de Frentes, Frente 9, Lote 17: PAYMENT_TYPES_PRO era uma
+      // lista fixa que não incluía vários tipos já emitidos pelo backend
+      // (captura, disputa aberta, falha de captura, em mediação, falha de
+      // reembolso) - caíam no fallback genérico. isPaymentNotificationType
+      // (por prefixo) já é usado pra invalidação de cache; agora também
+      // pro roteamento, uma única fonte de verdade.
       (navigationRef as any).navigate("PayoutStatus");
     } else {
       (navigationRef as any).navigate("Notifications");
