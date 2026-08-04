@@ -252,12 +252,18 @@ export function ClientNotificationsDrawer({
     (item: DrawerNotification) => {
       const type = (item.dataRecord.type ?? item.dataRecord.event ?? "").toUpperCase();
       const bookingId = item.dataRecord.bookingId;
+      const contractId = item.dataRecord.contractId;
       markIdsAsRead([item.id]);
       onClose();
       if (!navigation) return;
       try {
         if (type.includes("CHAT")) {
-          navigation.navigate("ClientChatList", bookingId ? { openBookingId: bookingId } : undefined);
+          // Épico de Frentes, Frente 9, Lote 8: mensagem de chat de
+          // consultoria (Lote 7) chega com contractId em vez de bookingId.
+          navigation.navigate(
+            "ClientChatList",
+            bookingId ? { openBookingId: bookingId } : contractId ? { openContractId: contractId } : undefined
+          );
           return;
         }
         if (bookingId && type.includes("PAYMENT")) { navigation.navigate("BookingPaymentStatus", { bookingId }); return; }

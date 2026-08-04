@@ -15,11 +15,19 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
-import { chatApi, ChatMessage, ChatSummary } from "../../services/api/client";
+import {
+  chatApi,
+  consultancyChatApi,
+  ChatMessage,
+  ChatSummary,
+  ConsultancyChatSummary,
+} from "../../services/api/client";
 import {
   isSocketConnected,
   joinBookingRoom,
   leaveBookingRoom,
+  joinConsultancyRoom,
+  leaveConsultancyRoom,
   onNewBookingMessage,
 } from "../../services/realtime/socket";
 import { useAppState } from "../../state/AppState";
@@ -40,6 +48,23 @@ type Tab = "active" | "inactive";
 const POLL_MS_SOCKET_CONNECTED = 20000;
 const POLL_MS_SOCKET_DISCONNECTED = 4000;
 
+// Épico de Frentes, Frente 9, Lote 8: chat de consultoria (mobile) - a lista
+// passa a mesclar duas fontes (agendamento presencial + consultoria online)
+// numa lista só, reaproveitando o mesmo painel de mensagens já existente.
+// "kind" discrimina qual API/sala de socket usar pra cada item.
+type ChatKind = "booking" | "consultancy";
+
+type UnifiedChat = {
+  id: string;
+  kind: ChatKind;
+  rawId: string;
+  isOpen: boolean;
+  otherUser: { name: string; photoUrl?: string | null };
+  clientId: string;
+  lastMessage: { content: string; createdAt: string; isMine: boolean; isSystem: boolean };
+  unreadCount: number;
+};
+
 function initials(name: string) {
   return name.trim().split(/\s+/).filter(Boolean).slice(0, 2)
     .map((p) => p[0] ?? "").join("").toUpperCase() || "?";
@@ -57,43 +82,71 @@ function relativeTime(iso: string): string {
   return `${days}d`;
 }
 
-function mergeChatsPreservingPhoto(prev: ChatSummary[], incoming: ChatSummary[]): ChatSummary[] {
-  const prevMap = new Map(prev.map((c) => [c.bookingId, c]));
-  return incoming.map((next) => {
-    const p = prevMap.get(next.bookingId);
-    return {
-      ...next,
-      otherUser: {
-        ...p?.otherUser,
-        ...next.otherUser,
-        photoUrl: next.otherUser.photoUrl ?? p?.otherUser.photoUrl ?? null,
-      },
-    };
-  });
+function toUnifiedFromBooking(item: ChatSummary): UnifiedChat {
+  return {
+    id: `booking:${item.bookingId}`,
+    kind: "booking",
+    rawId: item.bookingId,
+    isOpen: item.isOpen,
+    otherUser: item.otherUser,
+    clientId: item.clientId,
+    lastMessage: item.lastMessage,
+    unreadCount: item.unreadCount,
+  };
+}
+
+function toUnifiedFromConsultancy(item: ConsultancyChatSummary): UnifiedChat {
+  return {
+    id: `consultancy:${item.contractId}`,
+    kind: "consultancy",
+    rawId: item.contractId,
+    isOpen: item.isOpen,
+    otherUser: item.otherUser,
+    clientId: item.clientId,
+    lastMessage: item.lastMessage,
+    unreadCount: item.unreadCount,
+  };
+}
+
+function mergeChatsPreservingPhoto(prev: UnifiedChat[], incoming: UnifiedChat[]): UnifiedChat[] {
+  const prevMap = new Map(prev.map((c) => [c.id, c]));
+  return incoming
+    .map((next) => {
+      const p = prevMap.get(next.id);
+      return {
+        ...next,
+        otherUser: {
+          ...p?.otherUser,
+          ...next.otherUser,
+          photoUrl: next.otherUser.photoUrl ?? p?.otherUser.photoUrl ?? null,
+        },
+      };
+    })
+    .sort((a, b) => new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime());
 }
 
 async function enrichMissingPhotos(
-  source: ChatSummary[],
-  loader: (bookingId: string) => Promise<{ photoUrl?: string | null }>
-): Promise<ChatSummary[]> {
+  source: UnifiedChat[],
+  loader: (item: UnifiedChat) => Promise<{ photoUrl?: string | null }>
+): Promise<UnifiedChat[]> {
   const missing = source.filter((c) => !c.otherUser.photoUrl);
   if (!missing.length) return source;
   const updates = await Promise.all(
     missing.map(async (c) => {
       try {
-        const u = await loader(c.bookingId);
-        return { bookingId: c.bookingId, photoUrl: u.photoUrl ?? null };
+        const u = await loader(c);
+        return { id: c.id, photoUrl: u.photoUrl ?? null };
       } catch {
-        return { bookingId: c.bookingId, photoUrl: null };
+        return { id: c.id, photoUrl: null };
       }
     })
   );
   const photoMap = new Map(
-    updates.filter((u) => u.photoUrl).map((u) => [u.bookingId, u.photoUrl as string])
+    updates.filter((u) => u.photoUrl).map((u) => [u.id, u.photoUrl as string])
   );
   if (!photoMap.size) return source;
   return source.map((c) => {
-    const p = photoMap.get(c.bookingId);
+    const p = photoMap.get(c.id);
     return p ? { ...c, otherUser: { ...c.otherUser, photoUrl: p } } : c;
   });
 }
@@ -107,7 +160,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
 
   // ── State ───────────────────────────────────────────────────────────────────
   const [tab, setTab] = useState<Tab>("active");
-  const [chats, setChats] = useState<ChatSummary[]>([]);
+  const [chats, setChats] = useState<UnifiedChat[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatOpen, setChatOpen] = useState(true);
@@ -120,10 +173,10 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
   const lastMsgCountRef = useRef(0);
-  const autoOpenedBookingIdRef = useRef<string | null>(null);
+  const autoOpenedIdRef = useRef<string | null>(null);
 
   const selectedChat = useMemo(
-    () => chats.find((c) => c.bookingId === selectedId) ?? null,
+    () => chats.find((c) => c.id === selectedId) ?? null,
     [chats, selectedId]
   );
 
@@ -137,31 +190,55 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
     queryKeys.chat.myChats(),
     async (token) => {
       const data = await chatApi.myChats(token);
-      return enrichMissingPhotos(data, (id) => chatApi.getOtherUser(token, id));
+      const unified = data.map(toUnifiedFromBooking);
+      return enrichMissingPhotos(unified, (item) => chatApi.getOtherUser(token, item.rawId));
     },
   );
 
+  const consultancyChatsQuery = useAuthQuery(
+    queryKeys.consultancyChat.myChats(),
+    async (token) => {
+      const data = await consultancyChatApi.myChats(token);
+      const unified = data.map(toUnifiedFromConsultancy);
+      return enrichMissingPhotos(unified, (item) => consultancyChatApi.getOtherUser(token, item.rawId));
+    },
+  );
+
+  const loading = chatsQuery.isLoading || consultancyChatsQuery.isLoading;
+  // Falha de uma fonte só não deveria esconder a outra - só mostra erro em tela cheia
+  // se as duas falharem.
+  const loadError = chatsQuery.isError && consultancyChatsQuery.isError;
+
+  const refetchAll = useCallback(() => {
+    void chatsQuery.refetch();
+    void consultancyChatsQuery.refetch();
+  }, [chatsQuery, consultancyChatsQuery]);
+
   useEffect(() => {
-    if (chatsQuery.data) {
-      setChats((prev) => mergeChatsPreservingPhoto(prev, chatsQuery.data!));
-    }
-  }, [chatsQuery.data]);
+    const combined = [...(chatsQuery.data ?? []), ...(consultancyChatsQuery.data ?? [])];
+    if (combined.length === 0 && !chatsQuery.data && !consultancyChatsQuery.data) return;
+    setChats((prev) => mergeChatsPreservingPhoto(prev, combined));
+  }, [chatsQuery.data, consultancyChatsQuery.data]);
 
   useEffect(() => {
     return () => { isMountedRef.current = false; };
   }, []);
 
-  const fetchMessages = useCallback(async (bookingId: string, initial = false) => {
+  const fetchMessages = useCallback(async (chat: UnifiedChat, initial = false) => {
     try {
       if (initial) setPanelLoading(true);
-      const data = await runWithAuth((t) => chatApi.getMessages(t, bookingId));
+      const data = await runWithAuth((t) =>
+        chat.kind === "booking"
+          ? chatApi.getMessages(t, chat.rawId)
+          : consultancyChatApi.getMessages(t, chat.rawId)
+      );
       if (!isMountedRef.current) return;
       const incoming = data.messages ?? [];
       setMessages(incoming);
       setChatOpen(data.isOpen ?? true);
       setPanelError(false);
       setChats((prev) => prev.map((c) =>
-        c.bookingId === bookingId
+        c.id === chat.id
           ? { ...c, unreadCount: 0, otherUser: { ...c.otherUser, ...(data.otherUser ?? {}), photoUrl: data.otherUser?.photoUrl ?? c.otherUser.photoUrl ?? null } }
           : c
       ));
@@ -179,22 +256,25 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
   // Polling when a chat is open
   useEffect(() => {
     if (pollRef.current) clearTimeout(pollRef.current);
-    if (!selectedId) return;
+    if (!selectedChat) return;
     const schedule = () => {
       const delay = isSocketConnected() ? POLL_MS_SOCKET_CONNECTED : POLL_MS_SOCKET_DISCONNECTED;
       pollRef.current = setTimeout(async () => {
-        await fetchMessages(selectedId, false);
+        await fetchMessages(selectedChat, false);
         if (isMountedRef.current) schedule();
       }, delay);
     };
     schedule();
     return () => { if (pollRef.current) clearTimeout(pollRef.current); };
-  }, [selectedId, fetchMessages]);
+  }, [selectedChat, fetchMessages]);
 
-  // Tempo real: entra na sala do agendamento selecionado e recebe mensagens novas na hora.
+  // Tempo real: entra na sala do agendamento/contrato selecionado e recebe mensagens novas na hora.
   useEffect(() => {
-    if (!selectedId) return;
-    joinBookingRoom(selectedId);
+    if (!selectedChat) return;
+    const { kind, rawId } = selectedChat;
+    if (kind === "booking") joinBookingRoom(rawId);
+    else joinConsultancyRoom(rawId);
+
     const unsubscribe = onNewBookingMessage((incoming) => {
       setMessages((prev) => {
         if (prev.some((m) => m.id === incoming.id)) return prev;
@@ -203,7 +283,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
       setPanelError(false);
       setChats((prev) =>
         prev.map((c) =>
-          c.bookingId === selectedId
+          c.id === selectedChat.id
             ? {
                 ...c,
                 unreadCount: 0,
@@ -221,27 +301,31 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
     });
     return () => {
       unsubscribe?.();
-      leaveBookingRoom(selectedId);
+      if (kind === "booking") leaveBookingRoom(rawId);
+      else leaveConsultancyRoom(rawId);
     };
-  }, [selectedId, myUserId]);
+  }, [selectedChat, myUserId]);
 
-  const openChat = useCallback((bookingId: string) => {
-    setSelectedId(bookingId);
-    void fetchMessages(bookingId, true);
+  const openChat = useCallback((chat: UnifiedChat) => {
+    setSelectedId(chat.id);
+    void fetchMessages(chat, true);
   }, [fetchMessages]);
 
-  // Épico de Frentes, Frente 9, Lote 4: notificação de mensagem nova
+  // Épico de Frentes, Frente 9, Lote 4/8: notificação de mensagem nova
   // levava pro detalhe do agendamento em vez do chat (push do SO) ou abria
-  // só a lista sem selecionar a conversa (dentro do app) - openBookingId
-  // auto-seleciona a conversa certa assim que a lista carrega.
+  // só a lista sem selecionar a conversa (dentro do app) - openBookingId/
+  // openContractId auto-selecionam a conversa certa assim que a lista carrega.
   useEffect(() => {
     const openBookingId = route.params?.openBookingId;
-    if (!openBookingId || autoOpenedBookingIdRef.current === openBookingId) return;
-    if (chats.some((c) => c.bookingId === openBookingId)) {
-      autoOpenedBookingIdRef.current = openBookingId;
-      openChat(openBookingId);
+    const openContractId = route.params?.openContractId;
+    const targetId = openBookingId ? `booking:${openBookingId}` : openContractId ? `consultancy:${openContractId}` : null;
+    if (!targetId || autoOpenedIdRef.current === targetId) return;
+    const match = chats.find((c) => c.id === targetId);
+    if (match) {
+      autoOpenedIdRef.current = targetId;
+      openChat(match);
     }
-  }, [chats, openChat, route.params?.openBookingId]);
+  }, [chats, openChat, route.params?.openBookingId, route.params?.openContractId]);
 
   const closeChat = useCallback(() => {
     setSelectedId(null);
@@ -251,18 +335,23 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
 
   const sendMessage = useCallback(async () => {
     const text = inputText.trim();
-    if (!text || !selectedId || sending) return;
+    if (!text || !selectedChat || sending) return;
     try {
       setSending(true);
       setInputText("");
-      await runWithAuth((t) => chatApi.sendMessage(t, selectedId, text));
-      await fetchMessages(selectedId, false);
+      const chat = selectedChat;
+      await runWithAuth((t) =>
+        chat.kind === "booking"
+          ? chatApi.sendMessage(t, chat.rawId, text)
+          : consultancyChatApi.sendMessage(t, chat.rawId, text)
+      );
+      await fetchMessages(chat, false);
     } catch {
       setInputText(text);
       showToast("Não foi possível enviar a mensagem.", "error");
     }
     finally { setSending(false); }
-  }, [inputText, selectedId, sending, runWithAuth, fetchMessages]);
+  }, [inputText, selectedChat, sending, runWithAuth, fetchMessages]);
 
   // ── Colors ──────────────────────────────────────────────────────────────────
   const bg = theme.bg;
@@ -367,7 +456,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 10 }}>
               <Ionicons name="alert-circle-outline" size={32} color={text3} />
               <MvText variant="semi3" color="secondary">Falha ao carregar mensagens</MvText>
-              <PressableScale scale={0.95} onPress={() => void fetchMessages(selectedId, true)}>
+              <PressableScale scale={0.95} onPress={() => void fetchMessages(selectedChat, true)}>
                 <MvText variant="semi3" style={{ color: green }}>Tentar novamente</MvText>
               </PressableScale>
             </View>
@@ -496,7 +585,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
         </View>
         <PressableScale
           scale={0.92}
-          onPress={() => void chatsQuery.refetch()}
+          onPress={refetchAll}
           style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", borderWidth: 1, borderColor: border, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="refresh-outline" size={16} color={text2} />
@@ -526,7 +615,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
       </View>
 
       {/* List */}
-      {chatsQuery.isLoading ? (
+      {loading ? (
         <View style={{ paddingTop: 8 }}>
           <SkeletonChatItem />
           <SkeletonChatItem />
@@ -536,11 +625,11 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
         <ScreenEntrance>
         <FlatList
           data={filteredChats}
-          keyExtractor={(c) => c.bookingId}
+          keyExtractor={(c) => c.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 100, paddingTop: 4, gap: 10 }}
           ListEmptyComponent={
-            chatsQuery.isError ? (
+            loadError ? (
               <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32, marginTop: 24 }}>
                 <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: "rgba(239,68,68,0.10)", borderWidth: 1, borderColor: "rgba(239,68,68,0.20)", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
                   <Ionicons name="cloud-offline-outline" size={30} color="#EF4444" />
@@ -558,7 +647,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
                 </MvText>
                 <MvText variant="body4" color="secondary" style={{ textAlign: "center", lineHeight: 20 }}>
                   {tab === "active"
-                    ? "As conversas aparecerão aqui quando seus alunos iniciarem um agendamento."
+                    ? "As conversas aparecerão aqui quando seus alunos iniciarem um agendamento ou consultoria."
                     : "Conversas encerradas aparecem aqui."}
                 </MvText>
               </View>
@@ -575,7 +664,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
             return (
               <PressableScale
                 scale={0.97}
-                onPress={() => openChat(item.bookingId)}
+                onPress={() => openChat(item)}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -623,12 +712,17 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
                   <MvText numberOfLines={1} style={{ fontSize: 12, color: hasUnread ? text1 : text2, fontFamily: hasUnread ? "DMSans_500Medium" : "DMSans_400Regular" }}>
                     {lastContent}
                   </MvText>
-                  <View style={{ marginTop: 3 }}>
+                  <View style={{ flexDirection: "row", marginTop: 3, gap: 6 }}>
                     <View style={{ backgroundColor: item.isOpen ? (isDark ? "rgba(34,197,94,0.12)" : "rgba(22,163,74,0.09)") : (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)"), borderWidth: 1, borderColor: item.isOpen ? (isDark ? "rgba(34,197,94,0.25)" : "rgba(22,163,74,0.20)") : border, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start" }}>
                       <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: item.isOpen ? green : text3 }}>
                         {item.isOpen ? "conversa ativa" : "histórico"}
                       </MvText>
                     </View>
+                    {item.kind === "consultancy" ? (
+                      <View style={{ backgroundColor: isDark ? "rgba(56,189,248,0.12)" : "rgba(2,132,199,0.08)", borderWidth: 1, borderColor: isDark ? "rgba(56,189,248,0.28)" : "rgba(2,132,199,0.20)", borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start" }}>
+                        <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: isDark ? "#38BDF8" : "#0284C7" }}>consultoria</MvText>
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               </PressableScale>

@@ -41,7 +41,7 @@ export type ClientStackParamList = {
     maxDistanceKm?: number;
     serviceMode?: import("../services/api/client").ProviderServiceMode;
   } | undefined;
-  ClientChatList: { openBookingId?: string } | undefined;
+  ClientChatList: { openBookingId?: string; openContractId?: string } | undefined;
   ProfessionalDetail: { professionalId: string };
   ConsultancyRequest: { professionalId: string };
   ArchivedRequests: undefined;
@@ -108,7 +108,7 @@ export type ProfessionalStackParamList = {
   AvailabilityManager: undefined;
   ProfessionalConsultancyCenter: { initialTab?: "offers" | "requests" } | undefined;
   ProfessionalArchivedRequests: undefined;
-  ProfessionalChatList: { openBookingId?: string } | undefined;
+  ProfessionalChatList: { openBookingId?: string; openContractId?: string } | undefined;
   BookingDetailProfessional: { bookingId: string };
   ProfessionalConfirmCompletion: { bookingId: string };
   ConnectPayoutAccount: undefined;

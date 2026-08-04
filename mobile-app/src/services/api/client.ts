@@ -2353,6 +2353,43 @@ export const chatApi = {
   }
 };
 
+// Épico de Frentes, Frente 9, Lote 8: chat de consultoria (mobile) - mesma
+// forma do chatApi de agendamento, batendo em /consultancy em vez de
+// /bookings (backend novo do Lote 7).
+export type ConsultancyChatSummary = {
+  contractId: string;
+  contractStatus: string;
+  isOpen: boolean;
+  otherUser: { name: string; photoUrl?: string | null };
+  clientId: string;
+  lastMessage: {
+    content: string;
+    createdAt: string;
+    isMine: boolean;
+    isSystem: boolean;
+  };
+  unreadCount: number;
+};
+
+export const consultancyChatApi = {
+  myChats(token: string) {
+    return apiRequest<ConsultancyChatSummary[]>("/consultancy/my/chats", { token });
+  },
+  getOtherUser(token: string, contractId: string) {
+    return apiRequest<ChatOtherUserResponse>(`/consultancy/contracts/${contractId}/other-user`, { token });
+  },
+  getMessages(token: string, contractId: string) {
+    return apiRequest<ChatMessagesResponse>(`/consultancy/contracts/${contractId}/messages`, { token });
+  },
+  sendMessage(token: string, contractId: string, content: string) {
+    return apiRequest<ChatMessage>(`/consultancy/contracts/${contractId}/messages`, {
+      method: "POST",
+      token,
+      body: { content }
+    });
+  }
+};
+
 export const reviewsApi = {
   create(
     token: string,

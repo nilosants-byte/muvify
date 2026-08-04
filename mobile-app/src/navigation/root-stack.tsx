@@ -146,6 +146,10 @@ function routeNotification(
   const rawClientId = typeof data.clientId === "string" ? data.clientId : undefined;
   const clientId = rawClientId && uuidRegex.test(rawClientId) ? rawClientId : undefined;
   const clientName = typeof data.clientName === "string" && data.clientName ? data.clientName : "Aluno";
+  // Épico de Frentes, Frente 9, Lote 8: mensagem de chat de consultoria
+  // (Lote 7) chega com contractId em vez de bookingId no payload.
+  const rawContractId = typeof data.contractId === "string" ? data.contractId : undefined;
+  const contractId = rawContractId && uuidRegex.test(rawContractId) ? rawContractId : undefined;
 
   // Épico de Frentes, Frente 9, Lote 4: role aqui nunca é "PROFESSIONAL" -
   // o valor real do app é "PROVIDER" (ver UserRole em AppState.tsx). Esse
@@ -157,7 +161,8 @@ function routeNotification(
     // qualquer (BOOKING_TYPES_PRO inclui CHAT_MESSAGE) e levava pro
     // detalhe do agendamento em vez do chat - checa isso primeiro.
     if (type === "CHAT_MESSAGE") {
-      (navigationRef as any).navigate("ProfessionalChatList", bookingId ? { openBookingId: bookingId } : undefined);
+      const params = bookingId ? { openBookingId: bookingId } : contractId ? { openContractId: contractId } : undefined;
+      (navigationRef as any).navigate("ProfessionalChatList", params);
     } else if (bookingId && BOOKING_TYPES_PRO.has(type)) {
       (navigationRef as any).navigate("BookingDetailProfessional", { bookingId });
     } else if (type === "STUDENT_POST_MENTION" && clientId) {
@@ -182,7 +187,8 @@ function routeNotification(
 
   if (role === "CLIENT") {
     if (type === "CHAT_MESSAGE") {
-      (navigationRef as any).navigate("ClientChatList", bookingId ? { openBookingId: bookingId } : undefined);
+      const params = bookingId ? { openBookingId: bookingId } : contractId ? { openContractId: contractId } : undefined;
+      (navigationRef as any).navigate("ClientChatList", params);
     } else if (bookingId && BOOKING_TYPES_CLIENT.has(type)) {
       (navigationRef as any).navigate("ClientBookingDetail", { bookingId });
     } else if (isPresentialPackageNotificationType(type) && packageId) {

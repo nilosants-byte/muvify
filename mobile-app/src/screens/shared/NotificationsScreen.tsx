@@ -35,7 +35,7 @@ type NotificationVariant = "green" | "orange" | "red" | "blue" | "gray";
 
 type NotificationAction =
   | { type: "BOOKING_DETAIL"; bookingId: string }
-  | { type: "BOOKING_CHAT"; bookingId: string }
+  | { type: "BOOKING_CHAT"; bookingId?: string; contractId?: string }
   | { type: "BOOKING_PAYMENT_STATUS"; bookingId?: string }
   | { type: "CLIENT_BOOKINGS" }
   | { type: "CLIENT_PAYMENT_METHOD" }
@@ -151,11 +151,12 @@ function resolveInboxAction(
   }
 
   if (type === "CHAT_MESSAGE") {
-    return bookingId
-      ? { type: "BOOKING_CHAT", bookingId }
-      : role === "PROVIDER"
-        ? { type: "PROVIDER_AGENDA" }
-        : { type: "CLIENT_BOOKINGS" };
+    // Épico de Frentes, Frente 9, Lote 8: mensagem de chat de consultoria
+    // (Lote 7) chega com contractId em vez de bookingId - sem esse
+    // tratamento, caía no fallback genérico de agenda/agendamentos.
+    if (bookingId) return { type: "BOOKING_CHAT", bookingId };
+    if (contractId) return { type: "BOOKING_CHAT", contractId };
+    return role === "PROVIDER" ? { type: "PROVIDER_AGENDA" } : { type: "CLIENT_BOOKINGS" };
   }
 
   if (type.startsWith("BOOKING_")) {
@@ -590,9 +591,13 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
     [navigation, role]
   );
 
-  const openBookingChat = useCallback((bookingId?: string) => {
+  const openBookingChat = useCallback((bookingId?: string, contractId?: string) => {
     if (!navigation) return;
-    const params = bookingId ? { openBookingId: bookingId } : undefined;
+    const params = bookingId
+      ? { openBookingId: bookingId }
+      : contractId
+        ? { openContractId: contractId }
+        : undefined;
     if (role === "PROVIDER") {
       navigation.navigate("ProfessionalChatList", params);
     } else {
@@ -613,7 +618,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
       if (!navigation) return;
       switch (item.action.type) {
         case "BOOKING_DETAIL": openBookingDetail(item.action.bookingId); return;
-        case "BOOKING_CHAT": openBookingChat(item.action.bookingId); return;
+        case "BOOKING_CHAT": openBookingChat(item.action.bookingId, item.action.contractId); return;
         case "BOOKING_PAYMENT_STATUS":
           if (role === "PROVIDER") {
             if (item.action.bookingId) navigation.navigate("BookingPaymentStatus", { bookingId: item.action.bookingId });

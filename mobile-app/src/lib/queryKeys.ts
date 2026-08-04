@@ -82,6 +82,12 @@ export const queryKeys = {
     otherUser: (bookingId: string) => ["chat", "otherUser", bookingId] as const,
   },
 
+  // ── Chat de consultoria (Épico de Frentes, Frente 9, Lote 8) ────────────────
+  consultancyChat: {
+    all: ["consultancyChat"] as const,
+    myChats: () => ["consultancyChat", "myChats"] as const,
+  },
+
   // ── Favoritos ──────────────────────────────────────────────────────────────
   favorites: {
     all: ["favorites"] as const,

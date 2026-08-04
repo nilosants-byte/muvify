@@ -53,6 +53,18 @@ export function leaveBookingRoom(bookingId: string) {
   socket?.emit("leave:booking", bookingId);
 }
 
+// Épico de Frentes, Frente 9, Lote 8: chat de consultoria (mobile) - espelha
+// join/leaveBookingRoom pra ConsultancyContract. onNewBookingMessage já
+// escuta "message:new" de forma genérica (o servidor emite o mesmo evento
+// pra ambas as salas), então não precisa de um listener separado.
+export function joinConsultancyRoom(contractId: string) {
+  socket?.emit("join:consultancy", contractId);
+}
+
+export function leaveConsultancyRoom(contractId: string) {
+  socket?.emit("leave:consultancy", contractId);
+}
+
 export function onNewBookingMessage(handler: (message: NewBookingMessageEvent) => void) {
   socket?.on("message:new", handler);
   return () => socket?.off("message:new", handler);

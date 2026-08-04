@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -14,13 +14,21 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientStackParamList } from "../../navigation/route-types";
-import { chatApi, ChatMessage, ChatSummary } from "../../services/api/client";
+import {
+  chatApi,
+  consultancyChatApi,
+  ChatMessage,
+  ChatSummary,
+  ConsultancyChatSummary,
+} from "../../services/api/client";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import {
   isSocketConnected,
   joinBookingRoom,
   leaveBookingRoom,
+  joinConsultancyRoom,
+  leaveConsultancyRoom,
   onNewBookingMessage,
 } from "../../services/realtime/socket";
 import { useAppState } from "../../state/AppState";
@@ -34,6 +42,22 @@ import { hapticCta } from "../../utils/haptics";
 type Props = NativeStackScreenProps<ClientStackParamList, "ClientChatList">;
 type Tab = "active" | "inactive";
 type ChatView = "list" | "chat";
+// Épico de Frentes, Frente 9, Lote 8: chat de consultoria (mobile) - a lista
+// passa a mesclar duas fontes (agendamento presencial + consultoria online)
+// numa lista só, reaproveitando o mesmo painel de mensagens já existente.
+// "kind" discrimina qual API/sala de socket usar pra cada item.
+type ChatKind = "booking" | "consultancy";
+
+type UnifiedChat = {
+  id: string;
+  kind: ChatKind;
+  rawId: string;
+  isOpen: boolean;
+  otherUser: { name: string; photoUrl?: string | null };
+  clientId: string;
+  lastMessage: { content: string; createdAt: string; isMine: boolean; isSystem: boolean };
+  unreadCount: number;
+};
 
 // Rede de segurança: enquanto o socket de tempo real estiver conectado, a mensagem chega
 // na hora pelo evento — esse intervalo só serve para reconciliar caso algo se perca.
@@ -58,43 +82,71 @@ function relativeTime(iso: string): string {
   return `${days}d`;
 }
 
-function mergeChatsPreservingPhoto(previous: ChatSummary[], incoming: ChatSummary[]) {
-  const prevByBooking = new Map(previous.map((item) => [item.bookingId, item]));
-  return incoming.map((next) => {
-    const prev = prevByBooking.get(next.bookingId);
-    const nextPhoto = next.otherUser.photoUrl ?? null;
-    const prevPhoto = prev?.otherUser.photoUrl ?? null;
-    return {
-      ...next,
-      otherUser: { ...prev?.otherUser, ...next.otherUser, photoUrl: nextPhoto ?? prevPhoto ?? null },
-    };
-  });
+function toUnifiedFromBooking(item: ChatSummary): UnifiedChat {
+  return {
+    id: `booking:${item.bookingId}`,
+    kind: "booking",
+    rawId: item.bookingId,
+    isOpen: item.isOpen,
+    otherUser: item.otherUser,
+    clientId: item.clientId,
+    lastMessage: item.lastMessage,
+    unreadCount: item.unreadCount,
+  };
+}
+
+function toUnifiedFromConsultancy(item: ConsultancyChatSummary): UnifiedChat {
+  return {
+    id: `consultancy:${item.contractId}`,
+    kind: "consultancy",
+    rawId: item.contractId,
+    isOpen: item.isOpen,
+    otherUser: item.otherUser,
+    clientId: item.clientId,
+    lastMessage: item.lastMessage,
+    unreadCount: item.unreadCount,
+  };
+}
+
+function mergeChatsPreservingPhoto(previous: UnifiedChat[], incoming: UnifiedChat[]) {
+  const prevById = new Map(previous.map((item) => [item.id, item]));
+  return incoming
+    .map((next) => {
+      const prev = prevById.get(next.id);
+      const nextPhoto = next.otherUser.photoUrl ?? null;
+      const prevPhoto = prev?.otherUser.photoUrl ?? null;
+      return {
+        ...next,
+        otherUser: { ...prev?.otherUser, ...next.otherUser, photoUrl: nextPhoto ?? prevPhoto ?? null },
+      };
+    })
+    .sort((a, b) => new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime());
 }
 
 async function enrichMissingChatPhotos(
-  source: ChatSummary[],
-  loadOtherUser: (bookingId: string) => Promise<{ photoUrl?: string | null }>
+  source: UnifiedChat[],
+  loadOtherUser: (item: UnifiedChat) => Promise<{ photoUrl?: string | null }>
 ) {
   const missing = source.filter((item) => !item.otherUser.photoUrl);
   if (missing.length === 0) return source;
   const updates = await Promise.all(
     missing.map(async (item) => {
       try {
-        const otherUser = await loadOtherUser(item.bookingId);
-        return { bookingId: item.bookingId, photoUrl: otherUser.photoUrl ?? null };
+        const otherUser = await loadOtherUser(item);
+        return { id: item.id, photoUrl: otherUser.photoUrl ?? null };
       } catch {
-        return { bookingId: item.bookingId, photoUrl: null };
+        return { id: item.id, photoUrl: null };
       }
     })
   );
-  const photoByBooking = new Map(
+  const photoById = new Map(
     updates
       .filter((e) => typeof e.photoUrl === "string" && e.photoUrl.length > 0)
-      .map((e) => [e.bookingId, e.photoUrl as string])
+      .map((e) => [e.id, e.photoUrl as string])
   );
-  if (photoByBooking.size === 0) return source;
+  if (photoById.size === 0) return source;
   return source.map((item) => {
-    const nextPhoto = photoByBooking.get(item.bookingId);
+    const nextPhoto = photoById.get(item.id);
     if (!nextPhoto) return item;
     return { ...item, otherUser: { ...item.otherUser, photoUrl: nextPhoto } };
   });
@@ -108,7 +160,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
 
   const [activeView, setActiveView] = useState<ChatView>("list");
   const [tab, setTab] = useState<Tab>("active");
-  const [chats, setChats] = useState<ChatSummary[]>([]);
+  const [chats, setChats] = useState<UnifiedChat[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -122,30 +174,48 @@ export function ClientChatListScreen({ navigation, route }: Props) {
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
   const lastMsgCountRef = useRef(0);
-  const autoOpenedBookingIdRef = useRef<string | null>(null);
+  const autoOpenedIdRef = useRef<string | null>(null);
 
   const chatsQuery = useAuthQuery(
     queryKeys.chat.myChats(),
     async (token) => {
       const data = await chatApi.myChats(token);
-      return enrichMissingChatPhotos(
-        data,
-        (bookingId) => chatApi.getOtherUser(token, bookingId)
+      const unified = data.map(toUnifiedFromBooking);
+      return enrichMissingChatPhotos(unified, (item) =>
+        chatApi.getOtherUser(token, item.rawId)
       );
     }
   );
 
-  const loading = chatsQuery.isLoading;
-  const chatsLoadError = chatsQuery.isError;
+  const consultancyChatsQuery = useAuthQuery(
+    queryKeys.consultancyChat.myChats(),
+    async (token) => {
+      const data = await consultancyChatApi.myChats(token);
+      const unified = data.map(toUnifiedFromConsultancy);
+      return enrichMissingChatPhotos(unified, (item) =>
+        consultancyChatApi.getOtherUser(token, item.rawId)
+      );
+    }
+  );
+
+  const loading = chatsQuery.isLoading || consultancyChatsQuery.isLoading;
+  // Falha de uma fonte só não deveria esconder a outra - só mostra erro em tela cheia
+  // se as duas falharem.
+  const chatsLoadError = chatsQuery.isError && consultancyChatsQuery.isError;
+
+  const refetchAll = useCallback(() => {
+    void chatsQuery.refetch();
+    void consultancyChatsQuery.refetch();
+  }, [chatsQuery, consultancyChatsQuery]);
 
   useEffect(() => {
-    if (chatsQuery.data) {
-      setChats((prev) => mergeChatsPreservingPhoto(prev, chatsQuery.data!));
-    }
-  }, [chatsQuery.data]);
+    const combined = [...(chatsQuery.data ?? []), ...(consultancyChatsQuery.data ?? [])];
+    if (combined.length === 0 && !chatsQuery.data && !consultancyChatsQuery.data) return;
+    setChats((prev) => mergeChatsPreservingPhoto(prev, combined));
+  }, [chatsQuery.data, consultancyChatsQuery.data]);
 
   const selectedChat = useMemo(
-    () => chats.find((c) => c.bookingId === selectedId) ?? null,
+    () => chats.find((c) => c.id === selectedId) ?? null,
     [chats, selectedId]
   );
 
@@ -160,10 +230,14 @@ export function ClientChatListScreen({ navigation, route }: Props) {
   }, []);
 
   const fetchPanelMessages = useCallback(
-    async (bookingId: string, initial = false) => {
+    async (chat: UnifiedChat, initial = false) => {
       try {
         if (initial) setPanelLoading(true);
-        const data = await runWithAuth((token) => chatApi.getMessages(token, bookingId));
+        const data = await runWithAuth((token) =>
+          chat.kind === "booking"
+            ? chatApi.getMessages(token, chat.rawId)
+            : consultancyChatApi.getMessages(token, chat.rawId)
+        );
         if (!isMountedRef.current) return;
         const incoming = data.messages ?? [];
         setMessages(incoming);
@@ -171,7 +245,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
         setPanelError(false);
         setChats((prev) =>
           prev.map((c) =>
-            c.bookingId === bookingId
+            c.id === chat.id
               ? { ...c, unreadCount: 0, otherUser: { ...c.otherUser, ...(data.otherUser ?? {}), photoUrl: data.otherUser?.photoUrl ?? c.otherUser.photoUrl ?? null } }
               : c
           )
@@ -199,22 +273,25 @@ export function ClientChatListScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     if (pollRef.current) clearTimeout(pollRef.current);
-    if (!selectedId || activeView !== "chat") return;
+    if (!selectedChat || activeView !== "chat") return;
     const schedule = () => {
       const delay = isSocketConnected() ? POLL_MS_SOCKET_CONNECTED : POLL_MS_SOCKET_DISCONNECTED;
       pollRef.current = setTimeout(async () => {
-        await fetchPanelMessages(selectedId, false);
+        await fetchPanelMessages(selectedChat, false);
         if (isMountedRef.current) schedule();
       }, delay);
     };
     schedule();
     return () => { if (pollRef.current) clearTimeout(pollRef.current); };
-  }, [selectedId, activeView, fetchPanelMessages]);
+  }, [selectedChat, activeView, fetchPanelMessages]);
 
-  // Tempo real: entra na sala do agendamento selecionado e recebe mensagens novas na hora.
+  // Tempo real: entra na sala do agendamento/contrato selecionado e recebe mensagens novas na hora.
   useEffect(() => {
-    if (!selectedId || activeView !== "chat") return;
-    joinBookingRoom(selectedId);
+    if (!selectedChat || activeView !== "chat") return;
+    const { kind, rawId } = selectedChat;
+    if (kind === "booking") joinBookingRoom(rawId);
+    else joinConsultancyRoom(rawId);
+
     const unsubscribe = onNewBookingMessage((incoming) => {
       setMessages((prev) => {
         if (prev.some((m) => m.id === incoming.id)) return prev;
@@ -223,7 +300,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
       setPanelError(false);
       setChats((prev) =>
         prev.map((c) =>
-          c.bookingId === selectedId
+          c.id === selectedChat.id
             ? {
                 ...c,
                 unreadCount: 0,
@@ -241,37 +318,40 @@ export function ClientChatListScreen({ navigation, route }: Props) {
     });
     return () => {
       unsubscribe?.();
-      leaveBookingRoom(selectedId);
+      if (kind === "booking") leaveBookingRoom(rawId);
+      else leaveConsultancyRoom(rawId);
     };
-  }, [selectedId, activeView, myUserId]);
+  }, [selectedChat, activeView, myUserId]);
 
   const openChat = useCallback(
-    (chat: ChatSummary) => {
+    (chat: UnifiedChat) => {
       if (pollRef.current) clearTimeout(pollRef.current);
-      setSelectedId(chat.bookingId);
+      setSelectedId(chat.id);
       setMessages([]);
       setInputText("");
       setPanelError(false);
       lastMsgCountRef.current = 0;
       setActiveView("chat");
-      void fetchPanelMessages(chat.bookingId, true);
+      void fetchPanelMessages(chat, true);
     },
     [fetchPanelMessages]
   );
 
-  // Épico de Frentes, Frente 9, Lote 4: notificação de mensagem nova
+  // Épico de Frentes, Frente 9, Lote 4/8: notificação de mensagem nova
   // levava pro detalhe do agendamento em vez do chat (push do SO) ou abria
-  // só a lista sem selecionar a conversa (dentro do app) - openBookingId
-  // auto-seleciona a conversa certa assim que a lista carrega.
+  // só a lista sem selecionar a conversa (dentro do app) - openBookingId/
+  // openContractId auto-selecionam a conversa certa assim que a lista carrega.
   useEffect(() => {
     const openBookingId = route.params?.openBookingId;
-    if (!openBookingId || autoOpenedBookingIdRef.current === openBookingId) return;
-    const match = chats.find((c) => c.bookingId === openBookingId);
+    const openContractId = route.params?.openContractId;
+    const targetId = openBookingId ? `booking:${openBookingId}` : openContractId ? `consultancy:${openContractId}` : null;
+    if (!targetId || autoOpenedIdRef.current === targetId) return;
+    const match = chats.find((c) => c.id === targetId);
     if (match) {
-      autoOpenedBookingIdRef.current = openBookingId;
+      autoOpenedIdRef.current = targetId;
       openChat(match);
     }
-  }, [chats, openChat, route.params?.openBookingId]);
+  }, [chats, openChat, route.params?.openBookingId, route.params?.openContractId]);
 
   const goBackToList = useCallback(() => {
     if (pollRef.current) clearTimeout(pollRef.current);
@@ -282,19 +362,24 @@ export function ClientChatListScreen({ navigation, route }: Props) {
 
   const handleSend = async () => {
     const text = inputText.trim();
-    if (!text || sending || !selectedId) return;
+    if (!text || sending || !selectedChat) return;
     hapticCta();
     setSending(true);
     setInputText("");
     try {
-      const msg = await runWithAuth((token) => chatApi.sendMessage(token, selectedId, text));
+      const chat = selectedChat;
+      const msg = await runWithAuth((token) =>
+        chat.kind === "booking"
+          ? chatApi.sendMessage(token, chat.rawId, text)
+          : consultancyChatApi.sendMessage(token, chat.rawId, text)
+      );
       if (!isMountedRef.current) return;
       setMessages((prev) => {
         const updated = [...prev, msg];
         lastMsgCountRef.current = updated.length;
         return updated;
       });
-      void chatsQuery.refetch();
+      refetchAll();
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
     } catch {
       setInputText(text);
@@ -305,7 +390,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
   };
 
   // ── Lista: item de conversa V2 ────────────────────────────────────────────
-  const renderChatItem = ({ item }: { item: ChatSummary }) => {
+  const renderChatItem = ({ item }: { item: UnifiedChat }) => {
     const hasUnread = item.unreadCount > 0;
     const tone = hasUnread ? "green" as const : "green" as const;
     return (
@@ -362,7 +447,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
                 : item.lastMessage.content
               : "Sem mensagens"}
           </Text>
-          <View style={{ marginTop: 8 }}>
+          <View style={{ flexDirection: "row", marginTop: 8, gap: 6 }}>
             <View style={{
               backgroundColor: item.isOpen ? theme.primarySubtle : "rgba(255,255,255,0.06)",
               borderWidth: 1, borderColor: item.isOpen ? theme.primarySubtleBorder : theme.border,
@@ -372,6 +457,14 @@ export function ClientChatListScreen({ navigation, route }: Props) {
                 {item.isOpen ? "conversa liberada" : "histórico"}
               </Text>
             </View>
+            {item.kind === "consultancy" ? (
+              <View style={{
+                backgroundColor: C.skyDim, borderWidth: 1, borderColor: C.skyBorder,
+                borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start",
+              }}>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: C.sky }}>consultoria</Text>
+              </View>
+            ) : null}
           </View>
         </View>
       </TouchableOpacity>
@@ -445,7 +538,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
               <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Conversas</Text>
               <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>chats liberados por serviços ativos</Text>
             </View>
-            <TouchableOpacity onPress={() => void chatsQuery.refetch()} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
+            <TouchableOpacity onPress={refetchAll} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name="refresh-outline" size={16} color={theme.text2} />
             </TouchableOpacity>
           </View>
@@ -495,14 +588,14 @@ export function ClientChatListScreen({ navigation, route }: Props) {
               </Text>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center", lineHeight: 20 }}>
                 {tab === "active"
-                  ? "Suas conversas com personais aparecerão aqui após um agendamento."
+                  ? "Suas conversas com personais aparecerão aqui após um agendamento ou consultoria."
                   : "Conversas encerradas aparecerão aqui."}
               </Text>
             </View>
           ) : (
             <FlatList
               data={filteredChats}
-              keyExtractor={(item) => item.bookingId}
+              keyExtractor={(item) => item.id}
               renderItem={renderChatItem}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, gap: 10 }}
@@ -552,7 +645,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
                 Não foi possível carregar as mensagens.
               </Text>
               {selectedChat ? (
-                <TouchableOpacity onPress={() => void fetchPanelMessages(selectedChat.bookingId, true)} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: S.chipR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle }}>
+                <TouchableOpacity onPress={() => void fetchPanelMessages(selectedChat, true)} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: S.chipR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle }}>
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>Tentar novamente</Text>
                 </TouchableOpacity>
               ) : null}
