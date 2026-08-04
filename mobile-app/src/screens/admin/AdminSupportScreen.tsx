@@ -231,15 +231,15 @@ export function AdminSupportScreen({ navigation }: Props) {
                       <MvInput
                         multiline
                         numberOfLines={4}
-                        maxLength={300}
+                        maxLength={2000}
                         value={responseMessage}
                         onChangeText={setResponseMessage}
-                        placeholder="Digite a devolutiva para o usuário (máximo 300 caracteres)"
+                        placeholder="Digite a devolutiva para o usuário (máximo 2000 caracteres)"
                         editable={!isSubmittingThis}
                         style={{ textAlignVertical: "top", opacity: isSubmittingThis ? 0.6 : 1 } as any}
                       />
                       <MvText variant="caption" color="secondary">
-                        {responseMessage.length}/300
+                        {responseMessage.length}/2000
                       </MvText>
                       <MvButton
                         label="Enviar resposta"

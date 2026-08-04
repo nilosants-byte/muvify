@@ -4,7 +4,7 @@ import { CategoryService } from "../services/category.service";
 const categoryService = new CategoryService();
 export class CategoryController {
   async create(request: Request, response: Response) {
-    const category = await categoryService.create(request.body.name, request.body.description);
+    const category = await categoryService.create(request.user!.id, request.body.name, request.body.description);
     return response.status(StatusCodes.CREATED).json(category);
   }
   async list(_request: Request, response: Response) {
@@ -12,11 +12,11 @@ export class CategoryController {
     return response.json(categories);
   }
   async deactivate(request: Request, response: Response) {
-    const category = await categoryService.deactivate(request.params.categoryId);
+    const category = await categoryService.deactivate(request.user!.id, request.params.categoryId);
     return response.json(category);
   }
   async reactivate(request: Request, response: Response) {
-    const category = await categoryService.reactivate(request.params.categoryId);
+    const category = await categoryService.reactivate(request.user!.id, request.params.categoryId);
     return response.json(category);
   }
 }

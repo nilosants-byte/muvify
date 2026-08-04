@@ -268,6 +268,12 @@ export class AdminService {
   private consultancyService = new ConsultancyService();
   private bookingService = new BookingService();
 
+  // Épico de Frentes, Frente 10, Lote 7: não exigia emailVerifiedAt,
+  // divergindo do critério usado por resolveEffectiveUserRole
+  // (admin-access.ts) pra emitir o token ADMIN em primeiro lugar - um
+  // admin cuja verificação de e-mail fosse revogada por algum canal
+  // (ex: fluxo de recuperação de conta) continuava passando por essa
+  // revalidação até o token expirar sozinho.
   private async ensureAdminAccess(adminUserId: string) {
     const admin = await prisma.user.findUnique({
       where: { id: adminUserId },
@@ -275,11 +281,12 @@ export class AdminService {
         id: true,
         name: true,
         email: true,
-        role: true
+        role: true,
+        emailVerifiedAt: true
       }
     });
 
-    if (!admin || !isAdminEmail(admin.email)) {
+    if (!admin || !admin.emailVerifiedAt || !isAdminEmail(admin.email)) {
       throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
     }
 

@@ -113,23 +113,23 @@ describe("Frente 3, Lote 4 — categorias de serviço", () => {
 
   it("admin não consegue criar categoria com acento diferente de uma já existente", async () => {
     const name = `Dedup Manual ${uid("x")}`;
-    const created = await categoryService.create(name);
+    const created = await categoryService.create(adminId, name);
     categoryIds.push(created.id);
 
-    await expect(categoryService.create(`${name.replace("Dedup Manual", "Dédup Manual")}`)).rejects.toThrow(
+    await expect(categoryService.create(adminId, `${name.replace("Dedup Manual", "Dédup Manual")}`)).rejects.toThrow(
       /já existe/i
     );
   });
 
   it("admin desativa categoria: some da listagem pública, mas continua íntegra", async () => {
     const name = `Desativar ${uid("y")}`;
-    const created = await categoryService.create(name);
+    const created = await categoryService.create(adminId, name);
     categoryIds.push(created.id);
 
     const beforeList = await categoryService.list();
     expect((beforeList as any[]).some((c) => c.id === created.id)).toBe(true);
 
-    const deactivated = await categoryService.deactivate(created.id);
+    const deactivated = await categoryService.deactivate(adminId, created.id);
     expect(deactivated.active).toBe(false);
 
     const afterList = await categoryService.list();
@@ -141,11 +141,11 @@ describe("Frente 3, Lote 4 — categorias de serviço", () => {
 
   it("admin reativa categoria e ela volta a aparecer na listagem", async () => {
     const name = `Reativar ${uid("z")}`;
-    const created = await categoryService.create(name);
+    const created = await categoryService.create(adminId, name);
     categoryIds.push(created.id);
-    await categoryService.deactivate(created.id);
+    await categoryService.deactivate(adminId, created.id);
 
-    const reactivated = await categoryService.reactivate(created.id);
+    const reactivated = await categoryService.reactivate(adminId, created.id);
     expect(reactivated.active).toBe(true);
 
     const list = await categoryService.list();
@@ -160,9 +160,9 @@ describe("Frente 3, Lote 4 — categorias de serviço", () => {
     // (e falhar silenciosamente por skipDuplicates) criar uma segunda linha
     // com o mesmo nome.
     const specialtyName = `Revive ${uid("w")}`;
-    const original = await categoryService.create(specialtyName);
+    const original = await categoryService.create(adminId, specialtyName);
     categoryIds.push(original.id);
-    await categoryService.deactivate(original.id);
+    await categoryService.deactivate(adminId, original.id);
 
     const email = `${uid("revive_prov")}@test.com`;
     const reg = await request(app).post("/api/auth/register").send({
@@ -213,7 +213,7 @@ describe("Frente 3, Lote 4 — categorias de serviço", () => {
     userIds.push(reg.body.user.id);
 
     const name = `Protegida ${uid("p")}`;
-    const created = await categoryService.create(name);
+    const created = await categoryService.create(adminId, name);
     categoryIds.push(created.id);
 
     const res = await request(app)

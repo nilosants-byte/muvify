@@ -14,7 +14,10 @@ import { queryKeys } from "../../lib/queryKeys";
 import { formatBRDateTime } from "../../utils/formatters";
 
 const SUPPORT_EMAIL = "suporte@muvify.com.br";
-const SUPPORT_WHATSAPP = "5511999999999"; // substituir pelo número real quando disponível (removido na Frente 10, Lote 7)
+// Épico de Frentes, Frente 10, Lote 7 (decisão do usuário): card de
+// WhatsApp removido - o número anterior (5511999999999) era um
+// placeholder que nunca existiu de verdade. Reintroduzir quando houver
+// um número oficial de WhatsApp de suporte.
 
 export function SupportScreen({ navigation }: { navigation?: any }) {
   const { theme } = useMvTheme();
@@ -98,25 +101,6 @@ export function SupportScreen({ navigation }: { navigation?: any }) {
             <View style={{ flex: 1 }}>
               <MvText variant="semi3">E-mail</MvText>
               <MvText variant="body4" color="secondary" numberOfLines={1}>Resposta em até 2 dias</MvText>
-            </View>
-          </PressableScale>
-
-          <PressableScale
-            scale={0.96}
-            onPress={() => Linking.openURL(`https://wa.me/${SUPPORT_WHATSAPP}`)}
-            style={{
-              flex: 1, flexDirection: "row", alignItems: "center", gap: 10,
-              borderRadius: 14, borderWidth: 1,
-              borderColor: theme.border, backgroundColor: theme.cardBg,
-              paddingHorizontal: 14, paddingVertical: 14,
-            }}
-          >
-            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="logo-whatsapp" size={18} color={theme.textGreen} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <MvText variant="semi3">WhatsApp</MvText>
-              <MvText variant="body4" color="secondary" numberOfLines={1}>Resposta mais rápida</MvText>
             </View>
           </PressableScale>
         </View>

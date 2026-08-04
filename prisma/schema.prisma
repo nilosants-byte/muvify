@@ -921,7 +921,10 @@ model SupportTicket {
   subject           String?
   message           String
   status            SupportTicketStatus @default(OPEN)
-  adminResponse     String?             @db.VarChar(300)
+  // Épico de Frentes, Frente 10, Lote 7: 300 caracteres era curto pra
+  // instruções passo a passo, forçando o admin a truncar ou migrar pra
+  // e-mail fora do sistema (perdendo o registro).
+  adminResponse     String?             @db.VarChar(2000)
   respondedAt       DateTime?
   respondedByUserId String?
   // Épico de Frentes, Frente 10, Lote 2: reabrir um assunto criava um

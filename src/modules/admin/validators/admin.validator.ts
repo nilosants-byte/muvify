@@ -48,7 +48,7 @@ export const adminSupportReplySchema = z.object({
     ticketId: z.string().uuid()
   }),
   body: z.object({
-    responseMessage: z.string().trim().min(3).max(300)
+    responseMessage: z.string().trim().min(3).max(2000)
   })
 });
 

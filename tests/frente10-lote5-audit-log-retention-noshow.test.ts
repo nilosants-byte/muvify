@@ -199,7 +199,7 @@ describe("Frente 10, Lote 5 — auditoria e integridade de dados administrativos
     });
     createdTicketIds.push(answeredTicket.id);
 
-    await dataRetentionService.run({ now: new Date(), dryRun: false });
+    await dataRetentionService.run({ now: new Date(), dryRun: false, triggeredBy: "frente10-lote5-test" });
 
     const storedOpen = await prisma.supportTicket.findUniqueOrThrow({ where: { id: openTicket.id } });
     expect(storedOpen.message).toBe("conteúdo original ainda precisa de resposta");

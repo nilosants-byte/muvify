@@ -185,7 +185,10 @@ export function AdminScaffold({
           e-mail) é a mais sensível do sistema e podia ficar protegida só por
           senha. Não bloqueamos o login em si (travaria o admin pra sempre,
           já que ativar 2FA exige estar logado primeiro) — em vez disso, um
-          aviso persistente em toda tela admin até configurar. */}
+          aviso persistente em toda tela admin até configurar.
+          Épico de Frentes, Frente 10, Lote 7: reconfirmado nesta auditoria
+          como decisão de produto intencional, não um gap esquecido -
+          mantido como banner (não bloqueio) por enquanto. */}
       {user?.role === "ADMIN" && !user?.twoFactorEnabled ? (
         <TouchableOpacity
           onPress={() => navigation.navigate("Security")}

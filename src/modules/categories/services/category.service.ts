@@ -2,11 +2,25 @@ import { Prisma } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
+import { isAdminEmail } from "../../../shared/utils/admin-access";
+import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { deleteByPattern, getCache, setCache } from "../../../shared/utils/cache";
 import { normalizeLoose } from "../../../shared/utils/normalize-text";
 
 export class CategoryService {
-  async create(name: string, description?: string) {
+  // Épico de Frentes, Frente 10, Lote 7: create/deactivate/reactivate nem
+  // recebiam adminId - dependiam 100% do ensureRole(ADMIN) da rota (sem
+  // revalidação no service, quebrando o padrão de defesa em profundidade
+  // já usado desde a Frente 1/Lote 2) e não gravavam audit log nenhum.
+  private async ensureAdminAccess(adminId: string) {
+    const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { email: true } });
+    if (!admin || !isAdminEmail(admin.email)) {
+      throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
+    }
+  }
+
+  async create(adminId: string, name: string, description?: string) {
+    await this.ensureAdminAccess(adminId);
     // Frente 3 (Cadastro/onboarding), Lote 4: a unique constraint do banco é
     // case-sensitive e não remove acento - "Pilates" e "Pilátes" criados
     // manualmente por admins em momentos diferentes coexistiam como
@@ -25,6 +39,13 @@ export class CategoryService {
     try {
       const category = await prisma.serviceCategory.create({ data: { name, description } });
       await deleteByPattern("categories:*");
+      void writeAdminAuditLog({
+        adminId,
+        action: "CATEGORY_CREATED",
+        targetType: "CATEGORY",
+        targetId: category.id,
+        metadata: { name: category.name }
+      });
       return category;
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -50,7 +71,9 @@ export class CategoryService {
     return categories;
   }
 
-  async deactivate(categoryId: string) {
+  async deactivate(adminId: string, categoryId: string) {
+    await this.ensureAdminAccess(adminId);
+
     const category = await prisma.serviceCategory.findUnique({ where: { id: categoryId } });
     if (!category) {
       throw new AppError("Categoria não encontrada.", StatusCodes.NOT_FOUND);
@@ -60,10 +83,19 @@ export class CategoryService {
       data: { active: false }
     });
     await deleteByPattern("categories:*");
+    void writeAdminAuditLog({
+      adminId,
+      action: "CATEGORY_DEACTIVATED",
+      targetType: "CATEGORY",
+      targetId: categoryId,
+      metadata: { name: category.name }
+    });
     return updated;
   }
 
-  async reactivate(categoryId: string) {
+  async reactivate(adminId: string, categoryId: string) {
+    await this.ensureAdminAccess(adminId);
+
     const category = await prisma.serviceCategory.findUnique({ where: { id: categoryId } });
     if (!category) {
       throw new AppError("Categoria não encontrada.", StatusCodes.NOT_FOUND);
@@ -73,6 +105,13 @@ export class CategoryService {
       data: { active: true }
     });
     await deleteByPattern("categories:*");
+    void writeAdminAuditLog({
+      adminId,
+      action: "CATEGORY_REACTIVATED",
+      targetType: "CATEGORY",
+      targetId: categoryId,
+      metadata: { name: category.name }
+    });
     return updated;
   }
 }
