@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
@@ -19,6 +20,21 @@ let nextAllowedRunAt = 0;
 function calculateBackoffMs(baseIntervalMs: number, failures: number) {
   const exponent = Math.max(0, failures - 1);
   return Math.min(baseIntervalMs * 2 ** exponent, MAX_DATABASE_BACKOFF_MS);
+}
+
+// Épico de Frentes, Frente 9, Lote 14: os catches deste job só usavam
+// console.error, sem Sentry.captureException - diferente de pontos
+// críticos de pagamento (payment.service.ts) que já usam Sentry
+// deliberadamente. Cada sub-job é isolado (mesmo espírito do
+// runWithTimeout em payment-jobs.ts - falha de um não impede os demais) e
+// reporta ao Sentry com a tag indicando qual sub-job falhou. Exportado
+// (em vez de inline) pra ficar testável sem depender do setInterval real.
+export function isolateReminderSubJob(fn: () => Promise<void>, name: string) {
+  return fn().catch((err) => {
+    if (isPrismaDatabaseUnavailableError(err)) throw err;
+    console.error(`[reminder-job] ${name} failed:`, err);
+    Sentry.captureException(err, { tags: { area: "reminder-job", subJob: name } });
+  });
 }
 
 export function startReminderJob() {
@@ -43,16 +59,40 @@ export function startReminderJob() {
       const JOB_TIMEOUT_MS = 120_000; // 2 minutos
       await Promise.race([
         Promise.all([
-          bookingService.sendSessionReminders(),
-          bookingService.sendBookingConfirmationReminders(),
-          consultancyService.sendConsultancyExpiryReminders(),
-          consultancyService.sendConsultancyResponseReminders(),
-          consultancyService.expireStaleConsultancyRequests(),
-          consultancyService.expireStalePendingPixConsultancyContracts(),
-          consultancyService.sendFichaExpiryReminders(),
-          consultancyService.escalateExpiredFichaContracts(),
-          presentialPackageService.sendFlexibleSessionPackExpiryReminders(),
-          presentialPackageService.sendPresentialPackageBillingReminders(),
+          isolateReminderSubJob(() => bookingService.sendSessionReminders(), "sendSessionReminders"),
+          isolateReminderSubJob(
+            () => bookingService.sendBookingConfirmationReminders(),
+            "sendBookingConfirmationReminders"
+          ),
+          isolateReminderSubJob(
+            () => consultancyService.sendConsultancyExpiryReminders(),
+            "sendConsultancyExpiryReminders"
+          ),
+          isolateReminderSubJob(
+            () => consultancyService.sendConsultancyResponseReminders(),
+            "sendConsultancyResponseReminders"
+          ),
+          isolateReminderSubJob(
+            () => consultancyService.expireStaleConsultancyRequests(),
+            "expireStaleConsultancyRequests"
+          ),
+          isolateReminderSubJob(
+            () => consultancyService.expireStalePendingPixConsultancyContracts(),
+            "expireStalePendingPixConsultancyContracts"
+          ),
+          isolateReminderSubJob(() => consultancyService.sendFichaExpiryReminders(), "sendFichaExpiryReminders"),
+          isolateReminderSubJob(
+            () => consultancyService.escalateExpiredFichaContracts(),
+            "escalateExpiredFichaContracts"
+          ),
+          isolateReminderSubJob(
+            () => presentialPackageService.sendFlexibleSessionPackExpiryReminders(),
+            "sendFlexibleSessionPackExpiryReminders"
+          ),
+          isolateReminderSubJob(
+            () => presentialPackageService.sendPresentialPackageBillingReminders(),
+            "sendPresentialPackageBillingReminders"
+          ),
         ]),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("Reminder job timeout after 120s")), JOB_TIMEOUT_MS)
@@ -73,6 +113,7 @@ export function startReminderJob() {
         );
       } else {
         console.error("Reminder job failed:", error);
+        Sentry.captureException(error, { tags: { area: "reminder-job" } });
       }
     } finally {
       if (lockAcquired) {

@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
@@ -53,6 +54,11 @@ export function startPaymentJobs() {
           // Erros de DB indisponível são re-lançados para incrementar consecutiveDatabaseFailures
           if (isPrismaDatabaseUnavailableError(err)) throw err;
           console.error(`[payment-jobs] ${name} failed:`, err);
+          // Épico de Frentes, Frente 9, Lote 14: catches deste job só
+          // usavam console.error, sem Sentry.captureException - diferente
+          // de pontos críticos de pagamento (payment.service.ts) que já
+          // usam Sentry deliberadamente.
+          Sentry.captureException(err, { tags: { area: "payment-jobs", subJob: name } });
         });
 
       // Cada job é isolado — falha de um não impede os demais
@@ -89,6 +95,7 @@ export function startPaymentJobs() {
         );
       } else {
         console.error("Payment job failed:", error);
+        Sentry.captureException(error, { tags: { area: "payment-jobs" } });
       }
     } finally {
       if (lockAcquired) {

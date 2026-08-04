@@ -99,7 +99,14 @@ export class EmailQueueService {
     for (const entry of pending) {
       try {
         await this.deliver(entry.template as EmailQueueTemplate, entry.payload as Record<string, unknown>);
-        await prisma.emailDeliveryQueue.delete({ where: { id: entry.id } });
+        // deleteMany em vez de delete: se outra chamada concorrente a
+        // processRetryQueue (produção usa lock via advisory lock no job,
+        // mas nada impede uma segunda instância/teste chamando o serviço
+        // direto) já processou essa mesma linha entre o findMany acima e
+        // aqui, delete() lançaria P2025 (registro não encontrado) - não faz
+        // sentido derrubar esse item pra retry só porque ele já foi
+        // resolvido por outro lado.
+        await prisma.emailDeliveryQueue.deleteMany({ where: { id: entry.id } });
       } catch (error) {
         const attempts = entry.attempts + 1;
         const delaySeconds =
@@ -109,7 +116,8 @@ export class EmailQueueService {
         const lastError = (error instanceof Error ? error.message : String(error)).slice(0, 1000);
 
         const exhausted = attempts >= MAX_RETRY_ATTEMPTS;
-        await prisma.emailDeliveryQueue.update({
+        // updateMany pelo mesmo motivo do deleteMany acima.
+        await prisma.emailDeliveryQueue.updateMany({
           where: { id: entry.id },
           data: {
             attempts,
