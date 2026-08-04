@@ -54,6 +54,17 @@ export async function followUser(followerId: string, followingId: string): Promi
     throw new AppError("A comunidade é exclusiva para clientes.", StatusCodes.FORBIDDEN);
   }
 
+  // Épico de Frentes, Frente 9, Lote 16: o upsert abaixo já era idempotente
+  // no banco (seguir quem já se seguia não duplicava a linha), mas a
+  // notificação disparava incondicionalmente - seguir e desseguir e seguir
+  // de novo (ou só re-enviar a mesma ação) floodava o mesmo aviso de "novo
+  // seguidor" repetidamente. Checa se o vínculo já existia ANTES do
+  // upsert, só notifica quando ele de fato acabou de ser criado.
+  const alreadyFollowing = await prisma.follow.findUnique({
+    where: { followerId_followingId: { followerId, followingId } },
+    select: { followerId: true },
+  });
+
   await prisma.follow.upsert({
     where: { followerId_followingId: { followerId, followingId } },
     update: {},
@@ -65,22 +76,24 @@ export async function followUser(followerId: string, followingId: string): Promi
     checkAndUnlock(followingId, ["TOTAL_FOLLOWERS"]),
   ]);
 
-  // Notifica o usuário seguido (best effort — não bloqueia a operação)
-  const followerDisplay = follower?.apelido ? `@${follower.apelido}` : (follower?.name ?? "Alguém");
-  notificationService.sendToUsers([followingId], {
-    title: "Novo seguidor",
-    body: `${followerDisplay} começou a te seguir no Muvify.`,
-    data: {
-      type: "NEW_FOLLOWER",
-      followerId,
-      followerApelido: follower?.apelido ?? "",
-      followerName: follower?.name ?? "",
-    },
-    // Épico de Frentes, Frente 8, Lote 12: sem preferenceType, o filtro de
-    // preferência em sendToUsers é pulado por completo - usuário não tinha
-    // como desativar esse aviso.
-    preferenceType: "COMMUNITY",
-  }).catch(() => { /* best effort */ });
+  if (!alreadyFollowing) {
+    // Notifica o usuário seguido (best effort — não bloqueia a operação)
+    const followerDisplay = follower?.apelido ? `@${follower.apelido}` : (follower?.name ?? "Alguém");
+    notificationService.sendToUsers([followingId], {
+      title: "Novo seguidor",
+      body: `${followerDisplay} começou a te seguir no Muvify.`,
+      data: {
+        type: "NEW_FOLLOWER",
+        followerId,
+        followerApelido: follower?.apelido ?? "",
+        followerName: follower?.name ?? "",
+      },
+      // Épico de Frentes, Frente 8, Lote 12: sem preferenceType, o filtro de
+      // preferência em sendToUsers é pulado por completo - usuário não tinha
+      // como desativar esse aviso.
+      preferenceType: "COMMUNITY",
+    }).catch(() => { /* best effort */ });
+  }
 }
 
 export async function unfollowUser(followerId: string, followingId: string): Promise<void> {
