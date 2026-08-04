@@ -21,6 +21,8 @@ type NewBookingMessagePayload = {
   createdAt: Date | string;
 };
 
+type NewConsultancyMessagePayload = NewBookingMessagePayload;
+
 let io: SocketIOServer | null = null;
 
 function parseCorsOrigins(): string[] {
@@ -31,6 +33,10 @@ function parseCorsOrigins(): string[] {
 
 function bookingRoom(bookingId: string) {
   return `booking:${bookingId}`;
+}
+
+function consultancyRoom(contractId: string) {
+  return `consultancy:${contractId}`;
 }
 
 async function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
@@ -83,6 +89,37 @@ function handleLeaveBooking(socket: Socket, bookingId: unknown) {
   void socket.leave(bookingRoom(bookingId));
 }
 
+// Épico de Frentes, Frente 9, Lote 7: espelha handleJoinBooking/
+// handleLeaveBooking pra ConsultancyContract, generalizando o mesmo padrão
+// de sala em tempo real pro chat de consultoria.
+async function handleJoinConsultancy(socket: Socket, contractId: unknown) {
+  if (typeof contractId !== "string" || !contractId) {
+    return;
+  }
+
+  const userId = (socket.data as SocketData).userId;
+  const contract = await prisma.consultancyContract.findUnique({
+    where: { id: contractId },
+    select: { clientId: true, provider: { select: { userId: true } } }
+  });
+
+  const isClient = contract?.clientId === userId;
+  const isProvider = contract?.provider.userId === userId;
+  if (!contract || (!isClient && !isProvider)) {
+    // Não revela se o contrato existe — apenas ignora silenciosamente.
+    return;
+  }
+
+  await socket.join(consultancyRoom(contractId));
+}
+
+function handleLeaveConsultancy(socket: Socket, contractId: unknown) {
+  if (typeof contractId !== "string" || !contractId) {
+    return;
+  }
+  void socket.leave(consultancyRoom(contractId));
+}
+
 /** Anexa o servidor de WebSocket ao servidor HTTP já existente (mesma porta, mesmo processo). */
 export async function initSocketServer(httpServer: HttpServer) {
   io = new SocketIOServer(httpServer, {
@@ -113,6 +150,8 @@ export async function initSocketServer(httpServer: HttpServer) {
   io.on("connection", (socket) => {
     socket.on("join:booking", (bookingId: unknown) => void handleJoinBooking(socket, bookingId));
     socket.on("leave:booking", (bookingId: unknown) => handleLeaveBooking(socket, bookingId));
+    socket.on("join:consultancy", (contractId: unknown) => void handleJoinConsultancy(socket, contractId));
+    socket.on("leave:consultancy", (contractId: unknown) => handleLeaveConsultancy(socket, contractId));
   });
 
   return io;
@@ -127,6 +166,18 @@ export function emitNewBookingMessage(bookingId: string, message: NewBookingMess
     io.to(bookingRoom(bookingId)).emit("message:new", message);
   } catch (error) {
     console.error("[realtime] Falha ao emitir message:new:", error);
+  }
+}
+
+/** Emite uma mensagem nova para quem estiver na sala do contrato de consultoria. Best-effort: nunca lança erro. */
+export function emitNewConsultancyMessage(contractId: string, message: NewConsultancyMessagePayload) {
+  if (!io || !ENABLE_REALTIME_CHAT) {
+    return;
+  }
+  try {
+    io.to(consultancyRoom(contractId)).emit("message:new", message);
+  } catch (error) {
+    console.error("[realtime] Falha ao emitir message:new (consultoria):", error);
   }
 }
 

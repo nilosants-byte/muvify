@@ -308,6 +308,7 @@ model User {
   trainingPlanCompletions  TrainingPlanCompletion[]
   presentialPackages       PresentialPackage[]         @relation("ClientPresentialPackages")
   chatMessages             BookingMessage[]
+  consultancyMessages      ConsultancyMessage[]
   notificationPreferences  NotificationPreference[]
   supportTicketsSubmitted  SupportTicket[]             @relation("SupportTicketRequester")
   supportTicketsResponded  SupportTicket[]             @relation("SupportTicketResponder")
@@ -1298,6 +1299,7 @@ model ConsultancyContract {
   trainingPlanCompletions TrainingPlanCompletion[]
   presentialPackage       PresentialPackage?
   disputeCases            DisputeCase[]
+  messages                ConsultancyMessage[]
 
   @@index([providerId, status, deliveryDeadlineAt])
   @@index([clientId, status, createdAt])
@@ -1479,6 +1481,26 @@ model BookingMessage {
   sender  User?   @relation(fields: [senderId], references: [id], onDelete: SetNull)
 
   @@index([bookingId, createdAt])
+  @@index([senderId, createdAt])
+}
+
+// Épico de Frentes, Frente 9, Lote 7: chat de consultoria - espelha
+// BookingMessage 1:1, generalizando a infraestrutura de chat já existente
+// pra ConsultancyContract em vez de reaproveitar (retrofit) BookingMessage,
+// que é semanticamente amarrado a Booking.
+model ConsultancyMessage {
+  id         String    @id @default(uuid())
+  contractId String
+  senderId   String?
+  isSystem   Boolean   @default(false)
+  content    String
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  contract ConsultancyContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  sender   User?                @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([contractId, createdAt])
   @@index([senderId, createdAt])
 }
 
