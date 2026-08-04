@@ -342,4 +342,42 @@ export class ChatController {
 
     return res.status(StatusCodes.CREATED).json(message);
   };
+
+  // Épico de Frentes, Frente 9, Lote 10: denúncia de mensagem - espelha
+  // feed.service.ts::reportPost (Frente 8, Lote 2), idempotente via upsert
+  // (denunciar a mesma mensagem duas vezes não duplica nem falha).
+  reportMessage = async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const { bookingId, messageId } = req.params;
+    const { reason } = req.body as { reason?: string };
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { provider: { select: { userId: true } } },
+    });
+    if (!booking) throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
+
+    const isClient = booking.clientId === userId;
+    const isProvider = booking.provider.userId === userId;
+    if (!isClient && !isProvider) throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
+
+    const message = await prisma.bookingMessage.findUnique({
+      where: { id: messageId },
+      select: { id: true, bookingId: true, senderId: true },
+    });
+    if (!message || message.bookingId !== bookingId) {
+      throw new AppError("Mensagem não encontrada.", StatusCodes.NOT_FOUND);
+    }
+    if (message.senderId === userId) {
+      throw new AppError("Você não pode denunciar a própria mensagem.", StatusCodes.BAD_REQUEST);
+    }
+
+    await prisma.bookingMessageReport.upsert({
+      where: { messageId_reporterId: { messageId, reporterId: userId } },
+      create: { messageId, reporterId: userId, reason },
+      update: {},
+    });
+
+    return res.status(StatusCodes.NO_CONTENT).send();
+  };
 }

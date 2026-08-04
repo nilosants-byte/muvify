@@ -3,6 +3,7 @@ import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -353,6 +354,36 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
     finally { setSending(false); }
   }, [inputText, selectedChat, sending, runWithAuth, fetchMessages]);
 
+  // Épico de Frentes, Frente 9, Lote 10: chat ganha ação de denunciar
+  // mensagem, reaproveitando o mesmo padrão já usado em posts da comunidade.
+  const handleReportMessage = useCallback(
+    (message: ChatMessage) => {
+      if (!selectedChat) return;
+      const chat = selectedChat;
+      Alert.alert(
+        "Denunciar mensagem",
+        "Quer denunciar esta mensagem? Nossa equipe vai revisar o conteúdo.",
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Denunciar",
+            style: "destructive",
+            onPress: () => {
+              runWithAuth((token) =>
+                chat.kind === "booking"
+                  ? chatApi.reportMessage(token, chat.rawId, message.id)
+                  : consultancyChatApi.reportMessage(token, chat.rawId, message.id)
+              )
+                .then(() => showToast("Denúncia recebida. Obrigado por nos avisar.", "info"))
+                .catch(() => showToast("Não foi possível enviar a denúncia.", "error"));
+            },
+          },
+        ]
+      );
+    },
+    [selectedChat, runWithAuth, showToast]
+  );
+
   // ── Colors ──────────────────────────────────────────────────────────────────
   const bg = theme.bg;
   const cardBg = theme.cardBg;
@@ -490,7 +521,12 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
                 const isMe = item.senderId === myUserId;
                 return (
                   <View style={{ flexDirection: "row", justifyContent: isMe ? "flex-end" : "flex-start", marginHorizontal: 12, marginVertical: 2 }}>
-                    <View style={{
+                    <TouchableOpacity
+                      activeOpacity={1}
+                      onLongPress={isMe ? undefined : () => handleReportMessage(item)}
+                      accessibilityRole={isMe ? undefined : "button"}
+                      accessibilityLabel={isMe ? undefined : "Denunciar mensagem"}
+                      style={{
                       maxWidth: "80%",
                       backgroundColor: isMe ? (isDark ? "#0e7a3e" : "#15803d") : cardBg,
                       borderRadius: 20,
@@ -512,7 +548,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
                           <Ionicons name={item.readAt ? "checkmark-done" : "checkmark"} size={12} color={item.readAt ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.5)"} />
                         ) : null}
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   </View>
                 );
               }}

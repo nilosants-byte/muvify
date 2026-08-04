@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -389,6 +390,36 @@ export function ClientChatListScreen({ navigation, route }: Props) {
     }
   };
 
+  // Épico de Frentes, Frente 9, Lote 10: chat ganha ação de denunciar
+  // mensagem, reaproveitando o mesmo padrão já usado em posts da comunidade.
+  const handleReportMessage = useCallback(
+    (message: ChatMessage) => {
+      if (!selectedChat) return;
+      const chat = selectedChat;
+      Alert.alert(
+        "Denunciar mensagem",
+        "Quer denunciar esta mensagem? Nossa equipe vai revisar o conteúdo.",
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Denunciar",
+            style: "destructive",
+            onPress: () => {
+              runWithAuth((token) =>
+                chat.kind === "booking"
+                  ? chatApi.reportMessage(token, chat.rawId, message.id)
+                  : consultancyChatApi.reportMessage(token, chat.rawId, message.id)
+              )
+                .then(() => showToast("Denúncia recebida. Obrigado por nos avisar.", "info"))
+                .catch(() => showToast("Não foi possível enviar a denúncia.", "error"));
+            },
+          },
+        ]
+      );
+    },
+    [selectedChat, runWithAuth, showToast]
+  );
+
   // ── Lista: item de conversa V2 ────────────────────────────────────────────
   const renderChatItem = ({ item }: { item: UnifiedChat }) => {
     const hasUnread = item.unreadCount > 0;
@@ -492,7 +523,12 @@ export function ClientChatListScreen({ navigation, route }: Props) {
     const isMine = item.senderId === myUserId;
     return (
       <View style={{ flexDirection: "row", justifyContent: isMine ? "flex-end" : "flex-start", marginHorizontal: 12, marginVertical: 2 }}>
-        <View style={{
+        <TouchableOpacity
+          activeOpacity={1}
+          onLongPress={isMine ? undefined : () => handleReportMessage(item)}
+          accessibilityRole={isMine ? undefined : "button"}
+          accessibilityLabel={isMine ? undefined : "Denunciar mensagem"}
+          style={{
           maxWidth: "80%", borderRadius: 20,
           borderBottomRightRadius: isMine ? 4 : 20,
           borderBottomLeftRadius: isMine ? 20 : 4,
@@ -516,7 +552,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
               />
             ) : null}
           </View>
-        </View>
+        </TouchableOpacity>
       </View>
     );
   };

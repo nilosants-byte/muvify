@@ -306,4 +306,41 @@ export class ConsultancyChatController {
 
     return res.status(StatusCodes.CREATED).json(message);
   };
+
+  // Épico de Frentes, Frente 9, Lote 10: denúncia de mensagem - espelha
+  // ChatController::reportMessage.
+  reportMessage = async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const { contractId, messageId } = req.params;
+    const { reason } = req.body as { reason?: string };
+
+    const contract = await prisma.consultancyContract.findUnique({
+      where: { id: contractId },
+      include: { provider: { select: { userId: true } } },
+    });
+    if (!contract) throw new AppError("Consultoria não encontrada.", StatusCodes.NOT_FOUND);
+
+    const isClient = contract.clientId === userId;
+    const isProvider = contract.provider.userId === userId;
+    if (!isClient && !isProvider) throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
+
+    const message = await prisma.consultancyMessage.findUnique({
+      where: { id: messageId },
+      select: { id: true, contractId: true, senderId: true },
+    });
+    if (!message || message.contractId !== contractId) {
+      throw new AppError("Mensagem não encontrada.", StatusCodes.NOT_FOUND);
+    }
+    if (message.senderId === userId) {
+      throw new AppError("Você não pode denunciar a própria mensagem.", StatusCodes.BAD_REQUEST);
+    }
+
+    await prisma.consultancyMessageReport.upsert({
+      where: { messageId_reporterId: { messageId, reporterId: userId } },
+      create: { messageId, reporterId: userId, reason },
+      update: {},
+    });
+
+    return res.status(StatusCodes.NO_CONTENT).send();
+  };
 }

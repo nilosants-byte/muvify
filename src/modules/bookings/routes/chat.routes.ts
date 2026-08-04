@@ -7,6 +7,7 @@ import { validate } from "../../../middlewares/validate.middleware";
 import { ChatController } from "../controllers/chat.controller";
 import {
   chatBookingIdParamSchema,
+  chatReportMessageSchema,
   chatSendMessageSchema
 } from "../validators/chat.validator";
 
@@ -25,3 +26,10 @@ chatRoutes.get("/:bookingId/messages", validate(chatBookingIdParamSchema), chatC
 // corrigida em outros lugares na Frente 5. O chat de consultoria (Lote 7)
 // já nasceu usando writeRateLimiter.
 chatRoutes.post("/:bookingId/messages", writeRateLimiter, validate(chatSendMessageSchema), chatController.sendMessage);
+// Épico de Frentes, Frente 9, Lote 10: denúncia de mensagem no chat.
+chatRoutes.post(
+  "/:bookingId/messages/:messageId/report",
+  writeRateLimiter,
+  validate(chatReportMessageSchema),
+  chatController.reportMessage
+);

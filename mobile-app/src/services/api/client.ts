@@ -2350,6 +2350,14 @@ export const chatApi = {
       token,
       body: { content }
     });
+  },
+  // Épico de Frentes, Frente 9, Lote 10: denúncia de mensagem no chat.
+  reportMessage(token: string, bookingId: string, messageId: string, reason?: string) {
+    return apiRequest<void>(`/bookings/${bookingId}/messages/${messageId}/report`, {
+      method: "POST",
+      token,
+      body: { reason }
+    });
   }
 };
 
@@ -2386,6 +2394,14 @@ export const consultancyChatApi = {
       method: "POST",
       token,
       body: { content }
+    });
+  },
+  // Épico de Frentes, Frente 9, Lote 10: denúncia de mensagem no chat.
+  reportMessage(token: string, contractId: string, messageId: string, reason?: string) {
+    return apiRequest<void>(`/consultancy/contracts/${contractId}/messages/${messageId}/report`, {
+      method: "POST",
+      token,
+      body: { reason }
     });
   }
 };

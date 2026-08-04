@@ -309,6 +309,8 @@ model User {
   presentialPackages       PresentialPackage[]         @relation("ClientPresentialPackages")
   chatMessages             BookingMessage[]
   consultancyMessages      ConsultancyMessage[]
+  bookingMessageReports    BookingMessageReport[]
+  consultancyMessageReports ConsultancyMessageReport[]
   notificationPreferences  NotificationPreference[]
   supportTicketsSubmitted  SupportTicket[]             @relation("SupportTicketRequester")
   supportTicketsResponded  SupportTicket[]             @relation("SupportTicketResponder")
@@ -1479,9 +1481,25 @@ model BookingMessage {
 
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   sender  User?   @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  reports BookingMessageReport[]
 
   @@index([bookingId, createdAt])
   @@index([senderId, createdAt])
+}
+
+// Épico de Frentes, Frente 9, Lote 10: denúncia de mensagem no chat de
+// agendamento - espelha FeedPostReport (Frente 8, Lote 2).
+model BookingMessageReport {
+  id         String   @id @default(uuid())
+  messageId  String
+  reporterId String
+  reason     String?
+  createdAt  DateTime @default(now())
+  message    BookingMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  reporter   User           @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, reporterId])
+  @@index([messageId])
 }
 
 // Épico de Frentes, Frente 9, Lote 7: chat de consultoria - espelha
@@ -1499,9 +1517,25 @@ model ConsultancyMessage {
 
   contract ConsultancyContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   sender   User?                @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  reports  ConsultancyMessageReport[]
 
   @@index([contractId, createdAt])
   @@index([senderId, createdAt])
+}
+
+// Épico de Frentes, Frente 9, Lote 10: denúncia de mensagem no chat de
+// consultoria - espelha BookingMessageReport/FeedPostReport.
+model ConsultancyMessageReport {
+  id         String   @id @default(uuid())
+  messageId  String
+  reporterId String
+  reason     String?
+  createdAt  DateTime @default(now())
+  message    ConsultancyMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  reporter   User               @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, reporterId])
+  @@index([messageId])
 }
 
 model NotificationPreference {

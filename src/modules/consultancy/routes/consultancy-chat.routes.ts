@@ -7,6 +7,7 @@ import { validate } from "../../../middlewares/validate.middleware";
 import { ConsultancyChatController } from "../controllers/consultancy-chat.controller";
 import {
   consultancyContractIdParamSchema,
+  consultancyReportMessageSchema,
   consultancySendMessageSchema
 } from "../validators/consultancy-chat.validator";
 
@@ -34,4 +35,11 @@ consultancyChatRoutes.post(
   writeRateLimiter,
   validate(consultancySendMessageSchema),
   consultancyChatController.sendMessage
+);
+// Épico de Frentes, Frente 9, Lote 10: denúncia de mensagem no chat.
+consultancyChatRoutes.post(
+  "/contracts/:contractId/messages/:messageId/report",
+  writeRateLimiter,
+  validate(consultancyReportMessageSchema),
+  consultancyChatController.reportMessage
 );
