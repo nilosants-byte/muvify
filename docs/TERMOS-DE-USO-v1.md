@@ -1,11 +1,11 @@
 # TERMOS DE USO — MUVIFY
-**Versão:** 1.0  
-**Data de vigência:** [DATA DE PUBLICAÇÃO]  
-**Última atualização:** [DATA DE PUBLICAÇÃO]
+**Versão:** 2026.05 (mesma versão canônica exposta em `src/config/legal.ts`/`CURRENT_TERMS_VERSION` e no app)
+**Data de vigência:** pendente de definição formal — ver nota abaixo
+**Última atualização:** 2026-08-05 (Épico de Frentes, Frente 11 — auditoria completa de privacidade/LGPD)
 
 ---
 
-> **NOTA PARA O OPERADOR:** Antes de publicar, preencha todos os campos marcados com `[colchetes]`. Consulte seu advogado para revisar cláusulas específicas do seu modelo de negócio, especialmente a seção de pagamentos e as limitações de responsabilidade.
+> **NOTA INTERNA:** Este documento serve de referência para o texto exibido no Aplicativo e no fluxo de aceite de cadastro (`CURRENT_TERMS_VERSION`), mas a **data de vigência formal** (com validade jurídica de "documento publicado nesta data") ainda não foi definida por decisão de produto/jurídico — gap documentado, não uma data fabricada. Este documento também ainda tem placeholders de identidade jurídica (razão social, CNPJ, endereço) e de prazos de negócio (dias úteis de análise de CREF, meses de não-desvio de relacionamento comercial) não preenchidos, que dependem de decisão de negócio/jurídico, fora do escopo de uma auditoria técnica de privacidade. Defina todos antes de tratar este documento como juridicamente vigente em uma auditoria externa.
 
 ---
 
@@ -124,7 +124,7 @@ Você é integralmente responsável por:
 
 - Manter a confidencialidade de sua senha;
 - Todas as atividades realizadas com suas credenciais;
-- Notificar a Muvify imediatamente em caso de acesso não autorizado ou suspeita de comprometimento da conta pelo e-mail **[EMAIL DE SUPORTE]** ou pelo canal de suporte do Aplicativo.
+- Notificar a Muvify imediatamente em caso de acesso não autorizado ou suspeita de comprometimento da conta pelo e-mail **muvifyadm@gmail.com** ou pelo canal de suporte do Aplicativo.
 
 A Muvify nunca solicitará sua senha por qualquer canal de comunicação. Em caso de perda ou esquecimento de senha, utilize a funcionalidade "Esqueci minha senha" no Aplicativo.
 
@@ -752,7 +752,7 @@ A Muvify pode ceder, transferir ou sublicenciar seus direitos e obrigações dec
 
 ### 21.5 Comunicações
 
-Comunicações da Muvify ao usuário serão realizadas pelo Aplicativo (notificações push ou in-app) ou por e-mail para o endereço cadastrado. Comunicações do usuário à Muvify devem ser direcionadas ao canal de suporte indicado no Aplicativo ou ao e-mail **[EMAIL DE SUPORTE]**.
+Comunicações da Muvify ao usuário serão realizadas pelo Aplicativo (notificações push ou in-app) ou por e-mail para o endereço cadastrado. Comunicações do usuário à Muvify devem ser direcionadas ao canal de suporte indicado no Aplicativo ou ao e-mail **muvifyadm@gmail.com**.
 
 ### 21.6 Idioma
 

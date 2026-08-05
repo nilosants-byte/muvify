@@ -39,8 +39,7 @@
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -71,7 +70,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Permita acesso à câmera para capturar selfie de confirmação de presença nos agendamentos."
+          "cameraPermission": "Permita acesso à câmera para capturar selfie de confirmação de presença nos agendamentos.",
+          "microphonePermission": false
         }
       ],
       "expo-notifications",

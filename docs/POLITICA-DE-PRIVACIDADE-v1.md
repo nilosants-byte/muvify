@@ -1,11 +1,11 @@
 # POLÍTICA DE PRIVACIDADE — MUVIFY
-**Versão:** 1.0  
-**Data de vigência:** [DATA DE PUBLICAÇÃO]  
-**Última atualização:** [DATA DE PUBLICAÇÃO]
+**Versão:** 2026.05 (mesma versão canônica exposta em `src/config/legal.ts`/`CURRENT_TERMS_VERSION` e no app)
+**Data de vigência:** pendente de definição formal — ver nota abaixo
+**Última atualização:** 2026-08-05 (Épico de Frentes, Frente 11 — auditoria completa de privacidade/LGPD)
 
 ---
 
-> **NOTA PARA O OPERADOR:** Antes de publicar, preencha todos os campos marcados com `[colchetes]`. Consulte seu advogado para revisar cláusulas específicas do seu modelo de negócio.
+> **NOTA INTERNA:** Este documento serve de referência para o texto exibido no Aplicativo (`PrivacyScreen.tsx`) e no fluxo de aceite (`CURRENT_TERMS_VERSION`), mas a **data de vigência formal** (com validade jurídica de "documento publicado nesta data") ainda não foi definida por decisão de produto/jurídico — gap documentado, não uma data fabricada. Este documento também ainda tem placeholders de identidade jurídica não preenchidos (razão social, CNPJ, endereço — itens 1 e final do texto) que dependem de decisão de negócio/jurídico, fora do escopo de uma auditoria técnica de privacidade. Defina todos antes de tratar este documento como juridicamente vigente em uma auditoria externa.
 
 ---
 
@@ -329,33 +329,39 @@ A Muvify mantém os dados pessoais apenas pelo tempo necessário para as finalid
 | Tokens de verificação de e-mail | 30 dias após uso ou expiração | Exclusão automática |
 | Dispositivos push inativos | 180 dias após último uso | Exclusão automática |
 | Notificações in-app | 730 dias (2 anos) após criação | Exclusão automática |
-| Fila de retry de push com falha | 90 dias | Exclusão automática |
+| Fila de retry de push/e-mail com falha | 90 dias | Exclusão automática |
 | Selfies de evidência de presença | 730 dias (2 anos) após criação | Exclusão automática |
-| Anamnese (dados de saúde) | 730 dias (2 anos) após última atualização | Anonimização do conteúdo |
-| Avaliações biométricas | 730 dias (2 anos) após criação | Anonimização do conteúdo |
-| Mensagens de chat | 730 dias (2 anos) após última interação | Anonimização do conteúdo |
-| Comentários de reviews | 730 dias (2 anos) | Anonimização do conteúdo |
+| Anamnese (dados de saúde) | 365 dias (1 ano) após última atualização, preservada enquanto houver relação ativa com algum profissional | Anonimização do conteúdo |
+| Avaliações biométricas (dados de saúde) | 365 dias (1 ano) após última atualização, preservada enquanto o par profissional-aluno tiver relação ativa | Exclusão |
+| Dados de saúde de solicitação de consultoria | 730 dias (2 anos) após última atualização | Anonimização do conteúdo |
+| Mensagens de chat (agendamento e consultoria) | 730 dias (2 anos) após última interação | Anonimização do conteúdo |
+| Comentários de reviews e resposta do profissional | 730 dias (2 anos) | Anonimização do conteúdo |
 | Notas de agendamento | 730 dias (2 anos) | Anonimização do conteúdo |
-| Fila de e-mail com falha | 90 dias | Exclusão automática |
+| Motivo de denúncia de conteúdo (feed/chat) | 730 dias (2 anos) após a decisão da denúncia | Anonimização do motivo (registro da denúncia mantido) |
+| Bloco manual de agenda e aluno financeiro manual | 730 dias (2 anos) | Anonimização do conteúdo |
 | Registros de tickets de suporte | 5 anos (1.825 dias) | Anonimização do conteúdo |
 | Motivo de relato/contestação de falta e nota de caso de disputa | 730 dias (2 anos) após a resolução do caso | Anonimização do conteúdo (o registro do caso — status, decisão, valores — é mantido para auditoria) |
 | Registros financeiros e auditoria de pagamentos (inclui pacotes presenciais e seus ciclos de cobrança) | Mínimo 5 anos | Arquivamento seguro com acesso restrito |
-| Logs de acesso à aplicação | Mínimo 6 meses (Marco Civil da Internet, art. 15) | Rotação/exclusão automatizada |
+| Logs de acesso à aplicação | Mínimo 6 meses (Marco Civil da Internet, art. 15) | Hoje via rotação de infraestrutura (gap de formalização documentado internamente) |
+| Trilhas de auditoria (administrativa, pagamento, retenção, acesso a dado de saúde) | Sem prazo — são a própria evidência de conformidade | Retenção indefinida |
 
 ### 8.1 Encerramento de Conta (Exclusão a Pedido)
 
-O titular pode solicitar a exclusão de sua conta a qualquer momento pelo Aplicativo (Configurações → Excluir minha conta), confirmando com sua senha. A exclusão executa as seguintes ações de forma atômica:
+O titular pode solicitar a exclusão de sua conta a qualquer momento pelo Aplicativo (Configurações → Excluir minha conta), confirmando com sua senha. A exclusão é bloqueada enquanto houver pendência financeira, caso em julgamento ou retenção legal obrigatória (legal hold) ativa; pacote presencial ou consultoria ativos são **cancelados automaticamente** (não bloqueiam) tanto para o aluno quanto para o profissional. Confirmado, a exclusão executa as seguintes ações de forma atômica:
 
 1. Revogação imediata de todas as sessões ativas e tokens de autenticação;
 2. Desativação de todos os dispositivos push registrados;
 3. Exclusão de preferências de notificação e histórico de notificações;
 4. Exclusão de métodos de pagamento e zeragem de identificadores de cartão;
-5. Exclusão de dados de anamnese;
-6. Exclusão de selfies de evidência de presença;
-7. Anonimização de mensagens de chat;
+5. Exclusão de dados de anamnese e avaliações biométricas;
+6. Exclusão de selfies de evidência de presença (e do arquivo correspondente no armazenamento);
+7. Anonimização de mensagens de chat (agendamento e consultoria);
 8. Exclusão de tickets de suporte (respeitado o prazo de 5 anos para defesa de direitos);
-9. Para o Profissional: exclusão de conta bancária, CREF, localizações, disponibilidades, planos, dados financeiros e zeragem do perfil público ("Personal removido");
-10. **Anonimização do usuário principal:** e-mail → `deleted_{id}@removed.invalid`, nome → "Usuário removido", telefone → nulo, foto → nula, senha → hash aleatório (login impossibilitado definitivamente).
+9. Limpeza de identificadores residuais (CPF, apelido público, segredo de autenticação de dois fatores, identificadores do Mercado Pago, motivo de suspensão);
+10. Para o Profissional: exclusão de conta bancária, CREF, localizações, disponibilidades, planos, dados financeiros e zeragem do perfil público ("Personal removido"), incluindo os arquivos de foto/vídeo/documentos e mídia de exercício próprio no armazenamento;
+11. Remoção do nome/foto de posts automáticos de outros usuários que citavam a conta excluída (ex.: post de conclusão de treino);
+12. **Anonimização do usuário principal:** e-mail → `deleted_{id}@removed.invalid`, nome → "Usuário removido", telefone → nulo, foto → nula, senha → hash aleatório (login impossibilitado definitivamente);
+13. Envio de e-mail de confirmação da exclusão ao titular.
 
 **Dados retidos após exclusão:** Registros financeiros de transações passadas são mantidos pelo prazo legal mínimo de 5 anos para fins fiscais e de defesa de direitos, sem qualquer uso para finalidades de marketing ou análise.
 
@@ -401,22 +407,22 @@ Em conformidade com os arts. 17 a 22 da LGPD, o titular tem os seguintes direito
 
 | Direito | Descrição | Como exercer no Muvify |
 |---|---|---|
-| **Confirmação de tratamento** | Saber se tratamos dados seus | Resposta em até 15 dias úteis via canal do DPO |
+| **Confirmação de tratamento** | Saber se tratamos dados seus | Resposta em até 15 dias úteis via canal de privacidade |
 | **Acesso** | Obter cópia de todos os seus dados pessoais | No Aplicativo: Configurações → Exportar meus dados (JSON) |
-| **Retificação** | Corrigir dados incompletos, inexatos ou desatualizados | No Aplicativo: Editar perfil; ou via DPO para campos não editáveis |
-| **Anonimização, bloqueio ou eliminação** | Para dados desnecessários, excessivos ou tratados em desconformidade com a LGPD | Via DPO; ou exclusão total pelo Aplicativo |
+| **Retificação** | Corrigir dados incompletos, inexatos ou desatualizados | No Aplicativo: Editar perfil; ou via canal de privacidade para campos não editáveis |
+| **Anonimização, bloqueio ou eliminação** | Para dados desnecessários, excessivos ou tratados em desconformidade com a LGPD | Via canal de privacidade; ou exclusão total pelo Aplicativo |
 | **Portabilidade** | Receber seus dados em formato estruturado e interoperável | No Aplicativo: Configurações → Exportar meus dados (formato JSON) |
-| **Eliminação** | Solicitar eliminação de dados tratados com base em consentimento, ressalvadas as exceções legais | No Aplicativo: Configurações → Excluir minha conta; ou via DPO |
-| **Informação sobre compartilhamento** | Saber com quais entidades compartilhamos seus dados | Esta Política (item 6); e via DPO para casos específicos |
+| **Eliminação** | Solicitar eliminação de dados tratados com base em consentimento, ressalvadas as exceções legais | No Aplicativo: Configurações → Excluir minha conta; ou via canal de privacidade |
+| **Informação sobre compartilhamento** | Saber com quais entidades compartilhamos seus dados | Esta Política (item 6); e via canal de privacidade para casos específicos |
 | **Informação sobre recusa de consentimento** | Conhecer as consequências de não fornecer consentimento | Descrito em cada formulário de coleta |
-| **Revogação do consentimento** | Revogar consentimento previamente concedido | Via DPO ou funcionalidade específica no Aplicativo |
-| **Oposição ao tratamento** | Opor-se ao tratamento fundamentado em legítimo interesse | Via DPO — avaliaremos e responderemos |
-| **Revisão de decisões automatizadas** | Solicitar revisão humana de decisões tomadas exclusivamente por algoritmos | Via DPO |
+| **Revogação do consentimento** | Revogar consentimento previamente concedido | Via canal de privacidade ou funcionalidade específica no Aplicativo |
+| **Oposição ao tratamento** | Opor-se ao tratamento fundamentado em legítimo interesse | Via canal de privacidade — avaliaremos e responderemos |
+| **Revisão de decisões automatizadas** | Solicitar revisão humana de decisões tomadas exclusivamente por algoritmos | Via canal de privacidade |
 | **Reclamação à ANPD** | Peticionar perante a Autoridade Nacional de Proteção de Dados | Diretamente pelo portal da ANPD: gov.br/anpd |
 
 ### 10.1 Exercício dos Direitos
 
-Para exercer qualquer direito listado acima, entre em contato com nosso Encarregado de Dados (DPO) pelo e-mail **[EMAIL DO DPO]** ou pelo canal de suporte indicado no Aplicativo. Responderemos em até **15 (quinze) dias úteis**, podendo esse prazo ser prorrogado uma vez, com justificativa fundamentada.
+Para exercer qualquer direito listado acima, entre em contato pelo canal oficial de privacidade (**muvifyadm@gmail.com**) ou pelo canal de suporte indicado no Aplicativo — a designação formal de um Encarregado (DPO) está em andamento (item 16). Responderemos em até **15 (quinze) dias úteis**, podendo esse prazo ser prorrogado uma vez, com justificativa fundamentada.
 
 Para confirmar sua identidade antes de atender sua solicitação, poderemos solicitar documentos de identificação.
 
@@ -449,7 +455,7 @@ Mantemos registro da versão dos Termos e da Política aceita por cada usuário,
 
 ### 11.4 Revogação do consentimento
 
-O titular pode revogar qualquer consentimento a qualquer momento, sem ônus, pelo canal do DPO ou pelas funcionalidades do Aplicativo (ex.: desativação de preferências de notificação). A revogação não afeta a licitude do tratamento realizado antes da revogação (art. 8º, § 5º da LGPD).
+O titular pode revogar qualquer consentimento a qualquer momento, sem ônus, pelo canal de privacidade ou pelas funcionalidades do Aplicativo (ex.: desativação de preferências de notificação). A revogação não afeta a licitude do tratamento realizado antes da revogação (art. 8º, § 5º da LGPD).
 
 ---
 
@@ -459,7 +465,7 @@ O Aplicativo Muvify é destinado exclusivamente a **pessoas com 18 (dezoito) ano
 
 Não coletamos intencionalmente dados pessoais de menores de 14 anos. Caso identificarmos que coletamos inadvertidamente dados de menor sem o consentimento válido do responsável legal, eliminaremos tais dados imediatamente (art. 14, §§ 3º e 4º da LGPD).
 
-Se você tem ciência de que um menor forneceu dados ao Muvify sem autorização do responsável legal, contate nosso DPO imediatamente pelo e-mail **[EMAIL DO DPO]**.
+Se você tem ciência de que um menor forneceu dados ao Muvify sem autorização do responsável legal, contate imediatamente o canal oficial de privacidade (**muvifyadm@gmail.com**).
 
 **Adolescentes entre 14 e 17 anos:** Nos termos do art. 14, § 1º da LGPD, o tratamento de dados de adolescentes entre 14 e 17 anos somente é admitido mediante consentimento específico de pelo menos um dos responsáveis legais. Por ora, o Aplicativo não admite o cadastro de menores de 18 anos. Caso essa política venha a ser alterada, os mecanismos de coleta de consentimento parental serão implementados previamente.
 
@@ -537,11 +543,7 @@ Mantemos plano de resposta a incidentes documentado e testado periodicamente.
 
 ## 16. ENCARREGADO DE PROTEÇÃO DE DADOS (DPO)
 
-Em conformidade com o art. 41 da LGPD e a Resolução CD/ANPD nº 18/2024, a Muvify designa o seguinte Encarregado de Proteção de Dados:
-
-**Nome:** [NOME DO ENCARREGADO]  
-**E-mail:** [EMAIL DO DPO]  
-**Endereço:** [ENDEREÇO PARA CORRESPONDÊNCIA]
+Em conformidade com o art. 41 da LGPD e a Resolução CD/ANPD nº 18/2024, a Muvify está em processo de designação formal de um Encarregado de Proteção de Dados (DPO). Até a conclusão desse processo, o canal oficial de privacidade da Muvify (**muvifyadm@gmail.com**, também indicado no Aplicativo) atende as solicitações relacionadas a dados pessoais e direitos do titular listadas nesta Política.
 
 O Encarregado é responsável por:
 
