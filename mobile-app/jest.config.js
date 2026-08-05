@@ -1,6 +1,13 @@
 /** @type {import('jest').Config} */
 module.exports = {
   preset: "jest-expo",
+  // Épico de Frentes - atualização Expo 54→57/RN 0.81→0.86: sem isso, Jest
+  // resolve os arquivos *.native.ts do react-native-worklets (reanimated
+  // 4.5), que tentam carregar o módulo nativo de verdade e quebram - mesmo
+  // com o mock oficial do reanimated aplicado (o próprio mock.js do
+  // reanimated importa alguns valores do índice real). Resolver oficial do
+  // pacote pra esse cenário de teste.
+  resolver: "react-native-worklets/jest/resolver.js",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
   testMatch: ["**/?(*.)+(spec|test).[tj]s?(x)"],
   testPathIgnorePatterns: ["/node_modules/", "/android/", "/ios/"],
