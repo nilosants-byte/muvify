@@ -82,6 +82,7 @@ import { SessionExpiredScreen } from "../screens/shared/SessionExpiredScreen";
 import { SupportScreen } from "../screens/shared/SupportScreen";
 import { PrivacyScreen } from "../screens/shared/PrivacyScreen";
 import { SecurityScreen } from "../screens/shared/SecurityScreen";
+import { ConnectedDevicesScreen } from "../screens/shared/ConnectedDevicesScreen";
 import { useAppState } from "../state/AppState";
 import { queryClient } from "../lib/queryClient";
 import { queryKeys } from "../lib/queryKeys";
@@ -480,6 +481,10 @@ export function RootNavigator() {
         component={SecurityScreen as React.ComponentType<any>}
       />
       <ClientStack.Screen
+        name="ConnectedDevices"
+        component={ConnectedDevicesScreen as React.ComponentType<any>}
+      />
+      <ClientStack.Screen
         name="GenericError"
         component={GenericErrorScreen as React.ComponentType<any>}
       />
@@ -618,6 +623,10 @@ export function RootNavigator() {
         component={SecurityScreen as React.ComponentType<any>}
       />
       <ProfessionalStack.Screen
+        name="ConnectedDevices"
+        component={ConnectedDevicesScreen as React.ComponentType<any>}
+      />
+      <ProfessionalStack.Screen
         name="GenericError"
         component={GenericErrorScreen as React.ComponentType<any>}
       />
@@ -709,6 +718,11 @@ export function RootNavigator() {
             <AdminStack.Screen
               name="Security"
               component={SecurityScreen as React.ComponentType<any>}
+              options={{ headerShown: false }}
+            />
+            <AdminStack.Screen
+              name="ConnectedDevices"
+              component={ConnectedDevicesScreen as React.ComponentType<any>}
               options={{ headerShown: false }}
             />
           </AdminStack.Navigator>

@@ -37,7 +37,7 @@ export async function ensureAuthenticated(request: Request, _response: Response,
       return next(new AppError("Sessao encerrada. Faca login novamente.", StatusCodes.UNAUTHORIZED));
     }
 
-    request.user = { id: payload.sub, role: payload.role };
+    request.user = { id: payload.sub, role: payload.role, sessionId: payload.sessionId };
     next();
   } catch (error) {
     next(error);

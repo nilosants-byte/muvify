@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { AuthService } from "../services/auth.service";
 import { TwoFactorService } from "../services/two-factor.service";
+import { resolveDeviceLabel } from "./auth.controller";
 
 const authService = new AuthService();
 const twoFactorService = new TwoFactorService();
@@ -31,7 +32,8 @@ export class TwoFactorController {
     const result = await authService.loginWithTwoFactor(
       request.body.challengeToken,
       request.body.code,
-      request.body.backupCode
+      request.body.backupCode,
+      resolveDeviceLabel(request)
     );
     return response.status(StatusCodes.OK).json(result);
   }

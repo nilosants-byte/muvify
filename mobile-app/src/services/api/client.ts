@@ -1,4 +1,5 @@
 ﻿import { Platform } from "react-native";
+import * as Device from "expo-device";
 import { TERMS_VERSION } from "../../config/legal";
 
 export type UserRole = "CLIENT" | "PROVIDER" | "ADMIN";
@@ -850,6 +851,13 @@ export type SecurityRecoveryEmailResponse = {
   custom: boolean;
 };
 
+export type ConnectedSession = {
+  id: string;
+  userAgent: string | null;
+  lastActiveAt: string;
+  isCurrent: boolean;
+};
+
 export type ProviderStudentServiceKind =
   | "PRESENTIAL"
   | "ONLINE_CONSULTANCY"
@@ -1260,6 +1268,12 @@ export async function apiRequest<T = unknown>(
       headers: {
         ...(body ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        // Tela "Meus aparelhos conectados": um nome de aparelho legível
+        // (mesma fonte já usada pro registro de push, push.ts) em vez de
+        // depender só do User-Agent técnico do fetch nativo (curto e
+        // pouco informativo tipo "okhttp/4.x"). Inofensivo em endpoints
+        // que não criam sessão - só login/registro/refresh o leem.
+        ...(Device.deviceName ? { "X-Device-Label": Device.deviceName } : {}),
         // Header de tunelamento do ngrok — só faz sentido em dev local (npm run start:ngrok).
         // Nunca deve ir para builds de produção.
         ...(__DEV__ ? { "ngrok-skip-browser-warning": "true" } : {})
@@ -1537,6 +1551,15 @@ export const userApi = {
       method: "PUT",
       token,
       body: { recoveryEmail, password }
+    });
+  },
+  listMySessions(token: string) {
+    return apiRequest<ConnectedSession[]>("/users/me/security/sessions", { token });
+  },
+  revokeMySession(token: string, sessionId: string) {
+    return apiRequest<void>(`/users/me/security/sessions/${sessionId}`, {
+      method: "DELETE",
+      token
     });
   },
   sendSupportMessage(

@@ -72,6 +72,16 @@ export class UserController {
     return response.json(result);
   }
 
+  async listMySessions(request: Request, response: Response) {
+    const result = await userService.listMySessions(request.user!.id, request.user!.sessionId);
+    return response.json(result);
+  }
+
+  async revokeMySession(request: Request, response: Response) {
+    await userService.revokeMySession(request.user!.id, request.params.sessionId);
+    return response.status(StatusCodes.NO_CONTENT).send();
+  }
+
   async listMySupportTickets(request: Request, response: Response) {
     const tickets = await userService.listMySupportTickets(request.user!.id);
     return response.json(tickets);

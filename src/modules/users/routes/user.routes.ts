@@ -55,6 +55,12 @@ userRoutes.put(
   validate(upsertRecoveryEmailSchema),
   userController.upsertRecoveryEmail
 );
+userRoutes.get("/me/security/sessions", userController.listMySessions);
+userRoutes.delete(
+  "/me/security/sessions/:sessionId",
+  writeRateLimiter,
+  userController.revokeMySession
+);
 userRoutes.post(
   "/me/support-message",
   uploadRateLimiter,

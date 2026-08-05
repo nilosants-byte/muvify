@@ -766,6 +766,12 @@ model Session {
   createdAt        DateTime  @default(now())
   expiresAt        DateTime
   revokedAt        DateTime?
+  // Tela "Meus aparelhos conectados": o refresh token gira a cada renovação
+  // (uma linha nova por rotação, a antiga é revogada) - guardar o
+  // user-agent aqui e sempre repassar pra linha nova na rotação (ver
+  // AuthService.refresh) é o que faz um mesmo aparelho continuar
+  // reconhecível ao longo do tempo, mesmo trocando de linha por baixo.
+  userAgent        String?
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])

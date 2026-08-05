@@ -265,6 +265,13 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
                 setRecoveryModalVisible(true);
               }}
             />
+            <View style={{ height: 1, backgroundColor: theme.borderSub }} />
+            <ActionRow
+              icon="phone-portrait-outline"
+              title="Aparelhos conectados"
+              subtitle="Veja onde sua conta está logada e desconecte à distância"
+              onPress={() => navigation?.navigate?.("ConnectedDevices")}
+            />
           </MvCard>
 
           <MvCard>

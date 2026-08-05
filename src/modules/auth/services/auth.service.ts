@@ -162,20 +162,21 @@ export class AuthService {
     clearLocalLoginAttempts(email);
   }
 
-  private async createSession(userId: string, tx: PrismaLike = prisma) {
+  private async createSession(userId: string, tx: PrismaLike = prisma, userAgent?: string | null) {
     const refreshToken = generateRefreshToken();
     const refreshTokenHash = hashRefreshToken(refreshToken);
     const expiresAt = new Date(
       Date.now() + env.REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000
     );
-    await tx.session.create({
+    const session = await tx.session.create({
       data: {
         userId,
         refreshTokenHash,
-        expiresAt
+        expiresAt,
+        userAgent: userAgent ?? undefined
       }
     });
-    return refreshToken;
+    return { refreshToken, sessionId: session.id };
   }
 
   private async createEmailVerificationToken(userId: string) {
@@ -301,7 +302,7 @@ export class AuthService {
     }
 
     const effectiveRole = resolveEffectiveUserRole(user!.email, user!.role, user!.emailVerifiedAt);
-    const refreshToken = await this.createSession(user!.id);
+    const { refreshToken, sessionId } = await this.createSession(user!.id, prisma, userAgent);
 
     try {
       await this.queueEmailVerificationEmail({
@@ -319,7 +320,7 @@ export class AuthService {
         photoUrl: toUserPhotoUrl(user.id, user.photoUrl, user.updatedAt),
         role: effectiveRole
       },
-      accessToken: signToken(user.id, effectiveRole),
+      accessToken: signToken(user.id, effectiveRole, sessionId),
       refreshToken
     };
   }
@@ -396,7 +397,7 @@ export class AuthService {
     });
   }
 
-  async login(email: string, password: string) {
+  async login(email: string, password: string, userAgent?: string) {
     const normalizedEmail = email.trim().toLowerCase();
     await this.ensureLoginNotLocked(normalizedEmail);
     const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
@@ -429,7 +430,7 @@ export class AuthService {
     }
 
     const effectiveRole = resolveEffectiveUserRole(user.email, user.role, user.emailVerifiedAt);
-    const refreshToken = await this.createSession(user.id);
+    const { refreshToken, sessionId } = await this.createSession(user.id, prisma, userAgent);
     return {
       user: {
         id: user.id,
@@ -445,12 +446,12 @@ export class AuthService {
         // ativar 2FA exige estar logado primeiro).
         twoFactorEnabled: user.twoFactorEnabled
       },
-      accessToken: signToken(user.id, effectiveRole),
+      accessToken: signToken(user.id, effectiveRole, sessionId),
       refreshToken
     };
   }
 
-  async loginWithTwoFactor(challengeToken: string, code?: string, backupCode?: string) {
+  async loginWithTwoFactor(challengeToken: string, code?: string, backupCode?: string, userAgent?: string) {
     const userId = await this.twoFactorService.resolveAndConsumeChallengeToken(challengeToken);
     if (backupCode) {
       await this.twoFactorService.consumeBackupCode(userId, backupCode);
@@ -477,7 +478,7 @@ export class AuthService {
     if (!user) throw new AppError("Usuario nao encontrado.", StatusCodes.NOT_FOUND);
 
     const effectiveRole = resolveEffectiveUserRole(user.email, user.role, user.emailVerifiedAt);
-    const refreshToken = await this.createSession(user.id);
+    const { refreshToken, sessionId } = await this.createSession(user.id, prisma, userAgent);
     return {
       user: {
         id: user.id,
@@ -489,7 +490,7 @@ export class AuthService {
         photoUrl: toUserPhotoUrl(user.id, user.photoUrl, user.updatedAt),
         twoFactorEnabled: true
       },
-      accessToken: signToken(user.id, effectiveRole),
+      accessToken: signToken(user.id, effectiveRole, sessionId),
       refreshToken
     };
   }
@@ -516,7 +517,15 @@ export class AuthService {
         throw new AppError("Refresh token invalido.", StatusCodes.UNAUTHORIZED);
       }
 
-      const newRefreshToken = await this.createSession(session.userId, tx);
+      // Tela "Meus aparelhos conectados": repassa o user-agent da sessão
+      // rotacionada pra nova - sem isso, o aparelho "perderia a identidade"
+      // a cada renovação de token e a lista pareceria ter dezenas de
+      // aparelhos genéricos em vez de um só, reconhecível ao longo do tempo.
+      const { refreshToken: newRefreshToken, sessionId } = await this.createSession(
+        session.userId,
+        tx,
+        session.userAgent
+      );
       await tx.session.update({
         where: { id: session.id },
         data: { revokedAt: new Date() }
@@ -542,7 +551,7 @@ export class AuthService {
           ),
           twoFactorEnabled: session.user.twoFactorEnabled
         },
-        accessToken: signToken(session.user.id, effectiveRole),
+        accessToken: signToken(session.user.id, effectiveRole, sessionId),
         refreshToken: newRefreshToken
       };
     });

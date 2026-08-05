@@ -2,17 +2,27 @@ import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { AuthService } from "../services/auth.service";
 const authService = new AuthService();
+// Tela "Meus aparelhos conectados": prefere um nome de aparelho legível
+// (enviado pelo app via X-Device-Label, mesma fonte do registro de push)
+// sobre o User-Agent técnico cru, que em apps nativos costuma ser curto e
+// pouco informativo (ex: "okhttp/4.x").
+export function resolveDeviceLabel(request: Request): string | undefined {
+  const deviceLabel = request.headers["x-device-label"];
+  if (typeof deviceLabel === "string" && deviceLabel.trim()) return deviceLabel.trim();
+  return typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : undefined;
+}
+
 export class AuthController {
   async register(request: Request, response: Response) {
     const result = await authService.register({
       ...request.body,
       ip: request.ip,
-      userAgent: typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : undefined
+      userAgent: resolveDeviceLabel(request)
     });
     return response.status(StatusCodes.CREATED).json(result);
   }
   async login(request: Request, response: Response) {
-    const result = await authService.login(request.body.email, request.body.password);
+    const result = await authService.login(request.body.email, request.body.password, resolveDeviceLabel(request));
     return response.json(result);
   }
   async refresh(request: Request, response: Response) {

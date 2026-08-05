@@ -5,6 +5,7 @@ declare global {
       user?: {
         id: string;
         role: UserRole;
+        sessionId?: string;
       };
     }
   }

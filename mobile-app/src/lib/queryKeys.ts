@@ -18,6 +18,7 @@ export const queryKeys = {
     me: () => ["user", "me"] as const,
     anamnesis: () => ["user", "anamnesis"] as const,
     recoveryEmail: () => ["user", "recoveryEmail"] as const,
+    sessions: () => ["user", "sessions"] as const,
     bankAccount: () => ["user", "bankAccount"] as const,
     profilePage: () => ["user", "profilePage"] as const,
     mySupportTickets: () => ["user", "mySupportTickets"] as const,

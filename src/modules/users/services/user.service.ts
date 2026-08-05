@@ -367,6 +367,49 @@ export class UserService {
     return { success: true };
   }
 
+  // Tela "Meus aparelhos conectados": lista as sessões ativas (não
+  // revogadas, não expiradas) do usuário. Cada rotação de refresh token gera
+  // uma linha nova (ver AuthService.refresh) - como a linha antiga sempre
+  // fica revogada na hora, só sobra uma linha "viva" por aparelho de fato
+  // logado, então essa listagem já é naturalmente por aparelho, não por
+  // evento técnico de rotação.
+  async listMySessions(userId: string, currentSessionId?: string) {
+    const sessions = await prisma.session.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+      select: { id: true, userAgent: true, createdAt: true },
+      orderBy: { createdAt: "desc" }
+    });
+    return sessions.map((session) => ({
+      id: session.id,
+      userAgent: session.userAgent,
+      lastActiveAt: session.createdAt,
+      isCurrent: session.id === currentSessionId
+    }));
+  }
+
+  // Desconecta um aparelho à distância. Não é instantâneo de verdade: o
+  // access token que aquele aparelho já tem em mãos continua funcionando
+  // até expirar sozinho (ACCESS_TOKEN_EXPIRES_IN, hoje 15min) - só a
+  // renovação seguinte (refresh) é que vai falhar. Mesma limitação que já
+  // existe em todo o sistema de blacklist de token (é por usuário inteiro,
+  // não por sessão - blacklistar só esse aparelho exigiria checar
+  // Session.revokedAt em toda requisição autenticada, custo que não se
+  // justifica aqui).
+  async revokeMySession(userId: string, sessionId: string) {
+    const session = await prisma.session.findUnique({ where: { id: sessionId } });
+    if (!session || session.userId !== userId) {
+      throw new AppError("Sessão não encontrada.", StatusCodes.NOT_FOUND);
+    }
+    if (session.revokedAt) {
+      return { success: true };
+    }
+    await prisma.session.update({
+      where: { id: sessionId },
+      data: { revokedAt: new Date() }
+    });
+    return { success: true };
+  }
+
   async getRecoveryEmail(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
