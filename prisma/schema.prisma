@@ -218,6 +218,13 @@ enum XpReason {
   STREAK_MILESTONE_30
   STREAK_MILESTONE_45
   STREAK_MILESTONE_90
+  // Épico de Frentes - redesenho do streak semanal (05/08/2026): marco de
+  // SEMANAS seguidas batendo a meta pessoal, separado do marco em dias acima.
+  STREAK_WEEK_MILESTONE_4
+  STREAK_WEEK_MILESTONE_8
+  STREAK_WEEK_MILESTONE_12
+  STREAK_WEEK_MILESTONE_26
+  STREAK_WEEK_MILESTONE_52
 }
 
 enum AchievementCategory {
@@ -1739,10 +1746,28 @@ model UserXpTransaction {
 model UserStreak {
   id                  String    @id @default(uuid())
   userId              String    @unique
+  // Épico de Frentes - redesenho do streak semanal (05/08/2026): antes a
+  // sequência quebrava se o intervalo entre dois treinos passasse de um
+  // número fixo de dias. Agora cada dia treinado soma 1 aqui; a sequência
+  // só quebra se a meta semanal pessoal (trainingDaysPerWeek) não for
+  // batida no fechamento de uma semana - ver streak.service.ts.
   currentStreak       Int       @default(0)
   longestStreak       Int       @default(0)
   lastTrainingDate    DateTime?
   trainingDaysPerWeek Int       @default(3)
+  // Segunda-feira (YYYY-MM-DD, mesma função getWeekKey do ranking de
+  // amigos) da semana que está sendo acompanhada agora.
+  weekKey             String?
+  // Quantos dias distintos já foram treinados dentro de weekKey - comparado
+  // contra trainingDaysPerWeek no fechamento da semana.
+  daysTrainedThisWeek Int       @default(0)
+  // Sequência de SEMANAS seguidas batendo a própria meta (marco novo,
+  // separado do marco em dias) - reseta junto com currentStreak.
+  currentStreakWeeks  Int       @default(0)
+  longestStreakWeeks  Int       @default(0)
+  // Total histórico de dias treinados - nunca reseta, mostrado separado da
+  // sequência atual na tela (a sequência pode quebrar, o total não).
+  totalDaysTrained    Int       @default(0)
   updatedAt           DateTime  @updatedAt
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

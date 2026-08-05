@@ -1,7 +1,7 @@
 import { prisma } from "../../../config/prisma";
 import { checkAndUnlock, checkLevelAchievements } from "./achievement.service";
 import { recordTraining } from "./streak.service";
-import { awardXp, computeLevel, getTotalXp } from "./xp.service";
+import { awardXp, computeLevel, getTotalXp, getWeekKey } from "./xp.service";
 import { createAutoPost } from "../../community/services/feed.service";
 import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
 import { NotificationService } from "../../notifications/services/notification.service";
@@ -52,7 +52,7 @@ export async function onWorkoutCompleted(
       await awardXp(clientId, 25, "NEW_PROVIDER_FIRST_SESSION", bookingId);
     }
 
-    const { milestoneHit, alreadyTrainedToday } = await recordTraining(clientId);
+    const { milestoneHit, weekMilestoneHit, alreadyTrainedToday } = await recordTraining(clientId);
 
     const newTotalXp = await getTotalXp(clientId);
     const newLevel = computeLevel(newTotalXp);
@@ -76,6 +76,12 @@ export async function onWorkoutCompleted(
         metadata: { sessions: milestoneHit },
       }).catch((e) => console.error("Gamification: STREAK_MILESTONE post failed", e));
       await onStreakMilestone(clientId, milestoneHit);
+    }
+    if (weekMilestoneHit && !alreadyTrainedToday) {
+      await createAutoPost(clientId, "STREAK_MILESTONE", {
+        metadata: { weeks: weekMilestoneHit },
+      }).catch((e) => console.error("Gamification: STREAK_MILESTONE (weeks) post failed", e));
+      await onWeekStreakMilestone(clientId, weekMilestoneHit);
     }
 
     // Fetch provider info to store in post metadata for the collab UI in the feed
@@ -131,7 +137,7 @@ export async function onTrainingPlanCompleted(
     // cada contrato, mesmo que o cliente conclua o treino varias vezes.
     await awardXp(clientId, 50, "ONLINE_WORKOUT_COMPLETED", completionId);
 
-    const { milestoneHit, alreadyTrainedToday } = await recordTraining(clientId);
+    const { milestoneHit, weekMilestoneHit, alreadyTrainedToday } = await recordTraining(clientId);
 
     const newTotalXp = await getTotalXp(clientId);
     const newLevel = computeLevel(newTotalXp);
@@ -150,6 +156,18 @@ export async function onTrainingPlanCompleted(
       await createAutoPost(clientId, "STREAK_MILESTONE", {
         metadata: { sessions: milestoneHit },
       });
+      // Épico de Frentes - redesenho do streak semanal (05/08/2026): o
+      // caminho online nunca chamava onStreakMilestone (só criava o post,
+      // sem XP/push) - assimetria com onWorkoutCompleted encontrada ao
+      // mexer nesse trecho pra adicionar o marco de semanas, corrigida
+      // junto.
+      await onStreakMilestone(clientId, milestoneHit);
+    }
+    if (weekMilestoneHit && !alreadyTrainedToday) {
+      await createAutoPost(clientId, "STREAK_MILESTONE", {
+        metadata: { weeks: weekMilestoneHit },
+      });
+      await onWeekStreakMilestone(clientId, weekMilestoneHit);
     }
 
     const provider = await prisma.providerProfile.findUnique({
@@ -236,6 +254,41 @@ export async function onStreakMilestone(userId: string, sessions: number): Promi
     }).catch(() => { /* best effort */ });
   } catch (error) {
     console.error("Gamification: onStreakMilestone failed", error);
+  }
+}
+
+/**
+ * XP por marco de SEMANAS seguidas batendo a própria meta pessoal - Épico
+ * de Frentes, redesenho do streak semanal (05/08/2026). Convive com
+ * onStreakMilestone (marco em dias) em vez de substituí-lo - os dois tipos
+ * de prêmio coexistem, decisão do usuário.
+ */
+export async function onWeekStreakMilestone(userId: string, weeks: number): Promise<void> {
+  try {
+    const milestoneXp: Record<
+      number,
+      { xp: number; reason: "STREAK_WEEK_MILESTONE_4" | "STREAK_WEEK_MILESTONE_8" | "STREAK_WEEK_MILESTONE_12" | "STREAK_WEEK_MILESTONE_26" | "STREAK_WEEK_MILESTONE_52" }
+    > = {
+      4:  { xp: 150,  reason: "STREAK_WEEK_MILESTONE_4" },
+      8:  { xp: 300,  reason: "STREAK_WEEK_MILESTONE_8" },
+      12: { xp: 500,  reason: "STREAK_WEEK_MILESTONE_12" },
+      26: { xp: 1200, reason: "STREAK_WEEK_MILESTONE_26" },
+      52: { xp: 3000, reason: "STREAK_WEEK_MILESTONE_52" },
+    };
+    const entry = milestoneXp[weeks];
+    if (!entry) return;
+    // referenceId inclui a semana corrente: permite reconquista em semanas
+    // diferentes (mesmo padrão do marco em dias), previne duplicata na mesma semana.
+    const weekKey = getWeekKey(new Date());
+    await awardXp(userId, entry.xp, entry.reason, `${weekKey}:week_milestone_${weeks}`);
+    await notificationService.sendToUsers([userId], {
+      title: "Foco de verdade!",
+      body: `${weeks} semanas seguidas batendo sua meta de treino. Continue assim!`,
+      data: { type: "STREAK_MILESTONE", weeks: String(weeks) },
+      preferenceType: "COMMUNITY",
+    }).catch(() => { /* best effort */ });
+  } catch (error) {
+    console.error("Gamification: onWeekStreakMilestone failed", error);
   }
 }
 

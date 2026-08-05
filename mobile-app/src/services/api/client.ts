@@ -3384,6 +3384,12 @@ export type GamificationProfile = {
   xpToNextLevel: number | null;
   currentStreak: number;
   longestStreak: number;
+  // Épico de Frentes - redesenho do streak semanal (05/08/2026)
+  totalDaysTrained: number;
+  currentStreakWeeks: number;
+  longestStreakWeeks: number;
+  trainingDaysPerWeek: number;
+  daysTrainedThisWeek: number;
   weeklyXp: number;
   monthlyXp: number;
   unlockedAchievements?: Array<{
@@ -3636,5 +3642,14 @@ export const gamificationApi = {
       conditionValue: number;
       unlockedAt?: string | null;
     }>>("/gamification/achievements", { token });
+  },
+  // Épico de Frentes - redesenho do streak semanal (05/08/2026): endpoint já
+  // existia no backend desde antes, mas nenhuma tela do app o chamava.
+  updateTrainingDays(token: string, trainingDaysPerWeek: number) {
+    return apiRequest<void>("/gamification/training-days", {
+      method: "PATCH",
+      token,
+      body: { trainingDaysPerWeek },
+    });
   },
 };

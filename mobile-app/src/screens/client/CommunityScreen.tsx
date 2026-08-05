@@ -358,9 +358,18 @@ function ThematicCard({ post, theme }: { post: FeedPost; theme: MvTheme }) {
     headline = name && lvl ? `Nível ${lvl} — ${name}` : "Novo nível alcançado!";
     if (meta.totalXp) detail = `${meta.totalXp} XP acumulados no total`;
   } else if (post.type === "STREAK_MILESTONE") {
+    // Épico de Frentes - redesenho do streak semanal (05/08/2026): mesmo
+    // tipo de post pros dois marcos (dias e semanas seguidas) - metadata
+    // diferencia qual foi batido.
+    const weeks = meta.weeks as number | undefined;
     const sessions = meta.sessions as number | undefined;
-    headline = sessions ? `${sessions} treinos seguidos!` : "Marco de sequência!";
-    detail = "Uma sequência incrível de dedicação";
+    if (weeks) {
+      headline = `${weeks} semana${weeks === 1 ? "" : "s"} seguidas na meta!`;
+      detail = "Bateu a própria meta toda semana, sem falhar";
+    } else {
+      headline = sessions ? `${sessions} dias seguidos treinando!` : "Marco de sequência!";
+      detail = "Uma sequência incrível de dedicação";
+    }
   } else if (post.type.startsWith("RANKING_")) {
     const position = meta.position as number | undefined;
     const posLabel = position === 1 ? "1° lugar" : position === 2 ? "2° lugar" : "3° lugar";
@@ -942,6 +951,11 @@ export function CommunityScreen({ navigation }: Props) {
   const [annualGoalTarget, setAnnualGoalTarget] = useState(200);
   const [showGoalModal, setShowGoalModal] = useState(false);
 
+  // Épico de Frentes - redesenho do streak semanal (05/08/2026): abre o
+  // detalhe da sequência (dias totais, semana corrente, semanas seguidas) -
+  // a edição da meta reaproveita o showGoalModal/GoalPickerRow que já existiam.
+  const [streakDetailVisible, setStreakDetailVisible] = useState(false);
+
   // Carrega metas salvas do AsyncStorage na primeira montagem
   useEffect(() => {
     AsyncStorage.multiGet(["@goal_weekly", "@goal_monthly", "@goal_annual"]).then((results) => {
@@ -1130,6 +1144,18 @@ export function CommunityScreen({ navigation }: Props) {
   const gamificationData: GamificationProfile | null = communityQuery.data?.gamification ?? null;
   const suggestions: CommunityUser[] = communityQuery.data?.suggestions ?? [];
   const backendAchievements: BackendAchievement[] = communityQuery.data?.achievements ?? [];
+
+  // Épico de Frentes - redesenho do streak semanal (05/08/2026): a meta
+  // semanal já existia como número puramente local (AsyncStorage, só pro
+  // widget "Meu progresso") - agora ela também É a meta que o backend usa
+  // pra decidir se a sequência quebra ou continua, então sincroniza com o
+  // valor real salvo no servidor assim que ele chega (prevalece sobre o
+  // que estava só no aparelho).
+  useEffect(() => {
+    if (gamificationData?.trainingDaysPerWeek) {
+      setWeeklyGoalTarget(gamificationData.trainingDaysPerWeek);
+    }
+  }, [gamificationData?.trainingDaysPerWeek]);
 
   // Sincroniza followingIds ao carregar/atualizar communityQuery
   useEffect(() => {
@@ -1506,8 +1532,12 @@ export function CommunityScreen({ navigation }: Props) {
                 )}
               </TouchableOpacity>
 
-              {/* Sequência */}
-              <View style={{ flex: 1, borderRadius: 20, padding: 12, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: C.amberBorder }}>
+              {/* Sequência — toque abre o detalhe (dias totais, semana corrente, semanas seguidas) */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setStreakDetailVisible(true)}
+                style={{ flex: 1, borderRadius: 20, padding: 12, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: C.amberBorder }}
+              >
                 <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text2 }}>Sequência</Text>
                 <AnimatedNumber value={d.streak} duration={600} style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.05 * 22, marginTop: 5 }} />
                 <Text style={{ fontSize: 10, color: theme.text3, marginTop: 2 }}>dias seguidos</Text>
@@ -1526,7 +1556,7 @@ export function CommunityScreen({ navigation }: Props) {
                     );
                   })}
                 </View>
-              </View>
+              </TouchableOpacity>
 
               {/* Nível / Pontos */}
               <View style={{ flex: 1, borderRadius: 20, padding: 12, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: C.skyBorder }}>
@@ -2454,8 +2484,19 @@ export function CommunityScreen({ navigation }: Props) {
                 value={weeklyGoalTarget}
                 min={1}
                 max={7}
-                onChange={(v) => { setWeeklyGoalTarget(v); AsyncStorage.setItem("@goal_weekly", String(v)).catch(() => {}); }}
+                onChange={(v) => {
+                  setWeeklyGoalTarget(v);
+                  AsyncStorage.setItem("@goal_weekly", String(v)).catch(() => {});
+                  // Essa mesma meta agora também é a que decide se a
+                  // sequência de dias/semanas quebra ou continua.
+                  void runWithAuth((token) => gamificationApi.updateTrainingDays(token, v))
+                    .then(() => communityQuery.refetch())
+                    .catch(() => showToast("Meta salva no aparelho, mas não deu pra sincronizar com o servidor agora.", "error"));
+                }}
               />
+              <Text style={{ fontSize: 12, color: theme.text3, marginTop: -14, marginBottom: 22 }}>
+                Também é a meta usada pra sua sequência de treinos não quebrar.
+              </Text>
 
               <GoalPickerRow
                 label={new Date().toLocaleString("pt-BR", { month: "long" }).replace(/^\w/, (c) => c.toUpperCase())}
@@ -2474,6 +2515,92 @@ export function CommunityScreen({ navigation }: Props) {
               />
             </Pressable>
           </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* ── Modal: detalhe da sequência (Épico de Frentes - redesenho do streak semanal, 05/08/2026) ── */}
+      <Modal
+        visible={streakDetailVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setStreakDetailVisible(false)}
+        statusBarTranslucent
+      >
+        <View style={{ flex: 1, justifyContent: "flex-end" }}>
+          <Pressable
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)" }}
+            onPress={() => setStreakDetailVisible(false)}
+          />
+          <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: theme.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 24, paddingBottom: insets.bottom + 28, paddingTop: 20 }}>
+            <View style={{ width: 36, height: 4, borderRadius: 99, backgroundColor: theme.border, alignSelf: "center", marginBottom: 20 }} />
+
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: theme.text1, letterSpacing: -0.3 }}>Sua sequência</Text>
+              <TouchableOpacity
+                onPress={() => setStreakDetailVisible(false)}
+                style={{ width: 32, height: 32, borderRadius: 99, backgroundColor: "rgba(255,255,255,0.07)", alignItems: "center", justifyContent: "center" }}
+              >
+                <Ionicons name="close" size={18} color={theme.text2} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 12, marginBottom: 20 }}>
+              <View style={{ flex: 1, borderRadius: 16, padding: 14, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: C.amberBorder }}>
+                <Text style={{ fontSize: 11, color: theme.text2 }}>Sequência atual</Text>
+                <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 26, color: theme.text1, marginTop: 4 }}>{d.streak}</Text>
+                <Text style={{ fontSize: 10, color: theme.text3 }}>dias seguidos</Text>
+              </View>
+              <View style={{ flex: 1, borderRadius: 16, padding: 14, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: theme.border }}>
+                <Text style={{ fontSize: 11, color: theme.text2 }}>Total treinado</Text>
+                <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 26, color: theme.text1, marginTop: 4 }}>{gamificationData?.totalDaysTrained ?? 0}</Text>
+                <Text style={{ fontSize: 10, color: theme.text3 }}>dias no total, nunca reseta</Text>
+              </View>
+            </View>
+
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1, marginBottom: 8 }}>
+              Esta semana: {gamificationData?.daysTrainedThisWeek ?? 0} de {gamificationData?.trainingDaysPerWeek ?? 3} dias
+            </Text>
+            <View style={{ flexDirection: "row", gap: 4, marginBottom: 20 }}>
+              {Array.from({ length: gamificationData?.trainingDaysPerWeek ?? 3 }, (_, i) => {
+                const done = i < Math.min(gamificationData?.daysTrainedThisWeek ?? 0, gamificationData?.trainingDaysPerWeek ?? 3);
+                return (
+                  <View key={i} style={{
+                    flex: 1, height: 24, borderRadius: 7,
+                    backgroundColor: done ? C.amber + "22" : "rgba(255,255,255,0.05)",
+                    borderWidth: 1, borderColor: done ? C.amber + "55" : "rgba(255,255,255,0.10)",
+                    alignItems: "center", justifyContent: "center",
+                  }}>
+                    {done
+                      ? <Ionicons name="checkmark" size={12} color={C.amber} />
+                      : <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.20)" }} />}
+                  </View>
+                );
+              })}
+            </View>
+
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20, padding: 12, borderRadius: 14, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: theme.border }}>
+              <Ionicons name="calendar" size={20} color={C.amber} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>
+                  {gamificationData?.currentStreakWeeks ?? 0} semana{(gamificationData?.currentStreakWeeks ?? 0) === 1 ? "" : "s"} seguidas na meta
+                </Text>
+                <Text style={{ fontSize: 11, color: theme.text3, marginTop: 1 }}>
+                  Bata sua meta toda semana pra manter essa sequência subindo
+                </Text>
+              </View>
+            </View>
+
+            <Text style={{ fontSize: 12, color: theme.text3, marginBottom: 20, lineHeight: 17 }}>
+              Cada dia treinado soma na sua sequência. Ela só quebra se você não bater sua meta semanal até o fim da semana (segunda a domingo).
+            </Text>
+
+            <TouchableOpacity
+              onPress={() => { setStreakDetailVisible(false); setShowGoalModal(true); }}
+              style={{ height: S.btnH, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
+            >
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Editar minha meta semanal</Text>
+            </TouchableOpacity>
+          </Pressable>
         </View>
       </Modal>
     </View>

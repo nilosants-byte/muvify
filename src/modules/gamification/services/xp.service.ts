@@ -151,6 +151,12 @@ export async function getUserGamificationProfile(userId: string) {
 
   const levelInfo = computeLevel(totalXp);
 
+  // Épico de Frentes - redesenho do streak semanal (05/08/2026): weekKey
+  // guardado só reflete a ÚLTIMA semana em que o usuário treinou - se ele
+  // ainda não treinou nesta semana corrente, o dia-a-dia daquela semana
+  // antiga não vale mais (0 dias treinados nesta semana até agora).
+  const trainedThisWeek = streak?.weekKey === weekKey ? (streak?.daysTrainedThisWeek ?? 0) : 0;
+
   return {
     totalXp,
     currentLevel: levelInfo.level,
@@ -159,6 +165,11 @@ export async function getUserGamificationProfile(userId: string) {
     xpToNextLevel: levelInfo.nextLevelMinXp != null ? levelInfo.nextLevelMinXp - totalXp : null,
     currentStreak: streak?.currentStreak ?? 0,
     longestStreak: streak?.longestStreak ?? 0,
+    totalDaysTrained: streak?.totalDaysTrained ?? 0,
+    currentStreakWeeks: streak?.currentStreakWeeks ?? 0,
+    longestStreakWeeks: streak?.longestStreakWeeks ?? 0,
+    trainingDaysPerWeek: streak?.trainingDaysPerWeek ?? 3,
+    daysTrainedThisWeek: trainedThisWeek,
     weeklyXp: weekSnap?.xpEarned ?? 0,
     monthlyXp: monthSnap?.xpEarned ?? 0,
     unlockedAchievements,

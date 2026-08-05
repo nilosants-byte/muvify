@@ -1,8 +1,13 @@
 import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../../shared/errors/app-error";
 import { prisma } from "../../../config/prisma";
+import { getWeekKey } from "./xp.service";
 
 const STREAK_MILESTONES = [15, 30, 45, 90];
+// Épico de Frentes - redesenho do streak semanal (05/08/2026): marcos novos
+// de SEMANAS seguidas batendo a própria meta, separados dos marcos em dias
+// acima - os dois convivem, um não substitui o outro (decisão do usuário).
+const WEEK_STREAK_MILESTONES = [4, 8, 12, 26, 52];
 const APP_TZ = "America/Sao_Paulo";
 
 function toLocalDateKey(date: Date): string {
@@ -20,65 +25,93 @@ function diffInCalendarDays(a: Date, b: Date): number {
   return Math.round((dayA.getTime() - dayB.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+function addDaysToWeekKey(weekKey: string, days: number): string {
+  const d = new Date(`${weekKey}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 export type StreakResult = {
   streakSessions: number;
   longestStreak: number;
   milestoneHit: number | null;
+  weekMilestoneHit: number | null;
   alreadyTrainedToday: boolean;
 };
 
+// Épico de Frentes - redesenho do streak semanal (05/08/2026): modelo
+// anterior quebrava a sequência se o intervalo entre dois treinos passasse
+// de um número fixo de dias de folga - não refletia uma meta escolhida de
+// verdade (nenhuma tela deixava configurar trainingDaysPerWeek). Modelo
+// novo, desenhado com o usuário: cada dia treinado soma 1 na sequência
+// (currentStreak); a sequência só quebra se, no fechamento de uma semana
+// (segunda a domingo, mesma getWeekKey do ranking de amigos), o usuário não
+// tiver batido a própria meta de dias/semana. Detecta também semana(s)
+// inteiras puladas sem nenhum treino (óbvio que não bateram meta nenhuma),
+// não só a última semana rastreada.
 export async function recordTraining(userId: string): Promise<StreakResult> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { trainingDaysPerWeek: true },
   });
-  // Épico de Frentes, Frente 8, Lote 15: trainingDaysPerWeek foi desenhado
-  // pra ser uma meta pessoal configurável (PATCH /gamification/training-days
-  // já existe no backend), mas nenhuma tela do app hoje deixa o usuário
-  // mudar esse valor - todo mundo fica travado no default de 3 (maxRestDays
-  // = 4), então a folga abaixo NÃO reflete uma meta escolhida de fato hoje,
-  // só o comportamento padrão fixo. O usuário confirmou que o modelo
-  // correto de streak é outro (avaliação semanal contra uma meta de dias
-  // configurável, não folga por dia corrido) - fica registrado como
-  // iniciativa própria a ser desenhada depois do épico de Frentes, não um
-  // ajuste pequeno deste lote.
   const rawDays = user?.trainingDaysPerWeek ?? 3;
   const trainingDaysPerWeek = Math.max(1, Math.min(rawDays, 7));
-  const maxRestDays = 7 - trainingDaysPerWeek;
 
   const streak = await prisma.userStreak.findUnique({ where: { userId } });
   const now = new Date();
 
   if (streak?.lastTrainingDate) {
     const daysSinceLast = diffInCalendarDays(now, streak.lastTrainingDate);
-
     if (daysSinceLast === 0) {
       return {
         streakSessions: streak.currentStreak,
         longestStreak: streak.longestStreak,
         milestoneHit: null,
+        weekMilestoneHit: null,
         alreadyTrainedToday: true,
       };
     }
   }
 
+  const currentWeekKey = getWeekKey(now);
   let newStreak: number;
+  let newDaysTrainedThisWeek: number;
+  let newCurrentStreakWeeks = streak?.currentStreakWeeks ?? 0;
+  let weekMilestoneHit: number | null = null;
 
-  if (!streak || !streak.lastTrainingDate) {
+  if (!streak || !streak.weekKey) {
+    // Primeiro treino registrado (ou streak resetada externamente).
     newStreak = 1;
+    newDaysTrainedThisWeek = 1;
+    newCurrentStreakWeeks = 0;
+  } else if (streak.weekKey === currentWeekKey) {
+    // Mesma semana já rastreada: só soma o dia, o fechamento da semana (e o
+    // marco de semanas) só é avaliado quando a semana virar de fato.
+    newStreak = streak.currentStreak + 1;
+    newDaysTrainedThisWeek = streak.daysTrainedThisWeek + 1;
   } else {
-    const daysSinceLast = diffInCalendarDays(now, streak.lastTrainingDate);
-    const restDaysBetween = daysSinceLast - 1;
-
-    if (restDaysBetween <= maxRestDays) {
+    // A semana virou desde o último treino - fecha a semana rastreada:
+    // bateu a própria meta E é a semana imediatamente seguinte (nenhuma
+    // semana inteira foi pulada no meio, o que já quebraria a sequência
+    // sozinho, já que uma semana sem nenhum treino nunca bate meta >= 1).
+    const goalMetTrackedWeek = streak.daysTrainedThisWeek >= trainingDaysPerWeek;
+    const noWeekSkipped = currentWeekKey === addDaysToWeekKey(streak.weekKey, 7);
+    if (goalMetTrackedWeek && noWeekSkipped) {
       newStreak = streak.currentStreak + 1;
+      newCurrentStreakWeeks = (streak.currentStreakWeeks ?? 0) + 1;
+      weekMilestoneHit = WEEK_STREAK_MILESTONES.includes(newCurrentStreakWeeks) ? newCurrentStreakWeeks : null;
     } else {
       newStreak = 1;
+      newCurrentStreakWeeks = 0;
     }
+    newDaysTrainedThisWeek = 1;
   }
 
   const prevLongest = streak?.longestStreak ?? 0;
   const newLongest = newStreak > prevLongest ? newStreak : prevLongest;
+  const prevLongestWeeks = streak?.longestStreakWeeks ?? 0;
+  const newLongestWeeks = newCurrentStreakWeeks > prevLongestWeeks ? newCurrentStreakWeeks : prevLongestWeeks;
+  const newTotalDaysTrained = (streak?.totalDaysTrained ?? 0) + 1;
 
   await prisma.userStreak.upsert({
     where: { userId },
@@ -87,6 +120,11 @@ export async function recordTraining(userId: string): Promise<StreakResult> {
       longestStreak: newLongest,
       lastTrainingDate: now,
       trainingDaysPerWeek,
+      weekKey: currentWeekKey,
+      daysTrainedThisWeek: newDaysTrainedThisWeek,
+      currentStreakWeeks: newCurrentStreakWeeks,
+      longestStreakWeeks: newLongestWeeks,
+      totalDaysTrained: newTotalDaysTrained,
     },
     create: {
       userId,
@@ -94,6 +132,11 @@ export async function recordTraining(userId: string): Promise<StreakResult> {
       longestStreak: newLongest,
       lastTrainingDate: now,
       trainingDaysPerWeek,
+      weekKey: currentWeekKey,
+      daysTrainedThisWeek: newDaysTrainedThisWeek,
+      currentStreakWeeks: newCurrentStreakWeeks,
+      longestStreakWeeks: newLongestWeeks,
+      totalDaysTrained: newTotalDaysTrained,
     },
   });
 
@@ -103,6 +146,7 @@ export async function recordTraining(userId: string): Promise<StreakResult> {
     streakSessions: newStreak,
     longestStreak: newLongest,
     milestoneHit,
+    weekMilestoneHit,
     alreadyTrainedToday: false,
   };
 }
