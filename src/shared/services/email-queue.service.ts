@@ -12,7 +12,7 @@ const RETRY_DELAY_SECONDS = [30, 300, 1800, 7200, 43200, 86400];
 // vítima nunca era avisada por nenhum canal, já que o envio era síncrono
 // sem retry. Passam a usar a mesma fila já usada por EMAIL_VERIFICATION/
 // PASSWORD_RESET.
-type EmailQueueTemplate = "EMAIL_VERIFICATION" | "PASSWORD_RESET" | "PASSWORD_CHANGED" | "RECOVERY_EMAIL_UPDATED";
+type EmailQueueTemplate = "EMAIL_VERIFICATION" | "PASSWORD_RESET" | "PASSWORD_CHANGED" | "RECOVERY_EMAIL_UPDATED" | "DATA_EXPORT_CONFIRMATION";
 
 type VerificationPayload = {
   to: string;
@@ -35,6 +35,11 @@ type RecoveryEmailUpdatedPayload = {
   to: string;
   name: string;
   recoveryEmail: string;
+};
+
+type DataExportConfirmationPayload = {
+  to: string;
+  name: string;
 };
 
 export class EmailQueueService {
@@ -71,6 +76,15 @@ export class EmailQueueService {
     return prisma.emailDeliveryQueue.create({
       data: {
         template: "RECOVERY_EMAIL_UPDATED",
+        payload: input
+      }
+    });
+  }
+
+  async enqueueDataExportConfirmation(input: DataExportConfirmationPayload) {
+    return prisma.emailDeliveryQueue.create({
+      data: {
+        template: "DATA_EXPORT_CONFIRMATION",
         payload: input
       }
     });
@@ -163,6 +177,11 @@ export class EmailQueueService {
       await this.emailService.sendRecoveryEmailUpdated(parsed);
       return;
     }
+    if (template === "DATA_EXPORT_CONFIRMATION") {
+      const parsed = this.parseDataExportConfirmationPayload(payload);
+      await this.emailService.sendDataExportConfirmation(parsed);
+      return;
+    }
     throw new Error(`Unsupported email queue template: ${template}`);
   }
 
@@ -214,6 +233,16 @@ export class EmailQueueService {
     }
     this.validateEmail(to);
     return { to, name, recoveryEmail };
+  }
+
+  private parseDataExportConfirmationPayload(payload: Record<string, unknown>): DataExportConfirmationPayload {
+    const to = typeof payload.to === "string" ? payload.to : "";
+    const name = typeof payload.name === "string" ? payload.name : "";
+    if (!to || !name) {
+      throw new Error("Invalid DATA_EXPORT_CONFIRMATION payload.");
+    }
+    this.validateEmail(to);
+    return { to, name };
   }
 
   async purgeOldFailures(olderThanDays = 30): Promise<number> {

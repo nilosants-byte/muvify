@@ -28,6 +28,7 @@ import {
 } from "../../../shared/utils/photo-url";
 import { createCrefDocumentSignatureQuery, verifyCrefDocumentSignature } from "../../../shared/utils/cref-document-signature";
 import {
+  decryptAssessmentFields,
   decryptJson,
   decryptSensitiveText,
   encryptJson,
@@ -1027,21 +1028,6 @@ export class ProviderService {
       .catch((err) => console.error("[provider.service] falha ao gravar HealthDataAccessLog:", (err as Error).message));
   }
 
-  private static readonly ASSESSMENT_FIELDS = [
-    "weight", "height", "imc", "bodyFatPercent", "muscleMass",
-    "circumferences", "waist", "hip", "chest", "arm", "thigh"
-  ] as const;
-
-  private decryptAssessment<T extends Record<string, unknown>>(assessment: T): T {
-    const decrypted = { ...assessment };
-    for (const field of ProviderService.ASSESSMENT_FIELDS) {
-      const value = decrypted[field];
-      if (typeof value === "string") {
-        (decrypted as Record<string, unknown>)[field] = decryptSensitiveText(value);
-      }
-    }
-    return decrypted;
-  }
 
   async createProfile(input: CreateProviderInput) {
     const profile = await prisma.$transaction(async (tx) => {
@@ -2567,7 +2553,7 @@ export class ProviderService {
 
     const physicalAssessment = physicalAssessmentRaw
       ? recentHealthAccess
-        ? this.decryptAssessment(physicalAssessmentRaw)
+        ? decryptAssessmentFields(physicalAssessmentRaw)
         : {
             ...physicalAssessmentRaw,
             weight: null, height: null, imc: null, bodyFatPercent: null, muscleMass: null,
@@ -2673,7 +2659,7 @@ export class ProviderService {
         thigh: normalize(input.thigh)
       }
     });
-    return this.decryptAssessment(saved);
+    return decryptAssessmentFields(saved);
   }
 
   private static readonly ALLOWED_PHOTO_MIMES = new Set([

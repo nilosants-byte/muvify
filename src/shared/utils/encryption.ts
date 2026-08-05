@@ -78,6 +78,27 @@ export function decryptJson<T = unknown>(value: string | null | undefined): T | 
   }
 }
 
+// Épico de Frentes, Frente 11, Lote 3/5: campos biométricos de
+// ProviderStudentAssessment são cifrados individualmente (não como um JSON
+// único, como a anamnese) - compartilhado entre provider.service.ts
+// (leitura/escrita do próprio profissional) e user.service.ts
+// (exportMyData, quando o titular é o cliente da avaliação).
+export const ASSESSMENT_FIELDS = [
+  "weight", "height", "imc", "bodyFatPercent", "muscleMass",
+  "circumferences", "waist", "hip", "chest", "arm", "thigh"
+] as const;
+
+export function decryptAssessmentFields<T extends Record<string, unknown>>(assessment: T): T {
+  const decrypted = { ...assessment };
+  for (const field of ASSESSMENT_FIELDS) {
+    const value = decrypted[field];
+    if (typeof value === "string") {
+      (decrypted as Record<string, unknown>)[field] = decryptSensitiveText(value);
+    }
+  }
+  return decrypted;
+}
+
 export function decryptSensitiveText(value: string | null | undefined) {
   if (!value) {
     return value ?? null;

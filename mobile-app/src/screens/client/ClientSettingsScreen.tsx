@@ -1,6 +1,6 @@
 ﻿import React, { useState } from "react";
 import Constants from "expo-constants";
-import { Alert, Modal, Pressable, ScrollView, Share, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Modal, Pressable, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,6 +9,7 @@ import { MvPasswordConfirmModal, MvToggle } from "../../components/mv";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { authApi, userApi } from "../../services/api/client";
+import { shareExportedDataAsFile } from "../../utils/exportDataFile";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { AuthOnboardingScreen } from "../auth/AuthOnboardingScreen";
@@ -135,10 +136,7 @@ export function ClientSettingsScreen({ navigation }: Props) {
   async function handleExportData() {
     try {
       const data = await runWithAuth((token) => userApi.exportMyData(token));
-      await Share.share({
-        message: JSON.stringify(data, null, 2),
-        title: "Meus dados — Muvify",
-      });
+      await shareExportedDataAsFile(data);
     } catch (error) {
       Alert.alert("Erro", "Não foi possível exportar seus dados.");
     }

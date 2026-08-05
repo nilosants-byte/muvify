@@ -24,6 +24,11 @@ type PasswordChangedEmailInput = {
   name: string;
 };
 
+type DataExportConfirmationEmailInput = {
+  to: string;
+  name: string;
+};
+
 type RecoveryEmailUpdatedInput = {
   to: string;
   name: string;
@@ -293,6 +298,31 @@ export class EmailService {
         <p>Sua senha foi alterada com sucesso no aplicativo <strong>Muvify</strong>.</p>
         <div class="security-note">
           &#9888; Se voc&ecirc; n&atilde;o realizou esta altera&ccedil;&atilde;o, entre em contato com o nosso suporte imediatamente pelo aplicativo.
+        </div>
+      `)
+    });
+  }
+
+  // Épico de Frentes, Frente 11, Lote 5: exportação self-service de dados
+  // pessoais não avisava o titular por nenhum canal - só o download em si.
+  async sendDataExportConfirmation(input: DataExportConfirmationEmailInput) {
+    const mailer = requireMailer();
+    await mailer.sendMail({
+      from: env.SMTP_FROM,
+      to: input.to,
+      subject: "Muvify — Seus dados foram exportados",
+      text: [
+        `Ola, ${input.name}!`,
+        "",
+        "Uma exportacao dos seus dados pessoais foi gerada agora no aplicativo Muvify.",
+        "Se voce nao solicitou esta exportacao, entre em contato com o nosso suporte imediatamente."
+      ].join("\n"),
+      html: buildEmailLayout(`
+        <h2>Seus dados foram exportados</h2>
+        <p>Ola, <strong>${escapeHtml(input.name)}</strong>!</p>
+        <p>Uma exporta&ccedil;&atilde;o dos seus dados pessoais foi gerada agora no aplicativo <strong>Muvify</strong>.</p>
+        <div class="security-note">
+          &#9888; Se voc&ecirc; n&atilde;o solicitou esta exporta&ccedil;&atilde;o, entre em contato com o nosso suporte imediatamente pelo aplicativo.
         </div>
       `)
     });

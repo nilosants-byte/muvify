@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Alert, Linking, Platform, ScrollView, Share, StatusBar, TouchableOpacity, View } from "react-native";
 import { userApi } from "../../services/api/client";
+import { shareExportedDataAsFile } from "../../utils/exportDataFile";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -95,10 +96,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
   async function handleExportData() {
     try {
       const data = await runWithAuth((token) => userApi.exportMyData(token));
-      await Share.share({
-        message: JSON.stringify(data, null, 2),
-        title: "Meus dados — Muvify",
-      });
+      await shareExportedDataAsFile(data);
     } catch {
       Alert.alert("Erro", "Não foi possível exportar seus dados.");
     }

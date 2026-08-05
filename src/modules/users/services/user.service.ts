@@ -17,6 +17,7 @@ import { deleteMediaByUrl } from "../../../shared/services/storage.service";
 import { getCache, setCache } from "../../../shared/utils/cache";
 import { resolveAccessTokenTtlSeconds, setTokenBlacklist } from "../../../shared/security/token-blacklist";
 import {
+  decryptAssessmentFields,
   decryptJson,
   decryptSensitiveText,
   encryptJson,
@@ -877,7 +878,17 @@ export class UserService {
     );
   }
 
+  // Épico de Frentes, Frente 11, Lote 5: take:200/500 cortava listas longas
+  // silenciosamente, sem o titular nunca saber que a exportação estava
+  // incompleta. Busca limit+1 e corta o excedente aqui, marcando truncated.
+  private sliceTruncated<T>(items: T[], limit: number): { items: T[]; truncated: boolean } {
+    return { items: items.slice(0, limit), truncated: items.length > limit };
+  }
+
   async exportMyData(userId: string) {
+    const LIST_LIMIT = 500;
+    const take = LIST_LIMIT + 1;
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -905,7 +916,8 @@ export class UserService {
               select: { method: true, status: true, amountCents: true, authorizedAt: true, capturedAt: true, refundedAt: true }
             }
           },
-          orderBy: { scheduledAt: "desc" }
+          orderBy: { scheduledAt: "desc" },
+          take
         },
         reviews: {
           select: { id: true, rating: true, comment: true, createdAt: true }
@@ -946,12 +958,12 @@ export class UserService {
             }
           },
           orderBy: { createdAt: "desc" },
-          take: 200,
+          take
         },
         trainingPlanCompletions: {
           select: { id: true, notes: true, completedAt: true, createdAt: true },
           orderBy: { completedAt: "desc" },
-          take: 200,
+          take
         },
         notificationPreferences: {
           select: { type: true, enabled: true }
@@ -959,7 +971,7 @@ export class UserService {
         chatMessages: {
           select: { id: true, bookingId: true, senderId: true, content: true, isSystem: true, createdAt: true },
           orderBy: { createdAt: "desc" },
-          take: 500,
+          take
         },
         favorites: {
           select: { id: true, providerId: true, createdAt: true },
@@ -968,20 +980,216 @@ export class UserService {
         following: {
           select: { id: true, followingId: true, createdAt: true },
         },
+        // Épico de Frentes, Frente 11, Lote 5: só "following" (quem EU sigo)
+        // estava presente - "followers" (quem me segue) é dado pessoal meu
+        // (quem interage comigo na plataforma) tanto quanto o inverso.
+        followers: {
+          select: { id: true, followerId: true, createdAt: true },
+        },
         feedPosts: {
           select: { id: true, type: true, imageUrl: true, caption: true, isAutomatic: true, createdAt: true },
           orderBy: { createdAt: "desc" },
-          take: 200,
+          take
+        },
+        feedPostLikes: {
+          select: { id: true, postId: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take
+        },
+        feedPostComments: {
+          select: { id: true, postId: true, content: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take
+        },
+        feedPostReports: {
+          select: { id: true, postId: true, reason: true, status: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
         },
         unlockedAchievements: {
           select: { id: true, achievement: { select: { key: true, name: true } }, unlockedAt: true },
           orderBy: { unlockedAt: "desc" },
         },
+        // Dados antes ausentes da exportação (M1-M4, Frente 11, Lote 5):
+        supportTicketsSubmitted: {
+          select: { id: true, subject: true, message: true, status: true, adminResponse: true, respondedAt: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take
+        },
+        disputeCasesAsClient: {
+          select: { id: true, type: true, status: true, amountCents: true, contextNote: true, resolution: true, resolvedAmountCents: true, resolvedAt: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
+        },
+        noShowReportsFiled: {
+          select: { id: true, bookingId: true, status: true, reportReason: true, contestReason: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
+        },
+        noShowReportsReceived: {
+          select: { id: true, bookingId: true, status: true, reportReason: true, contestReason: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
+        },
+        debtRecords: {
+          select: { id: true, amountCents: true, reason: true, status: true, paidAt: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
+        },
+        physicalAssessments: {
+          select: {
+            id: true, providerId: true, weight: true, height: true, imc: true, bodyFatPercent: true,
+            muscleMass: true, circumferences: true, waist: true, hip: true, chest: true, arm: true, thigh: true,
+            createdAt: true, updatedAt: true
+          },
+          orderBy: { updatedAt: "desc" }
+        },
+        consultancyMessages: {
+          select: { id: true, contractId: true, content: true, isSystem: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take
+        },
+        presentialPackages: {
+          select: { id: true, providerId: true, status: true, mode: true, cycleAmountCents: true, sessionsPerCycle: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
+        },
+        pushDevices: {
+          select: { id: true, platform: true, appVersion: true, deviceName: true, isActive: true, lastSeenAt: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
+        },
+        sessions: {
+          select: { id: true, createdAt: true, expiresAt: true, revokedAt: true },
+          orderBy: { createdAt: "desc" },
+          take
+        },
+        xpTransactions: {
+          select: { id: true, amount: true, reason: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take
+        },
+        streak: {
+          select: { currentStreak: true, longestStreak: true, lastTrainingDate: true, trainingDaysPerWeek: true, updatedAt: true }
+        },
+        rankingSnapshots: {
+          select: { periodType: true, periodKey: true, xpEarned: true, lastKnownPosition: true, updatedAt: true }
+        },
+        customerPaymentMethods: {
+          select: { id: true, nickname: true, brand: true, last4: true, funding: true, expMonth: true, expYear: true, isDefault: true, isActive: true, createdAt: true }
+        },
+        // Lado profissional (M4): antes completamente ausente da exportação.
+        providerProfile: {
+          select: {
+            id: true,
+            displayName: true,
+            bio: true,
+            experienceYears: true,
+            priceCents: true,
+            serviceMode: true,
+            crefNumber: true,
+            crefValidationStatus: true,
+            specialties: true,
+            createdAt: true,
+            updatedAt: true,
+            categoryLinks: {
+              select: { category: { select: { name: true } } }
+            },
+            availabilities: {
+              select: { weekday: true, startTime: true, endTime: true, isActive: true }
+            },
+            serviceOffers: {
+              select: { id: true, kind: true, title: true, billingCycle: true, priceCents: true, isPromotion: true, promotionPriceCents: true, createdAt: true }
+            },
+            bookings: {
+              select: { id: true, clientId: true, scheduledAt: true, status: true, priceCents: true, createdAt: true },
+              orderBy: { scheduledAt: "desc" },
+              take
+            },
+            reviews: {
+              select: { id: true, rating: true, comment: true, createdAt: true },
+              orderBy: { createdAt: "desc" },
+              take
+            },
+            consultancyRequestsReceived: {
+              select: { id: true, clientId: true, status: true, createdAt: true },
+              orderBy: { createdAt: "desc" },
+              take
+            },
+            consultancyContracts: {
+              select: { id: true, clientId: true, status: true, paymentAmountCents: true, providerAmountCents: true, createdAt: true },
+              orderBy: { createdAt: "desc" },
+              take
+            },
+            presentialPackages: {
+              select: { id: true, clientId: true, status: true, mode: true, cycleAmountCents: true, createdAt: true },
+              orderBy: { createdAt: "desc" },
+              take
+            },
+            disputeCases: {
+              select: { id: true, type: true, status: true, amountCents: true, resolution: true, createdAt: true },
+              orderBy: { createdAt: "desc" }
+            },
+            bankAccount: {
+              select: { bankName: true, accountType: true, agency: true, accountNumber: true, accountDigit: true, holderName: true, holderDocument: true, pixKey: true }
+            },
+            debtRecords: {
+              select: { id: true, amountCents: true, reason: true, status: true, paidAt: true, createdAt: true },
+              orderBy: { createdAt: "desc" }
+            },
+            financialStudents: {
+              select: { id: true, name: true, monthlyValueCents: true, type: true, isActive: true, createdAt: true },
+              orderBy: { createdAt: "desc" },
+              take
+            },
+            financialIncomes: {
+              select: { id: true, description: true, amountCents: true, source: true, paidAt: true, createdAt: true },
+              orderBy: { paidAt: "desc" },
+              take
+            },
+            financialExpenses: {
+              select: { id: true, description: true, amountCents: true, category: true, paidAt: true, createdAt: true },
+              orderBy: { paidAt: "desc" },
+              take
+            },
+            financialGoals: {
+              select: { month: true, targetRevenueCents: true, targetStudents: true, targetWeeklyClasses: true }
+            }
+          }
+        }
       }
     });
 
     if (!user) {
       throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    const bookings = this.sliceTruncated(user.bookings, LIST_LIMIT);
+    const consultancyContracts = this.sliceTruncated(user.consultancyContracts, LIST_LIMIT);
+    const trainingPlanCompletions = this.sliceTruncated(user.trainingPlanCompletions, LIST_LIMIT);
+    const chatMessages = this.sliceTruncated(user.chatMessages, LIST_LIMIT);
+    const feedPosts = this.sliceTruncated(user.feedPosts, LIST_LIMIT);
+    const feedPostLikes = this.sliceTruncated(user.feedPostLikes, LIST_LIMIT);
+    const feedPostComments = this.sliceTruncated(user.feedPostComments, LIST_LIMIT);
+    const supportTickets = this.sliceTruncated(user.supportTicketsSubmitted, LIST_LIMIT);
+    const consultancyMessages = this.sliceTruncated(user.consultancyMessages, LIST_LIMIT);
+    const sessions = this.sliceTruncated(user.sessions, LIST_LIMIT);
+    const xpTransactions = this.sliceTruncated(user.xpTransactions, LIST_LIMIT);
+
+    const providerBookings = user.providerProfile ? this.sliceTruncated(user.providerProfile.bookings, LIST_LIMIT) : null;
+    const providerReviews = user.providerProfile ? this.sliceTruncated(user.providerProfile.reviews, LIST_LIMIT) : null;
+    const providerConsultancyRequests = user.providerProfile ? this.sliceTruncated(user.providerProfile.consultancyRequestsReceived, LIST_LIMIT) : null;
+    const providerConsultancyContracts = user.providerProfile ? this.sliceTruncated(user.providerProfile.consultancyContracts, LIST_LIMIT) : null;
+    const providerPresentialPackages = user.providerProfile ? this.sliceTruncated(user.providerProfile.presentialPackages, LIST_LIMIT) : null;
+    const providerFinancialStudents = user.providerProfile ? this.sliceTruncated(user.providerProfile.financialStudents, LIST_LIMIT) : null;
+    const providerFinancialIncomes = user.providerProfile ? this.sliceTruncated(user.providerProfile.financialIncomes, LIST_LIMIT) : null;
+    const providerFinancialExpenses = user.providerProfile ? this.sliceTruncated(user.providerProfile.financialExpenses, LIST_LIMIT) : null;
+
+    // Épico de Frentes, Frente 11, Lote 5: exportação self-service não
+    // deixava trilha nem avisava o titular por nenhum canal além do
+    // download em si.
+    await prisma.dataExportLog.create({ data: { userId: user.id } }).catch((error) => {
+      console.error("Falha ao registrar DataExportLog:", error);
+    });
+    if (emailService.canSendEmail()) {
+      await emailQueueService
+        .enqueueDataExportConfirmation({ to: user.email, name: user.name })
+        .catch((error) => {
+          console.error("Falha ao enfileirar e-mail de confirmação de exportação:", error);
+        });
     }
 
     return {
@@ -999,11 +1207,11 @@ export class UserService {
         createdAt: user.createdAt,
         updatedAt: user.updatedAt
       },
-      bookings: user.bookings,
+      bookings: bookings.items,
       reviews: user.reviews,
       consultancyRequests: user.consultancyRequestsSent,
-      consultancyContracts: user.consultancyContracts,
-      trainingPlanCompletions: user.trainingPlanCompletions,
+      consultancyContracts: consultancyContracts.items,
+      trainingPlanCompletions: trainingPlanCompletions.items,
       // Épico de Frentes, Frente 11, Lote 3: answers passou a ser guardado
       // cifrado - sem isso aqui, a exportação devolveria o ciphertext em
       // vez do questionário em claro.
@@ -1011,11 +1219,95 @@ export class UserService {
         ? { ...user.anamnesisProfile, answers: decryptJson(user.anamnesisProfile.answers) }
         : null,
       notificationPreferences: user.notificationPreferences,
-      chatMessages: user.chatMessages,
+      chatMessages: chatMessages.items,
       favorites: user.favorites,
       following: user.following,
-      feedPosts: user.feedPosts,
+      followers: user.followers,
+      feedPosts: feedPosts.items,
+      feedPostLikes: feedPostLikes.items,
+      feedPostComments: feedPostComments.items,
+      feedPostReports: user.feedPostReports,
       unlockedAchievements: user.unlockedAchievements,
+      supportTickets: supportTickets.items,
+      disputes: user.disputeCasesAsClient,
+      noShowReportsFiled: user.noShowReportsFiled,
+      noShowReportsReceived: user.noShowReportsReceived,
+      debtRecords: user.debtRecords,
+      physicalAssessments: user.physicalAssessments.map((a) => decryptAssessmentFields(a)),
+      consultancyMessages: consultancyMessages.items,
+      presentialPackages: user.presentialPackages,
+      pushDevices: user.pushDevices,
+      sessions: sessions.items,
+      xpTransactions: xpTransactions.items,
+      streak: user.streak,
+      rankingSnapshots: user.rankingSnapshots,
+      customerPaymentMethods: user.customerPaymentMethods,
+      providerData: user.providerProfile
+        ? {
+            profile: {
+              id: user.providerProfile.id,
+              displayName: user.providerProfile.displayName,
+              bio: user.providerProfile.bio,
+              experienceYears: user.providerProfile.experienceYears,
+              priceCents: user.providerProfile.priceCents,
+              serviceMode: user.providerProfile.serviceMode,
+              crefNumber: user.providerProfile.crefNumber,
+              crefValidationStatus: user.providerProfile.crefValidationStatus,
+              specialties: user.providerProfile.specialties,
+              categories: user.providerProfile.categoryLinks.map((c) => c.category.name),
+              createdAt: user.providerProfile.createdAt,
+              updatedAt: user.providerProfile.updatedAt
+            },
+            availabilities: user.providerProfile.availabilities,
+            serviceOffers: user.providerProfile.serviceOffers,
+            bookingsReceived: providerBookings!.items,
+            reviewsReceived: providerReviews!.items,
+            consultancyRequestsReceived: providerConsultancyRequests!.items,
+            consultancyContractsAsProvider: providerConsultancyContracts!.items,
+            presentialPackagesOffered: providerPresentialPackages!.items,
+            disputeCases: user.providerProfile.disputeCases,
+            // Épico de Frentes, Frente 11, Lote 3: campos bancários cifrados
+            // em repouso - decifra aqui pra devolver o valor real ao titular.
+            bankAccount: user.providerProfile.bankAccount
+              ? {
+                  bankName: user.providerProfile.bankAccount.bankName,
+                  accountType: user.providerProfile.bankAccount.accountType,
+                  agency: decryptSensitiveText(user.providerProfile.bankAccount.agency),
+                  accountNumber: decryptSensitiveText(user.providerProfile.bankAccount.accountNumber),
+                  accountDigit: decryptSensitiveText(user.providerProfile.bankAccount.accountDigit),
+                  holderName: decryptSensitiveText(user.providerProfile.bankAccount.holderName),
+                  holderDocument: decryptSensitiveText(user.providerProfile.bankAccount.holderDocument),
+                  pixKey: decryptSensitiveText(user.providerProfile.bankAccount.pixKey)
+                }
+              : null,
+            debtRecords: user.providerProfile.debtRecords,
+            financialStudents: providerFinancialStudents!.items,
+            financialIncomes: providerFinancialIncomes!.items,
+            financialExpenses: providerFinancialExpenses!.items,
+            financialGoals: user.providerProfile.financialGoals
+          }
+        : null,
+      truncated: {
+        bookings: bookings.truncated,
+        consultancyContracts: consultancyContracts.truncated,
+        trainingPlanCompletions: trainingPlanCompletions.truncated,
+        chatMessages: chatMessages.truncated,
+        feedPosts: feedPosts.truncated,
+        feedPostLikes: feedPostLikes.truncated,
+        feedPostComments: feedPostComments.truncated,
+        supportTickets: supportTickets.truncated,
+        consultancyMessages: consultancyMessages.truncated,
+        sessions: sessions.truncated,
+        xpTransactions: xpTransactions.truncated,
+        providerBookingsReceived: providerBookings?.truncated ?? false,
+        providerReviewsReceived: providerReviews?.truncated ?? false,
+        providerConsultancyRequestsReceived: providerConsultancyRequests?.truncated ?? false,
+        providerConsultancyContracts: providerConsultancyContracts?.truncated ?? false,
+        providerPresentialPackages: providerPresentialPackages?.truncated ?? false,
+        providerFinancialStudents: providerFinancialStudents?.truncated ?? false,
+        providerFinancialIncomes: providerFinancialIncomes?.truncated ?? false,
+        providerFinancialExpenses: providerFinancialExpenses?.truncated ?? false
+      }
     };
   }
 

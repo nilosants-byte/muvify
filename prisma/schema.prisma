@@ -1422,6 +1422,19 @@ model HealthDataAccessLog {
   @@index([providerId, createdAt])
 }
 
+// Épico de Frentes, Frente 11, Lote 5: exportação self-service de dados
+// pessoais (exportMyData) não deixava nenhuma trilha - o admin já audita a
+// exportação que ELE faz de um usuário, mas o titular exportando os
+// próprios dados não gerava registro nenhum. Mesmo padrão sem FK de
+// propósito do HealthDataAccessLog/PaymentAuditLog.
+model DataExportLog {
+  id        String   @id @default(uuid())
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
 model ProviderStudentAssessment {
   id             String          @id @default(uuid())
   providerId     String
