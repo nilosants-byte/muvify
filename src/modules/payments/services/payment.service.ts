@@ -1326,17 +1326,29 @@ export class PaymentService {
       }
     });
     const capturedPayment = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
-    void writeAuditLog({
-      paymentId: payment.id,
-      fromStatus: PaymentStatus.AUTHORIZED,
-      toStatus: PaymentStatus.CAPTURED,
-      triggeredBy: "capture_for_booking"
-    });
-    await this.notifyBookingUsers(bookingId, {
-      title: "Pagamento efetivado",
-      body: "Serviço concluído e pagamento capturado com sucesso.",
-      data: { type: "PAYMENT_CAPTURED" }
-    });
+    // Épico de Frentes, Frente 12, Lote 2: audit log e notificação não eram
+    // condicionados a este updateMany ter de fato mudado alguma linha -
+    // diferente do resto do código de captura/webhook, que segue esse
+    // padrão consistentemente. Sem a guarda, uma corrida entre a confirmação
+    // manual da sessão e o job de auto-captura (mesmo bookingId cruzando o
+    // limiar de AUTO_CAPTURE_CONFIRMATION_HOURS quase ao mesmo tempo) fazia
+    // as duas chamadas passarem pelo check inicial antes de qualquer commit
+    // e disparar push/log duplicado, mesmo sem nada de errado ter
+    // acontecido de fato com o dinheiro (a MP em si é idempotente pro mesmo
+    // mpPaymentId).
+    if (capturedCount.count > 0) {
+      void writeAuditLog({
+        paymentId: payment.id,
+        fromStatus: PaymentStatus.AUTHORIZED,
+        toStatus: PaymentStatus.CAPTURED,
+        triggeredBy: "capture_for_booking"
+      });
+      await this.notifyBookingUsers(bookingId, {
+        title: "Pagamento efetivado",
+        body: "Serviço concluído e pagamento capturado com sucesso.",
+        data: { type: "PAYMENT_CAPTURED" }
+      });
+    }
     return capturedPayment;
   }
 

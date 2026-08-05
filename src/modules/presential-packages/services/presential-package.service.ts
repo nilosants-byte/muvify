@@ -1014,6 +1014,24 @@ export class PresentialPackageService {
     });
     if (!pkg || !pkg.nextBillingAt) return false;
 
+    // Épico de Frentes, Frente 12, Lote 2: duas entregas concorrentes do
+    // mesmo evento de webhook (retry normal da MP) podiam ambas passar pelo
+    // findFirst acima antes de qualquer commit - protegido até aqui só pela
+    // constraint única de PresentialPackageCycle (a 2ª tentativa virava 500
+    // espúrio em vez de um no-op silencioso). "Reivindica" a confirmação com
+    // um updateMany atômico condicionado ao pendingChargeMpPaymentId ainda
+    // bater - só uma das duas chamadas concorrentes consegue confirmar o
+    // match (garantido pelo lock de linha do próprio UPDATE do Postgres), a
+    // outra vê count 0 e desiste cedo. Um advisory lock não bastaria aqui:
+    // ele só protegeria a checagem em si, não o activateCycle logo abaixo,
+    // que roda numa transação SEPARADA (a lock teria sido liberada bem antes
+    // do pendingChargeMpPaymentId de fato ser limpo).
+    const claimed = await prisma.presentialPackage.updateMany({
+      where: { id: pkg.id, pendingChargeMpPaymentId: mpPaymentId },
+      data: { pendingChargeMpPaymentId: null }
+    });
+    if (claimed.count === 0) return false;
+
     const periodStart = pkg.nextBillingAt;
     const periodEnd = addCycles(periodStart, pkg.billingCycle, 1);
     await this.activateCycle(pkg.id, pkg.nextCycleIndex, periodStart, periodEnd, mpPaymentId, pkg.cycleAmountCents);

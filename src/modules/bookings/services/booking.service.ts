@@ -11,6 +11,7 @@ import {
 import { StatusCodes } from "http-status-codes";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
+import { MP_CLIENT_TIMEOUT_MS } from "../../../config/mercadopago";
 import { redis } from "../../../config/redis";
 import { AppError } from "../../../shared/errors/app-error";
 import { deleteByPattern } from "../../../shared/utils/cache";
@@ -1585,7 +1586,17 @@ export class BookingService {
 
         return { updated: updatedBooking, justCompleted: bothConfirmed, stillWaiting: false };
       },
-      { timeout: 15000, maxWait: 15000 }
+      // Épico de Frentes, Frente 12, Lote 2: a captura de pagamento (linha
+      // acima) pode levar até MP_CLIENT_TIMEOUT_MS inteiro, e ainda sobra
+      // trabalho depois dela (evidência de conclusão, update final do
+      // booking) - um timeout de transação igual ao da própria chamada à MP
+      // não deixava margem nenhuma. Se a transação estourasse bem nesse
+      // ponto, o pagamento já capturado (commitado numa conexão própria,
+      // fora desta transação) ficava dessincronizado do booking (que
+      // revertia por inteiro) - autorrecuperável numa nova tentativa
+      // (capturePaymentForBooking é idempotente), mas gerava um erro evitável
+      // no meio do fluxo. Margem generosa para evidência + updates finais.
+      { timeout: MP_CLIENT_TIMEOUT_MS + 15000, maxWait: 15000 }
     );
 
     const { updated, justCompleted, stillWaiting } = result;
