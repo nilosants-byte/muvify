@@ -8,6 +8,13 @@ const disabled = !POSTHOG_KEY || __DEV__ || process.env.NODE_ENV === "test";
 // Não instancia o SDK quando desabilitado: o construtor do PostHog tenta
 // inicializar storage (AsyncStorage/expo-file-system) de forma síncrona e
 // quebra em ambientes sem esses módulos disponíveis (ex.: Jest).
+//
+// Épico de Frentes, Frente 11, Lote 4: o SDK come­çava capturando eventos
+// (incl. captureAppLifecycleEvents automático) antes de qualquer
+// consentimento do usuário - defaultOptIn: false garante que NADA é
+// capturado até optIn() ser chamado explicitamente (ver
+// applyAnalyticsPreference/AppState.tsx, que só chama optIn quando o
+// usuário liga o toggle "Compartilhar dados de uso", desligado por padrão).
 export const posthog: PostHog | undefined = disabled
   ? undefined
   : new PostHog(POSTHOG_KEY, {
@@ -15,6 +22,7 @@ export const posthog: PostHog | undefined = disabled
       flushAt: 20,
       flushInterval: 30_000,
       captureAppLifecycleEvents: true,
+      defaultOptIn: false,
     });
 
 // ── Event helpers ─────────────────────────────────────────────────────────────
@@ -25,7 +33,10 @@ export function trackEvent(event: AnalyticsEvent, props?: Record<string, any>) {
   posthog.capture(event, props);
 }
 
-export function identifyUser(id: string, traits?: { name?: string; email?: string; role?: string }) {
+// Épico de Frentes, Frente 11, Lote 4: identifyUser mandava o nome real do
+// usuário pro PostHog (servidor na Europa) - sem necessidade, já que id+role
+// bastam pra qualquer segmentação/funil que o produto precisa hoje.
+export function identifyUser(id: string, traits?: { role?: string }) {
   if (!posthog) return;
   posthog.identify(id, traits);
 }

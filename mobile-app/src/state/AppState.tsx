@@ -198,7 +198,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [onboardingDone, setOnboardingDone] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [themeMode, setThemeModeState] = useState<ThemeMode>("dark");
-  const [analyticsEnabled, setAnalyticsEnabledState] = useState(true);
+  const [analyticsEnabled, setAnalyticsEnabledState] = useState(false);
   // Épico de Frentes, Frente 9, Lote 1: até aqui, o toggle "Notificações
   // push" das Configurações só gravava uma chave local (ou nem isso, no
   // app do profissional) - não afetava o registro real do dispositivo
@@ -382,8 +382,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             loadUserCache()
           ]);
 
-        // Padrão: ativado. Só desativa se o usuário explicitamente desligou antes.
-        const resolvedAnalyticsEnabled = storedAnalyticsEnabled !== "0";
+        // Épico de Frentes, Frente 11, Lote 4: analytics rodava por padrão
+        // (opt-out) antes de qualquer consentimento - passa a ser opt-in,
+        // só ativa se o usuário explicitamente ligou antes.
+        const resolvedAnalyticsEnabled = storedAnalyticsEnabled === "1";
         setAnalyticsEnabledState(resolvedAnalyticsEnabled);
         applyAnalyticsPreference(resolvedAnalyticsEnabled);
         setPushNotificationsEnabledState(storedPushEnabled !== "0");
@@ -519,14 +521,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       return { requiresTwoFactor: true, challengeToken: session.challengeToken };
     }
     await setSession(session);
-    identifyUser(session.user.id, { name: session.user.name, role: session.user.role });
+    identifyUser(session.user.id, { role: session.user.role });
     trackEvent("user_logged_in", { role: session.user.role });
   }
 
   async function completeTwoFactorLogin(challengeToken: string, code: string) {
     const session = await authApi.loginWithTwoFactor({ challengeToken, code });
     await setSession(session);
-    identifyUser(session.user.id, { name: session.user.name, role: session.user.role });
+    identifyUser(session.user.id, { role: session.user.role });
     trackEvent("user_logged_in", { role: session.user.role, method: "2fa" });
   }
 
@@ -548,7 +550,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       role: registrationRole
     });
     await setSession(session);
-    identifyUser(session.user.id, { name: session.user.name, role: session.user.role });
+    identifyUser(session.user.id, { role: session.user.role });
     trackEvent("user_registered", { role: session.user.role ?? registrationRole });
   }
 

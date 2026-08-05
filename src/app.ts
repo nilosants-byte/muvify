@@ -96,6 +96,17 @@ app.use(
         "req.body.accountNumber",
         "req.body.accountDigit",
         "req.body.agency",
+        "req.body.pixKey",
+        // Épico de Frentes, Frente 11, Lote 4: dado de saúde (respostas de
+        // anamnese) e conteúdo de mensagem/chat/localização não estavam
+        // cobertos - vazavam em texto pleno pro arquivo de log a cada
+        // requisição logada.
+        "req.body.answers",
+        "req.body.content",
+        "req.body.message",
+        "req.body.caption",
+        "req.body.latitude",
+        "req.body.longitude",
         "req.query.email",
         "req.query.token"
       ],

@@ -285,6 +285,7 @@ Os seguintes prestadores de serviços atuam como **operadores de dados** sob ins
 | **Cloudflare (R2 Object Storage)** | Rede global (Cloudflare) | Armazenamento de fotos e vídeos enviados pelos usuários (foto de perfil, vídeo de apresentação do profissional, documentos do CREF, fotos do feed de evolução, mídia de exercícios) | Arquivos de imagem/vídeo enviados pelo usuário |
 | **Amazon Web Services (AWS S3)** | EUA (região configurável) | Armazenamento de backups criptografados do banco de dados | Backup completo da base de dados (criptografado com chave própria) |
 | **Sentry (Functional Software, Inc.)** | EUA | Monitoramento de erros e estabilidade da aplicação | Dados de contexto de erro (sem dados de saúde ou financeiros identificáveis) |
+| **PostHog (PostHog Inc.)** | União Europeia | Analytics de uso do produto (funis, eventos de navegação) — **somente com consentimento explícito do usuário, desligado por padrão** (Configurações → Compartilhar dados de uso) | Identificador do usuário, papel (aluno/profissional), eventos de navegação/uso. Não inclui nome, e-mail ou qualquer dado de saúde ou financeiro |
 
 ### 6.3 Autoridades Públicas
 

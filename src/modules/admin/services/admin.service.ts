@@ -1205,6 +1205,15 @@ export class AdminService {
     return d.length >= 4 ? `***.***.***-${d.slice(-2)}` : "***";
   }
 
+  // Épico de Frentes, Frente 11, Lote 4: já mascarado (via decrypt +
+  // maskDocument acima) na RESPOSTA da busca - mas o CPF/CNPJ digitado
+  // pelo admin pra buscar ia inteiro, em texto puro, pro log de auditoria
+  // (console.info). Mesmo raciocínio, sem decrypt (o input já é texto puro).
+  private maskRawDocument(doc: string): string {
+    const d = doc.replace(/\D/g, "");
+    return d.length >= 4 ? `***.***.***-${d.slice(-2)}` : "***";
+  }
+
   // Lookup by document goes through documentHash (a deterministic HMAC) since
   // `document` itself is stored encrypted with a randomized IV and can't be
   // matched with a plain `WHERE document = value`.
@@ -1219,7 +1228,7 @@ export class AdminService {
   async lookupCrefByDocument(adminId: string, providerDocument: string) {
     await this.ensureAdminAccess(adminId);
     const doc = this.normalizeDocument(providerDocument);
-    console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupCref document=${doc}`);
+    console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupCref document=${this.maskRawDocument(doc)}`);
     const user = await this.userByDoc(doc, {
       providerProfile: {
         select: {
@@ -1250,7 +1259,7 @@ export class AdminService {
     await this.ensureAdminAccess(adminId);
     const provDoc = this.normalizeDocument(providerDocument);
     const cliDoc = this.normalizeDocument(clientDocument);
-    console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupChats provDoc=${provDoc} cliDoc=${cliDoc}`);
+    console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupChats provDoc=${this.maskRawDocument(provDoc)} cliDoc=${this.maskRawDocument(cliDoc)}`);
 
     const [provider, client] = await Promise.all([
       this.userByDoc(provDoc, { providerProfile: { select: { id: true } } }),
@@ -1299,7 +1308,7 @@ export class AdminService {
     await this.ensureAdminAccess(adminId);
     const provDoc = this.normalizeDocument(providerDocument);
     const cliDoc = this.normalizeDocument(clientDocument);
-    console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupBookings provDoc=${provDoc} cliDoc=${cliDoc} date=${date ?? "all"}`);
+    console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=lookupBookings provDoc=${this.maskRawDocument(provDoc)} cliDoc=${this.maskRawDocument(cliDoc)} date=${date ?? "all"}`);
 
     const [provider, client] = await Promise.all([
       this.userByDoc(provDoc, { providerProfile: { select: { id: true } } }),

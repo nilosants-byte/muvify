@@ -149,6 +149,7 @@ export function PrivacyScreen({ navigation }: { navigation?: any }) {
           <Item text="Sistemas de notificações push" />
           <Item text="Ferramentas de monitoramento técnico e tratamento de falhas" />
           <Item text="Provedores de infraestrutura e hospedagem" />
+          <Item text="Analytics de uso do produto (PostHog) — somente com seu consentimento explícito, desligado por padrão (Configurações → Compartilhar dados de uso)" />
           <Item text="Autoridades públicas, quando houver obrigação legal ou ordem válida" />
           <Body text="O Muvify não comercializa dados pessoais dos usuários." />
         </Section>
