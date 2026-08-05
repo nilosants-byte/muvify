@@ -13,7 +13,7 @@ import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
 import { EmailQueueService } from "../../../shared/services/email-queue.service";
-import { deleteMediaByUrl, deletePrivateObject } from "../../../shared/services/storage.service";
+import { deleteMediaByUrl, deletePrivateObject, getPrivateObject } from "../../../shared/services/storage.service";
 import { getCache, setCache } from "../../../shared/utils/cache";
 import { resolveAccessTokenTtlSeconds, setTokenBlacklist } from "../../../shared/security/token-blacklist";
 import {
@@ -1177,6 +1177,17 @@ export class UserService {
           select: { id: true, postId: true, reason: true, status: true, createdAt: true },
           orderBy: { createdAt: "desc" }
         },
+        // Frente 11 (fechamento): feedPostReports estava presente, mas as
+        // denúncias de chat (agendamento e consultoria) ficaram de fora -
+        // mesmo gap de cobertura achado pro ConsentRecord/CompletionEvidence.
+        bookingMessageReports: {
+          select: { id: true, messageId: true, reason: true, status: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
+        },
+        consultancyMessageReports: {
+          select: { id: true, messageId: true, reason: true, status: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
+        },
         unlockedAchievements: {
           select: { id: true, achievement: { select: { key: true, name: true } }, unlockedAt: true },
           orderBy: { unlockedAt: "desc" },
@@ -1243,6 +1254,26 @@ export class UserService {
         customerPaymentMethods: {
           select: { id: true, nickname: true, brand: true, last4: true, funding: true, expMonth: true, expYear: true, isDefault: true, isActive: true, createdAt: true }
         },
+        // Frente 11 (fechamento): ConsentRecord (histórico de consentimento,
+        // criado no Lote 1 pra dar prova ao titular) e CompletionEvidence
+        // (selfie de comprovação de presença) ficaram de fora da exportação
+        // original do Lote 5 - achado numa revisão de completude posterior.
+        consentRecords: {
+          select: { id: true, termsVersion: true, privacyPolicyVersion: true, acceptedAt: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
+        },
+        completionEvidences: {
+          select: { id: true, bookingId: true, cameraFacing: true, mimeType: true, storageKey: true, imageBase64: true, capturedAt: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take
+        },
+        // Registro de posse do upload (chave no R2 + quem enviou), usado pra
+        // validar vínculo antes de anexar a um envio de CREF - o conteúdo do
+        // documento em si já está coberto por providerData.profile.
+        crefDocumentUploads: {
+          select: { id: true, storageKey: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
+        },
         // Lado profissional (M4): antes completamente ausente da exportação.
         providerProfile: {
           select: {
@@ -1272,7 +1303,7 @@ export class UserService {
               take
             },
             reviews: {
-              select: { id: true, rating: true, comment: true, createdAt: true },
+              select: { id: true, rating: true, comment: true, providerResponse: true, createdAt: true },
               orderBy: { createdAt: "desc" },
               take
             },
@@ -1340,6 +1371,7 @@ export class UserService {
     const consultancyMessages = this.sliceTruncated(user.consultancyMessages, LIST_LIMIT);
     const sessions = this.sliceTruncated(user.sessions, LIST_LIMIT);
     const xpTransactions = this.sliceTruncated(user.xpTransactions, LIST_LIMIT);
+    const completionEvidences = this.sliceTruncated(user.completionEvidences, LIST_LIMIT);
 
     const providerBookings = user.providerProfile ? this.sliceTruncated(user.providerProfile.bookings, LIST_LIMIT) : null;
     const providerReviews = user.providerProfile ? this.sliceTruncated(user.providerProfile.reviews, LIST_LIMIT) : null;
@@ -1349,6 +1381,30 @@ export class UserService {
     const providerFinancialStudents = user.providerProfile ? this.sliceTruncated(user.providerProfile.financialStudents, LIST_LIMIT) : null;
     const providerFinancialIncomes = user.providerProfile ? this.sliceTruncated(user.providerProfile.financialIncomes, LIST_LIMIT) : null;
     const providerFinancialExpenses = user.providerProfile ? this.sliceTruncated(user.providerProfile.financialExpenses, LIST_LIMIT) : null;
+
+    // Frente 11 (fechamento): mesmo tratamento de decifragem já usado pra
+    // anamnese/avaliação física/conta bancária - sem isso, a exportação
+    // devolveria o texto cifrado em vez da comprovação de presença em si.
+    const completionEvidencePhotos = await Promise.all(
+      completionEvidences.items.map(async (evidence) => {
+        let imageBase64: string | null = null;
+        try {
+          const encrypted = evidence.storageKey ? await getPrivateObject(evidence.storageKey) : evidence.imageBase64;
+          imageBase64 = encrypted ? decryptSensitiveText(encrypted) : null;
+        } catch (error) {
+          console.error(`Falha ao decifrar CompletionEvidence ${evidence.id} para exportação:`, error);
+        }
+        return {
+          id: evidence.id,
+          bookingId: evidence.bookingId,
+          cameraFacing: evidence.cameraFacing,
+          mimeType: evidence.mimeType,
+          capturedAt: evidence.capturedAt,
+          createdAt: evidence.createdAt,
+          imageBase64
+        };
+      })
+    );
 
     // Épico de Frentes, Frente 11, Lote 5: exportação self-service não
     // deixava trilha nem avisava o titular por nenhum canal além do
@@ -1399,6 +1455,8 @@ export class UserService {
       feedPostLikes: feedPostLikes.items,
       feedPostComments: feedPostComments.items,
       feedPostReports: user.feedPostReports,
+      bookingMessageReports: user.bookingMessageReports,
+      consultancyMessageReports: user.consultancyMessageReports,
       unlockedAchievements: user.unlockedAchievements,
       supportTickets: supportTickets.items,
       disputes: user.disputeCasesAsClient,
@@ -1411,6 +1469,9 @@ export class UserService {
       pushDevices: user.pushDevices,
       sessions: sessions.items,
       xpTransactions: xpTransactions.items,
+      consentRecords: user.consentRecords,
+      completionEvidences: completionEvidencePhotos,
+      crefDocumentUploads: user.crefDocumentUploads,
       streak: user.streak,
       rankingSnapshots: user.rankingSnapshots,
       customerPaymentMethods: user.customerPaymentMethods,
@@ -1471,6 +1532,7 @@ export class UserService {
         consultancyMessages: consultancyMessages.truncated,
         sessions: sessions.truncated,
         xpTransactions: xpTransactions.truncated,
+        completionEvidences: completionEvidences.truncated,
         providerBookingsReceived: providerBookings?.truncated ?? false,
         providerReviewsReceived: providerReviews?.truncated ?? false,
         providerConsultancyRequestsReceived: providerConsultancyRequests?.truncated ?? false,

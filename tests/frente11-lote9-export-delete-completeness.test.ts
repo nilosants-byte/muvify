@@ -164,6 +164,26 @@ describe("Frente 11, Lote 9 — completude de exportMyData e deleteMe", () => {
     });
     await prisma.providerManualBlock.create({ data: { providerId, date: "2026-01-01", startTime: "08:00", endTime: "09:00", label: "Bloco manual" } });
     await prisma.financialStudent.create({ data: { providerId, name: "Aluno Manual", monthlyValueCents: 10000, type: "PRESENTIAL", notes: "Nota financeira manual." } });
+
+    // Frente 11 (fechamento): estes models ficaram de fora da rede de
+    // segurança original - achado numa revisão de completude posterior, que
+    // por causa dessa lacuna também achou gaps reais em exportMyData
+    // (ConsentRecord, CompletionEvidence, denúncias de chat ausentes).
+    await prisma.consentRecord.create({
+      data: { userId: clientId, termsVersion: "2026.05", privacyPolicyVersion: "2026.05", acceptedAt: new Date() }
+    });
+    await prisma.completionEvidence.create({
+      data: {
+        bookingId, userId: clientId, cameraFacing: "FRONT", mimeType: "image/jpeg",
+        imageBase64: encryptSensitiveText("dGVzdGU=")
+      }
+    });
+    await prisma.feedPostReport.create({ data: { postId: otherPost.id, reporterId: clientId, reason: "Motivo da denúncia de post." } });
+    const bookingMessage = await prisma.bookingMessage.findFirstOrThrow({ where: { bookingId } });
+    await prisma.bookingMessageReport.create({ data: { messageId: bookingMessage.id, reporterId: providerUserId, reason: "Motivo da denúncia de chat." } });
+    const consultancyMessage = await prisma.consultancyMessage.findFirstOrThrow({ where: { contractId } });
+    await prisma.consultancyMessageReport.create({ data: { messageId: consultancyMessage.id, reporterId: providerUserId, reason: "Motivo da denúncia de chat de consultoria." } });
+    await prisma.crefDocumentUpload.create({ data: { storageKey: `cref-documents/${randomUUID()}.enc`, uploadedByUser: providerUserId } });
   });
 
   afterAll(async () => {
@@ -225,9 +245,13 @@ describe("Frente 11, Lote 9 — completude de exportMyData e deleteMe", () => {
     expect(result.sessions.length).toBeGreaterThan(0);
     expect(result.pushDevices.length).toBeGreaterThan(0);
     expect(result.customerPaymentMethods.length).toBeGreaterThan(0);
+    expect(result.consentRecords.length).toBeGreaterThan(0);
+    expect(result.completionEvidences.length).toBeGreaterThan(0);
+    expect(result.completionEvidences[0].imageBase64).toBe("dGVzdGU=");
+    expect(result.feedPostReports.length).toBeGreaterThan(0);
   });
 
-  it("exportMyData do PROFISSIONAL inclui conta bancária, bloco manual e aluno financeiro", async () => {
+  it("exportMyData do PROFISSIONAL inclui conta bancária, bloco manual, aluno financeiro e denúncias/uploads de CREF", async () => {
     const result = await userService.exportMyData(providerUserId);
 
     expect(result.providerData).not.toBeNull();
@@ -236,6 +260,9 @@ describe("Frente 11, Lote 9 — completude de exportMyData e deleteMe", () => {
       result.providerData!.consultancyContractsAsProvider.length +
       result.providerData!.bookingsReceived.length
     ).toBeGreaterThan(0);
+    expect(result.bookingMessageReports.length).toBeGreaterThan(0);
+    expect(result.consultancyMessageReports.length).toBeGreaterThan(0);
+    expect(result.crefDocumentUploads.length).toBeGreaterThan(0);
   });
 
   it("deleteMe toca todas as categorias conhecidas de dado pessoal", async () => {
@@ -299,6 +326,19 @@ describe("Frente 11, Lote 9 — completude de exportMyData e deleteMe", () => {
     // propósito; só o job de retenção o faz, quando o ticket realmente vence.
     const ticket = await prisma.supportTicket.findFirstOrThrow({ where: { userId: clientId } });
     expect(ticket.message).toBe("Mensagem de suporte.");
+
+    const evidence = await prisma.completionEvidence.findMany({ where: { userId: clientId } });
+    expect(evidence).toHaveLength(0);
+
+    const postReport = await prisma.feedPostReport.findFirstOrThrow({ where: { reporterId: clientId } });
+    expect(postReport.reason).toBeNull();
+
+    // ConsentRecord é histórico de consentimento append-only (prova de qual
+    // versão dos termos o titular aceitou e quando) - deleteMe não apaga nem
+    // anonimiza de propósito, mesma lógica de retenção pra defesa de
+    // direitos já aplicada a SupportTicket acima.
+    const consent = await prisma.consentRecord.findFirstOrThrow({ where: { userId: clientId } });
+    expect(consent.termsVersion).toBe("2026.05");
   });
 
   it("deleteMe do PROFISSIONAL limpa conta bancária, bloco manual e aluno financeiro", async () => {
@@ -319,5 +359,14 @@ describe("Frente 11, Lote 9 — completude de exportMyData e deleteMe", () => {
 
     const providerUser = await prisma.user.findUniqueOrThrow({ where: { id: providerUserId } });
     expect(providerUser.name).toBe("Usuário removido");
+
+    const crefUploads = await prisma.crefDocumentUpload.findMany({ where: { uploadedByUser: providerUserId } });
+    expect(crefUploads).toHaveLength(0);
+
+    const bookingReport = await prisma.bookingMessageReport.findFirstOrThrow({ where: { reporterId: providerUserId } });
+    expect(bookingReport.reason).toBeNull();
+
+    const consultancyReport = await prisma.consultancyMessageReport.findFirstOrThrow({ where: { reporterId: providerUserId } });
+    expect(consultancyReport.reason).toBeNull();
   });
 });

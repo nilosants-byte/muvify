@@ -976,8 +976,10 @@ export class ProviderService {
   // andamento (PENDING/CONFIRMED/ACTIVE) continuam liberados sem limite de
   // tempo; vínculos encerrados (COMPLETED/DELIVERED/PAST_DUE) só liberam
   // dado de saúde dentro da mesma janela de retenção já usada pra
-  // anamnese (730 dias, ver data-retention.service.ts).
-  private static readonly HEALTH_DATA_ACCESS_WINDOW_DAYS = 730;
+  // anamnese/avaliação biométrica (365 dias, ver RETENTION_WINDOWS_DAYS.anamnesis
+  // em data-retention.service.ts - reduzida de 730 pra 365 no Lote 7; valor
+  // aqui desatualizado até esta correção).
+  private static readonly HEALTH_DATA_ACCESS_WINDOW_DAYS = 365;
 
   private async hasRecentHealthDataAccess(providerId: string, clientId: string): Promise<boolean> {
     const cutoff = new Date(
