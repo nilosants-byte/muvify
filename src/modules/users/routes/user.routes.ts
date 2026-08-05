@@ -3,7 +3,7 @@ import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
-import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
+import { uploadRateLimiter, writeRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { UserController } from "../controllers/user.controller";
 import {
   changeMyPasswordSchema,
@@ -68,7 +68,9 @@ userRoutes.get("/me/support-tickets", userController.listMySupportTickets);
 userRoutes.delete("/me", uploadRateLimiter, validate(deleteMeSchema), userController.deleteMe);
 userRoutes.get("/me/data-export", uploadRateLimiter, userController.exportMyData);
 userRoutes.get("/me/disputes", userController.myDisputes);
-userRoutes.post("/me/consent", validate(recordConsentSchema), userController.recordConsent);
+// Épico de Frentes, Frente 11, Lote 2: único endpoint autenticado do
+// módulo sem rate limiter nenhum.
+userRoutes.post("/me/consent", writeRateLimiter, validate(recordConsentSchema), userController.recordConsent);
 userRoutes.get("/me/notifications/preferences", userController.getNotificationPreferences);
 userRoutes.put(
   "/me/notifications/preferences",

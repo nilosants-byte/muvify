@@ -374,8 +374,18 @@ export function RegisterScreen() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  // Épico de Frentes, Frente 11, Lote 2: esta tela enviava
+  // consentAccepted: true incondicionalmente, sem nenhum checkbox na UI -
+  // o titular nunca manifestava consentimento de fato, só o backend
+  // recebia a afirmação. Mesmo padrão de checkbox já usado em
+  // AuthRegisterScreen.tsx (tela real, usada em produção).
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   async function onSubmit() {
+    if (!acceptedTerms) {
+      showToast("Você precisa aceitar os termos para continuar.", "error");
+      return;
+    }
     try {
       setLoading(true);
       await register({
@@ -413,7 +423,24 @@ export function RegisterScreen() {
           onChangeText={setPassword}
           secureTextEntry
         />
-        <AppButton label={loading ? "Criando..." : "Criar conta"} onPress={onSubmit} disabled={loading} />
+        <Pressable
+          onPress={() => setAcceptedTerms((c) => !c)}
+          accessibilityRole="checkbox"
+          accessibilityLabel="Aceitar termos de uso e política de privacidade"
+          style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, minHeight: 44 }}
+        >
+          <View style={{
+            width: 20, height: 20, borderRadius: 6,
+            borderWidth: 1.5,
+            borderColor: acceptedTerms ? colors.primary : colors.border,
+            backgroundColor: acceptedTerms ? "rgba(36,230,109,0.12)" : "transparent",
+            marginTop: 2
+          }} />
+          <Text style={{ flex: 1, color: colors.textSecondary, fontSize: 13, lineHeight: 18 }}>
+            Li e aceito os Termos de Uso e a Política de Privacidade (v{TERMS_VERSION}).
+          </Text>
+        </Pressable>
+        <AppButton label={loading ? "Criando..." : "Criar conta"} onPress={onSubmit} disabled={loading || !acceptedTerms} />
       </View>
     </ScreenContainer>
   );

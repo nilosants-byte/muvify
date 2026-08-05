@@ -1050,7 +1050,11 @@ export class UserService {
     const allTypes = Object.values(NotificationPreferenceType);
     return allTypes.map((type) => ({
       type,
-      enabled: savedMap.has(type) ? savedMap.get(type)! : true
+      // Épico de Frentes, Frente 11, Lote 2: MARKETING vinha com default
+      // ligado (opt-out) igual qualquer outra categoria operacional -
+      // finalidade de marketing precisa ser opt-in (desligada até o
+      // usuário ativar de propósito), as demais continuam opt-out.
+      enabled: savedMap.has(type) ? savedMap.get(type)! : type !== NotificationPreferenceType.MARKETING
     }));
   }
 

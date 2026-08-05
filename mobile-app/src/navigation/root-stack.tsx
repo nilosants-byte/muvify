@@ -77,6 +77,7 @@ import { GenericErrorScreen } from "../screens/shared/GenericErrorScreen";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { NotificationsScreen } from "../screens/shared/NotificationsScreen";
 import { OfflineRequiredScreen } from "../screens/shared/OfflineRequiredScreen";
+import { ReconsentGateScreen } from "../screens/shared/ReconsentGateScreen";
 import { SessionExpiredScreen } from "../screens/shared/SessionExpiredScreen";
 import { SupportScreen } from "../screens/shared/SupportScreen";
 import { PrivacyScreen } from "../screens/shared/PrivacyScreen";
@@ -295,7 +296,8 @@ export function RootNavigator() {
     onboardingDone,
     themeMode,
     toast,
-    clearToast
+    clearToast,
+    user
   } = useAppState();
   const { online, recheckNow } = useConnectivity(5000, false);
   const [hadOnlineSession, setHadOnlineSession] = useState(false);
@@ -845,6 +847,10 @@ export function RootNavigator() {
 
   if (shouldHardBlockOffline) {
     return <OfflineRequiredScreen onRetry={() => void recheckNow()} />;
+  }
+
+  if (isAuthenticated && user?.needsReconsent) {
+    return <ReconsentGateScreen />;
   }
 
   const linking = {

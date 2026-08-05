@@ -1,4 +1,5 @@
 ﻿import { Platform } from "react-native";
+import { TERMS_VERSION } from "../../config/legal";
 
 export type UserRole = "CLIENT" | "PROVIDER" | "ADMIN";
 export type PaymentMethod = "CARD" | "CREDIT_CARD" | "DEBIT_CARD" | "PIX";
@@ -23,6 +24,10 @@ export type AuthUser = {
   photoUrl?: string | null;
   emailVerifiedAt?: string | null;
   twoFactorEnabled?: boolean;
+  // Épico de Frentes, Frente 11, Lote 1/2: nada indicava ao app que os
+  // termos vigentes mudaram - usuário antigo ficava sob versão
+  // desatualizada indefinidamente, sem gate de re-aceite nenhum.
+  needsReconsent?: boolean;
   createdAt?: string;
   providerProfile?: {
     id: string;
@@ -1474,6 +1479,16 @@ export const uploadsApi = {
 export const userApi = {
   me(token: string) {
     return apiRequest<AuthUser>("/users/me", { token });
+  },
+  // Épico de Frentes, Frente 11, Lote 2: /me/consent nunca era chamado
+  // pelo app - endpoint morto. termsVersion continua obrigatório no corpo
+  // por compatibilidade, mas o servidor sempre grava a versão canônica
+  // dele mesmo (ignora o valor enviado).
+  recordConsent(token: string) {
+    return apiRequest<{ id: string; termsAcceptedAt: string; privacyPolicyAcceptedAt: string; termsVersion: string }>(
+      "/users/me/consent",
+      { method: "POST", token, body: { termsVersion: TERMS_VERSION } }
+    );
   },
   updateMe(token: string, input: { name?: string; apelido?: string; phone?: string; photoUrl?: string }) {
     // Nota: email foi removido — mudança de email requer endpoint dedicado no futuro

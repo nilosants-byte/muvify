@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvCard, MvText } from "../../components/mv";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
+import { TERMS_VERSION } from "../../config/legal";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -53,7 +54,7 @@ export function PrivacyScreen({ navigation }: { navigation?: any }) {
         ) : null}
         <View style={{ flex: 1 }}>
           <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Termos e Privacidade</Text>
-          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>Versão 1.1 · Vigência: 03/05/2026</Text>
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>Versão {TERMS_VERSION}</Text>
         </View>
       </View>
 
@@ -197,7 +198,7 @@ export function PrivacyScreen({ navigation }: { navigation?: any }) {
 
         <MvText variant="body4" color="tertiary" style={{ textAlign: "center" }}>
           Canal oficial de privacidade: muvifyadm@gmail.com{"\n"}
-          Versao 1.1 · Vigencia: 03/05/2026
+          Versão {TERMS_VERSION}
         </MvText>
       </ScrollView>
     </View>
