@@ -4,6 +4,7 @@ import request from "supertest";
 import { app } from "../src/app";
 import { prisma } from "../src/config/prisma";
 import { clearTokenBlacklist } from "../src/shared/security/token-blacklist";
+import { encryptJson } from "../src/shared/utils/encryption";
 
 const password = "Test1234";
 
@@ -95,8 +96,8 @@ describe("auth-isolation", () => {
 
     await prisma.clientAnamnesis.upsert({
       where: { clientId: clientAId },
-      update: { status: "COMPLETED", answers: {} },
-      create: { clientId: clientAId, status: "COMPLETED", answers: {} }
+      update: { status: "COMPLETED", answers: encryptJson({}) },
+      create: { clientId: clientAId, status: "COMPLETED", answers: encryptJson({}) }
     });
 
     const scheduledAt = new Date(

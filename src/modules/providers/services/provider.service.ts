@@ -27,6 +27,12 @@ import {
   toUserPhotoUrl
 } from "../../../shared/utils/photo-url";
 import { createCrefDocumentSignatureQuery, verifyCrefDocumentSignature } from "../../../shared/utils/cref-document-signature";
+import {
+  decryptJson,
+  decryptSensitiveText,
+  encryptJson,
+  encryptSensitiveText
+} from "../../../shared/utils/encryption";
 import { getPrivateMediaBuffer } from "../../../shared/services/storage.service";
 import { ENABLE_VIDEO_UPLOAD } from "../../../config/features";
 import { NotificationService } from "../../notifications/services/notification.service";
@@ -961,6 +967,80 @@ export class ProviderService {
         StatusCodes.NOT_FOUND
       );
     }
+  }
+
+  // Épico de Frentes, Frente 11, Lote 3: assertStudentManagedByProvider
+  // (acima) nunca expira - um único booking COMPLETED de qualquer data
+  // mantinha acesso vitalício à anamnese completa do aluno. Vínculos em
+  // andamento (PENDING/CONFIRMED/ACTIVE) continuam liberados sem limite de
+  // tempo; vínculos encerrados (COMPLETED/DELIVERED/PAST_DUE) só liberam
+  // dado de saúde dentro da mesma janela de retenção já usada pra
+  // anamnese (730 dias, ver data-retention.service.ts).
+  private static readonly HEALTH_DATA_ACCESS_WINDOW_DAYS = 730;
+
+  private async hasRecentHealthDataAccess(providerId: string, clientId: string): Promise<boolean> {
+    const cutoff = new Date(
+      Date.now() - ProviderService.HEALTH_DATA_ACCESS_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    );
+    const [ongoingBooking, recentCompletedBooking, ongoingContract, recentContract, ongoingPackage, recentPackage] =
+      await Promise.all([
+        prisma.booking.findFirst({
+          where: { providerId, clientId, status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] } },
+          select: { id: true }
+        }),
+        prisma.booking.findFirst({
+          where: { providerId, clientId, status: BookingStatus.COMPLETED, completedAt: { gte: cutoff } },
+          select: { id: true }
+        }),
+        prisma.consultancyContract.findFirst({
+          where: {
+            providerId,
+            clientId,
+            status: { in: [ConsultancyContractStatus.PENDING_PAYMENT, ConsultancyContractStatus.ACTIVE] }
+          },
+          select: { id: true }
+        }),
+        prisma.consultancyContract.findFirst({
+          where: { providerId, clientId, status: ConsultancyContractStatus.DELIVERED, updatedAt: { gte: cutoff } },
+          select: { id: true }
+        }),
+        prisma.presentialPackage.findFirst({
+          where: {
+            providerId,
+            clientId,
+            status: { in: [PresentialPackageStatus.PENDING_PAYMENT, PresentialPackageStatus.ACTIVE] }
+          },
+          select: { id: true }
+        }),
+        prisma.presentialPackage.findFirst({
+          where: { providerId, clientId, status: PresentialPackageStatus.PAST_DUE, updatedAt: { gte: cutoff } },
+          select: { id: true }
+        })
+      ]);
+
+    return Boolean(ongoingBooking || recentCompletedBooking || ongoingContract || recentContract || ongoingPackage || recentPackage);
+  }
+
+  private logHealthDataAccess(providerId: string, clientId: string, action: string) {
+    void prisma.healthDataAccessLog
+      .create({ data: { providerId, clientId, action } })
+      .catch((err) => console.error("[provider.service] falha ao gravar HealthDataAccessLog:", (err as Error).message));
+  }
+
+  private static readonly ASSESSMENT_FIELDS = [
+    "weight", "height", "imc", "bodyFatPercent", "muscleMass",
+    "circumferences", "waist", "hip", "chest", "arm", "thigh"
+  ] as const;
+
+  private decryptAssessment<T extends Record<string, unknown>>(assessment: T): T {
+    const decrypted = { ...assessment };
+    for (const field of ProviderService.ASSESSMENT_FIELDS) {
+      const value = decrypted[field];
+      if (typeof value === "string") {
+        (decrypted as Record<string, unknown>)[field] = decryptSensitiveText(value);
+      }
+    }
+    return decrypted;
   }
 
   async createProfile(input: CreateProviderInput) {
@@ -2263,8 +2343,9 @@ export class ProviderService {
   async getStudentManagementDetail(userId: string, clientId: string) {
     const provider = await this.getProviderByUserId(userId);
     await this.assertStudentManagedByProvider(provider.id, clientId);
+    const recentHealthAccess = await this.hasRecentHealthDataAccess(provider.id, clientId);
 
-    const [client, anamnesis, physicalAssessment, bookings, contracts, trainingCompletions, presentialPackages] = await Promise.all([
+    const [client, anamnesisRaw, physicalAssessmentRaw, bookings, contracts, trainingCompletions, presentialPackages] = await Promise.all([
       prisma.user.findUnique({
         where: { id: clientId },
         select: {
@@ -2473,23 +2554,27 @@ export class ProviderService {
       };
     });
 
-    return {
-      student: {
-        id: client.id,
-        name: client.name,
-        email: client.email,
-        phone: client.phone,
-        profilePhotoUrl: toUserPhotoUrl(client.id, client.photoUrl, client.updatedAt),
-        memberSince: client.createdAt
-      },
-      anamnesis: anamnesis ?? {
-        id: null,
-        status: "DRAFT",
-        completedAt: null,
-        answers: null
-      },
-      physicalAssessment:
-        physicalAssessment ?? {
+    // Épico de Frentes, Frente 11, Lote 3: vínculo encerrado há mais de
+    // HEALTH_DATA_ACCESS_WINDOW_DAYS não libera mais o conteúdo de
+    // anamnese/avaliação física nesta tela - os registros continuam
+    // existindo (histórico financeiro/agenda acima permanece visível),
+    // só o payload de saúde é redigido.
+    const anamnesis = anamnesisRaw
+      ? recentHealthAccess
+        ? { ...anamnesisRaw, answers: decryptJson(anamnesisRaw.answers) }
+        : { ...anamnesisRaw, answers: null, healthDataAccessRestricted: true }
+      : { id: null, status: "DRAFT", completedAt: null, answers: null };
+
+    const physicalAssessment = physicalAssessmentRaw
+      ? recentHealthAccess
+        ? this.decryptAssessment(physicalAssessmentRaw)
+        : {
+            ...physicalAssessmentRaw,
+            weight: null, height: null, imc: null, bodyFatPercent: null, muscleMass: null,
+            circumferences: null, waist: null, hip: null, chest: null, arm: null, thigh: null,
+            healthDataAccessRestricted: true
+          }
+      : {
           id: null,
           providerId: provider.id,
           clientId,
@@ -2506,7 +2591,23 @@ export class ProviderService {
           thigh: null,
           createdAt: null,
           updatedAt: null
-        },
+        };
+
+    if (recentHealthAccess && (anamnesisRaw || physicalAssessmentRaw)) {
+      this.logHealthDataAccess(provider.id, clientId, "STUDENT_DETAIL_HEALTH_VIEW");
+    }
+
+    return {
+      student: {
+        id: client.id,
+        name: client.name,
+        email: client.email,
+        phone: client.phone,
+        profilePhotoUrl: toUserPhotoUrl(client.id, client.photoUrl, client.updatedAt),
+        memberSince: client.createdAt
+      },
+      anamnesis,
+      physicalAssessment,
       serviceSummary: {
         presentialBookings: serviceCounters.PRESENTIAL,
         onlineConsultancyContracts: serviceCounters.ONLINE_CONSULTANCY,
@@ -2533,10 +2634,10 @@ export class ProviderService {
 
     const normalize = (value?: string) => {
       const next = value?.trim();
-      return next ? next : null;
+      return next ? encryptSensitiveText(next) : null;
     };
 
-    return prisma.providerStudentAssessment.upsert({
+    const saved = await prisma.providerStudentAssessment.upsert({
       where: {
         providerId_clientId: {
           providerId: provider.id,
@@ -2572,6 +2673,7 @@ export class ProviderService {
         thigh: normalize(input.thigh)
       }
     });
+    return this.decryptAssessment(saved);
   }
 
   private static readonly ALLOWED_PHOTO_MIMES = new Set([
@@ -2693,6 +2795,17 @@ export class ProviderService {
     // consultoria.
     await this.assertStudentManagedByProvider(provider.id, clientId);
 
+    // Épico de Frentes, Frente 11, Lote 3: vínculo encerrado há mais de
+    // HEALTH_DATA_ACCESS_WINDOW_DAYS não dá mais acesso à anamnese - antes
+    // um único booking COMPLETED de qualquer data mantinha acesso vitalício.
+    const recentHealthAccess = await this.hasRecentHealthDataAccess(provider.id, clientId);
+    if (!recentHealthAccess) {
+      throw new AppError(
+        "Acesso à anamnese expirado: o vínculo com este aluno é anterior à janela de retenção de dados de saúde.",
+        StatusCodes.FORBIDDEN
+      );
+    }
+
     const anamnesis = await prisma.clientAnamnesis.findUnique({
       where: { clientId },
       select: {
@@ -2709,7 +2822,8 @@ export class ProviderService {
       return { status: "NONE", answers: null, client: null };
     }
 
-    return anamnesis;
+    this.logHealthDataAccess(provider.id, clientId, "ANAMNESIS_VIEW");
+    return { ...anamnesis, answers: decryptJson(anamnesis.answers) };
   }
 
   async getTimeline(providerUserId: string) {

@@ -54,6 +54,30 @@ export function hashLookupValue(value: string) {
   return createHmac("sha256", resolveEncryptionSecret()).update(normalized).digest("hex");
 }
 
+// Épico de Frentes, Frente 11, Lote 3: campos JSON sensíveis (ex.:
+// ClientAnamnesis.answers) usam essas duas funções pra serializar/cifrar
+// e decifrar/desserializar em conjunto, já que encryptSensitiveText só
+// opera sobre string.
+export function encryptJson(value: unknown): string | null {
+  if (value === null || typeof value === "undefined") {
+    return null;
+  }
+  return encryptSensitiveText(JSON.stringify(value));
+}
+
+export function decryptJson<T = unknown>(value: string | null | undefined): T | null {
+  const decrypted = decryptSensitiveText(value);
+  if (!decrypted) {
+    return null;
+  }
+  try {
+    return JSON.parse(decrypted) as T;
+  } catch (err) {
+    console.error("[encryption] decryptJson failed to parse:", (err as Error).message);
+    return null;
+  }
+}
+
 export function decryptSensitiveText(value: string | null | undefined) {
   if (!value) {
     return value ?? null;

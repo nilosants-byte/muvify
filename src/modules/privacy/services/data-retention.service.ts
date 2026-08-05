@@ -359,7 +359,7 @@ export class DataRetentionService {
     const where: Prisma.ClientAnamnesisWhereInput = {
       ...this.getUserFilter("clientId"),
       updatedAt: { lt: cutoff },
-      answers: { not: Prisma.DbNull }
+      answers: { not: null }
     };
     const matchedCount = await prisma.clientAnamnesis.count({ where });
     const affectedCount = dryRun
@@ -368,7 +368,7 @@ export class DataRetentionService {
           await prisma.clientAnamnesis.updateMany({
             where,
             data: {
-              answers: Prisma.DbNull,
+              answers: null,
               status: AnamnesisStatus.DRAFT,
               completedAt: null
             }

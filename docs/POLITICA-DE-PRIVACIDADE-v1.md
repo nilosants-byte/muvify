@@ -153,7 +153,7 @@ Em qualquer dos dois casos, a foto publicada é pública (visível a quem segue 
 
 ## 4. DADOS PESSOAIS SENSÍVEIS
 
-O Aplicativo Muvify trata as seguintes categorias de dados pessoais sensíveis, conforme o art. 5º, II da LGPD, com base legal exclusivamente no **consentimento específico e destacado do titular** (art. 11, I da LGPD) ou, quando aplicável, na **tutela da saúde** do titular (art. 11, II, "f" da LGPD):
+O Aplicativo Muvify trata as seguintes categorias de dados pessoais sensíveis, conforme o art. 5º, II da LGPD, com base legal na **execução de contrato** (art. 7º, V da LGPD, para os casos em que o dado é pré-requisito operacional do serviço contratado), na **tutela da saúde** do titular (art. 11, II, "f" da LGPD) e, complementarmente, no consentimento do titular manifestado ao aceitar os Termos de Uso (art. 11, I da LGPD).
 
 ### 4.1 Dados Financeiros e Bancários (exclusivo do Profissional/PROVIDER)
 
@@ -169,7 +169,7 @@ Os dados bancários dos profissionais são tratados como dados sensíveis em raz
 
 ### 4.2 Dados de Saúde — Anamnese (exclusivo do Aluno/CLIENT)
 
-A anamnese é um questionário clínico-funcional preenchido pelo aluno **com consentimento específico e destacado**, cujo tratamento tem a finalidade exclusiva de permitir que o profissional de educação física personalize os treinos com segurança. As informações coletadas incluem:
+A anamnese é um questionário clínico-funcional preenchido pelo aluno antes da contratação de um profissional, cujo tratamento tem a finalidade exclusiva de permitir que o profissional de educação física personalize os treinos com segurança e resguarde a saúde do aluno durante a prática. Como o preenchimento é pré-requisito operacional para a contratação do serviço, sua base legal primária é a **execução de contrato** (art. 7º, V da LGPD) combinada com a **tutela da saúde** (art. 11, II, "f" da LGPD) — e não o consentimento isolado, já que um consentimento juridicamente válido não pode ser condicionado ao acesso ao serviço. As informações coletadas incluem:
 
 **Dados pessoais complementares:**
 - Data de nascimento e idade
@@ -206,7 +206,7 @@ A anamnese é um questionário clínico-funcional preenchido pelo aluno **com co
 - Limitações físicas e restrições de exercício
 
 **Autorização de imagem:**
-- Consentimento para uso de imagens do aluno (ex.: fotos de progresso) — campo `allowImageUse` (boolean)
+- Consentimento para uso de imagens do aluno (ex.: fotos de progresso) — campo `allowImageUse` (boolean). Atualmente nenhuma funcionalidade do Aplicativo publica ou utiliza fotos do aluno capturadas/enviadas pelo profissional; o campo é coletado de forma preparatória para uma funcionalidade futura e, até lá, não tem efeito prático — gap documentado.
 
 ### 4.3 Avaliações Biométricas (geradas pelo Profissional após sessões)
 
@@ -239,7 +239,7 @@ O Muvify trata dados pessoais com fundamento nas seguintes bases legais, conform
 | Processamento de pagamentos | CPF, dados de cartão (tokenizados), PIX, histórico de transações | Art. 7º, V — Execução de contrato |
 | Gestão de conta bancária do profissional | Dados bancários criptografados, chave PIX | Art. 7º, V — Execução de contrato |
 | Envio de notificações e comunicações | E-mail, token push, preferências de notificação | Art. 7º, V — Execução de contrato; Art. 7º, IX — Legítimo interesse (comunicações operacionais) |
-| Personalização e segurança do treino | Anamnese completa, dados de saúde | Art. 11, I — **Consentimento específico e destacado do titular** |
+| Personalização e segurança do treino | Anamnese completa, dados de saúde | Art. 7º, V — Execução de contrato; Art. 11, II, "f" — Tutela da saúde |
 | Comprovação de presença em sessões | Selfie de evidência, data/hora, câmera | Art. 7º, V — Execução de contrato |
 | Avaliações biométricas de progresso | Peso, altura, IMC, medidas corporais | Art. 11, I — Consentimento; Art. 11, II, "f" — Tutela da saúde |
 | Busca e filtro de profissionais por localização | Latitude/longitude do profissional; lat/lng do aluno em busca | Art. 7º, V — Execução de contrato; Art. 7º, IX — Legítimo interesse |

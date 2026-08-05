@@ -17,7 +17,9 @@ import { deleteMediaByUrl } from "../../../shared/services/storage.service";
 import { getCache, setCache } from "../../../shared/utils/cache";
 import { resolveAccessTokenTtlSeconds, setTokenBlacklist } from "../../../shared/security/token-blacklist";
 import {
+  decryptJson,
   decryptSensitiveText,
+  encryptJson,
   encryptSensitiveText
 } from "../../../shared/utils/encryption";
 import { resolveEffectiveUserRole } from "../../../shared/utils/admin-access";
@@ -596,7 +598,7 @@ export class UserService {
     });
 
     if (anamnesis) {
-      return anamnesis;
+      return { ...anamnesis, answers: decryptJson(anamnesis.answers) };
     }
 
     return {
@@ -613,21 +615,23 @@ export class UserService {
   async upsertMyAnamnesis(userId: string, input: UpsertMyAnamnesisInput) {
     const status = input.status ?? AnamnesisStatus.DRAFT;
     const completedAt = status === AnamnesisStatus.COMPLETED ? new Date() : null;
+    const answers = typeof input.answers === "undefined" ? undefined : encryptJson(input.answers);
 
-    return prisma.clientAnamnesis.upsert({
+    const saved = await prisma.clientAnamnesis.upsert({
       where: { clientId: userId },
       update: {
         status,
-        answers: typeof input.answers === "undefined" ? undefined : input.answers,
+        answers,
         completedAt
       },
       create: {
         clientId: userId,
         status,
-        answers: input.answers,
+        answers,
         completedAt
       }
     });
+    return { ...saved, answers: decryptJson(saved.answers) };
   }
 
   async deleteMe(userId: string, password: string) {
@@ -1000,7 +1004,12 @@ export class UserService {
       consultancyRequests: user.consultancyRequestsSent,
       consultancyContracts: user.consultancyContracts,
       trainingPlanCompletions: user.trainingPlanCompletions,
-      anamnesis: user.anamnesisProfile,
+      // Épico de Frentes, Frente 11, Lote 3: answers passou a ser guardado
+      // cifrado - sem isso aqui, a exportação devolveria o ciphertext em
+      // vez do questionário em claro.
+      anamnesis: user.anamnesisProfile
+        ? { ...user.anamnesisProfile, answers: decryptJson(user.anamnesisProfile.answers) }
+        : null,
       notificationPreferences: user.notificationPreferences,
       chatMessages: user.chatMessages,
       favorites: user.favorites,

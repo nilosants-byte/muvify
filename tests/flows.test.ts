@@ -4,6 +4,7 @@ import request from "supertest";
 import { CrefValidationStatus } from "@prisma/client";
 import { app } from "../src/app";
 import { prisma } from "../src/config/prisma";
+import { encryptJson } from "../src/shared/utils/encryption";
 
 const password = "Test1234";
 let clientToken = "";
@@ -48,12 +49,12 @@ describe("flows", () => {
       where: { clientId },
       update: {
         status: "COMPLETED",
-        answers: {}
+        answers: encryptJson({})
       },
       create: {
         clientId,
         status: "COMPLETED",
-        answers: {}
+        answers: encryptJson({})
       }
     });
 

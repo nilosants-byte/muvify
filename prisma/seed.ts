@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { encryptJson } from "../src/shared/utils/encryption";
 const prisma = new PrismaClient();
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -239,12 +240,12 @@ async function main() {
   await prisma.clientAnamnesis.upsert({
     where: { clientId: cliente1Id },
     update: {},
-    create: { clientId: cliente1Id, status: "COMPLETED", answers: {}, completedAt: new Date() },
+    create: { clientId: cliente1Id, status: "COMPLETED", answers: encryptJson({}), completedAt: new Date() },
   });
   await prisma.clientAnamnesis.upsert({
     where: { clientId: cliente2Id },
     update: {},
-    create: { clientId: cliente2Id, status: "DRAFT", answers: {} },
+    create: { clientId: cliente2Id, status: "DRAFT", answers: encryptJson({}) },
   });
   console.log("   ✅ Anamneses criadas.\n");
 

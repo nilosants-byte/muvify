@@ -997,6 +997,13 @@ model ProviderBankAccount {
   providerId     String          @unique
   bankName       String
   accountType    BankAccountType
+  // Épico de Frentes, Frente 11, Lote 3: dado bancário/financeiro
+  // sensível. agency/accountNumber/accountDigit/holderName/holderDocument/
+  // pixKey DEVEM ser cifrados (encryptSensitiveText/decryptSensitiveText)
+  // por qualquer código que vier a criar/atualizar esta tabela - hoje não
+  // existe nenhum endpoint de escrita ativo (só o deleteMany da exclusão
+  // de conta), então não há service layer pra aplicar isso em runtime;
+  // dados pré-existentes foram cifrados via script de migração pontual.
   agency         String
   accountNumber  String
   accountDigit   String
@@ -1385,7 +1392,12 @@ model ClientAnamnesis {
   id          String          @id @default(uuid())
   clientId    String          @unique
   status      AnamnesisStatus @default(DRAFT)
-  answers     Json?
+  // Épico de Frentes, Frente 11, Lote 3: dado de saúde (doenças, cirurgias,
+  // medicação) trafegava em texto plano no banco. Guarda o JSON cifrado
+  // (encryptJson/decryptJson de src/shared/utils/encryption.ts) como
+  // string, nunca o objeto em claro - toda leitura/escrita PRECISA passar
+  // por esses helpers.
+  answers     String?
   completedAt DateTime?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
@@ -1395,10 +1407,29 @@ model ClientAnamnesis {
   @@index([clientId, updatedAt])
 }
 
+// Épico de Frentes, Frente 11, Lote 3: acesso de profissional à anamnese
+// (dado de saúde) do aluno não deixava nenhuma trilha de quem consultou o
+// quê e quando. Sem relação FK de propósito (mesmo padrão de
+// PaymentAuditLog) - é só uma trilha de auditoria, nunca atualizada.
+model HealthDataAccessLog {
+  id         String   @id @default(uuid())
+  providerId String
+  clientId   String
+  action     String
+  createdAt  DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([providerId, createdAt])
+}
+
 model ProviderStudentAssessment {
   id             String          @id @default(uuid())
   providerId     String
   clientId       String
+  // Épico de Frentes, Frente 11, Lote 3: composição corporal é dado de
+  // saúde e trafegava em texto plano. Todos os campos abaixo são cifrados
+  // (encryptSensitiveText/decryptSensitiveText) por quem lê/escreve -
+  // nunca gravar/ler direto sem passar pelos helpers.
   weight         String?
   height         String?
   imc            String?
