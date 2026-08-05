@@ -218,6 +218,15 @@ export async function deleteMediaByUrl(url: string): Promise<void> {
   await getR2Client(config).send(new DeleteObjectCommand({ Bucket: config.bucketName, Key: key }));
 }
 
+// Épico de Frentes, Frente 11, Lote 6: deleteMediaByUrl só sabe apagar
+// objetos PÚBLICOS (deriva a key a partir do prefixo publicUrl) - documento
+// de CREF e comprovação de presença são objetos PRIVADOS, guardados só pela
+// key (ver getPrivateObject/putPrivateObject), sem URL pública nenhuma.
+export async function deletePrivateObject(key: string): Promise<void> {
+  const config = getR2Config();
+  await getR2Client(config).send(new DeleteObjectCommand({ Bucket: config.bucketName, Key: key }));
+}
+
 export async function getPrivateObject(key: string): Promise<string> {
   const config = getR2Config();
   const result = await getR2Client(config).send(

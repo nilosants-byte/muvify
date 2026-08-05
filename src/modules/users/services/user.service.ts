@@ -13,7 +13,7 @@ import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
 import { EmailQueueService } from "../../../shared/services/email-queue.service";
-import { deleteMediaByUrl } from "../../../shared/services/storage.service";
+import { deleteMediaByUrl, deletePrivateObject } from "../../../shared/services/storage.service";
 import { getCache, setCache } from "../../../shared/utils/cache";
 import { resolveAccessTokenTtlSeconds, setTokenBlacklist } from "../../../shared/security/token-blacklist";
 import {
@@ -117,6 +117,17 @@ function checkImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
     default:
       return false;
   }
+}
+
+// Épico de Frentes, Frente 11, Lote 6: credentialDocuments guarda um array
+// de { uri, ... } - a chave privada do R2 só é extraída quando uri começa
+// com "cref-documents/" (mesmo critério já usado em
+// provider.service.ts::upsertOwnCredentials pra validar propriedade).
+function extractCredentialDocumentKeys(value: Prisma.JsonValue | null | undefined): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (item && typeof item === "object" && "uri" in item ? (item as { uri: unknown }).uri : null))
+    .filter((uri): uri is string => typeof uri === "string" && uri.startsWith("cref-documents/"));
 }
 
 export class UserService {
@@ -638,11 +649,23 @@ export class UserService {
   async deleteMe(userId: string, password: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, password: true }
+      select: { id: true, password: true, name: true, email: true, legalHoldUntil: true, legalHoldReason: true }
     });
 
     if (!user) {
       throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    // Épico de Frentes, Frente 11, Lote 6: legalHoldUntil nunca era checado
+    // aqui - um titular sob retenção legal obrigatória (processo judicial em
+    // curso, por exemplo) conseguia anonimizar a própria conta e escapar da
+    // obrigação, mesmo o mecanismo já existindo e sendo respeitado pelo job
+    // de retenção automática e pelo caminho de exclusão feito pelo admin.
+    if (user.legalHoldUntil && user.legalHoldUntil > new Date()) {
+      throw new AppError(
+        "Sua conta está sob retenção legal obrigatória e não pode ser excluída no momento. Entre em contato com o suporte para mais informações.",
+        StatusCodes.CONFLICT
+      );
     }
 
     const valid = await compareHash(password, user.password);
@@ -701,16 +724,21 @@ export class UserService {
         StatusCodes.CONFLICT
       );
     }
+    // Épico de Frentes, Frente 11, Lote 6: pacote/consultoria ativos do
+    // CLIENTE bloqueavam a exclusão pedindo cancelamento manual antes -
+    // inconsistente com o lado profissional (abaixo), que já cancela
+    // automaticamente em vez de bloquear. Mesmo mecanismo de cancelamento
+    // (e aviso/reembolso) já usado quando qualquer uma das partes cancela
+    // manualmente. Roda ANTES da transação principal porque envolve chamada
+    // de rede pro Mercado Pago (nunca dentro de uma transação Prisma).
     if (clientPackage) {
-      throw new AppError(
-        "Você tem um pacote presencial ativo. Cancele-o em Meus Pacotes antes de excluir sua conta.",
-        StatusCodes.CONFLICT
+      await presentialPackageService.cancelPackage(userId, clientPackage.id).catch((error) =>
+        console.error(`Falha ao cancelar pacote ${clientPackage.id} na exclusão de conta do cliente ${userId}:`, error)
       );
     }
     if (clientContract) {
-      throw new AppError(
-        "Você tem uma consultoria ativa. Cancele-a antes de excluir sua conta.",
-        StatusCodes.CONFLICT
+      await consultancyService.cancelContract(userId, clientContract.id).catch((error) =>
+        console.error(`Falha ao cancelar contrato ${clientContract.id} na exclusão de conta do cliente ${userId}:`, error)
       );
     }
 
@@ -766,6 +794,26 @@ export class UserService {
       select: { imageUrl: true },
     });
 
+    // Épico de Frentes, Frente 11, Lote 6: só feed-photos era limpo -
+    // comprovação de presença, foto/vídeo/documentos do profissional e
+    // mídia de exercício próprio ficavam órfãos no R2 pra sempre.
+    const completionEvidencesToCleanup = await prisma.completionEvidence.findMany({
+      where: { userId, storageKey: { not: null } },
+      select: { storageKey: true }
+    });
+    const providerMediaToCleanup = providerProfileForCheck
+      ? await prisma.providerProfile.findUnique({
+          where: { id: providerProfileForCheck.id },
+          select: { photoUrl: true, presentationVideoUrl: true, crefDocumentUrl: true, credentialDocuments: true }
+        })
+      : null;
+    const providerExercisesToCleanup = providerProfileForCheck
+      ? await prisma.exercise.findMany({
+          where: { providerId: providerProfileForCheck.id, isPrebuilt: false, mediaUrl: { not: null } },
+          select: { mediaUrl: true }
+        })
+      : [];
+
     // Interactive transaction garante atomicidade total, incluindo o lookup do providerProfile
     await prisma.$transaction(async (tx) => {
       await tx.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
@@ -799,6 +847,39 @@ export class UserService {
             AND "data"->>'messageId' IN (${Prisma.join(sentMessageIds)})
         `;
       }
+      // Épico de Frentes, Frente 11, Lote 6: mesma assimetria do
+      // BookingMessage acima, do lado do chat de consultoria - nunca era
+      // tocado por essa exclusão.
+      const sentConsultancyMessageIds = (
+        await tx.consultancyMessage.findMany({ where: { senderId: userId }, select: { id: true } })
+      ).map((m) => m.id);
+      await tx.consultancyMessage.updateMany({ where: { senderId: userId }, data: { content: "[Mensagem removida]", senderId: null } });
+      if (sentConsultancyMessageIds.length > 0) {
+        await tx.$executeRaw`
+          UPDATE "UserNotification"
+          SET "title" = '💬 Usuário removido', "body" = '[Mensagem removida]'
+          WHERE "data"->>'type' = 'CHAT_MESSAGE'
+            AND "data"->>'messageId' IN (${Prisma.join(sentConsultancyMessageIds)})
+        `;
+      }
+      // Épico de Frentes, Frente 11, Lote 6: denúncias de conteúdo
+      // submetidas por este usuário (feed/chat) ficavam com o texto livre
+      // original mesmo após a conta ser anonimizada.
+      await tx.feedPostReport.updateMany({ where: { reporterId: userId }, data: { reason: null } });
+      await tx.bookingMessageReport.updateMany({ where: { reporterId: userId }, data: { reason: null } });
+      await tx.consultancyMessageReport.updateMany({ where: { reporterId: userId }, data: { reason: null } });
+      // Motivo de no-show (relatado por ou sobre este usuário) é texto livre
+      // que pode narrar detalhes da falta - mesmo tratamento.
+      await tx.noShowReport.updateMany({
+        where: { OR: [{ reportedByUserId: userId }, { reportedUserId: userId }] },
+        data: { reportReason: null, contestReason: null }
+      });
+      // Nota de contexto de disputa - só alcançável aqui se a disputa não
+      // estiver mais OPEN (disputa aberta já bloqueia a exclusão acima).
+      await tx.disputeCase.updateMany({
+        where: { OR: [{ clientId: userId }, ...(providerProfileForCheck ? [{ providerId: providerProfileForCheck.id }] : [])] },
+        data: { contextNote: null }
+      });
       await tx.completionEvidence.deleteMany({ where: { userId } });
       // Raio-X de pagamentos, Rodada 3, Lote 6: a Política de Privacidade
       // promete reter o conteúdo de tickets de suporte por 5 anos pra defesa
@@ -811,6 +892,11 @@ export class UserService {
       // já ter sido excluída. O usuário já fica anonimizado na própria
       // tabela User logo abaixo; o ticket não precisa de nenhuma ação aqui.
       await tx.follow.deleteMany({ where: { OR: [{ followerId: userId }, { followingId: userId }] } });
+      // Épico de Frentes, Frente 11, Lote 6: curtidas feitas por este
+      // usuário em posts de OUTRAS pessoas ficavam associadas ao registro
+      // já anonimizado pra sempre (as próprias curtidas NOS posts dele já
+      // cascateiam junto com o feedPost.deleteMany abaixo).
+      await tx.feedPostLike.deleteMany({ where: { userId } });
       // Épico de Frentes, Frente 8, Lote 14: os posts do próprio usuário
       // (linha abaixo) cascateiam a limpeza de likes/comments NELES, mas
       // comentários que esse usuário deixou em posts DE OUTRAS PESSOAS
@@ -849,6 +935,19 @@ export class UserService {
         await tx.financialStudent.deleteMany({ where: { providerId: provProfile.id } });
         await tx.financialGoal.deleteMany({ where: { providerId: provProfile.id } });
         await tx.providerStudentAssessment.deleteMany({ where: { providerId: provProfile.id } });
+        await tx.crefDocumentUpload.deleteMany({ where: { uploadedByUser: userId } });
+        // Épico de Frentes, Frente 11, Lote 6: post de conclusão de treino
+        // (WORKOUT_COMPLETED) do ALUNO guarda um retrato ("snapshot") do
+        // nome/foto do profissional em metadata no momento da postagem, pra
+        // renderizar a UI de colaboração no feed - se o profissional exclui
+        // a conta depois, esses posts (que não são dele, não são tocados
+        // pelo feedPost.deleteMany acima) continuavam exibindo o nome/foto
+        // antigos indefinidamente.
+        await tx.$executeRaw`
+          UPDATE "FeedPost"
+          SET metadata = jsonb_set(jsonb_set(COALESCE(metadata, '{}'::jsonb), '{providerName}', '"Personal removido"'), '{providerPhotoUrl}', 'null'::jsonb)
+          WHERE metadata->>'providerId' = ${provProfile.id}
+        `;
         await tx.providerProfile.updateMany({
           where: { userId },
           data: {
@@ -867,15 +966,45 @@ export class UserService {
 
       await tx.user.update({
         where: { id: userId },
-        data: { name: "Usuário removido", email: anonymizedEmail, phone: null, photoUrl: null, recoveryEmailEncrypted: null, password: newPassword }
+        data: {
+          name: "Usuário removido", email: anonymizedEmail, phone: null, photoUrl: null,
+          recoveryEmailEncrypted: null, password: newPassword,
+          // Épico de Frentes, Frente 11, Lote 6: identificadores residuais
+          // que ficavam intactos numa conta "excluída" - CPF, apelido
+          // público, segredo de 2FA, e referências ao Mercado Pago do
+          // cliente (o lado profissional já limpa as suas acima).
+          document: null, documentHash: null, apelido: null,
+          twoFactorSecret: null, twoFactorEnabled: false, twoFactorEnabledAt: null,
+          mpCustomerId: null, mpDefaultCardId: null, suspensionReason: null
+        }
       });
     }, { timeout: 30_000 }); // 30s timeout para contas com muito histórico
 
-    await Promise.all(
-      feedPostsToCleanup.map((p) =>
+    await Promise.all([
+      ...feedPostsToCleanup.map((p) =>
         deleteMediaByUrl(p.imageUrl!).catch((e) => console.error("Falha ao apagar mídia de post no R2 (exclusão de conta)", e))
+      ),
+      ...completionEvidencesToCleanup.map((c) =>
+        deletePrivateObject(c.storageKey!).catch((e) => console.error("Falha ao apagar comprovação de presença no R2 (exclusão de conta)", e))
+      ),
+      ...(providerMediaToCleanup?.photoUrl ? [deleteMediaByUrl(providerMediaToCleanup.photoUrl).catch((e) => console.error("Falha ao apagar foto do profissional no R2 (exclusão de conta)", e))] : []),
+      ...(providerMediaToCleanup?.presentationVideoUrl ? [deleteMediaByUrl(providerMediaToCleanup.presentationVideoUrl).catch((e) => console.error("Falha ao apagar vídeo de apresentação no R2 (exclusão de conta)", e))] : []),
+      ...(providerMediaToCleanup?.crefDocumentUrl ? [deletePrivateObject(providerMediaToCleanup.crefDocumentUrl).catch((e) => console.error("Falha ao apagar documento de CREF no R2 (exclusão de conta)", e))] : []),
+      ...extractCredentialDocumentKeys(providerMediaToCleanup?.credentialDocuments).map((key) =>
+        deletePrivateObject(key).catch((e) => console.error("Falha ao apagar documento de credencial no R2 (exclusão de conta)", e))
+      ),
+      ...providerExercisesToCleanup.map((ex) =>
+        deleteMediaByUrl(ex.mediaUrl!).catch((e) => console.error("Falha ao apagar mídia de exercício no R2 (exclusão de conta)", e))
       )
-    );
+    ]);
+
+    if (emailService.canSendEmail()) {
+      await emailQueueService
+        .enqueueAccountDeleted({ to: user.email, name: user.name })
+        .catch((error) => {
+          console.error("Falha ao enfileirar e-mail de confirmação de exclusão de conta:", error);
+        });
+    }
   }
 
   // Épico de Frentes, Frente 11, Lote 5: take:200/500 cortava listas longas

@@ -29,6 +29,11 @@ type DataExportConfirmationEmailInput = {
   name: string;
 };
 
+type AccountDeletedEmailInput = {
+  to: string;
+  name: string;
+};
+
 type RecoveryEmailUpdatedInput = {
   to: string;
   name: string;
@@ -323,6 +328,32 @@ export class EmailService {
         <p>Uma exporta&ccedil;&atilde;o dos seus dados pessoais foi gerada agora no aplicativo <strong>Muvify</strong>.</p>
         <div class="security-note">
           &#9888; Se voc&ecirc; n&atilde;o solicitou esta exporta&ccedil;&atilde;o, entre em contato com o nosso suporte imediatamente pelo aplicativo.
+        </div>
+      `)
+    });
+  }
+
+  // Épico de Frentes, Frente 11, Lote 6: excluir a conta nunca enviava
+  // nenhum aviso de confirmação - o único sinal pro titular era o próprio
+  // app deslogar.
+  async sendAccountDeleted(input: AccountDeletedEmailInput) {
+    const mailer = requireMailer();
+    await mailer.sendMail({
+      from: env.SMTP_FROM,
+      to: input.to,
+      subject: "Muvify — Sua conta foi excluída",
+      text: [
+        `Ola, ${input.name}!`,
+        "",
+        "Sua conta no aplicativo Muvify foi excluida com sucesso, conforme solicitado.",
+        "Se voce nao solicitou esta exclusao, entre em contato com o nosso suporte imediatamente."
+      ].join("\n"),
+      html: buildEmailLayout(`
+        <h2>Sua conta foi excluída</h2>
+        <p>Ola, <strong>${escapeHtml(input.name)}</strong>!</p>
+        <p>Sua conta no aplicativo <strong>Muvify</strong> foi exclu&iacute;da com sucesso, conforme solicitado.</p>
+        <div class="security-note">
+          &#9888; Se voc&ecirc; n&atilde;o solicitou esta exclus&atilde;o, entre em contato com o nosso suporte imediatamente.
         </div>
       `)
     });

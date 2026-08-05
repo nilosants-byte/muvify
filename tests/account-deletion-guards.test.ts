@@ -106,7 +106,10 @@ describe("Travas de saída na exclusão de conta (Rodada 4, Lote 2)", () => {
     await expect(userService.deleteMe(clientId, PASSWORD)).rejects.toThrow(/julgamento/i);
   });
 
-  it("bloqueia exclusão do cliente com pacote presencial ativo", async () => {
+  // Épico de Frentes, Frente 11, Lote 6: pacote presencial ativo do cliente
+  // passou a ser cancelado automaticamente em vez de bloquear a exclusão -
+  // mesmo tratamento que o lado profissional já tinha.
+  it("cancela automaticamente o pacote presencial ativo do cliente em vez de bloquear", async () => {
     const clientId = await createUser("adg_client_pkg");
     cleanupUserIds.push(clientId);
     const providerUserId = await createUser("adg_pkg_provider", "PROVIDER");
@@ -144,13 +147,21 @@ describe("Travas de saída na exclusão de conta (Rodada 4, Lote 2)", () => {
     });
     cleanupPackageIds.push(pkg.id);
 
-    await expect(userService.deleteMe(clientId, PASSWORD)).rejects.toThrow(/pacote presencial ativo/i);
+    await userService.deleteMe(clientId, PASSWORD);
+
+    const afterPkg = await prisma.presentialPackage.findUniqueOrThrow({ where: { id: pkg.id } });
+    expect(afterPkg.status).toBe("CANCELLED");
+
+    const afterUser = await prisma.user.findUniqueOrThrow({ where: { id: clientId } });
+    expect(afterUser.name).toBe("Usuário removido");
   });
 
   // Raio-X de pagamentos, Rodada 5, Lote 6 (cobertura de testes): este ramo
   // (consultoria ativa bloqueando exclusão do cliente) nunca era exercido
   // isoladamente — só o ramo irmão (pacote presencial ativo) tinha teste.
-  it("bloqueia exclusão do cliente com consultoria ativa", async () => {
+  // Épico de Frentes, Frente 11, Lote 6: consultoria ativa do cliente
+  // passou a ser cancelada automaticamente em vez de bloquear a exclusão.
+  it("cancela automaticamente a consultoria ativa do cliente em vez de bloquear", async () => {
     const clientId = await createUser("adg_client_contract");
     cleanupUserIds.push(clientId);
 
@@ -190,7 +201,13 @@ describe("Travas de saída na exclusão de conta (Rodada 4, Lote 2)", () => {
     });
     cleanupContractIds.push(contract.id);
 
-    await expect(userService.deleteMe(clientId, PASSWORD)).rejects.toThrow(/consultoria ativa/i);
+    await userService.deleteMe(clientId, PASSWORD);
+
+    const afterContract = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract.id } });
+    expect(afterContract.status).toBe("CANCELLED");
+
+    const afterUser = await prisma.user.findUniqueOrThrow({ where: { id: clientId } });
+    expect(afterUser.name).toBe("Usuário removido");
   });
 
   it("permite exclusão do cliente sem nenhuma pendência", async () => {

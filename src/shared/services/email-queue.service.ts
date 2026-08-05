@@ -12,7 +12,7 @@ const RETRY_DELAY_SECONDS = [30, 300, 1800, 7200, 43200, 86400];
 // vítima nunca era avisada por nenhum canal, já que o envio era síncrono
 // sem retry. Passam a usar a mesma fila já usada por EMAIL_VERIFICATION/
 // PASSWORD_RESET.
-type EmailQueueTemplate = "EMAIL_VERIFICATION" | "PASSWORD_RESET" | "PASSWORD_CHANGED" | "RECOVERY_EMAIL_UPDATED" | "DATA_EXPORT_CONFIRMATION";
+type EmailQueueTemplate = "EMAIL_VERIFICATION" | "PASSWORD_RESET" | "PASSWORD_CHANGED" | "RECOVERY_EMAIL_UPDATED" | "DATA_EXPORT_CONFIRMATION" | "ACCOUNT_DELETED";
 
 type VerificationPayload = {
   to: string;
@@ -38,6 +38,11 @@ type RecoveryEmailUpdatedPayload = {
 };
 
 type DataExportConfirmationPayload = {
+  to: string;
+  name: string;
+};
+
+type AccountDeletedPayload = {
   to: string;
   name: string;
 };
@@ -85,6 +90,15 @@ export class EmailQueueService {
     return prisma.emailDeliveryQueue.create({
       data: {
         template: "DATA_EXPORT_CONFIRMATION",
+        payload: input
+      }
+    });
+  }
+
+  async enqueueAccountDeleted(input: AccountDeletedPayload) {
+    return prisma.emailDeliveryQueue.create({
+      data: {
+        template: "ACCOUNT_DELETED",
         payload: input
       }
     });
@@ -182,6 +196,11 @@ export class EmailQueueService {
       await this.emailService.sendDataExportConfirmation(parsed);
       return;
     }
+    if (template === "ACCOUNT_DELETED") {
+      const parsed = this.parseAccountDeletedPayload(payload);
+      await this.emailService.sendAccountDeleted(parsed);
+      return;
+    }
     throw new Error(`Unsupported email queue template: ${template}`);
   }
 
@@ -240,6 +259,16 @@ export class EmailQueueService {
     const name = typeof payload.name === "string" ? payload.name : "";
     if (!to || !name) {
       throw new Error("Invalid DATA_EXPORT_CONFIRMATION payload.");
+    }
+    this.validateEmail(to);
+    return { to, name };
+  }
+
+  private parseAccountDeletedPayload(payload: Record<string, unknown>): AccountDeletedPayload {
+    const to = typeof payload.to === "string" ? payload.to : "";
+    const name = typeof payload.name === "string" ? payload.name : "";
+    if (!to || !name) {
+      throw new Error("Invalid ACCOUNT_DELETED payload.");
     }
     this.validateEmail(to);
     return { to, name };
