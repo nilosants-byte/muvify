@@ -1,6 +1,8 @@
 import {
   AnamnesisStatus,
   BookingStatus,
+  ConsultancyContractStatus,
+  PresentialPackageStatus,
   Prisma,
   SupportTicketStatus
 } from "@prisma/client";
@@ -16,12 +18,20 @@ const RETENTION_WINDOWS_DAYS = {
   userNotifications: 730,
   pushQueueFailures: 90,
   completionEvidence: 730,
-  anamnesis: 730,
+  // Épico de Frentes, Frente 11, Lote 7: anamnese e avaliação biométrica são
+  // dado de saúde - mais sensível que o genérico (mensagem de chat,
+  // comentário de review), então merecem uma janela mais curta em vez de
+  // compartilhar os mesmos 730 dias de tudo mais.
+  anamnesis: 365,
   bookingMessages: 730,
+  consultancyMessages: 730,
   supportTickets: 1825,
   bookingNotes: 730,
+  manualBlocks: 730,
+  financialStudentNotes: 730,
+  contentReportReasons: 730,
   consultancyHealthData: 730,
-  biometricAssessments: 730,
+  biometricAssessments: 365,
   emailDeliveryQueue: 90,
   reviewComments: 730,
   disputeNarratives: 730,
@@ -102,8 +112,12 @@ export class DataRetentionService {
         safeRun(() => this.cleanupCompletionEvidence(now, input.dryRun)),
         safeRun(() => this.cleanupAnamnesis(now, input.dryRun)),
         safeRun(() => this.cleanupBookingMessages(now, input.dryRun)),
+        safeRun(() => this.cleanupConsultancyMessages(now, input.dryRun)),
         safeRun(() => this.cleanupSupportTickets(now, input.dryRun)),
         safeRun(() => this.cleanupBookingNotes(now, input.dryRun)),
+        safeRun(() => this.cleanupManualBlocks(now, input.dryRun)),
+        safeRun(() => this.cleanupFinancialStudentNotes(now, input.dryRun)),
+        safeRun(() => this.cleanupContentReportReasons(now, input.dryRun)),
         safeRun(() => this.cleanupConsultancyHealthData(now, input.dryRun)),
         safeRun(() => this.cleanupBiometricAssessments(now, input.dryRun)),
         safeRun(() => this.cleanupEmailDeliveryQueue(now, input.dryRun)),
@@ -176,6 +190,19 @@ export class DataRetentionService {
     return {
       [fieldName]: { notIn: this.legalHoldUserIds }
     } as Record<string, { notIn: string[] }>;
+  }
+
+  // Épico de Frentes, Frente 11, Lote 7: legal hold só era checado do lado
+  // cliente em várias regras - profissional sob a mesma retenção legal
+  // (processo judicial em curso, por exemplo) tinha o próprio conteúdo
+  // (nota de dispuita, resposta de review...) redigido normalmente.
+  private getProviderUserFilter() {
+    if (this.legalHoldUserIds.length === 0) {
+      return {};
+    }
+    return {
+      provider: { userId: { notIn: this.legalHoldUserIds } }
+    } as Record<string, { userId: { notIn: string[] } }>;
   }
 
   private buildRule(
@@ -356,10 +383,24 @@ export class DataRetentionService {
   private async cleanupAnamnesis(now: Date, dryRun: boolean) {
     const retentionDays = RETENTION_WINDOWS_DAYS.anamnesis;
     const cutoff = this.cutoffFromDays(now, retentionDays);
+    // Épico de Frentes, Frente 11, Lote 7: mesma classe de bug já corrigida
+    // em SupportTicket (Frente 10, Lote 5) - redigia a anamnese de um
+    // cliente ATIVO (ainda com booking/contrato/pacote em andamento com
+    // algum profissional), quebrando a checagem REQUIRE_ANAMNESIS_FOR_
+    // CONTRACTS sem explicação nenhuma pro usuário.
     const where: Prisma.ClientAnamnesisWhereInput = {
       ...this.getUserFilter("clientId"),
       updatedAt: { lt: cutoff },
-      answers: { not: null }
+      answers: { not: null },
+      client: {
+        bookings: { none: { status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] } } },
+        consultancyContracts: {
+          none: { status: { in: [ConsultancyContractStatus.PENDING_PAYMENT, ConsultancyContractStatus.ACTIVE, ConsultancyContractStatus.DELIVERED] } }
+        },
+        presentialPackages: {
+          none: { status: { in: [PresentialPackageStatus.PENDING_PAYMENT, PresentialPackageStatus.ACTIVE, PresentialPackageStatus.PAST_DUE] } }
+        }
+      }
     };
     const matchedCount = await prisma.clientAnamnesis.count({ where });
     const affectedCount = dryRun
@@ -427,6 +468,162 @@ export class DataRetentionService {
     );
   }
 
+  // Épico de Frentes, Frente 11, Lote 7: espelha cleanupBookingMessages -
+  // ConsultancyMessage (chat de consultoria) não tinha regra de retenção
+  // nenhuma, apesar de ser a mesma infraestrutura de chat (só generalizada
+  // pra ConsultancyContract em vez de Booking).
+  private async cleanupConsultancyMessages(now: Date, dryRun: boolean) {
+    const retentionDays = RETENTION_WINDOWS_DAYS.consultancyMessages;
+    const cutoff = this.cutoffFromDays(now, retentionDays);
+    const hasLegalHold = this.legalHoldUserIds.length > 0;
+    const where: Prisma.ConsultancyMessageWhereInput = {
+      createdAt: { lt: cutoff },
+      isSystem: false,
+      ...(hasLegalHold ? this.getUserFilter("senderId") : {}),
+      contract: {
+        status: { in: ["CANCELLED", "DELIVERED", "REFUNDED_EXPIRED", "ARCHIVED"] },
+        updatedAt: { lt: cutoff },
+        ...(hasLegalHold
+          ? {
+              clientId: { notIn: this.legalHoldUserIds },
+              provider: { userId: { notIn: this.legalHoldUserIds } }
+            }
+          : {})
+      }
+    };
+    const matchedCount = await prisma.consultancyMessage.count({ where });
+    const affectedCount = dryRun
+      ? 0
+      : (
+          await prisma.consultancyMessage.updateMany({
+            where,
+            data: { content: "[CONTEUDO REMOVIDO POR RETENCAO]", senderId: null }
+          })
+        ).count;
+    return this.buildRule(
+      "consultancy_messages_redaction",
+      "Redact consultancy chat messages after retention window.",
+      "UPDATE",
+      retentionDays,
+      cutoff,
+      matchedCount,
+      affectedCount
+    );
+  }
+
+  // Épico de Frentes, Frente 11, Lote 7: categoria órfã - nota de bloco
+  // manual de agenda (ex.: "Consulta médica") é texto livre que pode
+  // revelar informação pessoal do profissional, sem regra de retenção
+  // nenhuma até aqui.
+  private async cleanupManualBlocks(now: Date, dryRun: boolean) {
+    const retentionDays = RETENTION_WINDOWS_DAYS.manualBlocks;
+    const cutoff = this.cutoffFromDays(now, retentionDays);
+    const where: Prisma.ProviderManualBlockWhereInput = {
+      ...this.getProviderUserFilter(),
+      updatedAt: { lt: cutoff },
+      OR: [{ label: { not: "" } }, { location: { not: null } }]
+    };
+    const matchedCount = await prisma.providerManualBlock.count({ where });
+    const affectedCount = dryRun
+      ? 0
+      : (await prisma.providerManualBlock.updateMany({ where, data: { label: "[REMOVIDO]", location: null } })).count;
+    return this.buildRule(
+      "manual_blocks_redaction",
+      "Redact provider manual schedule block free-text after retention window.",
+      "UPDATE",
+      retentionDays,
+      cutoff,
+      matchedCount,
+      affectedCount
+    );
+  }
+
+  // Épico de Frentes, Frente 11, Lote 7: categoria órfã - aluno financeiro
+  // cadastrado manualmente pelo profissional (fora do fluxo de contratação
+  // via app) guarda nota/local livres, sem retenção nenhuma. Só redige
+  // registros já INATIVOS (isActive: false) - um aluno financeiro ativo
+  // ainda está em uso operacional pelo profissional.
+  private async cleanupFinancialStudentNotes(now: Date, dryRun: boolean) {
+    const retentionDays = RETENTION_WINDOWS_DAYS.financialStudentNotes;
+    const cutoff = this.cutoffFromDays(now, retentionDays);
+    const where: Prisma.FinancialStudentWhereInput = {
+      ...this.getProviderUserFilter(),
+      isActive: false,
+      updatedAt: { lt: cutoff },
+      OR: [{ notes: { not: null } }, { location: { not: null } }]
+    };
+    const matchedCount = await prisma.financialStudent.count({ where });
+    const affectedCount = dryRun
+      ? 0
+      : (await prisma.financialStudent.updateMany({ where, data: { notes: null, location: null } })).count;
+    return this.buildRule(
+      "financial_student_notes_redaction",
+      "Redact inactive manual financial student notes/location after retention window.",
+      "UPDATE",
+      retentionDays,
+      cutoff,
+      matchedCount,
+      affectedCount
+    );
+  }
+
+  // Épico de Frentes, Frente 11, Lote 7: categoria órfã - motivo de
+  // denúncia de conteúdo (feed, mensagem de agendamento, mensagem de
+  // consultoria) nunca tinha retenção. Só redige denúncias já decididas
+  // (DISMISSED/ACTIONED) - uma denúncia PENDING ainda precisa do texto pro
+  // admin avaliar.
+  private async cleanupContentReportReasons(now: Date, dryRun: boolean) {
+    const retentionDays = RETENTION_WINDOWS_DAYS.contentReportReasons;
+    const cutoff = this.cutoffFromDays(now, retentionDays);
+    const decidedStatuses = ["DISMISSED", "ACTIONED"] as const;
+
+    const feedWhere: Prisma.FeedPostReportWhereInput = {
+      reporterId: this.legalHoldUserIds.length > 0 ? { notIn: this.legalHoldUserIds } : undefined,
+      status: { in: [...decidedStatuses] },
+      reviewedAt: { lt: cutoff },
+      reason: { not: null }
+    };
+    const bookingReportWhere: Prisma.BookingMessageReportWhereInput = {
+      reporterId: this.legalHoldUserIds.length > 0 ? { notIn: this.legalHoldUserIds } : undefined,
+      status: { in: [...decidedStatuses] },
+      reviewedAt: { lt: cutoff },
+      reason: { not: null }
+    };
+    const consultancyReportWhere: Prisma.ConsultancyMessageReportWhereInput = {
+      reporterId: this.legalHoldUserIds.length > 0 ? { notIn: this.legalHoldUserIds } : undefined,
+      status: { in: [...decidedStatuses] },
+      reviewedAt: { lt: cutoff },
+      reason: { not: null }
+    };
+
+    const [feedMatched, bookingMatched, consultancyMatched] = await Promise.all([
+      prisma.feedPostReport.count({ where: feedWhere }),
+      prisma.bookingMessageReport.count({ where: bookingReportWhere }),
+      prisma.consultancyMessageReport.count({ where: consultancyReportWhere })
+    ]);
+    const matchedCount = feedMatched + bookingMatched + consultancyMatched;
+
+    let affectedCount = 0;
+    if (!dryRun) {
+      const [feedResult, bookingResult, consultancyResult] = await Promise.all([
+        prisma.feedPostReport.updateMany({ where: feedWhere, data: { reason: null } }),
+        prisma.bookingMessageReport.updateMany({ where: bookingReportWhere, data: { reason: null } }),
+        prisma.consultancyMessageReport.updateMany({ where: consultancyReportWhere, data: { reason: null } })
+      ]);
+      affectedCount = feedResult.count + bookingResult.count + consultancyResult.count;
+    }
+
+    return this.buildRule(
+      "content_report_reasons_redaction",
+      "Redact content report free-text reason after retention window for already-decided reports.",
+      "UPDATE",
+      retentionDays,
+      cutoff,
+      matchedCount,
+      affectedCount
+    );
+  }
+
   private async cleanupEmailDeliveryQueue(now: Date, dryRun: boolean) {
     const retentionDays = RETENTION_WINDOWS_DAYS.emailDeliveryQueue;
     const cutoff = this.cutoffFromDays(now, retentionDays);
@@ -454,16 +651,20 @@ export class DataRetentionService {
     const cutoff = this.cutoffFromDays(now, retentionDays);
     const where: Prisma.ReviewWhereInput = {
       ...this.getUserFilter("userId"),
+      ...this.getProviderUserFilter(),
       updatedAt: { lt: cutoff },
-      comment: { not: null }
+      // Épico de Frentes, Frente 11, Lote 7: só o comentário do cliente era
+      // redigido - a resposta do PROFISSIONAL à review (providerResponse)
+      // ficava intacta pra sempre, mesmo sendo o mesmo tipo de texto livre.
+      OR: [{ comment: { not: null } }, { providerResponse: { not: null } }]
     };
     const matchedCount = await prisma.review.count({ where });
     const affectedCount = dryRun
       ? 0
-      : (await prisma.review.updateMany({ where, data: { comment: null } })).count;
+      : (await prisma.review.updateMany({ where, data: { comment: null, providerResponse: null } })).count;
     return this.buildRule(
       "review_comments_redaction",
-      "Redact review comment text after retention window.",
+      "Redact review comment and provider response text after retention window.",
       "UPDATE",
       retentionDays,
       cutoff,
@@ -505,6 +706,7 @@ export class DataRetentionService {
     const cutoff = this.cutoffFromDays(now, retentionDays);
     const where: Prisma.ConsultancyRequestWhereInput = {
       ...this.getUserFilter("clientId"),
+      ...this.getProviderUserFilter(),
       updatedAt: { lt: cutoff },
       OR: [
         { trainingNeedText: { not: null } },
@@ -530,20 +732,68 @@ export class DataRetentionService {
     );
   }
 
+  // Épico de Frentes, Frente 11, Lote 7: redigia a avaliação de um par
+  // profissional-aluno ATIVO (relação em andamento entre os dois) - mesma
+  // classe de bug já corrigida em cleanupAnamnesis acima. Como a checagem é
+  // por PAR (providerId, clientId), não dá pra expressar via nested filter
+  // do Prisma (correlação entre dois campos da própria linha) - busca os
+  // candidatos, calcula os pares com vínculo ativo à parte, e filtra em
+  // memória antes de redigir.
   private async cleanupBiometricAssessments(now: Date, dryRun: boolean) {
     const retentionDays = RETENTION_WINDOWS_DAYS.biometricAssessments;
     const cutoff = this.cutoffFromDays(now, retentionDays);
     const where: Prisma.ProviderStudentAssessmentWhereInput = {
       ...this.getUserFilter("clientId"),
+      ...this.getProviderUserFilter(),
       updatedAt: { lt: cutoff }
     };
-    const matchedCount = await prisma.providerStudentAssessment.count({ where });
+    const candidates = await prisma.providerStudentAssessment.findMany({
+      where,
+      select: { id: true, providerId: true, clientId: true }
+    });
+
+    const pairKey = (providerId: string, clientId: string) => `${providerId}:${clientId}`;
+    const activePairs = new Set<string>();
+    if (candidates.length > 0) {
+      const providerIds = Array.from(new Set(candidates.map((c) => c.providerId)));
+      const clientIds = Array.from(new Set(candidates.map((c) => c.clientId)));
+      const [activeBookings, activeContracts, activePackages] = await Promise.all([
+        prisma.booking.findMany({
+          where: { providerId: { in: providerIds }, clientId: { in: clientIds }, status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] } },
+          select: { providerId: true, clientId: true }
+        }),
+        prisma.consultancyContract.findMany({
+          where: {
+            providerId: { in: providerIds }, clientId: { in: clientIds },
+            status: { in: [ConsultancyContractStatus.PENDING_PAYMENT, ConsultancyContractStatus.ACTIVE, ConsultancyContractStatus.DELIVERED] }
+          },
+          select: { providerId: true, clientId: true }
+        }),
+        prisma.presentialPackage.findMany({
+          where: {
+            providerId: { in: providerIds }, clientId: { in: clientIds },
+            status: { in: [PresentialPackageStatus.PENDING_PAYMENT, PresentialPackageStatus.ACTIVE, PresentialPackageStatus.PAST_DUE] }
+          },
+          select: { providerId: true, clientId: true }
+        })
+      ]);
+      for (const row of [...activeBookings, ...activeContracts, ...activePackages]) {
+        activePairs.add(pairKey(row.providerId, row.clientId));
+      }
+    }
+
+    const toRedact = candidates.filter((c) => !activePairs.has(pairKey(c.providerId, c.clientId)));
+    const matchedCount = toRedact.length;
     const affectedCount = dryRun
       ? 0
-      : (await prisma.providerStudentAssessment.deleteMany({ where })).count;
+      : (
+          await prisma.providerStudentAssessment.deleteMany({
+            where: { id: { in: toRedact.map((c) => c.id) } }
+          })
+        ).count;
     return this.buildRule(
       "biometric_assessments_deletion",
-      "Delete biometric physical assessment records after retention window.",
+      "Delete biometric physical assessment records after retention window, skipping pairs with an active relationship.",
       "DELETE",
       retentionDays,
       cutoff,
@@ -600,6 +850,7 @@ export class DataRetentionService {
     const cutoff = this.cutoffFromDays(now, retentionDays);
     const where: Prisma.DisputeCaseWhereInput = {
       ...this.getUserFilter("clientId"),
+      ...this.getProviderUserFilter(),
       status: "RESOLVED",
       resolvedAt: { lt: cutoff },
       OR: [{ contextNote: { not: null } }, { resolutionNote: { not: null } }]

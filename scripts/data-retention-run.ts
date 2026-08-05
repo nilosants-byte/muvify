@@ -23,12 +23,21 @@ async function main() {
   const service = new DataRetentionService();
   await prisma.$connect();
   try {
+    // Épico de Frentes, Frente 11, Lote 7: só a env var era considerada -
+    // ao contrário do job automático e do caminho de admin, este script
+    // manual nunca consultava User.legalHoldUntil persistido no banco,
+    // expurgando dado de usuário sob retenção legal (ex.: processo judicial
+    // em curso) mesmo com o mecanismo já existindo e funcionando nos
+    // outros dois caminhos.
+    const legalHoldUserIds = await service.resolveLegalHoldUserIds(
+      env.DATA_RETENTION_LEGAL_HOLD_USER_IDS.split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    );
     const result = await service.run({
       dryRun,
       triggeredBy,
-      legalHoldUserIds: env.DATA_RETENTION_LEGAL_HOLD_USER_IDS.split(",")
-        .map((value) => value.trim())
-        .filter(Boolean)
+      legalHoldUserIds
     });
     console.log(JSON.stringify(result, null, 2));
   } finally {
