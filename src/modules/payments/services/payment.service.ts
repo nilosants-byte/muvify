@@ -1736,12 +1736,16 @@ export class PaymentService {
     }
 
     if (mpStatus === MP_STATUS_REFUNDED) {
+      // Raio-X de pagamentos, Rodada 2, Lote 2: reembolso parcial (valor
+      // devolvido menor que o total cobrado) não é mais tratado igual a
+      // reembolso total — o MP informa o valor já devolvido acumulado em
+      // transaction_amount_refunded a cada notificação de reembolso. Vale
+      // tanto pro Payment de booking quanto pro ConsultancyContract, já que
+      // os dois podem ser reembolsados fora do fluxo de disputa do admin
+      // (ex: chargeback processado direto no gateway).
+      const refundedAmountReais = (mpPay as { transaction_amount_refunded?: number }).transaction_amount_refunded;
+
       if (payment) {
-        // Raio-X de pagamentos, Rodada 2, Lote 2: reembolso parcial (valor
-        // devolvido menor que o total cobrado) não é mais tratado igual a
-        // reembolso total — o MP informa o valor já devolvido acumulado em
-        // transaction_amount_refunded a cada notificação de reembolso.
-        const refundedAmountReais = (mpPay as { transaction_amount_refunded?: number }).transaction_amount_refunded;
         const refundedAmountCents =
           refundedAmountReais != null && refundedAmountReais > 0
             ? Math.round(refundedAmountReais * 100)
@@ -1776,9 +1780,26 @@ export class PaymentService {
         }
       }
       if (consultancyContract) {
+        // Épico de Frentes, Frente 12, Lote 1: mesmo bug do Payment acima -
+        // um reembolso parcial marcava REFUNDED igual a total, fazendo o
+        // contrato inteiro desaparecer da receita do Financeiro em vez de
+        // só a fração devolvida.
+        const refundedAmountCentsContract =
+          refundedAmountReais != null && refundedAmountReais > 0
+            ? Math.round(refundedAmountReais * 100)
+            : consultancyContract.paymentAmountCents;
+        const isContractPartial = refundedAmountCentsContract < consultancyContract.paymentAmountCents;
+
         await prisma.consultancyContract.updateMany({
-          where: { id: consultancyContract.id, paymentStatus: { not: ConsultancyPaymentStatus.REFUNDED } },
-          data: { paymentStatus: ConsultancyPaymentStatus.REFUNDED }
+          where: {
+            id: consultancyContract.id,
+            paymentStatus: { notIn: [ConsultancyPaymentStatus.REFUNDED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] }
+          },
+          data: {
+            paymentStatus: isContractPartial ? ConsultancyPaymentStatus.PARTIALLY_REFUNDED : ConsultancyPaymentStatus.REFUNDED,
+            refundedAt: new Date(),
+            refundedAmountCents: refundedAmountCentsContract
+          }
         });
       }
     }

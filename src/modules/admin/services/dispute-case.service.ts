@@ -413,10 +413,20 @@ export class DisputeCaseService {
             await recalculateProviderRatingAfterRefund(disputeCase.bookingId, tx);
           }
         }
+        // Épico de Frentes, Frente 12, Lote 1: reembolso PARCIAL de
+        // consultoria/renovação virava REFUNDED igual a um reembolso total -
+        // paymentStatus/refundedAt sozinhos não davam pra saber "quanto"
+        // voltou, então qualquer consulta que filtrasse por CAPTURED (ou
+        // refundedAt: null) via a receita inteira desaparecer, em vez de só
+        // a fração reembolsada.
         if (disputeCase.consultancyContractId) {
           await tx.consultancyContract.updateMany({
             where: { id: disputeCase.consultancyContractId },
-            data: { paymentStatus: ConsultancyPaymentStatus.REFUNDED }
+            data: {
+              paymentStatus: isFullRefund ? ConsultancyPaymentStatus.REFUNDED : ConsultancyPaymentStatus.PARTIALLY_REFUNDED,
+              refundedAt: resolvedAt,
+              refundedAmountCents: resolvedAmountCents
+            }
           });
         }
         // Épico de Frentes, Frente 7, Lote 2: pacote presencial (cycle) e
@@ -433,7 +443,7 @@ export class DisputeCaseService {
         if (disputeCase.trainingPlanId) {
           await tx.trainingPlan.updateMany({
             where: { id: disputeCase.trainingPlanId },
-            data: { refundedAt: resolvedAt }
+            data: { refundedAt: resolvedAt, refundedAmountCents: resolvedAmountCents }
           });
         }
       }

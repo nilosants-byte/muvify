@@ -90,6 +90,11 @@ enum ConsultancyPaymentStatus {
   CAPTURED
   CANCELED
   REFUNDED
+  // Épico de Frentes, Frente 12, Lote 1: reembolso parcial de disputa (ou de
+  // webhook de chargeback parcial) virava REFUNDED igual a um reembolso
+  // total - o contrato inteiro sumia da receita do Financeiro em vez de só
+  // a fração devolvida.
+  PARTIALLY_REFUNDED
   FAILED
 }
 
@@ -1228,6 +1233,11 @@ model TrainingPlan {
   // sem isso, a receita da renovação continuava contada pra sempre nos
   // relatórios financeiros mesmo depois do reembolso.
   refundedAt  DateTime?
+  // Épico de Frentes, Frente 12, Lote 1: quanto de fato voltou pro cliente -
+  // sem isso não dava pra distinguir reembolso parcial de total dessa
+  // renovação específica, e o Financeiro descontava o valor da ficha
+  // inteiro em qualquer um dos dois casos.
+  refundedAmountCents Int?
   createdAt   DateTime                 @default(now())
   updatedAt   DateTime                 @updatedAt
   provider    ProviderProfile          @relation(fields: [providerId], references: [id], onDelete: Cascade)
@@ -1345,6 +1355,10 @@ model ConsultancyContract {
   immediateExecutionAcknowledgedAt DateTime
   deliveredAt             DateTime?
   refundedAt              DateTime?
+  // Épico de Frentes, Frente 12, Lote 1: quanto de fato voltou pro cliente -
+  // sem isso não dava pra distinguir reembolso parcial de total, e o
+  // Financeiro descontava paymentAmountCents inteiro em qualquer um dos dois.
+  refundedAmountCents     Int?
   refundReason            String?
   expiry24hSentAt         DateTime?
   expiry6hSentAt          DateTime?

@@ -359,7 +359,7 @@ export type ConsultancyContract = {
   offerId: string;
   status: "PENDING_PAYMENT" | "ACTIVE" | "DELIVERED" | "CANCELLED" | "REFUNDED_EXPIRED" | "ARCHIVED";
   paymentMethod?: ConsultancyPaymentMethod | null;
-  paymentStatus: "PENDING" | "AUTHORIZED" | "CAPTURED" | "CANCELED" | "REFUNDED" | "FAILED";
+  paymentStatus: "PENDING" | "AUTHORIZED" | "CAPTURED" | "CANCELED" | "REFUNDED" | "PARTIALLY_REFUNDED" | "FAILED";
   paymentAmountCents: number;
   deliveryDeadlineAt: string;
   deliveredAt?: string | null;

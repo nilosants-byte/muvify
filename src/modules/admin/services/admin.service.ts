@@ -1,4 +1,4 @@
-﻿import { BookingStatus, ConsultancyContractStatus, ConsultancyPaymentStatus, ContentReportStatus, CrefValidationStatus, DisputeCaseStatus, PresentialPackageStatus, Prisma, SupportTicketStatus, UserRole } from "@prisma/client";
+﻿import { BookingStatus, ConsultancyContractStatus, ConsultancyPaymentStatus, ContentReportStatus, CrefValidationStatus, DisputeCaseStatus, PaymentStatus, PresentialPackageStatus, Prisma, SupportTicketStatus, UserRole } from "@prisma/client";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
@@ -15,6 +15,12 @@ import { PresentialPackageService } from "../../presential-packages/services/pre
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
 import { BookingService } from "../../bookings/services/booking.service";
 import { platformFeeAmount } from "../../../shared/utils/platform-fee";
+import {
+  effectiveBookingRevenueCents,
+  effectiveConsultancyRevenueCents,
+  effectiveCycleRevenueCents,
+  effectiveRenewalRevenueCents
+} from "../../financial/services/financial.service";
 
 type DashboardInput = {
   month?: number;
@@ -437,10 +443,10 @@ export class AdminService {
     // de ficha), agora agregada pra toda a plataforma em vez de por
     // profissional — sem gráficos novos, só números com link direto pra cada fila.
     const [
-      completedBookingsAgg,
-      completedBookingsFeeAgg,
-      capturedContractsAgg,
-      capturedPackageCyclesAgg,
+      completedBookings,
+      completedBookingsFee,
+      capturedContracts,
+      capturedPackageCycles,
       renewalPlansThisMonth,
       openDisputesCount,
       pendingDebtsAgg,
@@ -451,25 +457,44 @@ export class AdminService {
       pendingConsultancyMessageReportsCount,
       overdueSupportTicketsCount
     ] = await Promise.all([
-      prisma.booking.aggregate({
+      // Épico de Frentes, Frente 12, Lote 1: os 3 aggregate() abaixo somavam
+      // o valor bruto direto, sem descontar reembolso de disputa
+      // (PARTIALLY_REFUNDED/refundedAmountCents) - o comentário acima já
+      // prometia "mesma soma de financial.service.ts", mas divergia dela em
+      // qualquer mês com uma disputa resolvida com estorno. Trocado por
+      // findMany + os mesmos helpers effective*RevenueCents, reusados em vez
+      // de duplicados.
+      prisma.booking.findMany({
         where: { status: BookingStatus.COMPLETED, scheduledAt: { gte: start, lt: end } },
-        _sum: { priceCents: true }
+        select: { priceCents: true, payment: { select: { status: true, refundedAmountCents: true } } },
+        take: 20000
       }),
-      prisma.payment.aggregate({
+      // Épico de Frentes, Frente 12, Lote 1: idem - somava platformFeeCents
+      // cheio mesmo em pagamento PARTIALLY_REFUNDED, sem aplicar a mesma
+      // proporção que buildPayoutsData (financial.service.ts) já aplica.
+      prisma.payment.findMany({
         where: { booking: { status: BookingStatus.COMPLETED, scheduledAt: { gte: start, lt: end } } },
-        _sum: { platformFeeCents: true }
+        select: { platformFeeCents: true, amountCents: true, status: true, refundedAmountCents: true }
       }),
-      prisma.consultancyContract.aggregate({
-        where: { paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: { gte: start, lt: end } },
-        _sum: { paymentAmountCents: true, platformAmountCents: true }
+      prisma.consultancyContract.findMany({
+        where: {
+          paymentStatus: { in: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] },
+          paymentCapturedAt: { gte: start, lt: end }
+        },
+        select: { paymentAmountCents: true, platformAmountCents: true, refundedAmountCents: true },
+        take: 20000
       }),
-      prisma.presentialPackageCycle.aggregate({
+      prisma.presentialPackageCycle.findMany({
         where: { capturedAt: { gte: start, lt: end } },
-        _sum: { amountCents: true, platformAmountCents: true }
+        select: { amountCents: true, platformAmountCents: true, refundedAmountCents: true },
+        take: 20000
       }),
+      // Épico de Frentes, Frente 12, Lote 1: nunca descontava reembolso (nem
+      // total, nem parcial) - refundedAmountCents agora selecionado pra
+      // effectiveRenewalRevenueCents descontar.
       prisma.trainingPlan.findMany({
         where: { renewalMpPaymentId: { not: null }, createdAt: { gte: start, lt: end } },
-        select: { contract: { select: { paymentAmountCents: true } } },
+        select: { refundedAmountCents: true, contract: { select: { paymentAmountCents: true } } },
         take: 10000
       }),
       prisma.disputeCase.count({ where: { status: DisputeCaseStatus.OPEN } }),
@@ -494,11 +519,11 @@ export class AdminService {
       })
     ]);
 
-    const renewalRevenueThisMonth = renewalPlansThisMonth.reduce((s, p) => s + (p.contract?.paymentAmountCents ?? 0), 0);
+    const renewalRevenueThisMonth = renewalPlansThisMonth.reduce((s, p) => s + effectiveRenewalRevenueCents(p), 0);
     const platformRevenueCents =
-      (completedBookingsAgg._sum.priceCents ?? 0) +
-      (capturedContractsAgg._sum.paymentAmountCents ?? 0) +
-      (capturedPackageCyclesAgg._sum.amountCents ?? 0) +
+      completedBookings.reduce((s, b) => s + effectiveBookingRevenueCents(b), 0) +
+      capturedContracts.reduce((s, c) => s + effectiveConsultancyRevenueCents(c), 0) +
+      capturedPackageCycles.reduce((s, c) => s + effectiveCycleRevenueCents(c), 0) +
       renewalRevenueThisMonth;
 
     // Raio-X de pagamentos, Rodada 5, Lote 3 (moderado #5): nenhum lugar
@@ -506,14 +531,24 @@ export class AdminService {
     // extrato de comissões da própria conta Mercado Pago — só existia GMV
     // bruto. Renovação de ficha não tem coluna própria de comissão (mesmo
     // split fixo de sempre, calculado aqui em vez de persistido por linha).
+    // Épico de Frentes, Frente 12, Lote 1: comissão agora calculada sobre a
+    // receita já líquida de reembolso (effective*RevenueCents) - reembolso
+    // parcial/total reduz a base de cálculo, não só o GMV bruto acima.
     const renewalCommissionThisMonth = renewalPlansThisMonth.reduce(
-      (s, p) => s + platformFeeAmount(p.contract?.paymentAmountCents ?? 0),
+      (s, p) => s + platformFeeAmount(effectiveRenewalRevenueCents(p)),
       0
     );
+    const completedBookingsFeeCents = completedBookingsFee.reduce((s, p) => {
+      const ratio =
+        p.status === PaymentStatus.PARTIALLY_REFUNDED && p.refundedAmountCents && p.amountCents > 0
+          ? Math.max(0, (p.amountCents - p.refundedAmountCents) / p.amountCents)
+          : 1;
+      return s + Math.round((p.platformFeeCents ?? 0) * ratio);
+    }, 0);
     const platformCommissionCents =
-      (completedBookingsFeeAgg._sum.platformFeeCents ?? 0) +
-      (capturedContractsAgg._sum.platformAmountCents ?? 0) +
-      (capturedPackageCyclesAgg._sum.platformAmountCents ?? 0) +
+      completedBookingsFeeCents +
+      capturedContracts.reduce((s, c) => s + platformFeeAmount(effectiveConsultancyRevenueCents(c)), 0) +
+      capturedPackageCycles.reduce((s, c) => s + platformFeeAmount(effectiveCycleRevenueCents(c)), 0) +
       renewalCommissionThisMonth;
 
     return {
