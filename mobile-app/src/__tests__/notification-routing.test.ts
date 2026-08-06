@@ -22,6 +22,25 @@ describe("resolveNotificationRoute — profissional", () => {
     });
   });
 
+  // Frente 3 (segunda camada), Lote 7: quando a resolução da disputa cria
+  // uma dívida pro profissional (reembolso descontado do próximo repasse),
+  // a notificação precisa levar pra tela onde essa dívida de fato aparece —
+  // não pro Financeiro genérico, que não menciona a dívida em lugar nenhum.
+  it("DISPUTE_CASE_RESOLVED com providerDebtCreated leva pra Pendências", () => {
+    expect(resolveNotificationRoute({ type: "DISPUTE_CASE_RESOLVED", providerDebtCreated: true }, "PROVIDER")).toEqual({
+      screen: "ProviderDebts"
+    });
+  });
+
+  it("DISPUTE_CASE_RESOLVED sem dívida (retry de captura, reembolso negado) leva pro Financeiro", () => {
+    expect(resolveNotificationRoute({ type: "DISPUTE_CASE_RESOLVED", providerDebtCreated: false }, "PROVIDER")).toEqual({
+      screen: "PayoutStatus"
+    });
+    expect(resolveNotificationRoute({ type: "DISPUTE_CASE_RESOLVED" }, "PROVIDER")).toEqual({
+      screen: "PayoutStatus"
+    });
+  });
+
   it.each([
     "BOOKING_CONFIRMATION_DUE_SOON",
     "BOOKING_CONFIRMATION_DEADLINE_EXPIRED",

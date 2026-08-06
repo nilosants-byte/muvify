@@ -354,6 +354,14 @@ export class AdminService {
   // Raio-X Muvify, Frente 1 (Autorização/IDOR), Lote 2: quebrava o padrão
   // de defesa em profundidade do resto do módulo — dependia 100% do
   // ensureRole(ADMIN) da rota, sem revalidar isAdminEmail direto no banco.
+  // Frente 3 (segunda camada), Lote 8: este dashboard é AGREGADO pra
+  // plataforma inteira (reaproveita corretamente os mesmos helpers
+  // effective*RevenueCents de financial.service.ts, sem duplicar bug) — mas
+  // não existe hoje nenhuma tela/endpoint admin que mostre "quanto ESTE
+  // profissional específico ganhou", pra cruzar com o que o próprio
+  // profissional vê no app dele. Gap aceito por ora (baixo risco, achado
+  // informativo da investigação desta frente) — documentado aqui pra não
+  // se perder, não implementado.
   async getDashboardOverview(adminId: string, input: DashboardInput) {
     await this.ensureAdminAccess(adminId);
     const now = new Date();

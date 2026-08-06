@@ -89,13 +89,11 @@ export function FinancialGoalsScreen({ navigation }: Props) {
   const goalsQuery = useAuthQuery(
     queryKeys.financial.goal(month),
     async (token) => {
-      const [gl, dash, studs, incs] = await Promise.all([
+      const [gl, dash] = await Promise.all([
         financialApi.getGoal(token, month),
         financialApi.dashboard(token, month),
-        financialApi.listStudents(token, month),
-        financialApi.listIncomes(token, month),
       ]);
-      return { goal: gl as FinancialGoal | null, dashboard: dash as FinancialDashboard, students: studs, incomes: incs };
+      return { goal: gl as FinancialGoal | null, dashboard: dash as FinancialDashboard };
     },
   );
 
@@ -124,27 +122,14 @@ export function FinancialGoalsScreen({ navigation }: Props) {
     [studentsQuery.data]
   );
 
-  const effectiveRevenue = useMemo(() => {
-    const d = goalsQuery.data;
-    if (!d) return 0;
-    // Épico de Frentes, Frente 7, Lote 5: stuRev já soma o valor mensal do
-    // aluno manual; marcar esse aluno como "pago" cria uma FinancialIncome
-    // com studentId apontando pra ele, que manRev também somava — contando
-    // a mesma receita duas vezes. manRev agora só soma receita manual
-    // avulsa de verdade (sem studentId). billableThisMonth (não isActive)
-    // evita contar aluno fora do período de cobrança (ex: recorrência já
-    // encerrada) indefinidamente.
-    const stuRev = d.students.filter(s => s.billableThisMonth).reduce((s, st) => s + st.monthlyValueCents, 0);
-    const manRev = d.incomes.filter(i => !i.studentId).reduce((s, i) => s + i.amountCents, 0);
-    // Épico de Frentes, Frente 7, Lote 12: appRev trocava de fórmula
-    // silenciosamente (somava appClients quando havia algum, senão caía pro
-    // dashboard) — appClients não inclui renovação de ficha, então o
-    // faturamento da tela de Metas podia ficar mais baixo que o mesmo mês no
-    // dashboard/extrato dependendo de qual ramo rodava. dashboard.appRevenueCents
-    // já cobre todos os tipos de receita pelo app, sempre.
-    const appRev = d.dashboard?.appRevenueCents ?? 0;
-    return appRev + stuRev + manRev;
-  }, [goalsQuery.data]);
+  // Frente 3 (segunda camada), Lote 4: "Faturamento" da meta tinha fórmula
+  // própria (stuRev somava o valor mensal cadastrado de TODO aluno billable
+  // este mês, mesmo sem nenhum pagamento lançado — a meta podia aparecer
+  // "batida" no dia 1º do mês, antes de qualquer aluno pagar de verdade) e
+  // divergia do Dashboard oficial em pelo menos 3 cenários documentados na
+  // investigação desta frente. Usa direto dashboard.totalRevenueCents —
+  // mesma fonte de verdade do resto do app, sem recalcular nada aqui.
+  const effectiveRevenue = dashboard?.totalRevenueCents ?? 0;
 
   const [saving, setSaving] = useState(false);
   const [editModal, setEditModal] = useState(false);

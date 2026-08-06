@@ -192,6 +192,59 @@ export function effectiveRenewalRevenueCents(plan: {
   return Math.max(0, (plan.contract?.paymentAmountCents ?? 0) - (plan.refundedAmountCents ?? 0));
 }
 
+// Frente 3 (segunda camada), Lote 2: as funções effective*RevenueCents acima
+// descontam reembolso, mas continuam sendo o valor BRUTO (o que o cliente
+// pagou) — nunca descontam a comissão de 10% da plataforma. "Lucro"/"Lucro
+// líquido" no Extrato e no Relatório Anual eram calculados a partir desse
+// valor bruto, então mostravam um número maior do que o profissional
+// realmente recebe (mesma proporção já usada em buildPayoutsData pro
+// Financeiro/CSV, generalizada aqui pros mesmos 4 tipos de receita).
+function remainingRatioAfterRefund(grossCents: number, refundedCents: number | null | undefined) {
+  if (!refundedCents || grossCents <= 0) return 1;
+  return Math.max(0, (grossCents - refundedCents) / grossCents);
+}
+
+export function effectiveBookingNetCents(booking: {
+  priceCents: number;
+  payment: { status: PaymentStatus; refundedAmountCents: number | null; providerAmountCents: number | null } | null;
+}) {
+  if (!booking.payment) return providerSplitAmount(booking.priceCents);
+  if (booking.payment.status === PaymentStatus.REFUNDED) return 0;
+  const ratio = remainingRatioAfterRefund(
+    booking.priceCents,
+    booking.payment.status === PaymentStatus.PARTIALLY_REFUNDED ? booking.payment.refundedAmountCents : null
+  );
+  const base = booking.payment.providerAmountCents ?? providerSplitAmount(booking.priceCents);
+  return Math.round(base * ratio);
+}
+
+export function effectiveConsultancyNetCents(contract: {
+  paymentAmountCents: number;
+  providerAmountCents: number;
+  refundedAmountCents: number | null;
+}) {
+  const ratio = remainingRatioAfterRefund(contract.paymentAmountCents, contract.refundedAmountCents);
+  return Math.round(contract.providerAmountCents * ratio);
+}
+
+export function effectiveCycleNetCents(cycle: {
+  amountCents: number | null;
+  providerAmountCents: number | null;
+  refundedAmountCents: number | null;
+}) {
+  const ratio = remainingRatioAfterRefund(cycle.amountCents ?? 0, cycle.refundedAmountCents);
+  return Math.round((cycle.providerAmountCents ?? 0) * ratio);
+}
+
+export function effectiveRenewalNetCents(plan: {
+  contract: { paymentAmountCents: number; providerAmountCents: number } | null;
+  refundedAmountCents: number | null;
+}) {
+  if (!plan.contract) return 0;
+  const ratio = remainingRatioAfterRefund(plan.contract.paymentAmountCents, plan.refundedAmountCents);
+  return Math.round(plan.contract.providerAmountCents * ratio);
+}
+
 // Um aluno "cobra" no mês-alvo se: está ativo, e (a) é avulso e o mês-alvo é
 // o mês em que ele começou, ou (b) é recorrente, já começou e (se tiver data
 // de término) ainda não passou dela.
@@ -372,7 +425,8 @@ export class FinancialService {
       capturedPackageCycles,
       lastMonthCapturedPackageCyclesAgg,
       renewalPlans,
-      lastMonthRenewalPlans
+      lastMonthRenewalPlans,
+      outstandingDebtAgg
     ] = await Promise.all([
       getEffectiveIncomes(provider.id, m),
       getEffectiveExpenses(provider.id, m),
@@ -468,6 +522,16 @@ export class FinancialService {
         where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: lastMonthFrom, lte: lastMonthTo } },
         select: { refundedAmountCents: true, contract: { select: { paymentAmountCents: true } } },
         take: 2000
+      }),
+      // Frente 3 (segunda camada), Lote 7: dívida do profissional (nasce
+      // quando uma disputa é resolvida com reembolso ao cliente, e o valor
+      // já tinha sido repassado — ver dispute-case.service.ts) nunca
+      // aparecia em nenhum resumo financeiro geral, só numa tela separada
+      // de Pendências. Sem isso, "Lucro líquido" positivo passava a
+      // impressão de saúde financeira mesmo com um passivo real em aberto.
+      prisma.debtRecord.aggregate({
+        where: { providerId: provider.id, debtorType: "PROVIDER", status: { in: ["PENDING", "NOTIFIED"] } },
+        _sum: { amountCents: true }
       })
     ]);
 
@@ -510,6 +574,27 @@ export class FinancialService {
       completedBookings.filter((b) => b.scheduledAt >= weekStart && b.scheduledAt <= weekEnd).length
       + consultancyDeliveries.filter((d) => d.createdAt >= weekStart && d.createdAt <= weekEnd).length;
 
+    // Frente 3 (segunda camada), Lote 6: card "Sua performance" da Home
+    // usava sua própria conta client-side, só de sessão presencial avulsa
+    // (mesma classe de bug já corrigida em getPayouts — Frente 7, Lote 7),
+    // sem descontar estorno e ignorando consultoria/pacote/renovação por
+    // completo. Reaproveita os mesmos 4 arrays já buscados pra este mês
+    // (mesma limitação de fronteira de semana que weeklyClasses acima já
+    // tinha - só cobre dias dentro do mês corrente).
+    const weeklyRevenueCents =
+      completedBookings
+        .filter((b) => b.scheduledAt >= weekStart && b.scheduledAt <= weekEnd)
+        .reduce((s, b) => s + effectiveBookingRevenueCents(b), 0)
+      + capturedContracts
+        .filter((c) => (c.paymentCapturedAt ?? new Date(0)) >= weekStart && (c.paymentCapturedAt ?? new Date(0)) <= weekEnd)
+        .reduce((s, c) => s + effectiveConsultancyRevenueCents(c), 0)
+      + capturedPackageCycles
+        .filter((cycle) => cycle.capturedAt !== null && cycle.capturedAt >= weekStart && cycle.capturedAt <= weekEnd)
+        .reduce((s, cycle) => s + effectiveCycleRevenueCents(cycle), 0)
+      + renewalPlans
+        .filter((p) => p.createdAt >= weekStart && p.createdAt <= weekEnd)
+        .reduce((s, p) => s + effectiveRenewalRevenueCents(p), 0);
+
     // Breakdown diário: receitas manuais + agendamentos completados + consultorias capturadas
     const dailyMap: Record<string, number> = {};
     for (const inc of incomes) {
@@ -549,6 +634,8 @@ export class FinancialService {
       totalClassesThisMonth: totalClasses,
       avgClassesPerDay: Math.round(avgClassesPerDay * 10) / 10,
       weeklyClasses,
+      weeklyRevenueCents,
+      outstandingDebtCents: outstandingDebtAgg._sum.amountCents ?? 0,
       goal: goal ?? null,
       dailyRevenue: dailyMap
     };
@@ -890,7 +977,7 @@ export class FinancialService {
     const m = month ?? currentMonth();
     const { from, to } = monthBounds(m);
 
-    const [bookings, contracts, packageCycles] = await Promise.all([
+    const [bookings, contracts, packageCycles, renewalPlans] = await Promise.all([
       prisma.booking.findMany({
         where: {
           providerId: provider.id,
@@ -899,7 +986,12 @@ export class FinancialService {
         },
         include: {
           client:   { select: { id: true, name: true } },
-          category: { select: { name: true } }
+          category: { select: { name: true } },
+          // Frente 3 (segunda camada), Lote 5: faltava aqui — diferente de
+          // getDashboard/getReport/getPayouts, esta lista continuava
+          // contando o valor CHEIO de uma sessão avulsa mesmo depois de
+          // estornada via disputa.
+          payment: { select: { status: true, refundedAmountCents: true } }
         },
         orderBy: { scheduledAt: "desc" }
       }),
@@ -922,6 +1014,19 @@ export class FinancialService {
         where: { package: { providerId: provider.id }, capturedAt: { gte: from, lte: to } },
         include: { package: { select: { clientId: true, client: { select: { name: true } } } } },
         orderBy: { capturedAt: "desc" }
+      }),
+      // Frente 3 (segunda camada), Lote 5: renovação de ficha (2ª ficha em
+      // diante) nunca entrava aqui — só a 1ª cobrança do contrato (via
+      // contracts acima). Mesma fonte já usada em getDashboard/getReport/
+      // getPayouts pra essa mesma receita.
+      prisma.trainingPlan.findMany({
+        where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: from, lte: to } },
+        select: {
+          createdAt: true,
+          refundedAmountCents: true,
+          contract: { select: { paymentAmountCents: true, clientId: true, client: { select: { name: true } } } }
+        },
+        orderBy: { createdAt: "desc" }
       })
     ]);
 
@@ -935,6 +1040,7 @@ export class FinancialService {
       confirmedSessionCount: number;
       contractCount: number;
       packageCycleCount: number;
+      renewalCount: number;
       services: string[];
       latestAt: string;
     }>();
@@ -950,6 +1056,7 @@ export class FinancialService {
           confirmedSessionCount: 0,
           contractCount: 0,
           packageCycleCount: 0,
+          renewalCount: 0,
           services: [],
           latestAt: atIso
         });
@@ -962,7 +1069,10 @@ export class FinancialService {
     for (const b of bookings) {
       const entry = getEntry(b.clientId, b.client.name, b.scheduledAt.toISOString());
       if (b.status === BookingStatus.COMPLETED) {
-        entry.completedCents  += b.priceCents;
+        // Frente 3 (segunda camada), Lote 5: descontava reembolso em
+        // consultoria/pacote mas não aqui — sessão avulsa estornada
+        // continuava contando o valor cheio como "pago" pelo cliente.
+        entry.completedCents  += effectiveBookingRevenueCents(b);
         entry.sessionCount    += 1;
       } else {
         entry.confirmedCents          += b.priceCents;
@@ -996,10 +1106,22 @@ export class FinancialService {
       if (!entry.services.includes(svcName)) entry.services.push(svcName);
     }
 
+    // Frente 3 (segunda camada), Lote 5: renovação de ficha (2ª ficha em
+    // diante) — mesma receita real já contada em getDashboard/getReport/
+    // getPayouts, que faltava aqui.
+    for (const plan of renewalPlans) {
+      if (!plan.contract) continue;
+      const entry = getEntry(plan.contract.clientId, plan.contract.client.name, plan.createdAt.toISOString());
+      entry.completedCents += effectiveRenewalRevenueCents(plan);
+      entry.renewalCount   += 1;
+      const svcName = "Renovação de ficha";
+      if (!entry.services.includes(svcName)) entry.services.push(svcName);
+    }
+
     return Array.from(grouped.values()).sort((a, b) => {
       // clientes com receita realizada primeiro, depois por nome
-      const aRealized = a.sessionCount > 0 || a.contractCount > 0 || a.packageCycleCount > 0;
-      const bRealized = b.sessionCount > 0 || b.contractCount > 0 || b.packageCycleCount > 0;
+      const aRealized = a.sessionCount > 0 || a.contractCount > 0 || a.packageCycleCount > 0 || a.renewalCount > 0;
+      const bRealized = b.sessionCount > 0 || b.contractCount > 0 || b.packageCycleCount > 0 || b.renewalCount > 0;
       if (aRealized && !bRealized) return -1;
       if (!aRealized && bRealized) return 1;
       return a.name.localeCompare(b.name);
@@ -1042,7 +1164,7 @@ export class FinancialService {
         // effectiveBookingRevenueCents, mesmo tratamento de getDashboard.
         prisma.booking.findMany({
           where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: from, lte: to } },
-          select: { priceCents: true, payment: { select: { status: true, refundedAmountCents: true } } },
+          select: { priceCents: true, payment: { select: { status: true, refundedAmountCents: true, providerAmountCents: true } } },
           take: 2000
         }),
         // Épico de Frentes, Frente 12, Lote 1: aggregate() com paymentStatus
@@ -1055,12 +1177,12 @@ export class FinancialService {
             paymentStatus: { in: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] },
             paymentCapturedAt: { gte: from, lte: to }
           },
-          select: { paymentAmountCents: true, refundedAmountCents: true },
+          select: { paymentAmountCents: true, providerAmountCents: true, refundedAmountCents: true },
           take: 2000
         }),
         prisma.presentialPackageCycle.findMany({
           where: { package: { providerId: provider.id }, capturedAt: { gte: from, lte: to } },
-          select: { amountCents: true, refundedAmountCents: true },
+          select: { amountCents: true, providerAmountCents: true, refundedAmountCents: true },
           take: 2000
         }),
         // Raio-X de pagamentos, Rodada 3, Lote 4: getReport ficou de fora do
@@ -1071,7 +1193,7 @@ export class FinancialService {
         // entra, effectiveRenewalRevenueCents desconta só a fração devolvida.
         prisma.trainingPlan.findMany({
           where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: from, lte: to } },
-          select: { refundedAmountCents: true, contract: { select: { paymentAmountCents: true } } },
+          select: { refundedAmountCents: true, contract: { select: { paymentAmountCents: true, providerAmountCents: true } } },
           take: 2000
         })
       ]);
@@ -1085,7 +1207,17 @@ export class FinancialService {
         + renewalRev;
       const exp    = expenses.reduce((s, e) => s + e.amountCents, 0);
       const classes = appBookings.length + consultancyDeliveries;
-      result.push({ month, revenueCents: rev, appRevenueCents: appRev, expensesCents: exp, netCents: rev + appRev - exp, classes });
+      // Frente 3 (segunda camada), Lote 2: "Lucro"/"Lucro líquido" no Extrato
+      // e no Relatório Anual vinham deste netCents — antes calculado como
+      // receita BRUTA menos despesas manuais, sem descontar a comissão da
+      // plataforma. appNetRev usa os helpers *NetCents (mesma proporção já
+      // usada no Financeiro/CSV), então netCents agora é o lucro de verdade.
+      const appNetRev =
+        appBookings.reduce((s, b) => s + effectiveBookingNetCents(b), 0)
+        + appContracts.reduce((s, c) => s + effectiveConsultancyNetCents(c), 0)
+        + appPackageCycles.reduce((s, c) => s + effectiveCycleNetCents(c), 0)
+        + renewalPlans.reduce((s, p) => s + effectiveRenewalNetCents(p), 0);
+      result.push({ month, revenueCents: rev, appRevenueCents: appRev, expensesCents: exp, netCents: rev + appNetRev - exp, classes });
     }
 
     const bestMonth = [...result].sort((a, b) => b.revenueCents - a.revenueCents)[0] ?? null;
@@ -1105,6 +1237,14 @@ export class FinancialService {
     // vez de um corte global de 50 que "sumia" com transações antigas do
     // mês selecionado enquanto o total do topo da mesma tela (getReport)
     // continuava contando todas elas.
+    //
+    // Frente 3 (segunda camada), Lote 1: esse "50" agora só limita quantas
+    // linhas aparecem na LISTA de lançamentos — os totais (bruto/líquido/
+    // pendente) são calculados à parte, sempre sobre o histórico completo
+    // (ver buildPayoutsData). Antes, o "50" também cortava a fonte dos
+    // totais: um profissional ativo passa dessa marca em ~3 semanas, e o
+    // "Disponível para saque" mostrado começava a esquecer pagamentos mais
+    // antigos, mesmo o dinheiro continuando lá.
     return this.buildPayoutsData(userId, month ? 2000 : 50, month);
   }
 
@@ -1147,7 +1287,7 @@ export class FinancialService {
     return [header, ...rows, disclaimer].join("\n");
   }
 
-  private async buildPayoutsData(userId: string, take: number, month?: string) {
+  private async buildPayoutsData(userId: string, displayTake: number, month?: string) {
     const provider = await getProviderByUserId(userId);
     // Épico de Frentes, Frente 7, Lote 3: quando `month` é passado (Extrato),
     // cada fonte é filtrada pela data em que realmente virou receita
@@ -1155,6 +1295,13 @@ export class FinancialService {
     // capturedAt) fica de fora, já que "pendente neste mês" não tem sentido
     // pra uma lista de lançamentos já realizados.
     const monthRange = month ? monthBounds(month) : null;
+    // Frente 3 (segunda camada), Lote 1: teto de BUSCA sempre generoso —
+    // diferente de `displayTake` (quantas linhas aparecem na lista mostrada
+    // ao profissional), este é o teto usado nas 4 queries abaixo, que
+    // alimentam os TOTAIS (pendingCents/availableCents/grossCents). Um
+    // corte pequeno aqui corta dinheiro real do saldo mostrado, não só
+    // itens de uma lista visual.
+    const queryTake = 2000;
 
     const [payments, contracts, packageCycles, renewalPlans] = await Promise.all([
       prisma.payment.findMany({
@@ -1182,7 +1329,7 @@ export class FinancialService {
           booking: { select: { scheduledAt: true } }
         },
         orderBy: { capturedAt: "desc" },
-        take
+        take: queryTake
       }),
       // consultoria nao tem etapa de pre-autorizacao separada: so entra aqui
       // quando ja capturada. Épico de Frentes, Frente 12, Lote 1:
@@ -1206,7 +1353,7 @@ export class FinancialService {
           createdAt: true
         },
         orderBy: { paymentCapturedAt: "desc" },
-        take
+        take: queryTake
       }),
       // ciclos de pacote presencial ja tem o split pronto (providerAmountCents/
       // platformAmountCents gravados no instante da captura) - nao recalcula.
@@ -1232,7 +1379,7 @@ export class FinancialService {
           package: { select: { paymentMethod: true } }
         },
         orderBy: { capturedAt: "desc" },
-        take
+        take: queryTake
       }),
       // Raio-X de pagamentos, Rodada 2, Lote 4: renovações de ficha (2ª ficha
       // em diante) somem da lista de repasses — só a 1ª cobrança do contrato
@@ -1259,7 +1406,7 @@ export class FinancialService {
           }
         },
         orderBy: { createdAt: "desc" },
-        take
+        take: queryTake
       })
     ]);
 
@@ -1369,7 +1516,7 @@ export class FinancialService {
 
     const transactions = [...bookingTransactions, ...contractTransactions, ...packageCycleTransactions, ...renewalTransactions]
       .sort((a, b) => (b.capturedAt ?? "").localeCompare(a.capturedAt ?? ""))
-      .slice(0, take);
+      .slice(0, displayTake);
 
     return {
       pendingCents:   pending.reduce((s, p)  => s + netFor(p), 0),
@@ -1391,6 +1538,21 @@ export class FinancialService {
         + contracts.reduce((s, c) => s + c.paymentAmountCents, 0)
         + packageCycles.reduce((s, c) => s + (c.amountCents ?? 0), 0)
         + renewalTransactions.reduce((s, r) => s + r.amountCents, 0),
+      // Frente 3 (segunda camada), Lote 3: antes a tela calculava "comissão"
+      // como gross - available, o que misturava a taxa de verdade da
+      // plataforma com o valor devolvido ao cliente em qualquer estorno
+      // parcial do histórico (o comentário da Rodada 4/CSV já documentava
+      // a identidade "bruto = comissão + líquido + estornado", mas só o
+      // CSV expunha os 3 valores separados). Estes dois campos novos dão
+      // pra tela mostrar os 3 corretamente, sem recalcular por subtração.
+      platformFeeCents: captured.reduce((s, p) => s + feeFor(p), 0)
+        + contractTransactions.reduce((s, c) => s + c.platformFeeCents, 0)
+        + packageCycleTransactions.reduce((s, c) => s + c.platformFeeCents, 0)
+        + renewalTransactions.reduce((s, r) => s + r.platformFeeCents, 0),
+      refundedCents: bookingTransactions.reduce((s, p) => s + p.refundedAmountCents, 0)
+        + contractTransactions.reduce((s, c) => s + c.refundedAmountCents, 0)
+        + packageCycleTransactions.reduce((s, c) => s + c.refundedAmountCents, 0)
+        + renewalTransactions.reduce((s, r) => s + r.refundedAmountCents, 0),
       payments: transactions
     };
   }

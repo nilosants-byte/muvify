@@ -328,7 +328,10 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   const selEntry = report?.months.find(e => e.month === selectedMonth);
   const selRevenue  = chartData.find(d => d.month === selectedMonth)?.revenue ?? 0;
   const selExpenses = chartData.find(d => d.month === selectedMonth)?.expenses ?? 0;
-  const selNet = selRevenue - selExpenses;
+  // Frente 3 (segunda camada), Lote 2: "Lucro" antes era recalculado aqui
+  // como receita bruta menos despesas manuais (sem descontar a comissão da
+  // plataforma) — usa direto o netCents já correto que vem da API.
+  const selNet = selEntry?.netCents ?? (selRevenue - selExpenses);
 
   // Previous month comparison
   const [selY, selM] = selectedMonth.split("-").map(Number);

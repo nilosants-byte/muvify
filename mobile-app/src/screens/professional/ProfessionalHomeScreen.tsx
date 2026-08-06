@@ -48,7 +48,7 @@ import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonHomeScreen } from "../../components/polish/SkeletonCard";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { AppLogoText } from "../../components/ui/AppLogoText";
-import { formatCurrencyBRL, isCurrentWeekInAppTimezone, isTodayInAppTimezone } from "../../utils/formatters";
+import { formatCurrencyBRL, isTodayInAppTimezone } from "../../utils/formatters";
 import { resolveMediaUrl } from "../../utils/media";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
@@ -173,7 +173,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const homeQuery = useAuthQuery(
     queryKeys.providers.home(),
     async (token) => {
-      const [bookingResponse, me, credentials, availabilitiesResponse, manualBlocksResponse, financialStudentsResponse] = await Promise.all([
+      const [bookingResponse, me, credentials, availabilitiesResponse, manualBlocksResponse, financialStudentsResponse, dashboardResponse] = await Promise.all([
         bookingsApi.me(token).catch(() => [] as Booking[]),
         userApi.me(token).catch(() => null),
         providersApi.myCredentials(token).catch((error) => {
@@ -183,10 +183,16 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
         availabilityApi.me(token).catch(() => [] as Availability[]),
         manualBlocksApi.list(token).catch(() => [] as ManualBlockApi[]),
         financialApi.listStudents(token).catch(() => [] as FinancialStudent[]),
+        // Frente 3 (segunda camada), Lote 6: só assim dá pra mostrar
+        // "Sua performance" com o mesmo faturamento real usado no resto
+        // do app (consultoria/pacote/renovação, descontando estorno) —
+        // antes essa conta só olhava sessão presencial avulsa.
+        financialApi.dashboard(token).catch(() => null),
       ]);
       return {
         bookings: bookingResponse,
         me,
+        dashboard: dashboardResponse,
         credentials,
         availabilities: availabilitiesResponse,
         manualBlocks: manualBlocksResponse,
@@ -440,12 +446,11 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     [studentsQuery.data]
   );
 
-  const weeklyRevenue = useMemo(() => {
-    const cents = bookings
-      .filter((b) => b.status === "COMPLETED" && isCurrentWeekInAppTimezone(b.completedAt ?? b.scheduledAt))
-      .reduce((s, b) => s + (b.priceCents ?? 0), 0);
-    return cents / 100;
-  }, [bookings]);
+  // Frente 3 (segunda camada), Lote 6: antes recalculava aqui só a partir de
+  // bookings presenciais (sem consultoria/pacote/renovação, sem descontar
+  // estorno) — agora vem pronto de getDashboard, mesma fonte usada no resto
+  // do app financeiro.
+  const weeklyRevenue = (homeQuery.data?.dashboard?.weeklyRevenueCents ?? 0) / 100;
 
   const averageRating = ratingQuery.data?.averageRating ?? 0;
   const totalReviews = ratingQuery.data?.totalReviews ?? 0;

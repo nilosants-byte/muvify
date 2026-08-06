@@ -254,7 +254,12 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
   const estimatedGross = payouts?.grossCents != null ? payouts.grossCents / 100 : estimatedGrossFallback;
   const estimatedNet  = payouts?.availableCents != null ? payouts.availableCents / 100 : estimatedGrossFallback * 0.9;
   const pendingNet    = payouts?.pendingCents != null ? payouts.pendingCents / 100 : 0;
-  const commission    = estimatedGross - estimatedNet;
+  // Frente 3 (segunda camada), Lote 3: "comissão" antes era gross - net, que
+  // misturava a taxa de verdade da plataforma com qualquer valor estornado
+  // ao cliente no histórico. Agora vem pronta da API, sem misturar as duas
+  // coisas — refundedTotal é mostrado à parte, só quando existir.
+  const commission    = payouts?.platformFeeCents != null ? payouts.platformFeeCents / 100 : estimatedGross - estimatedNet;
+  const refundedTotal = payouts?.refundedCents != null ? payouts.refundedCents / 100 : 0;
 
   // Épico de Frentes, Frente 7, Lote 12: "Clientes atendidos" contava só
   // clientId único de booking presencial COMPLETED — profissional que vende
@@ -489,6 +494,30 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
           </PressableScale>
         ) : null}
 
+        {/* ── DÍVIDA EM ABERTO (nasceu de disputa resolvida contra o profissional) ──
+            Frente 3 (segunda camada), Lote 7: antes só aparecia na tela separada
+            de Pendências — o resumo financeiro geral nunca avisava sobre ela. */}
+        {dashboard?.outstandingDebtCents ? (
+          <PressableScale
+            onPress={() => navigation.navigate("ProviderDebts")}
+            style={{
+              flexDirection: "row", alignItems: "center", gap: 10,
+              borderRadius: 14, padding: 14,
+              backgroundColor: theme.warningSubtle,
+              borderWidth: 1, borderColor: theme.warningSubtleBorder,
+            }}
+          >
+            <Ionicons name="alert-circle-outline" size={20} color={theme.warning} />
+            <View style={{ flex: 1 }}>
+              <MvText variant="semi3" style={{ color: theme.warning }}>
+                Você tem uma pendência de {formatCurrencyBRL(dashboard.outstandingDebtCents / 100)}
+              </MvText>
+              <MvText variant="body4" color="secondary">Será descontada do seu próximo repasse. Toque para ver os detalhes.</MvText>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={theme.warning} />
+          </PressableScale>
+        ) : null}
+
         {/* ── HERO: um número, ações rápidas ── */}
         <View style={{ alignItems: "center", paddingVertical: 14, gap: 4 }}>
           <MvText variant="caption" color="secondary" style={{ textTransform: "uppercase", letterSpacing: 0.4 }}>
@@ -507,6 +536,7 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
           />
           <MvText variant="body4" color="secondary">
             Bruto {formatCurrencyBRL(estimatedGross)} · Comissão {formatCurrencyBRL(commission)}
+            {refundedTotal > 0 ? ` · Estornado ${formatCurrencyBRL(refundedTotal)}` : ""}
             {pendingNet > 0 ? ` · ${formatCurrencyBRL(pendingNet)} a caminho` : ""}
           </MvText>
           {/* Raio-X de pagamentos, Rodada 4, Lote 10: esse valor é uma

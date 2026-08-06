@@ -2802,6 +2802,10 @@ export type FinancialDashboard = {
   totalClassesThisMonth: number;
   avgClassesPerDay: number;
   weeklyClasses: number;
+  /** Frente 3 (segunda camada), Lote 6: receita da semana corrente, todos os tipos (presencial+consultoria+pacote+renovação), já descontando estorno. */
+  weeklyRevenueCents: number;
+  /** Frente 3 (segunda camada), Lote 7: dívida em aberto (PENDING/NOTIFIED) nascida de disputa resolvida contra o profissional. */
+  outstandingDebtCents: number;
   goal: FinancialGoal | null;
   dailyRevenue: Record<string, number>;
 };
@@ -2831,6 +2835,10 @@ export type FinancialAppClient = {
   confirmedSessionCount: number;
   /** consultorias com pagamento capturado neste periodo */
   contractCount: number;
+  /** ciclos de pacote presencial capturados neste periodo */
+  packageCycleCount: number;
+  /** Frente 3 (segunda camada), Lote 5: renovações de ficha (2ª em diante) — antes não entravam nesta lista. */
+  renewalCount: number;
   services: string[];
   latestAt: string;
 };
@@ -2854,6 +2862,10 @@ export type FinancialPayouts = {
   availableCents: number;
   /** Épico de Frentes, Frente 7, Lote 7: bruto no mesmo escopo de availableCents (todos os tipos de receita, não só presencial). */
   grossCents: number;
+  /** Frente 3 (segunda camada), Lote 3: comissão real da plataforma — diferente de "gross - available", que também inclui qualquer valor estornado. */
+  platformFeeCents: number;
+  /** Frente 3 (segunda camada), Lote 3: quanto do bruto voltou pro cliente via estorno. gross = platformFee + available + refunded. */
+  refundedCents: number;
   payments: FinancialPayoutItem[];
 };
 

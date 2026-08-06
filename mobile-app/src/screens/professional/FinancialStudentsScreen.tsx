@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator, Alert,
@@ -151,6 +152,12 @@ export function FinancialStudentsScreen({ navigation }: Props) {
       handleScreenError({ error: studentsQuery.error, showToast, fallbackMessage: "Falha ao carregar alunos.", navigation });
     }
   }, [studentsQuery.error, showToast, navigation]);
+
+  // Frente 3 (segunda camada), Lote 8: esta era a única das 6 telas
+  // financeiras sem esse padrão (as outras 5 já corrigiram, cada uma no seu
+  // próprio momento, o mesmo problema de dado desatualizado ao voltar de
+  // outra tela — ex: registrar um pagamento em Alunos Financeiros).
+  useFocusEffect(useCallback(() => { void studentsQuery.refetch(); }, [studentsQuery.refetch]));
 
   const [saving, setSaving] = useState(false);
   const [addStudentModal, setAddStudentModal] = useState(false);

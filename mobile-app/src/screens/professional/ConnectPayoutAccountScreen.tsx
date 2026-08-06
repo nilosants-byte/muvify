@@ -114,7 +114,7 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
                 <MvBadge label="Ativo" variant="green" />
               </View>
               <MvText variant="body4" color="secondary">
-                O split automático está configurado. Quando um aluno pagar, 90% do valor será transferido diretamente para sua conta Mercado Pago pelo próprio MP.
+                O split automático está configurado. A cada venda paga (sessão avulsa, consultoria, pacote presencial ou renovação de ficha), 90% do valor será transferido diretamente para sua conta Mercado Pago pelo próprio MP.
               </MvText>
             </MvCard>
           ) : (
@@ -129,7 +129,7 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
                 </View>
               </View>
               <MvText variant="body4" color="secondary">
-                Conecte sua conta Mercado Pago para ativar o repasse automático. Quando um aluno pagar, o Mercado Pago divide automaticamente: 90% vai direto para você, 10% fica com a plataforma. Nenhuma ação manual necessária.
+                Conecte sua conta Mercado Pago para ativar o repasse automático. A cada venda paga (sessão avulsa, consultoria, pacote presencial ou renovação de ficha), o Mercado Pago divide automaticamente: 90% vai direto para você, 10% fica com a plataforma. Nenhuma ação manual necessária.
               </MvText>
             </MvCard>
           )}

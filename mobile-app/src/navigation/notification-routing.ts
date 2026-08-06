@@ -126,8 +126,12 @@ export function resolveNotificationRoute(
     // Épico de Frentes, Frente 9, Lote 18: sem tratamento, caía no
     // fallback genérico - o histórico financeiro é o destino mais
     // próximo já disponível.
+    // Frente 3 (segunda camada), Lote 7: quando a resolução gerou uma
+    // dívida pro profissional (reembolso ao cliente descontado do próximo
+    // repasse), a tela Financeiro genérica não menciona essa dívida em
+    // lugar nenhum — leva direto pra Pendências, onde ela de fato aparece.
     if (type === "DISPUTE_CASE_RESOLVED") {
-      return { screen: "PayoutStatus" };
+      return { screen: data.providerDebtCreated === true ? "ProviderDebts" : "PayoutStatus" };
     }
     if (type === "SUPPORT_REPLY") {
       return { screen: "Support" };

@@ -507,7 +507,14 @@ export class DisputeCaseService {
         preferenceType: "PAYMENTS",
         title: "Um caso foi resolvido",
         body: providerMessage,
-        data: { type: "DISPUTE_CASE_RESOLVED", caseId }
+        // Frente 3 (segunda camada), Lote 7: sem esse sinalizador, a
+        // notificação levava sempre pra tela Financeiro genérica, que não
+        // menciona a dívida em lugar nenhum — o profissional só descobria
+        // o motivo do desconto se fosse procurar manualmente em
+        // Configurações > Pendências. Com REFUNDED, um DebtRecord PROVIDER
+        // acabou de ser criado logo acima (ver transação); a notificação
+        // agora carrega isso pra o app rotear direto pra tela certa.
+        data: { type: "DISPUTE_CASE_RESOLVED", caseId, providerDebtCreated: input.resolution === "REFUNDED" }
       })
       .catch((error) => console.error("Falha ao notificar profissional sobre resolução de disputa:", error));
 

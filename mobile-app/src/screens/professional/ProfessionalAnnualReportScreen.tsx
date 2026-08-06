@@ -83,7 +83,11 @@ export function ProfessionalAnnualReportScreen({ navigation }: Props) {
 
   const totalRevenue  = yearMonths.reduce((s, m) => s + m.revenueCents + m.appRevenueCents, 0);
   const totalExpenses = yearMonths.reduce((s, m) => s + m.expensesCents, 0);
-  const totalNet      = totalRevenue - totalExpenses;
+  // Frente 3 (segunda camada), Lote 2: "Lucro líquido" antes era
+  // totalRevenue - totalExpenses — receita BRUTA menos despesas manuais,
+  // sem descontar a comissão da plataforma. Soma o netCents (já correto)
+  // de cada mês em vez de recalcular a partir dos totais brutos.
+  const totalNet      = yearMonths.reduce((s, m) => s + m.netCents, 0);
   const avgMonthly    = monthsElapsed > 0 ? Math.round(totalRevenue / monthsElapsed) : 0;
 
   const emptyMonths = allYearSlots.filter(m => m === null).length;
