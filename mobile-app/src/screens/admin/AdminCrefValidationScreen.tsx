@@ -418,6 +418,13 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
               <View style={{ gap: 8 }}>
                 <MvText variant="semi2">{item.user.name ?? "Profissional desconhecido"}</MvText>
                 <MvText variant="body4" color="secondary">{item.user.email ?? "—"}</MvText>
+                {item.user.email ? (
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.user.email! })}
+                  >
+                    <MvText variant="caption" color="green">Ver cadastro deste profissional →</MvText>
+                  </TouchableOpacity>
+                ) : null}
                 <MvText variant="body4">CREF: {item.crefNumber ?? "—"}</MvText>
                 <MvText variant="body4">
                   Documentos enviados: {docCount}{docCount > 0 ? " (frente e verso abaixo)" : ""}

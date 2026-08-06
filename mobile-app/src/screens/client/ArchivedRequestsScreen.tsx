@@ -57,6 +57,12 @@ export function ArchivedRequestsScreen({ navigation }: Props) {
   const loading = archivedQuery.isLoading;
   const loadError = archivedQuery.isError;
   const items = archivedQuery.data ?? [];
+  // Segunda camada, Frente 1, Lote 3 (fechamento): o card inteiro já animava
+  // ao toque (efeito padrão de PressableScale) sem nenhum onPress - parecia
+  // clicável e não fazia nada. O pedido original do cliente (motivo/
+  // limitações) já era buscado da API mas nunca aparecia na tela; expandir
+  // o card no toque mostra esse conteúdo em vez de só remover a animação.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (archivedQuery.error) {
@@ -128,8 +134,13 @@ export function ArchivedRequestsScreen({ navigation }: Props) {
           const badgeColor = bs === "orange" ? C.amber : bs === "red" ? theme.danger : bs === "blue" ? C.sky : theme.text2;
           const badgeBg = bs === "orange" ? C.amberDim : bs === "red" ? "rgba(239,68,68,0.12)" : bs === "blue" ? C.skyDim : "rgba(255,255,255,0.06)";
           const badgeBorder = bs === "orange" ? C.amberBorder : bs === "red" ? "rgba(239,68,68,0.20)" : bs === "blue" ? C.skyBorder : theme.border;
+          const hasDetail = Boolean(item.trainingNeedText || item.limitationText || item.extraInfoText);
+          const expanded = expandedId === item.id;
           return (
-            <PressableScale style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 8 }}>
+            <PressableScale
+              onPress={hasDetail ? () => setExpandedId(expanded ? null : item.id) : undefined}
+              style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 8 }}
+            >
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
                 <View style={{ flex: 1, gap: 3 }}>
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{item.provider?.displayName ?? "Profissional"}</Text>
@@ -139,9 +150,25 @@ export function ArchivedRequestsScreen({ navigation }: Props) {
                 <View style={{ backgroundColor: badgeBg, borderWidth: 1, borderColor: badgeBorder, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 3 }}>
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: badgeColor }}>{archivedStatusLabel(item.status)}</Text>
                 </View>
+                {hasDetail ? (
+                  <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={theme.text3} />
+                ) : null}
               </View>
               {item.providerResponseText ? (
                 <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 2 }}>Resposta: {item.providerResponseText}</Text>
+              ) : null}
+              {expanded ? (
+                <View style={{ gap: 4, marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: theme.border }}>
+                  {item.trainingNeedText ? (
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>Objetivo: {item.trainingNeedText}</Text>
+                  ) : null}
+                  {item.limitationText ? (
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>Limitações: {item.limitationText}</Text>
+                  ) : null}
+                  {item.extraInfoText ? (
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>Outras informações: {item.extraInfoText}</Text>
+                  ) : null}
+                </View>
               ) : null}
             </PressableScale>
           );

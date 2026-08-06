@@ -198,6 +198,13 @@ export function AdminSupportScreen({ navigation }: Props) {
               <View style={{ gap: 8 }}>
                 <MvText variant="semi2">{ticket.subject?.trim() || "Solicitação sem assunto"}</MvText>
                 <MvText variant="body4" color="secondary">{ticket.user.name ?? "Usuário"} - {ticket.user.email ?? "—"}</MvText>
+                {ticket.user.email ? (
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: ticket.user.email! })}
+                  >
+                    <MvText variant="caption" color="green">Ver cadastro deste usuário →</MvText>
+                  </TouchableOpacity>
+                ) : null}
                 {status === "OPEN" && isOverdue(ticket.createdAt) ? (
                   <MvBadge label="Vencido (+48h sem resposta)" variant="red" />
                 ) : null}

@@ -140,6 +140,11 @@ export class ChatController {
           bookingId: booking.id,
           bookingStatus: booking.status,
           isOpen: isChatOpen(booking),
+          // Segunda camada, Frente 1, Lote 3 (fechamento): sem isso, o app não
+          // tinha como saber "já existe uma conversa com este profissional?"
+          // ao abrir o perfil dele - o botão de mensagem sempre caía numa
+          // lista genérica em vez da conversa certa.
+          providerId: booking.providerId,
           otherUser: {
             name: isUserProvider ? booking.client.name : booking.provider.displayName,
             photoUrl,

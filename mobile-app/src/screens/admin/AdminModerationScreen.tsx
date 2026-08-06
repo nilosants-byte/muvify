@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import { Alert, RefreshControl, ScrollView, View } from "react-native";
+import { Alert, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { MvBadge, MvButton, MvCard, MvText } from "../../components/mv";
 import { AdminReportType, adminApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
@@ -129,9 +129,16 @@ export function AdminModerationScreen({ navigation }: Props) {
                   {report.contentPreview || "[sem prévia disponível]"}
                 </MvText>
                 {report.contentAuthor ? (
-                  <MvText variant="caption" color="secondary">
-                    Autor: {report.contentAuthor.name} ({report.contentAuthor.email})
-                  </MvText>
+                  <>
+                    <MvText variant="caption" color="secondary">
+                      Autor: {report.contentAuthor.name} ({report.contentAuthor.email})
+                    </MvText>
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: report.contentAuthor!.email })}
+                    >
+                      <MvText variant="caption" color="green">Buscar este usuário para investigar →</MvText>
+                    </TouchableOpacity>
+                  </>
                 ) : null}
 
                 <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>

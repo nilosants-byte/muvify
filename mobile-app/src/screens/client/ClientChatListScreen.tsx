@@ -54,6 +54,7 @@ type UnifiedChat = {
   kind: ChatKind;
   rawId: string;
   isOpen: boolean;
+  providerId: string;
   otherUser: { name: string; photoUrl?: string | null };
   clientId: string;
   lastMessage: { content: string; createdAt: string; isMine: boolean; isSystem: boolean };
@@ -89,6 +90,7 @@ function toUnifiedFromBooking(item: ChatSummary): UnifiedChat {
     kind: "booking",
     rawId: item.bookingId,
     isOpen: item.isOpen,
+    providerId: item.providerId,
     otherUser: item.otherUser,
     clientId: item.clientId,
     lastMessage: item.lastMessage,
@@ -102,6 +104,7 @@ function toUnifiedFromConsultancy(item: ConsultancyChatSummary): UnifiedChat {
     kind: "consultancy",
     rawId: item.contractId,
     isOpen: item.isOpen,
+    providerId: item.providerId,
     otherUser: item.otherUser,
     clientId: item.clientId,
     lastMessage: item.lastMessage,

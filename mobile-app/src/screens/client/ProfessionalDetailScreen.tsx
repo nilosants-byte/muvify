@@ -5,7 +5,9 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientStackParamList } from "../../navigation/route-types";
 import {
+  chatApi,
   consultancyApi,
+  consultancyChatApi,
   favoritesApi,
   ProviderConsultancyCatalog,
   ProviderServiceOffer,
@@ -26,6 +28,7 @@ import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
+import { findChatWithProvider } from "../../utils/findChatWithProvider";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ProfessionalDetail">;
 type ProviderDetail = ProviderSummary & {
@@ -168,6 +171,31 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
     });
   }
 
+  // Segunda camada, Frente 1, Lote 3 (fechamento): o botão de mensagem
+  // sempre abria a lista geral de conversas, sem nenhuma relação com o
+  // profissional cujo perfil o usuário estava vendo. O chat só existe depois
+  // de um agendamento ou consultoria contratada - busca se já existe uma
+  // conversa com este profissional e abre ela direto; se não existir ainda,
+  // explica o motivo em vez de cair numa lista genérica sem contexto.
+  async function handleOpenChat() {
+    try {
+      const [bookingChats, consultancyChats] = await Promise.all([
+        runWithAuth((token) => chatApi.myChats(token)),
+        runWithAuth((token) => consultancyChatApi.myChats(token)),
+      ]);
+      const match = findChatWithProvider(bookingChats, consultancyChats, providerId);
+      if (match?.kind === "booking") {
+        navigation.navigate("ClientChatList", { openBookingId: match.bookingId });
+      } else if (match?.kind === "consultancy") {
+        navigation.navigate("ClientChatList", { openContractId: match.contractId });
+      } else {
+        showToast("Você poderá conversar com este profissional após agendar uma aula ou contratar uma consultoria.", "info");
+      }
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Não foi possível abrir a conversa.", navigation });
+    }
+  }
+
   function goToPresentialPackagePurchase(offer: ProviderServiceOffer) {
     if (!offer.presentialPackageMode) return;
     navigation.navigate("BuyPresentialPackage", {
@@ -286,7 +314,8 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
             <Ionicons name="share-outline" size={18} color={theme.text1} />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => navigation.navigate("ClientChatList")}
+            onPress={() => void handleOpenChat()}
+            accessibilityRole="button" accessibilityLabel="Conversar com o profissional"
             style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
           >
             <Ionicons name="send" size={16} color={theme.primary} />

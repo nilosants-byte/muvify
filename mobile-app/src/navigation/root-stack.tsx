@@ -7,6 +7,13 @@ import {
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as Notifications from "expo-notifications";
 import { ToastHost } from "../components/primitives";
+import {
+  resolveNotificationRoute,
+  isBookingNotificationType,
+  isConsultancyNotificationType,
+  isPresentialPackageNotificationType,
+  isPaymentNotificationType
+} from "./notification-routing";
 import { AdminCrefValidationScreen } from "../screens/admin/AdminCrefValidationScreen";
 import { AdminChatAuditDetailScreen } from "../screens/admin/AdminChatAuditDetailScreen";
 import { AdminChatAuditScreen } from "../screens/admin/AdminChatAuditScreen";
@@ -101,130 +108,18 @@ import type {
 const OFFLINE_GRACE_MS = 4000;
 const navigationRef = createNavigationContainerRef();
 
-const BOOKING_TYPES_PRO = new Set([
-  "BOOKING_CREATED", "BOOKING_CONFIRMED", "BOOKING_CANCELLED", "BOOKING_COMPLETED",
-  "BOOKING_EXPIRED", "BOOKING_ATTENDANCE_CODE_AVAILABLE", "BOOKING_ATTENDANCE_CODE_VALIDATED",
-  "BOOKING_CONFIRMATION_PENDING", "CHAT_MESSAGE", "SESSION_REMINDER",
-]);
-const BOOKING_TYPES_CLIENT = new Set([
-  "BOOKING_CONFIRMED", "BOOKING_CANCELLED", "BOOKING_COMPLETED",
-  "BOOKING_EXPIRED", "BOOKING_ATTENDANCE_CODE_AVAILABLE",
-  "CHAT_MESSAGE", "SESSION_REMINDER",
-]);
-
-// Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 9: os tipos de
-// notificação de consultoria/pacote presencial (renovação de ficha, Pix
-// expirado, contestação de entrega etc.) continuam sendo criados aos
-// montes - checar por prefixo em vez de manter uma lista literal evita que
-// um tipo novo fique esquecido de novo, tanto aqui quanto na invalidação de
-// cache abaixo.
-function isConsultancyNotificationType(type: string) {
-  return type.startsWith("CONSULTANCY_") || type.startsWith("COMBO_CONSULTANCY_");
-}
-function isPresentialPackageNotificationType(type: string) {
-  return type.startsWith("PRESENTIAL_PACKAGE_") || type.startsWith("COMBO_CONSULTANCY_");
-}
-// Épico de Frentes, Frente 7, Lote 10: notificação de pagamento (captura,
-// reembolso, falha de captura, disputa etc.) recebida em primeiro plano
-// nunca invalidava o dashboard financeiro - o profissional olhando a tela
-// no momento exato de uma captura/reembolso não via o saldo mudar sozinho.
-function isPaymentNotificationType(type: string) {
-  return type.startsWith("PAYMENT_");
-}
-
 function routeNotification(
   data: Record<string, unknown>,
   role: string | null | undefined
 ) {
   if (!navigationRef.isReady() || !role) return;
-  const type = typeof data.type === "string" ? data.type : "";
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const rawBookingId = typeof data.bookingId === "string" ? data.bookingId : undefined;
-  const bookingId = rawBookingId && uuidRegex.test(rawBookingId) ? rawBookingId : undefined;
-  const rawPackageId = typeof data.packageId === "string" ? data.packageId : undefined;
-  const packageId = rawPackageId && uuidRegex.test(rawPackageId) ? rawPackageId : undefined;
-  const rawClientId = typeof data.clientId === "string" ? data.clientId : undefined;
-  const clientId = rawClientId && uuidRegex.test(rawClientId) ? rawClientId : undefined;
-  const clientName = typeof data.clientName === "string" && data.clientName ? data.clientName : "Aluno";
-  // Épico de Frentes, Frente 9, Lote 8: mensagem de chat de consultoria
-  // (Lote 7) chega com contractId em vez de bookingId no payload.
-  const rawContractId = typeof data.contractId === "string" ? data.contractId : undefined;
-  const contractId = rawContractId && uuidRegex.test(rawContractId) ? rawContractId : undefined;
-
   // Épico de Frentes, Frente 9, Lote 4: role aqui nunca é "PROFESSIONAL" -
   // o valor real do app é "PROVIDER" (ver UserRole em AppState.tsx). Esse
   // branch inteiro nunca executava, então TODO deep link de notificação
   // pro profissional caía silenciosamente em nada (routeNotification
   // simplesmente não fazia nada, sem navegar pra lugar nenhum).
-  if (role === "PROVIDER") {
-    // Mensagem de chat sempre foi tratada como um tipo de agendamento
-    // qualquer (BOOKING_TYPES_PRO inclui CHAT_MESSAGE) e levava pro
-    // detalhe do agendamento em vez do chat - checa isso primeiro.
-    if (type === "CHAT_MESSAGE") {
-      const params = bookingId ? { openBookingId: bookingId } : contractId ? { openContractId: contractId } : undefined;
-      (navigationRef as any).navigate("ProfessionalChatList", params);
-    } else if (bookingId && BOOKING_TYPES_PRO.has(type)) {
-      (navigationRef as any).navigate("BookingDetailProfessional", { bookingId });
-    } else if (type === "STUDENT_POST_MENTION" && clientId) {
-      // Épico de Frentes, Frente 9, Lote 5: não existe tela de comunidade
-      // no app do profissional - o detalhe do aluno é o destino mais
-      // próximo já disponível pra essa notificação.
-      (navigationRef as any).navigate("ProfessionalStudentAnamnesis", { clientId, clientName });
-    } else if (isConsultancyNotificationType(type)) {
-      (navigationRef as any).navigate("ProfessionalConsultancyCenter");
-    } else if (isPresentialPackageNotificationType(type)) {
-      // Não há tela de detalhe de pacote presencial pro profissional (só
-      // clientId, sem packageId, chega no payload) - a lista de alunos é o
-      // destino mais próximo disponível hoje, melhor que cair no genérico.
-      (navigationRef as any).navigate("ProfessionalStudents");
-    } else if (isPaymentNotificationType(type)) {
-      // Épico de Frentes, Frente 9, Lote 17: PAYMENT_TYPES_PRO era uma
-      // lista fixa que não incluía vários tipos já emitidos pelo backend
-      // (captura, disputa aberta, falha de captura, em mediação, falha de
-      // reembolso) - caíam no fallback genérico. isPaymentNotificationType
-      // (por prefixo) já é usado pra invalidação de cache; agora também
-      // pro roteamento, uma única fonte de verdade.
-      (navigationRef as any).navigate("PayoutStatus");
-    } else if (type === "DISPUTE_CASE_RESOLVED") {
-      // Épico de Frentes, Frente 9, Lote 18: sem tratamento, caía no
-      // fallback genérico - o histórico financeiro é o destino mais
-      // próximo já disponível.
-      (navigationRef as any).navigate("PayoutStatus");
-    } else if (type === "SUPPORT_REPLY") {
-      (navigationRef as any).navigate("Support");
-    } else {
-      (navigationRef as any).navigate("Notifications");
-    }
-    return;
-  }
-
-  if (role === "CLIENT") {
-    if (type === "CHAT_MESSAGE") {
-      const params = bookingId ? { openBookingId: bookingId } : contractId ? { openContractId: contractId } : undefined;
-      (navigationRef as any).navigate("ClientChatList", params);
-    } else if (bookingId && BOOKING_TYPES_CLIENT.has(type)) {
-      (navigationRef as any).navigate("ClientBookingDetail", { bookingId });
-    } else if (isPresentialPackageNotificationType(type) && packageId) {
-      (navigationRef as any).navigate("PresentialPackageDetail", { packageId });
-    } else if (isConsultancyNotificationType(type)) {
-      (navigationRef as any).navigate("MyTraining");
-    } else if (type === "PAYMENT_AUTH_FAILED") {
-      (navigationRef as any).navigate("ClientPaymentMethod");
-    } else if (type === "NEW_FOLLOWER" || type === "ACHIEVEMENT_UNLOCKED" || type === "STREAK_MILESTONE") {
-      // Épico de Frentes, Frente 9, Lote 4: tipos de comunidade não tinham
-      // nenhum tratamento aqui e caíam no fallback genérico (central de
-      // avisos) mesmo com um destino óbvio disponível.
-      (navigationRef as any).navigate("ClientTabs", { screen: "Community" });
-    } else if (type === "DISPUTE_CASE_RESOLVED") {
-      // Épico de Frentes, Frente 9, Lote 18: sem tratamento, caía no
-      // fallback genérico.
-      (navigationRef as any).navigate("MyDisputes");
-    } else if (type === "SUPPORT_REPLY") {
-      (navigationRef as any).navigate("Support");
-    } else {
-      (navigationRef as any).navigate("Notifications");
-    }
-  }
+  const target = resolveNotificationRoute(data, role) ?? { screen: "Notifications" };
+  (navigationRef as any).navigate(target.screen, target.params);
 }
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -814,7 +709,7 @@ export function RootNavigator() {
       // recalculavam ao focar a Home. Toda notificação recebida invalida
       // a query canônica, sem depender do tipo.
       void queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all });
-      if (BOOKING_TYPES_PRO.has(type) || BOOKING_TYPES_CLIENT.has(type)) {
+      if (isBookingNotificationType(type)) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.agenda.all });
         void queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all });
       }

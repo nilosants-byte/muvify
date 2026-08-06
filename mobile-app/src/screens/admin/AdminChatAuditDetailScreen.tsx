@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, RefreshControl, View } from "react-native";
+import { FlatList, RefreshControl, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { MvButton, MvCard, MvText } from "../../components/mv";
@@ -124,6 +124,22 @@ export function AdminChatAuditDetailScreen({ navigation, route }: Props) {
                   <MvText variant="body4" color="secondary">
                     Profissional: {session.provider.email ?? "—"}
                   </MvText>
+                  <View style={{ flexDirection: "row", gap: 16 }}>
+                    {session.client.email ? (
+                      <TouchableOpacity
+                        onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: session.client.email! })}
+                      >
+                        <MvText variant="caption" color="green">Buscar cliente →</MvText>
+                      </TouchableOpacity>
+                    ) : null}
+                    {session.provider.email ? (
+                      <TouchableOpacity
+                        onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: session.provider.email! })}
+                      >
+                        <MvText variant="caption" color="green">Buscar profissional →</MvText>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                   <MvText variant="body4" color="secondary">
                     Início da conversa: {formatBRDateTime(session.chatStartedAt)}
                   </MvText>

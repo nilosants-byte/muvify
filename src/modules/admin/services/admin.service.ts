@@ -1377,8 +1377,13 @@ export class AdminService {
     });
 
     return {
-      provider: { id: provider.id, name: provider.name, documentMasked: this.maskDocument(provider.document) },
-      client: { id: client.id, name: client.name, documentMasked: this.maskDocument(client.document) },
+      // Segunda camada, Frente 1, Lote 4 (fechamento): e-mail ficava de fora
+      // da resposta sem motivo aparente (lookupChatsByDocuments, a função
+      // irmã logo acima, já devolve o e-mail normalmente) - sem ele, o app
+      // não tinha como oferecer o atalho "buscar este usuário" que as
+      // outras telas de lookup admin já têm.
+      provider: { id: provider.id, name: provider.name, email: provider.email, documentMasked: this.maskDocument(provider.document) },
+      client: { id: client.id, name: client.name, email: client.email, documentMasked: this.maskDocument(client.document) },
       items: bookings.map((b) => ({
         bookingId: b.id,
         scheduledAt: b.scheduledAt.toISOString(),

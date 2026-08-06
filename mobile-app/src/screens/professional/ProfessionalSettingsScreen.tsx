@@ -257,6 +257,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
           <MenuItem icon="shield-checkmark-outline" label="CREF e documentos" onPress={() => goToStack("ProfessionalCredentials")} />
           <MenuItem icon="star-outline" label="Minhas avaliações" onPress={() => goToStack("ProfessionalReviews")} />
           <MenuItem icon="lock-closed-outline" label="Segurança" onPress={() => goToStack("Security")} />
+          <MenuItem icon="document-text-outline" label="Privacidade" onPress={() => goToStack("Privacy")} />
           <MenuItem icon="download-outline" label="Baixar meus dados" sub="Exportar todas as suas informações" onPress={() => void handleExportData()} />
           <MenuItem icon="trash-outline" label="Excluir minha conta" sub="Remover permanentemente todos os dados" onPress={handleDeleteAccount} danger />
         </View>

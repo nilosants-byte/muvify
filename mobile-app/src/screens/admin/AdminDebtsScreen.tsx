@@ -140,6 +140,7 @@ export function AdminDebtsScreen({ navigation }: Props) {
         {items.map((item) => {
           const isOutstanding = item.status === "PENDING" || item.status === "NOTIFIED";
           const debtorLabel = item.debtorType === "CLIENT" ? item.client?.name : item.provider?.displayName;
+          const debtorEmail = item.debtorType === "CLIENT" ? item.client?.email : item.provider?.user.email;
           return (
             <MvCard key={item.id}>
               <View style={{ gap: 6 }}>
@@ -148,6 +149,13 @@ export function AdminDebtsScreen({ navigation }: Props) {
                 </MvText>
                 <MvText variant="body4" color="secondary">Registrada em {formatDate(item.createdAt)}</MvText>
                 <MvText variant="body4">Devedor: {debtorLabel ?? "—"}</MvText>
+                {debtorEmail ? (
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: debtorEmail })}
+                  >
+                    <MvText variant="caption" color="green">Buscar este usuário →</MvText>
+                  </TouchableOpacity>
+                ) : null}
                 <MvText variant="semi3">Valor: {formatCents(item.amountCents)}</MvText>
                 <MvText variant="body4" color="secondary">Motivo: {item.reason}</MvText>
                 <MvText variant="body4">Status: {STATUS_LABEL[item.status]}</MvText>

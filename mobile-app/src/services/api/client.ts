@@ -678,8 +678,8 @@ export type AdminLookupBookingItem = {
 };
 
 export type AdminLookupBookingsResult = {
-  provider: Pick<AdminLookupUser, "id" | "name" | "documentMasked"> | null;
-  client: Pick<AdminLookupUser, "id" | "name" | "documentMasked"> | null;
+  provider: Pick<AdminLookupUser, "id" | "name" | "email" | "documentMasked"> | null;
+  client: Pick<AdminLookupUser, "id" | "name" | "email" | "documentMasked"> | null;
   items: AdminLookupBookingItem[];
 };
 
@@ -2463,6 +2463,7 @@ export type ChatSummary = {
   bookingId: string;
   bookingStatus: "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED";
   isOpen: boolean;
+  providerId: string;
   otherUser: { name: string; photoUrl?: string | null };
   clientId: string;
   lastMessage: {
@@ -2519,6 +2520,7 @@ export type ConsultancyChatSummary = {
   contractId: string;
   contractStatus: string;
   isOpen: boolean;
+  providerId: string;
   otherUser: { name: string; photoUrl?: string | null };
   clientId: string;
   lastMessage: {

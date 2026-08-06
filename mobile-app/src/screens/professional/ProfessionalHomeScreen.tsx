@@ -1283,6 +1283,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                   MAIS
                 </MvText>
                 {([
+                  { icon: "ellipsis-horizontal-circle-outline" as const, label: "Mais opções", onPress: () => { closeDrawer(); goToStack("ProfessionalSettings"); } },
                   { icon: "help-circle-outline" as const, label: "Suporte", onPress: () => { closeDrawer(); goToStack("Support"); } },
                   { icon: "share-social-outline" as const, label: "Indicar o app", onPress: () => { closeDrawer(); handleShareApp(); } },
                   { icon: "star-outline" as const, label: "Avalie o app", onPress: () => { closeDrawer(); handleRateApp(); } },

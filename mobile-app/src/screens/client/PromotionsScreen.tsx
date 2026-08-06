@@ -140,6 +140,12 @@ export function PromotionsScreen({ navigation }: Props) {
 
     return (
       <PressableScale
+        // Segunda camada, Frente 1, Lote 3 (fechamento): o card inteiro já
+        // animava ao toque sem nenhum onPress - avatar, nome, preço etc.
+        // pareciam clicáveis e não faziam nada, só os 2 botões internos
+        // funcionavam. Toque no card (fora dos botões) agora abre o perfil,
+        // igual ao botão "Ver perfil" logo abaixo.
+        onPress={() => goToDetail(item.providerId)}
         style={{
           borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border,
           backgroundColor: theme.cardBg, padding: S.cardPad, gap: 12,

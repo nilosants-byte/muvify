@@ -96,7 +96,6 @@ export type ClientStackParamList = {
   Security: undefined;
   ConnectedDevices: undefined;
   GenericError: { title?: string; message?: string } | undefined;
-  Offline: undefined;
   FriendsList: undefined;
 };
 export type ProfessionalStackParamList = {
@@ -129,7 +128,6 @@ export type ProfessionalStackParamList = {
   Security: undefined;
   ConnectedDevices: undefined;
   GenericError: { title?: string; message?: string } | undefined;
-  Offline: undefined;
 };
 
 export type AdminStackParamList = {

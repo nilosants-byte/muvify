@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { ReactNode, useCallback, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import { Alert, Pressable, StatusBar, TouchableOpacity, View } from "react-native";
+import { Alert, Pressable, ScrollView, StatusBar, TouchableOpacity, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MvText } from "../../components/mv";
 import type { AdminStackParamList } from "../../navigation/route-types";
@@ -26,6 +26,7 @@ export function AdminScaffold({
   children
 }: AdminScaffoldProps) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const { signOut, setThemePreference, user } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -107,6 +108,17 @@ export function AdminScaffold({
         label: "Retenção de dados",
         icon: "shield-outline" as const,
         action: () => navigation.navigate("AdminDataRetention")
+      },
+      // Segunda camada, Frente 1, Lote 4 (fechamento): Security/
+      // ConnectedDevices só eram alcançáveis pelo banner de 2FA acima, que
+      // some assim que o admin ativa 2FA - depois disso não sobrava nenhum
+      // caminho na UI pra rever configurações de segurança ou desconectar
+      // um aparelho. Os outros 2 perfis já têm "Segurança" fixa no menu.
+      {
+        key: "Security" as const,
+        label: "Segurança",
+        icon: "lock-closed-outline" as const,
+        action: () => navigation.navigate("Security")
       },
       {
         key: "toggleTheme" as const,
@@ -222,6 +234,12 @@ export function AdminScaffold({
               top: insets.top + 60,
               left: 12,
               width: 240,
+              // Segunda camada, Frente 1, Lote 4 (fechamento): a lista de
+              // itens só crescia (12 rotas + tema + sair, agora 13) sem
+              // nenhum limite de altura nem rolagem - em aparelhos menores
+              // os últimos itens (inclusive "Sair") podiam ficar fora da
+              // área visível, sem como alcançar.
+              maxHeight: windowHeight - insets.top - 60 - insets.bottom - 24,
               borderRadius: 14,
               borderWidth: 1,
               borderColor: theme.border,
@@ -234,6 +252,7 @@ export function AdminScaffold({
               elevation: 12
             }}
           >
+            <ScrollView showsVerticalScrollIndicator={false}>
             {menuItems.map((item, index) => {
               const active =
                 (item.key === "AdminHome" ||
@@ -247,7 +266,8 @@ export function AdminScaffold({
                   item.key === "AdminDebts" ||
                   item.key === "AdminUserSearch" ||
                   item.key === "AdminNoShowReports" ||
-                  item.key === "AdminDataRetention") &&
+                  item.key === "AdminDataRetention" ||
+                  item.key === "Security") &&
                 item.key === currentScreen;
               return (
                 <TouchableOpacity
@@ -278,6 +298,7 @@ export function AdminScaffold({
                 </TouchableOpacity>
               );
             })}
+            </ScrollView>
           </View>
         </>
       ) : null}

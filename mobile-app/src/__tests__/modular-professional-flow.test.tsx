@@ -130,6 +130,20 @@ describe("Fluxo modular profissional", () => {
 
     homeUi.unmount();
 
+    // Épico de Frentes, segunda camada, Frente 1 (fechamento pós-verificação):
+    // a tela "Mais" (ProfessionalSettings) e a Política de Privacidade não
+    // tinham NENHUM botão levando até elas em lugar nenhum do app — inclusive
+    // deixando exclusão de conta e exportação de dados (LGPD) inacessíveis
+    // na prática. O menu lateral ganhou um item "Mais opções" pra religar isso.
+    const drawerUi = renderWithQueryClient(
+      <ProfessionalHomeScreen navigation={navigation as any} route={{} as any} />
+    );
+    await waitFor(() => expect(bookingsApi.me).toHaveBeenCalled(), { timeout: 3000 });
+    fireEvent.press(drawerUi.getByLabelText("Abrir menu"));
+    fireEvent.press(drawerUi.getByText("Mais opções"));
+    expect(stackNavigate).toHaveBeenCalledWith("ProfessionalSettings", undefined);
+    drawerUi.unmount();
+
     const agendaUi = renderWithQueryClient(
       <ProfessionalAgendaScreen navigation={navigation as any} route={{} as any} />
     );

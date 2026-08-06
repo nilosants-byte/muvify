@@ -280,6 +280,17 @@ export function ProfessionalNotificationsDrawer({
           navigation.navigate("ProfessionalCredentials");
           return;
         }
+        // Segunda camada, Frente 1, Lote 2 (fechamento): resposta de suporte
+        // não tinha nenhum destino aqui - caía em silêncio, sem navegar pra
+        // lugar nenhum (a gaveta só fechava).
+        if (type.includes("SUPPORT")) {
+          navigation.navigate("Support");
+          return;
+        }
+        if (type === "MP_TOKEN_INVALIDATED") {
+          navigation.navigate("ConnectPayoutAccount");
+          return;
+        }
         if (type.includes("PAYOUT") || type.includes("PAYMENT")) {
           navigation.navigate("PayoutStatus");
         }

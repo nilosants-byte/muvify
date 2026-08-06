@@ -172,6 +172,11 @@ function TabCref({ navigation }: { navigation: any }) {
           <View style={{ gap: 6 }}>
             <MvText variant="semi2">{result.user.name}</MvText>
             <MvText variant="body4" color="secondary">{result.user.email}</MvText>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: result.user.email })}
+            >
+              <MvText variant="caption" color="green">Ver cadastro completo deste usuário →</MvText>
+            </TouchableOpacity>
             <MvText variant="body4" color="secondary">
               CPF: {maskCpf(result.user.document ?? "")}
             </MvText>
@@ -266,6 +271,8 @@ function TabChat({ navigation }: { navigation: any }) {
   const [items, setItems] = useState<AdminLookupChatItem[] | null>(null);
   const [provName, setProvName] = useState("");
   const [cliName, setCliName] = useState("");
+  const [provEmail, setProvEmail] = useState("");
+  const [cliEmail, setCliEmail] = useState("");
 
   const search = useCallback(async () => {
     const pDoc = normalizeCpf(cpfProv);
@@ -280,6 +287,8 @@ function TabChat({ navigation }: { navigation: any }) {
       setItems(data.items);
       setProvName(data.provider?.name ?? "Profissional desconhecido");
       setCliName(data.client?.name ?? "Cliente desconhecido");
+      setProvEmail(data.provider?.email ?? "");
+      setCliEmail(data.client?.email ?? "");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Erro ao buscar conversas.", navigation });
     } finally {
@@ -293,6 +302,8 @@ function TabChat({ navigation }: { navigation: any }) {
     setItems(null);
     setProvName("");
     setCliName("");
+    setProvEmail("");
+    setCliEmail("");
   };
 
   return (
@@ -346,6 +357,27 @@ function TabChat({ navigation }: { navigation: any }) {
         </MvCard>
       )}
 
+      {items !== null && items.length > 0 && (provEmail || cliEmail) ? (
+        <MvCard>
+          <View style={{ flexDirection: "row", gap: 16 }}>
+            {provEmail ? (
+              <TouchableOpacity
+                onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: provEmail })}
+              >
+                <MvText variant="caption" color="green">Buscar {provName} →</MvText>
+              </TouchableOpacity>
+            ) : null}
+            {cliEmail ? (
+              <TouchableOpacity
+                onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: cliEmail })}
+              >
+                <MvText variant="caption" color="green">Buscar {cliName} →</MvText>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </MvCard>
+      ) : null}
+
       {items?.map((item) => (
         <TouchableOpacity
           key={item.bookingId}
@@ -393,6 +425,8 @@ function TabAgendamento({ navigation }: { navigation: any }) {
   const [items, setItems] = useState<AdminLookupBookingItem[] | null>(null);
   const [provName, setProvName] = useState("");
   const [cliName, setCliName] = useState("");
+  const [provEmail, setProvEmail] = useState("");
+  const [cliEmail, setCliEmail] = useState("");
   const search = useCallback(
     async (overrideDate?: string) => {
       const pDoc = normalizeCpf(cpfProv);
@@ -416,6 +450,8 @@ function TabAgendamento({ navigation }: { navigation: any }) {
         ));
         setProvName(data.provider?.name ?? "Profissional desconhecido");
         setCliName(data.client?.name ?? "Cliente desconhecido");
+        setProvEmail(data.provider?.email ?? "");
+        setCliEmail(data.client?.email ?? "");
       } catch (error) {
         handleScreenError({
           error,
@@ -437,6 +473,8 @@ function TabAgendamento({ navigation }: { navigation: any }) {
     setItems(null);
     setProvName("");
     setCliName("");
+    setProvEmail("");
+    setCliEmail("");
   };
 
   const applyDateFilter = (d: string) => {
@@ -503,6 +541,27 @@ function TabAgendamento({ navigation }: { navigation: any }) {
           </MvText>
         </MvCard>
       )}
+
+      {items !== null && items.length > 0 && (provEmail || cliEmail) ? (
+        <MvCard>
+          <View style={{ flexDirection: "row", gap: 16 }}>
+            {provEmail ? (
+              <TouchableOpacity
+                onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: provEmail })}
+              >
+                <MvText variant="caption" color="green">Buscar {provName} →</MvText>
+              </TouchableOpacity>
+            ) : null}
+            {cliEmail ? (
+              <TouchableOpacity
+                onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: cliEmail })}
+              >
+                <MvText variant="caption" color="green">Buscar {cliName} →</MvText>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </MvCard>
+      ) : null}
 
       {items?.map((item) => (
         <TouchableOpacity

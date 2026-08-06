@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect } from "react";
-import { ActivityIndicator, ScrollView, View } from "react-native";
+import { ActivityIndicator, ScrollView, TouchableOpacity, View } from "react-native";
 import { MvCard, MvRefreshControl, MvText } from "../../components/mv";
 import { adminApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
@@ -188,6 +188,13 @@ export function AdminConsultasBookingDetailScreen({ navigation, route }: Props) 
           <Row icon="person-outline" label="Nome" value={booking.client.name ?? "Não informado"} />
           <Row icon="mail-outline" label="E-mail" value={booking.client.email ?? "Não informado"} />
           <Row icon="card-outline" label="CPF" value={booking.client.documentMasked ?? "Não informado"} />
+          {booking.client.email ? (
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: booking.client.email! })}
+            >
+              <MvText variant="caption" color="green">Buscar este usuário →</MvText>
+            </TouchableOpacity>
+          ) : null}
         </Section>
 
         <Section title="Profissional">
@@ -195,6 +202,13 @@ export function AdminConsultasBookingDetailScreen({ navigation, route }: Props) 
           <Row icon="mail-outline" label="E-mail" value={booking.provider.user?.email ?? "Não informado"} />
           <Row icon="card-outline" label="CPF" value={booking.provider.user?.documentMasked ?? "Não informado"} />
           <Row icon="shield-checkmark-outline" label="CREF" value={booking.provider.crefNumber ?? "Não informado"} />
+          {booking.provider.user?.email ? (
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: booking.provider.user!.email! })}
+            >
+              <MvText variant="caption" color="green">Buscar este profissional →</MvText>
+            </TouchableOpacity>
+          ) : null}
         </Section>
 
         <MvText variant="caption" color="tertiary" style={{ textAlign: "center" }}>

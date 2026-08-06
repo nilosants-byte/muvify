@@ -132,6 +132,11 @@ export class ConsultancyChatController {
           contractId: contract.id,
           contractStatus: contract.status,
           isOpen: isConsultancyChatOpen(contract),
+          // Segunda camada, Frente 1, Lote 3 (fechamento): sem isso, o app não
+          // tinha como saber "já existe uma conversa com este profissional?"
+          // ao abrir o perfil dele - o botão de mensagem sempre caía numa
+          // lista genérica em vez da conversa certa.
+          providerId: contract.providerId,
           otherUser: {
             name: isUserProvider ? contract.client.name : contract.provider.displayName,
             photoUrl,

@@ -223,6 +223,22 @@ export function AdminChatAuditScreen({ navigation }: Props) {
                 <MvText variant="body4" color="secondary">
                   Profissional: {item.provider.email ?? "—"}
                 </MvText>
+                <View style={{ flexDirection: "row", gap: 16 }}>
+                  {item.client.email ? (
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.client.email! })}
+                    >
+                      <MvText variant="caption" color="green">Buscar cliente →</MvText>
+                    </TouchableOpacity>
+                  ) : null}
+                  {item.provider.email ? (
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.provider.email! })}
+                    >
+                      <MvText variant="caption" color="green">Buscar profissional →</MvText>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
                 <MvText variant="body4" color="secondary">
                   Início da conversa: {formatBRDateTime(item.chatStartedAt)}
                 </MvText>
