@@ -11,7 +11,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "lint": "npm run prisma:generate && tsc --noEmit",
+    "lint": "npm run prisma:generate && tsc --noEmit && eslint .",
     "seed": "tsx prisma/seed.ts",
     "seed:exercises": "tsx scripts/seed-exercises.ts",
     "seed:all": "npm run seed && npm run seed:exercises",
@@ -92,12 +92,14 @@
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "autocannon": "^8.0.0",
+    "eslint": "^9.39.5",
     "pino-pretty": "^13.1.1",
     "prisma": "^6.5.0",
     "socket.io-client": "^4.8.3",
     "supertest": "^7.0.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
+    "typescript-eslint": "^8.66.0",
     "vitest": "^3.1.4"
   },
   "overrides": {

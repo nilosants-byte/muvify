@@ -169,7 +169,11 @@ describe("Consultoria — reserva no cartão e captura na entrega", () => {
       ]
     });
 
-    expect(captureSpy).toHaveBeenCalledWith({ id: "222", transaction_amount: 200 });
+    expect(captureSpy).toHaveBeenCalledWith({
+      id: "222",
+      transaction_amount: 200,
+      requestOptions: { idempotencyKey: `consultancy:${contract!.id}:capture` }
+    });
     expect(delivered.status).toBe("DELIVERED");
     expect(delivered.paymentStatus).toBe("CAPTURED");
     expect(delivered.paymentCapturedAt).not.toBeNull();
@@ -225,7 +229,10 @@ describe("Consultoria — reserva no cartão e captura na entrega", () => {
 
     await consultancyService.autoRefundExpiredContracts(new Date());
 
-    expect(cancelSpy).toHaveBeenCalledWith({ id: "444" });
+    expect(cancelSpy).toHaveBeenCalledWith({
+      id: "444",
+      requestOptions: { idempotencyKey: `consultancy:${contract!.id}:cancel` }
+    });
     expect(refundSpy).not.toHaveBeenCalled();
 
     const afterExpiry = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract!.id } });
@@ -249,7 +256,10 @@ describe("Consultoria — reserva no cartão e captura na entrega", () => {
 
     const cancelled = await consultancyService.cancelContract(clientId, contract!.id);
 
-    expect(cancelSpy).toHaveBeenCalledWith({ id: "555" });
+    expect(cancelSpy).toHaveBeenCalledWith({
+      id: "555",
+      requestOptions: { idempotencyKey: `consultancy:${contract!.id}:cancel` }
+    });
     expect(refundSpy).not.toHaveBeenCalled();
     expect(cancelled.paymentStatus).toBe("CANCELED");
     expect(cancelled.status).toBe("CANCELLED");

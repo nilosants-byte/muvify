@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { redis } from "../../config/redis";
 import { env } from "../../config/env";
 
@@ -34,8 +35,13 @@ export async function setTokenBlacklist(userId: string, blacklistedSince: number
       return;
     } catch (err) {
       console.error(`[token-blacklist] Redis write failed for user ${userId}:`, err);
+      // Frente 2 (segunda camada), Lote 8: o comentário abaixo já admitia
+      // "monitorar se isso ocorre com frequência", mas nada monitorava de
+      // fato — em prod multi-instância, um token revogado (troca de senha,
+      // suspensão de conta) pode continuar funcionando em outras réplicas
+      // sem que ninguém saiba, então isso merece alerta de verdade.
+      Sentry.captureException(err, { tags: { area: "auth", phase: "token_blacklist_redis_write_failed" }, extra: { userId } });
       // Fallback para local — em prod multi-instância, o token pode não ser invalidado em outros pods
-      // Monitorar se isso ocorre com frequência
     }
   }
 

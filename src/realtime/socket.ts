@@ -1,6 +1,7 @@
 import type { Server as HttpServer } from "node:http";
 import { Server as SocketIOServer, type Socket } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
+import * as Sentry from "@sentry/node";
 import { prisma } from "../config/prisma";
 import { env } from "../config/env";
 import { redis } from "../config/redis";
@@ -86,7 +87,7 @@ function handleLeaveBooking(socket: Socket, bookingId: unknown) {
   if (typeof bookingId !== "string" || !bookingId) {
     return;
   }
-  void socket.leave(bookingRoom(bookingId));
+  return socket.leave(bookingRoom(bookingId));
 }
 
 // Épico de Frentes, Frente 9, Lote 7: espelha handleJoinBooking/
@@ -117,7 +118,34 @@ function handleLeaveConsultancy(socket: Socket, contractId: unknown) {
   if (typeof contractId !== "string" || !contractId) {
     return;
   }
-  void socket.leave(consultancyRoom(contractId));
+  return socket.leave(consultancyRoom(contractId));
+}
+
+// Frente 2 (segunda camada), Lote 1: envelope de segurança — todo handler de
+// evento de socket deve ser registrado através desta função, nunca direto em
+// socket.on(...). Sem isso, uma falha nele (ex.: timeout do banco) vira uma
+// rejeição não tratada, que derruba o processo inteiro pra todos os usuários
+// conectados (política de unhandledRejection em server.ts). Cobre handlers
+// atuais e qualquer handler novo que venha a ser registrado no futuro.
+function safeSocketHandler<Args extends unknown[]>(
+  event: string,
+  socket: Socket,
+  handler: (socket: Socket, ...args: Args) => void | Promise<void>
+) {
+  return (...args: Args) => {
+    try {
+      const result = handler(socket, ...args);
+      if (result instanceof Promise) {
+        result.catch((error: unknown) => {
+          console.error(`[realtime] Falha no handler do evento "${event}":`, error);
+          Sentry.captureException(error, { tags: { area: "realtime", event } });
+        });
+      }
+    } catch (error) {
+      console.error(`[realtime] Falha no handler do evento "${event}":`, error);
+      Sentry.captureException(error, { tags: { area: "realtime", event } });
+    }
+  };
 }
 
 /** Anexa o servidor de WebSocket ao servidor HTTP já existente (mesma porta, mesmo processo). */
@@ -148,10 +176,10 @@ export async function initSocketServer(httpServer: HttpServer) {
   io.use((socket, next) => void authenticateSocket(socket, next));
 
   io.on("connection", (socket) => {
-    socket.on("join:booking", (bookingId: unknown) => void handleJoinBooking(socket, bookingId));
-    socket.on("leave:booking", (bookingId: unknown) => handleLeaveBooking(socket, bookingId));
-    socket.on("join:consultancy", (contractId: unknown) => void handleJoinConsultancy(socket, contractId));
-    socket.on("leave:consultancy", (contractId: unknown) => handleLeaveConsultancy(socket, contractId));
+    socket.on("join:booking", safeSocketHandler("join:booking", socket, handleJoinBooking));
+    socket.on("leave:booking", safeSocketHandler("leave:booking", socket, handleLeaveBooking));
+    socket.on("join:consultancy", safeSocketHandler("join:consultancy", socket, handleJoinConsultancy));
+    socket.on("leave:consultancy", safeSocketHandler("leave:consultancy", socket, handleLeaveConsultancy));
   });
 
   return io;
@@ -214,7 +242,5 @@ export async function stopSocketServer() {
   }
   const current = io;
   io = null;
-  await new Promise<void>((resolve) => {
-    current.close(() => resolve());
-  });
+  await current.close();
 }

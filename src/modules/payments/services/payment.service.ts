@@ -1155,11 +1155,36 @@ export class PaymentService {
     const payment = await prisma.payment.findUnique({ where: { bookingId } });
     if (!payment) return;
 
+    // Frente 2 (segunda camada), Lote 5: trava atômica auto-expirável (mesmo
+    // idioma de DisputeCase.resolvingLockedAt/ConsultancyContract.
+    // renewalDeliveryLockedAt) contra duplo toque em "cancelar" disparando
+    // duas chamadas concorrentes de estorno/cancelamento pro mesmo
+    // pagamento. Expira sozinha em 30s caso o processo caia no meio.
+    const staleThreshold = new Date(Date.now() - 30_000);
+    const claimed = await prisma.payment.updateMany({
+      where: {
+        id: payment.id,
+        status: payment.status,
+        OR: [{ mutationLockedAt: null }, { mutationLockedAt: { lt: staleThreshold } }]
+      },
+      data: { mutationLockedAt: new Date() }
+    });
+    if (claimed.count === 0) {
+      // Já sendo cancelado/estornado por outra chamada concorrente.
+      return;
+    }
+
+    try {
     if (payment.status === PaymentStatus.CAPTURED && payment.mpPaymentId) {
       try {
         const refund = await mpRefund.create({
           payment_id: payment.mpPaymentId,
-          body: {}
+          body: {},
+          // Frente 2 (segunda camada), Lote 4: sem isso, um timeout de rede
+          // seguido de retry (manual ou automático) podia gerar dois
+          // estornos reais no gateway pro mesmo pagamento — chave estável
+          // por pagamento, igual em qualquer retry desta mesma operação.
+          requestOptions: { idempotencyKey: `booking:${bookingId}:refund` }
         });
         await prisma.payment.update({
           where: { id: payment.id },
@@ -1234,7 +1259,10 @@ export class PaymentService {
     // Cancel authorized (not yet captured) payment
     if (payment.status === PaymentStatus.AUTHORIZED) {
       try {
-        await mpPayment.cancel({ id: payment.mpPaymentId });
+        await mpPayment.cancel({
+          id: payment.mpPaymentId,
+          requestOptions: { idempotencyKey: `booking:${bookingId}:cancel` }
+        });
       } catch (error) {
         // Raio-X de pagamentos, Rodada 2, Lote 1: mesmo princípio do ramo
         // CAPTURED acima — nunca deixar essa exceção subir (o agendamento
@@ -1286,6 +1314,12 @@ export class PaymentService {
       body: "Pagamento do agendamento foi cancelado.",
       data: { type: "PAYMENT_CANCELED" }
     });
+    } catch (error) {
+      await prisma.payment
+        .updateMany({ where: { id: payment.id }, data: { mutationLockedAt: null } })
+        .catch((releaseError) => console.error("Falha ao liberar trava de cancelamento de pagamento:", releaseError));
+      throw error;
+    }
   }
 
   async capturePaymentForBooking(bookingId: string) {
@@ -1296,60 +1330,93 @@ export class PaymentService {
       throw new AppError("Pagamento ainda não autorizado para captura.", StatusCodes.BAD_REQUEST);
     }
 
-    const mpPay = await mpPayment.capture({
-      id: payment.mpPaymentId,
-      transaction_amount: payment.amountCents / 100
+    // Frente 2 (segunda camada), Lote 5: claim atômico ANTES de chamar a MP.
+    // Sem isso, a confirmação manual da sessão (confirmCompletion, trava por
+    // pg_advisory_xact_lock) e o job de auto-captura (autoCaptureSingle
+    // Confirmation, sem essa trava) podiam cruzar o mesmo bookingId quase ao
+    // mesmo tempo e chamar mpPayment.capture() duas vezes pro mesmo
+    // pagamento — o updateMany de capturedCount logo abaixo já protegia a
+    // escrita local contra isso, mas não a chamada externa em si.
+    const staleThreshold = new Date(Date.now() - 30_000);
+    const claimed = await prisma.payment.updateMany({
+      where: {
+        id: payment.id,
+        status: PaymentStatus.AUTHORIZED,
+        OR: [{ mutationLockedAt: null }, { mutationLockedAt: { lt: staleThreshold } }]
+      },
+      data: { mutationLockedAt: new Date() }
     });
-
-    // Raio-X de pagamentos, Rodada 5, Lote 3: a MP pode responder 200 com um
-    // status que não é approved (hold expirado, captura recusada) - o
-    // retorno era descartado e o pagamento virava CAPTURED mesmo assim.
-    // Mesma checagem que authorizePayment já faz sobre a própria resposta.
-    if (mpPay.status !== MP_STATUS_APPROVED) {
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: { failureReason: `Captura recusada pela MP: ${mpPay.status} / ${mpPay.status_detail}` }
-      });
-      throw new AppError(
-        `Captura recusada pela Mercado Pago (status: ${mpPay.status}).`,
-        StatusCodes.BAD_REQUEST
-      );
+    if (claimed.count === 0) {
+      // Já sendo capturado por outra chamada concorrente — devolve o estado atual.
+      return prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     }
 
-    // Marca como CAPTURED só se ainda AUTHORIZED (idempotência via updateMany)
-    const capturedCount = await prisma.payment.updateMany({
-      where: { id: payment.id, status: PaymentStatus.AUTHORIZED },
-      data: {
-        status: PaymentStatus.CAPTURED,
-        capturedAt: new Date(),
-        mpChargeId: payment.mpPaymentId
+    try {
+      const mpPay = await mpPayment.capture({
+        id: payment.mpPaymentId,
+        transaction_amount: payment.amountCents / 100,
+        // Frente 2 (segunda camada), Lote 4: chave estável por pagamento —
+        // qualquer retry desta mesma captura (timeout de rede, nova
+        // tentativa manual) deve colidir com a mesma operação na MP, nunca
+        // capturar duas vezes.
+        requestOptions: { idempotencyKey: `booking:${bookingId}:capture` }
+      });
+
+      // Raio-X de pagamentos, Rodada 5, Lote 3: a MP pode responder 200 com um
+      // status que não é approved (hold expirado, captura recusada) - o
+      // retorno era descartado e o pagamento virava CAPTURED mesmo assim.
+      // Mesma checagem que authorizePayment já faz sobre a própria resposta.
+      if (mpPay.status !== MP_STATUS_APPROVED) {
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { failureReason: `Captura recusada pela MP: ${mpPay.status} / ${mpPay.status_detail}` }
+        });
+        throw new AppError(
+          `Captura recusada pela Mercado Pago (status: ${mpPay.status}).`,
+          StatusCodes.BAD_REQUEST
+        );
       }
-    });
-    const capturedPayment = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
-    // Épico de Frentes, Frente 12, Lote 2: audit log e notificação não eram
-    // condicionados a este updateMany ter de fato mudado alguma linha -
-    // diferente do resto do código de captura/webhook, que segue esse
-    // padrão consistentemente. Sem a guarda, uma corrida entre a confirmação
-    // manual da sessão e o job de auto-captura (mesmo bookingId cruzando o
-    // limiar de AUTO_CAPTURE_CONFIRMATION_HOURS quase ao mesmo tempo) fazia
-    // as duas chamadas passarem pelo check inicial antes de qualquer commit
-    // e disparar push/log duplicado, mesmo sem nada de errado ter
-    // acontecido de fato com o dinheiro (a MP em si é idempotente pro mesmo
-    // mpPaymentId).
-    if (capturedCount.count > 0) {
-      void writeAuditLog({
-        paymentId: payment.id,
-        fromStatus: PaymentStatus.AUTHORIZED,
-        toStatus: PaymentStatus.CAPTURED,
-        triggeredBy: "capture_for_booking"
+
+      // Marca como CAPTURED só se ainda AUTHORIZED (idempotência via updateMany)
+      const capturedCount = await prisma.payment.updateMany({
+        where: { id: payment.id, status: PaymentStatus.AUTHORIZED },
+        data: {
+          status: PaymentStatus.CAPTURED,
+          capturedAt: new Date(),
+          mpChargeId: payment.mpPaymentId
+        }
       });
-      await this.notifyBookingUsers(bookingId, {
-        title: "Pagamento efetivado",
-        body: "Serviço concluído e pagamento capturado com sucesso.",
-        data: { type: "PAYMENT_CAPTURED" }
-      });
+      const capturedPayment = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+      // Épico de Frentes, Frente 12, Lote 2: audit log e notificação não eram
+      // condicionados a este updateMany ter de fato mudado alguma linha -
+      // diferente do resto do código de captura/webhook, que segue esse
+      // padrão consistentemente. Sem a guarda, uma corrida entre a confirmação
+      // manual da sessão e o job de auto-captura (mesmo bookingId cruzando o
+      // limiar de AUTO_CAPTURE_CONFIRMATION_HOURS quase ao mesmo tempo) fazia
+      // as duas chamadas passarem pelo check inicial antes de qualquer commit
+      // e disparar push/log duplicado, mesmo sem nada de errado ter
+      // acontecido de fato com o dinheiro (a MP em si é idempotente pro mesmo
+      // mpPaymentId).
+      if (capturedCount.count > 0) {
+        void writeAuditLog({
+          paymentId: payment.id,
+          fromStatus: PaymentStatus.AUTHORIZED,
+          toStatus: PaymentStatus.CAPTURED,
+          triggeredBy: "capture_for_booking"
+        });
+        await this.notifyBookingUsers(bookingId, {
+          title: "Pagamento efetivado",
+          body: "Serviço concluído e pagamento capturado com sucesso.",
+          data: { type: "PAYMENT_CAPTURED" }
+        });
+      }
+      return capturedPayment;
+    } catch (error) {
+      await prisma.payment
+        .updateMany({ where: { id: payment.id }, data: { mutationLockedAt: null } })
+        .catch((releaseError) => console.error("Falha ao liberar trava de captura de pagamento:", releaseError));
+      throw error;
     }
-    return capturedPayment;
   }
 
   async captureIfAuthorizedForBooking(bookingId: string) {
@@ -1569,7 +1636,15 @@ export class PaymentService {
     let mpPay: Awaited<ReturnType<Payment["get"]>>;
     try {
       mpPay = await mpPayment.get({ id: mpPaymentId });
-    } catch {
+    } catch (error) {
+      // Frente 2 (segunda camada), Lote 8: essa falha era engolida sem
+      // nenhum log nem Sentry — se a MP ficasse instável por alguns
+      // minutos, os webhooks recebidos nesse período eram descartados sem
+      // rastro, e o pagamento ficava "pendente" pro cliente sem que
+      // ninguém soubesse que a confirmação do webhook nunca chegou a
+      // processar de verdade.
+      console.error("handleMpPaymentNotification: falha ao buscar pagamento na MP:", { mpPaymentId, error });
+      Sentry.captureException(error, { tags: { area: "payments" }, extra: { mpPaymentId, phase: "webhook_fetch_failed" } });
       return;
     }
 

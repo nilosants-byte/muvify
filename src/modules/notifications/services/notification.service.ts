@@ -1,5 +1,6 @@
 import { DevicePlatform, NotificationPreferenceType } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
+import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
@@ -223,130 +224,146 @@ export class NotificationService {
       );
     }
 
-    // Épico de Frentes, Frente 10, Lote 3: a preferência filtrava ANTES de
-    // criar a UserNotification - desligar uma categoria (ex: SYSTEM) fazia
-    // resposta de suporte, suspensão e reativação de conta desaparecerem
-    // por completo, nem ficavam na central/badge. A preferência deveria
-    // controlar só o push, não o histórico de notificações - registro
-    // sempre é criado pra todo mundo, só o envio do push respeita o toggle.
-    const DB_CHUNK_SIZE = 500;
-    for (let i = 0; i < uniqueUserIds.length; i += DB_CHUNK_SIZE) {
-      const chunk = uniqueUserIds.slice(i, i + DB_CHUNK_SIZE);
-      await prisma.userNotification.createMany({
-        data: chunk.map((userId) => ({
-          userId,
-          title: input.title,
-          body: input.body,
-          data: input.data ?? undefined
-        }))
-      });
-    }
+    // Frente 2 (segunda camada), Lote 2: o restante do corpo fica protegido
+    // por um try/catch — sendToUsers é chamada em vários pontos como
+    // "void notificationService.sendToUsers(...)", sem nenhum tratamento de
+    // erro no lugar que chama. Se ela lançar, isso derruba o processo
+    // inteiro pra todos os usuários (política de unhandledRejection em
+    // server.ts). Notificação é best-effort por natureza — mesmo espírito
+    // de emitNewBookingMessage/emitNewConsultancyMessage em socket.ts, que
+    // já documentam "nunca lança erro". Protegendo aqui, na origem, todo
+    // chamador (atual ou futuro) fica seguro automaticamente, sem depender
+    // de lembrar de tratar erro em cada ponto que chama.
+    try {
+      // Épico de Frentes, Frente 10, Lote 3: a preferência filtrava ANTES de
+      // criar a UserNotification - desligar uma categoria (ex: SYSTEM) fazia
+      // resposta de suporte, suspensão e reativação de conta desaparecerem
+      // por completo, nem ficavam na central/badge. A preferência deveria
+      // controlar só o push, não o histórico de notificações - registro
+      // sempre é criado pra todo mundo, só o envio do push respeita o toggle.
+      const DB_CHUNK_SIZE = 500;
+      for (let i = 0; i < uniqueUserIds.length; i += DB_CHUNK_SIZE) {
+        const chunk = uniqueUserIds.slice(i, i + DB_CHUNK_SIZE);
+        await prisma.userNotification.createMany({
+          data: chunk.map((userId) => ({
+            userId,
+            title: input.title,
+            body: input.body,
+            data: input.data ?? undefined
+          }))
+        });
+      }
 
-    let targetUserIds = uniqueUserIds;
-    if (input.preferenceType) {
-      const savedPreferences = await prisma.notificationPreference.findMany({
+      let targetUserIds = uniqueUserIds;
+      if (input.preferenceType) {
+        const savedPreferences = await prisma.notificationPreference.findMany({
+          where: {
+            userId: { in: uniqueUserIds },
+            type: input.preferenceType
+          },
+          select: {
+            userId: true,
+            enabled: true
+          }
+        });
+        const disabledUserIds = new Set(
+          savedPreferences.filter((item) => !item.enabled).map((item) => item.userId)
+        );
+        targetUserIds = uniqueUserIds.filter((userId) => !disabledUserIds.has(userId));
+        if (targetUserIds.length === 0) {
+          return { attempted: 0, delivered: 0, deactivated: 0, disabled: false };
+        }
+      }
+
+      if (!env.PUSH_NOTIFICATIONS_ENABLED || env.NODE_ENV === "test") {
+        return { attempted: 0, delivered: 0, deactivated: 0, disabled: true };
+      }
+
+      const devices = await prisma.pushDevice.findMany({
         where: {
-          userId: { in: uniqueUserIds },
-          type: input.preferenceType
+          userId: { in: targetUserIds },
+          isActive: true
         },
         select: {
-          userId: true,
-          enabled: true
+          token: true
         }
       });
-      const disabledUserIds = new Set(
-        savedPreferences.filter((item) => !item.enabled).map((item) => item.userId)
-      );
-      targetUserIds = uniqueUserIds.filter((userId) => !disabledUserIds.has(userId));
-      if (targetUserIds.length === 0) {
+
+      if (!devices.length) {
         return { attempted: 0, delivered: 0, deactivated: 0, disabled: false };
       }
-    }
 
-    if (!env.PUSH_NOTIFICATIONS_ENABLED || env.NODE_ENV === "test") {
-      return { attempted: 0, delivered: 0, deactivated: 0, disabled: true };
-    }
+      const messages = devices.map((device) => ({
+        to: device.token,
+        sound: "default",
+        priority: "high",
+        title: input.title,
+        body: input.body,
+        data: asStringData(input.data)
+      }));
 
-    const devices = await prisma.pushDevice.findMany({
-      where: {
-        userId: { in: targetUserIds },
-        isActive: true
-      },
-      select: {
-        token: true
-      }
-    });
+      let delivered = 0;
+      const invalidTokens = new Set<string>();
+      const messageChunks = chunk(messages, EXPO_PUSH_CHUNK_SIZE);
 
-    if (!devices.length) {
-      return { attempted: 0, delivered: 0, deactivated: 0, disabled: false };
-    }
-
-    const messages = devices.map((device) => ({
-      to: device.token,
-      sound: "default",
-      priority: "high",
-      title: input.title,
-      body: input.body,
-      data: asStringData(input.data)
-    }));
-
-    let delivered = 0;
-    const invalidTokens = new Set<string>();
-    const messageChunks = chunk(messages, EXPO_PUSH_CHUNK_SIZE);
-
-    for (const currentChunk of messageChunks) {
-      const result = await this.deliverChunk(currentChunk);
-      if (result.failed) {
-        // Enqueue for retry — will be processed by the notification retry job
-        await prisma.pushNotificationQueue.create({
-          data: {
-            messages: currentChunk,
-            lastError: result.lastError
-          }
-        }).catch((enqueueError) => {
-          console.error("Failed to enqueue notification for retry:", enqueueError);
-        });
-      } else {
-        delivered += result.delivered;
-        for (const token of result.invalidTokens) {
-          invalidTokens.add(token);
-        }
-        // Épico de Frentes, Frente 9, Lote 18: mensagens com erro individual
-        // de rate-limit do Expo (MessageRateExceeded) eram só logadas e
-        // descartadas - iam pra fila de retry só quando o chunk inteiro
-        // falhava (erro de rede/HTTP), nunca quando o Expo aceitava a
-        // requisição mas rejeitava mensagens específicas por excesso de taxa.
-        if (result.rateLimitedMessages.length > 0) {
+      for (const currentChunk of messageChunks) {
+        const result = await this.deliverChunk(currentChunk);
+        if (result.failed) {
+          // Enqueue for retry — will be processed by the notification retry job
           await prisma.pushNotificationQueue.create({
             data: {
-              messages: result.rateLimitedMessages,
-              lastError: "MessageRateExceeded"
+              messages: currentChunk,
+              lastError: result.lastError
             }
           }).catch((enqueueError) => {
-            console.error("Failed to enqueue rate-limited notifications for retry:", enqueueError);
+            console.error("Failed to enqueue notification for retry:", enqueueError);
           });
+        } else {
+          delivered += result.delivered;
+          for (const token of result.invalidTokens) {
+            invalidTokens.add(token);
+          }
+          // Épico de Frentes, Frente 9, Lote 18: mensagens com erro individual
+          // de rate-limit do Expo (MessageRateExceeded) eram só logadas e
+          // descartadas - iam pra fila de retry só quando o chunk inteiro
+          // falhava (erro de rede/HTTP), nunca quando o Expo aceitava a
+          // requisição mas rejeitava mensagens específicas por excesso de taxa.
+          if (result.rateLimitedMessages.length > 0) {
+            await prisma.pushNotificationQueue.create({
+              data: {
+                messages: result.rateLimitedMessages,
+                lastError: "MessageRateExceeded"
+              }
+            }).catch((enqueueError) => {
+              console.error("Failed to enqueue rate-limited notifications for retry:", enqueueError);
+            });
+          }
         }
       }
-    }
 
-    if (invalidTokens.size > 0) {
-      await prisma.pushDevice.updateMany({
-        where: {
-          token: { in: [...invalidTokens] }
-        },
-        data: {
-          isActive: false,
-          invalidAt: new Date()
-        }
-      });
-    }
+      if (invalidTokens.size > 0) {
+        await prisma.pushDevice.updateMany({
+          where: {
+            token: { in: [...invalidTokens] }
+          },
+          data: {
+            isActive: false,
+            invalidAt: new Date()
+          }
+        });
+      }
 
-    return {
-      attempted: messages.length,
-      delivered,
-      deactivated: invalidTokens.size,
-      disabled: false
-    };
+      return {
+        attempted: messages.length,
+        delivered,
+        deactivated: invalidTokens.size,
+        disabled: false
+      };
+    } catch (error) {
+      console.error("[notifications] Falha ao enviar notificação para usuários:", error);
+      Sentry.captureException(error, { tags: { area: "notifications" }, extra: { userCount: uniqueUserIds.length } });
+      return { attempted: 0, delivered: 0, deactivated: 0, disabled: false };
+    }
   }
 
   private async deliverChunk(messages: ExpoMessage[]): Promise<{
@@ -458,10 +475,26 @@ export class NotificationService {
             const newAttempts = entry.attempts + 1;
             const delaySeconds = RETRY_DELAY_SECONDS[newAttempts] ?? RETRY_DELAY_SECONDS[RETRY_DELAY_SECONDS.length - 1]!;
             const nextRetryAt = new Date(now.getTime() + delaySeconds * 1000);
+            const exhausted = newAttempts >= MAX_RETRY_ATTEMPTS;
             await prisma.pushNotificationQueue.update({
               where: { id: entry.id },
-              data: { attempts: newAttempts, nextRetryAt, lastError: result.lastError, failedAt: newAttempts >= MAX_RETRY_ATTEMPTS ? now : null }
+              data: { attempts: newAttempts, nextRetryAt, lastError: result.lastError, failedAt: exhausted ? now : null }
             });
+            // Frente 2 (segunda camada), Lote 8: gêmeo estrutural do bug já
+            // corrigido em email-queue.service.ts (Frente 9, Lote 12) — item
+            // que esgotava as tentativas ficava marcado como falho sem
+            // gerar nenhum alerta, só descoberto no expurgo tardio de
+            // dispositivos inativos (purgeStaleDevices). Sem isso, uma
+            // EXPO_PUSH_ACCESS_TOKEN expirada ou revogada esgota a fila
+            // inteira de push (lembrete de sessão, chat, resolução de
+            // disputa) sem que ninguém seja avisado.
+            if (exhausted) {
+              Sentry.captureMessage(`Push notification esgotou tentativas de retry: ${result.lastError ?? "erro desconhecido"}`, {
+                level: "error",
+                tags: { area: "notifications" },
+                extra: { queueId: entry.id, attempts: newAttempts }
+              });
+            }
           } else {
             if (result.invalidTokens.length > 0) {
               await prisma.pushDevice.updateMany({
@@ -475,6 +508,7 @@ export class NotificationService {
               const newAttempts = entry.attempts + 1;
               const delaySeconds = RETRY_DELAY_SECONDS[newAttempts] ?? RETRY_DELAY_SECONDS[RETRY_DELAY_SECONDS.length - 1]!;
               const nextRetryAt = new Date(now.getTime() + delaySeconds * 1000);
+              const exhausted = newAttempts >= MAX_RETRY_ATTEMPTS;
               await prisma.pushNotificationQueue.update({
                 where: { id: entry.id },
                 data: {
@@ -482,9 +516,16 @@ export class NotificationService {
                   attempts: newAttempts,
                   nextRetryAt,
                   lastError: "MessageRateExceeded",
-                  failedAt: newAttempts >= MAX_RETRY_ATTEMPTS ? now : null
+                  failedAt: exhausted ? now : null
                 }
               });
+              if (exhausted) {
+                Sentry.captureMessage("Push notification esgotou tentativas de retry: MessageRateExceeded", {
+                  level: "error",
+                  tags: { area: "notifications" },
+                  extra: { queueId: entry.id, attempts: newAttempts }
+                });
+              }
             } else {
               await prisma.pushNotificationQueue.delete({ where: { id: entry.id } });
             }

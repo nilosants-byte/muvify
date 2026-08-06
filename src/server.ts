@@ -99,6 +99,19 @@ async function bootstrap() {
     );
   }
 
+  // Frente 2 (segunda camada), Lote 8: SENTRY_DSN ausente em produção fazia
+  // initSentry() virar no-op silencioso — nenhum Sentry.captureException
+  // do sistema inteiro (inclusive os que outras frentes acabaram de
+  // corrigir) chegava a algum lugar, e ninguém percebia até precisar
+  // debugar um incidente e descobrir que o Sentry está vazio há semanas.
+  // Não dá pra usar Sentry.captureMessage aqui pra avisar sobre a própria
+  // ausência do Sentry — só um log visível nos logs do processo mesmo.
+  if (env.NODE_ENV === "production" && !process.env.SENTRY_DSN) {
+    console.error(
+      "[Sentry] SENTRY_DSN nao configurado em producao - nenhum erro sera reportado ao Sentry."
+    );
+  }
+
   // Épico de Frentes, Frente 9, Lote 12: SMTP totalmente ausente em
   // produção pulava a verificação de boot em silêncio (o if abaixo nem
   // entra), e todo envio subsequente falhava sem nenhum aviso visível -

@@ -873,6 +873,12 @@ model Payment {
   refundedAmountCents Int?
   failureReason       String?
   attempts            Int           @default(0)
+  // Frente 2 (segunda camada), Lote 5: trava atômica auto-expirável (mesmo
+  // idioma de ConsultancyContract.renewalDeliveryLockedAt/DisputeCase.
+  // resolvingLockedAt) contra duplo toque em cancelar/capturar disparando
+  // duas chamadas concorrentes de cancelamento/captura/estorno pro mesmo
+  // pagamento. Expira sozinha em 30s caso o processo caia no meio.
+  mutationLockedAt    DateTime?
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   booking             Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
@@ -1166,6 +1172,12 @@ model PresentialPackage {
   pendingChargePixCopyPasteCode String?
   pendingChargePixExpiresAt     DateTime?
 
+  // Frente 2 (segunda camada), Lote 5: mesmo idioma de
+  // ConsultancyContract.renewalDeliveryLockedAt — trava atômica
+  // auto-expirável contra duplo toque em cancelar disparando dois
+  // estornos concorrentes pro mesmo ciclo. Expira sozinha em 30s.
+  cancelLockedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1383,6 +1395,11 @@ model ConsultancyContract {
   // conexões do Prisma: quem pede e quem libera podem cair em conexões
   // diferentes). Expira sozinha em 30s caso o processo caia no meio.
   renewalDeliveryLockedAt DateTime?
+  // Frente 2 (segunda camada), Lote 5: mesmo idioma de
+  // renewalDeliveryLockedAt acima, mas pro fluxo de cancelamento — trava
+  // separada porque cancelamento e entrega de renovação são ações
+  // diferentes que não devem disputar a mesma trava.
+  cancelLockedAt          DateTime?
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   request                 ConsultancyRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)

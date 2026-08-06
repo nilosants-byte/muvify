@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
@@ -67,7 +68,10 @@ export function startDataRetentionJob() {
           `Data retention job paused: database unavailable (${error.code}). Next retry in ${Math.ceil(backoffMs / 1000)}s.`
         );
       } else {
+        // Frente 2 (segunda camada), Lote 8: mesmo padrão já usado em
+        // reminder.job.ts/payment-jobs.ts (Frente 9, Lote 14).
         console.error("[DATA_RETENTION] failed:", error);
+        Sentry.captureException(error, { tags: { area: "data-retention-job" } });
       }
     } finally {
       if (lockAcquired) {

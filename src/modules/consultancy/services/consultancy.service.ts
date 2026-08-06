@@ -1435,6 +1435,10 @@ export class ConsultancyService {
 
   async listProviderPlansByUser(userId: string) {
     const provider = await this.providerProfileByUserId(userId);
+    // Frente 2 (segunda camada), Lote 6: rede de segurança contra
+    // crescimento sem limite (mesmo padrão já usado em financial.service.ts)
+    // — sem isso, um profissional com anos de uso acumula centenas de
+    // fichas (cada renovação cria uma nova) e essa tela cresce pra sempre.
     return prisma.trainingPlan.findMany({
       where: { providerId: provider.id },
       include: {
@@ -1443,7 +1447,8 @@ export class ConsultancyService {
           include: { exercise: true }
         }
       },
-      orderBy: [{ isPrebuilt: "desc" }, { updatedAt: "desc" }]
+      orderBy: [{ isPrebuilt: "desc" }, { updatedAt: "desc" }],
+      take: 2000
     });
   }
 
@@ -2453,38 +2458,6 @@ export class ConsultancyService {
       planValidUntil = parsed;
     }
 
-    // Se for a primeira entrega e o pagamento ainda estiver só reservado no
-    // cartão (capture:false), captura AGORA, antes de salvar qualquer coisa.
-    // Se a captura falhar, a entrega inteira falha e o profissional pode
-    // tentar de novo — em vez de marcar como entregue sem o pagamento ter
-    // sido efetivado de verdade (o que exigiria um job de retry separado
-    // e espalharia essa distinção por mais telas do que o necessário).
-    const shouldCaptureNow =
-      isFirstDelivery &&
-      contract.paymentStatus === ConsultancyPaymentStatus.AUTHORIZED &&
-      Boolean(contract.mpPaymentId);
-    if (shouldCaptureNow) {
-      try {
-        const mpPay = await mpPaymentClient.capture({
-          id: contract.mpPaymentId!,
-          transaction_amount: contract.paymentAmountCents / 100
-        });
-        // Raio-X de pagamentos, Rodada 5, Lote 3: a MP pode responder 200
-        // com um status que não é approved (hold expirado, captura
-        // recusada) - o retorno era descartado e a entrega seguia como se
-        // o pagamento tivesse sido efetivado de verdade.
-        if (mpPay.status !== "approved") {
-          throw new Error(`status inesperado: ${mpPay.status} / ${mpPay.status_detail}`);
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "erro desconhecido";
-        throw new AppError(
-          `Não foi possível confirmar o pagamento reservado pra liberar a entrega. Tente novamente em instantes. (${message})`,
-          StatusCodes.BAD_REQUEST
-        );
-      }
-    }
-
     // Frente B (liberdade de ofertas): a partir da 2a ficha, cada entrega
     // cobra de novo (mesmo valor combinado na assinatura) - sem ficha nova,
     // sem cobranca nova. Cobra ANTES de salvar (fail-loud, mesmo principio
@@ -2503,25 +2476,64 @@ export class ConsultancyService {
     // sozinha em 30s (nunca prende o contrato pra sempre se o processo
     // cair no meio). Entregas sequenciais normais nunca disputam a trava,
     // porque a anterior já libera antes da próxima começar.
-    if (!isFirstDelivery) {
-      const staleThreshold = new Date(now.getTime() - 30_000);
-      const claimed = await prisma.consultancyContract.updateMany({
-        where: {
-          id: contract.id,
-          OR: [{ renewalDeliveryLockedAt: null }, { renewalDeliveryLockedAt: { lt: staleThreshold } }]
-        },
-        data: { renewalDeliveryLockedAt: now }
-      });
-      if (claimed.count === 0) {
-        throw new AppError(
-          "Já existe uma entrega em andamento para este contrato. Aguarde alguns segundos e tente novamente.",
-          StatusCodes.CONFLICT
-        );
-      }
+    //
+    // Frente 2 (segunda camada), Lote 5: a trava passou a valer também pra
+    // PRIMEIRA entrega — antes só cobria renovação, deixando a captura do
+    // pagamento reservado (shouldCaptureNow, logo abaixo) sem nenhuma
+    // proteção contra duplo toque no botão "entregar treino".
+    const staleThreshold = new Date(now.getTime() - 30_000);
+    const claimed = await prisma.consultancyContract.updateMany({
+      where: {
+        id: contract.id,
+        OR: [{ renewalDeliveryLockedAt: null }, { renewalDeliveryLockedAt: { lt: staleThreshold } }]
+      },
+      data: { renewalDeliveryLockedAt: now }
+    });
+    if (claimed.count === 0) {
+      throw new AppError(
+        "Já existe uma entrega em andamento para este contrato. Aguarde alguns segundos e tente novamente.",
+        StatusCodes.CONFLICT
+      );
     }
 
     let result: { plan: Awaited<ReturnType<typeof prisma.trainingPlan.create>>; contract: Prisma.ConsultancyContractGetPayload<{ include: { offer: true } }> };
     try {
+      // Se for a primeira entrega e o pagamento ainda estiver só reservado no
+      // cartão (capture:false), captura AGORA, antes de salvar qualquer coisa.
+      // Se a captura falhar, a entrega inteira falha e o profissional pode
+      // tentar de novo — em vez de marcar como entregue sem o pagamento ter
+      // sido efetivado de verdade (o que exigiria um job de retry separado
+      // e espalharia essa distinção por mais telas do que o necessário).
+      const shouldCaptureNow =
+        isFirstDelivery &&
+        contract.paymentStatus === ConsultancyPaymentStatus.AUTHORIZED &&
+        Boolean(contract.mpPaymentId);
+      if (shouldCaptureNow) {
+        try {
+          const mpPay = await mpPaymentClient.capture({
+            id: contract.mpPaymentId!,
+            transaction_amount: contract.paymentAmountCents / 100,
+            // Frente 2 (segunda camada), Lote 4: chave estável por
+            // contrato — qualquer retry desta mesma captura deve colidir
+            // com a mesma operação na MP, nunca capturar duas vezes.
+            requestOptions: { idempotencyKey: `consultancy:${contract.id}:capture` }
+          });
+          // Raio-X de pagamentos, Rodada 5, Lote 3: a MP pode responder 200
+          // com um status que não é approved (hold expirado, captura
+          // recusada) - o retorno era descartado e a entrega seguia como se
+          // o pagamento tivesse sido efetivado de verdade.
+          if (mpPay.status !== "approved") {
+            throw new Error(`status inesperado: ${mpPay.status} / ${mpPay.status_detail}`);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "erro desconhecido";
+          throw new AppError(
+            `Não foi possível confirmar o pagamento reservado pra liberar a entrega. Tente novamente em instantes. (${message})`,
+            StatusCodes.BAD_REQUEST
+          );
+        }
+      }
+
       if (!isFirstDelivery) {
         // Raio-X de pagamentos, Rodada 2, Lote 4 (movido pra dentro da trava
         // na Rodada 3, Lote 6): sem essa checagem, o profissional podia
@@ -2623,11 +2635,9 @@ export class ConsultancyService {
         };
       });
     } finally {
-      if (!isFirstDelivery) {
-        await prisma.consultancyContract
-          .update({ where: { id: contract.id }, data: { renewalDeliveryLockedAt: null } })
-          .catch((error) => console.error("Falha ao liberar trava de entrega de renovação:", error));
-      }
+      await prisma.consultancyContract
+        .updateMany({ where: { id: contract.id }, data: { renewalDeliveryLockedAt: null } })
+        .catch((error) => console.error("Falha ao liberar trava de entrega de renovação:", error));
     }
 
     const planValidUntilLabel = planValidUntil.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
@@ -2771,7 +2781,13 @@ export class ConsultancyService {
           orderBy: { createdAt: "desc" }
         }
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      // Frente 2 (segunda camada), Lote 6: rede de segurança contra
+      // crescimento sem limite (mesmo padrão já usado em
+      // financial.service.ts) — esta é a tela "Meu Treino", uma das mais
+      // abertas pelo aluno, e inclui histórico completo (contratos
+      // cancelados/expirados continuam aparecendo de propósito).
+      take: 2000
     });
 
     const now = new Date();
@@ -3005,124 +3021,156 @@ export class ConsultancyService {
       throw new AppError("Este contrato não pode mais ser cancelado.", StatusCodes.BAD_REQUEST);
     }
 
-    // Frente B (liberdade de ofertas): depois da primeira ficha entregue, a
-    // consultoria vira uma relacao continua (cada ficha nova cobra na hora
-    // que e entregue - ver deliverContract) - nao ha mais nenhum valor
-    // reservado ou prepago pra devolver, entao encerrar aqui e so isso:
-    // para de valer, sem nenhuma acao financeira (cada ficha ja recebida
-    // ja foi paga de forma justa, uma a uma).
-    if (contract.deliveredAt) {
-      const ended = await prisma.consultancyContract.update({
+    // Frente 2 (segunda camada), Lote 5: trava atômica auto-expirável (mesmo
+    // idioma de renewalDeliveryLockedAt acima) contra duplo toque em
+    // "cancelar consultoria" disparando duas chamadas concorrentes de
+    // estorno/cancelamento pro mesmo contrato. Expira sozinha em 30s.
+    const cancelStaleThreshold = new Date(Date.now() - 30_000);
+    const cancelClaimed = await prisma.consultancyContract.updateMany({
+      where: {
+        id: contract.id,
+        OR: [{ cancelLockedAt: null }, { cancelLockedAt: { lt: cancelStaleThreshold } }]
+      },
+      data: { cancelLockedAt: new Date() }
+    });
+    if (cancelClaimed.count === 0) {
+      throw new AppError(
+        "Este contrato já está sendo cancelado. Aguarde alguns segundos e tente novamente.",
+        StatusCodes.CONFLICT
+      );
+    }
+
+    try {
+      // Frente B (liberdade de ofertas): depois da primeira ficha entregue, a
+      // consultoria vira uma relacao continua (cada ficha nova cobra na hora
+      // que e entregue - ver deliverContract) - nao ha mais nenhum valor
+      // reservado ou prepago pra devolver, entao encerrar aqui e so isso:
+      // para de valer, sem nenhuma acao financeira (cada ficha ja recebida
+      // ja foi paga de forma justa, uma a uma).
+      if (contract.deliveredAt) {
+        const ended = await prisma.consultancyContract.update({
+          where: { id: contract.id },
+          data: { status: ConsultancyContractStatus.CANCELLED }
+        });
+
+        if (!isProvider) {
+          void notificationService.sendToUsers([contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: "Consultoria encerrada pelo aluno",
+            body: "O aluno encerrou a consultoria em andamento. Nenhuma ficha nova será cobrada.",
+            data: { type: "CONSULTANCY_ENDED_BY_CLIENT", contractId: contract.id }
+          });
+        }
+        void notificationService.sendToUsers([contract.clientId], {
+          preferenceType: "CONSULTANCY",
+          title: "Consultoria encerrada",
+          body: isProvider
+            ? "Seu profissional encerrou a consultoria em andamento. Nenhuma ficha nova será cobrada."
+            : "Sua consultoria foi encerrada. As fichas já recebidas continuam disponíveis em Seu Treino.",
+          data: { type: "CONSULTANCY_ENDED_BY_CLIENT", contractId: contract.id }
+        });
+
+        return ended;
+      }
+
+      // Cartão (AUTHORIZED): a reserva nunca chegou a ser cobrada — só precisa
+      // ser liberada. PIX/débito (CAPTURED): o valor já foi cobrado de verdade,
+      // precisa de estorno de fato.
+      const isHoldOnly = contract.paymentStatus === ConsultancyPaymentStatus.AUTHORIZED;
+
+      let gatewaySucceeded = true;
+      let mpRefundId: string | null = null;
+
+      if (contract.mpPaymentId) {
+        try {
+          if (isHoldOnly) {
+            await mpPaymentClient.cancel({
+              id: contract.mpPaymentId,
+              requestOptions: { idempotencyKey: `consultancy:${contract.id}:cancel` }
+            });
+          } else {
+            const refund = await mpRefundClient.create({
+              payment_id: contract.mpPaymentId,
+              body: {},
+              requestOptions: { idempotencyKey: `consultancy:${contract.id}:refund` }
+            });
+            mpRefundId = String(refund.id);
+          }
+        } catch (error) {
+          console.error(
+            isHoldOnly ? "Consultancy client cancel hold failed (MP error):" : "Consultancy client cancel refund failed (MP error):",
+            { contractId: contract.id, error }
+          );
+          if (!isHoldOnly) {
+            Sentry.captureException(error, { tags: { area: "consultancy" }, extra: { contractId: contract.id, phase: "client_cancel_refund_failed" } });
+          }
+          gatewaySucceeded = false;
+          // Falha ao liberar reserva não precisa de disputa (nada foi cobrado,
+          // a reserva expira sozinha em 5 dias) — só falha ao estornar dinheiro
+          // de verdade precisa de revisão manual.
+          if (!isHoldOnly) {
+            await prisma.disputeCase.create({
+              data: {
+                type: "REFUND_FAILED",
+                clientId: contract.clientId,
+                providerId: contract.providerId,
+                amountCents: contract.paymentAmountCents,
+                mpPaymentId: contract.mpPaymentId,
+                consultancyContractId: contract.id,
+                contextNote: "Reembolso automático falhou ao cancelar consultoria pelo aluno antes da entrega."
+              }
+            });
+          }
+        }
+      }
+
+      const updated = await prisma.consultancyContract.update({
         where: { id: contract.id },
-        data: { status: ConsultancyContractStatus.CANCELLED }
+        data: {
+          status: ConsultancyContractStatus.CANCELLED,
+          paymentStatus: isHoldOnly
+            ? ConsultancyPaymentStatus.CANCELED
+            : gatewaySucceeded
+              ? ConsultancyPaymentStatus.REFUNDED
+              : ConsultancyPaymentStatus.CAPTURED,
+          refundedAt: !isHoldOnly && gatewaySucceeded ? new Date() : null,
+          paymentCanceledAt: isHoldOnly ? new Date() : null,
+          mpRefundId,
+          refundReason: isHoldOnly
+            ? "Cancelado pelo aluno antes da entrega. Reserva liberada, nunca chegou a ser cobrada."
+            : gatewaySucceeded
+              ? "Cancelado pelo aluno antes da entrega da primeira ficha."
+              : "Cancelado pelo aluno antes da entrega. Reembolso via gateway falhou — pendente revisao manual."
+        }
       });
 
       if (!isProvider) {
         void notificationService.sendToUsers([contract.provider.userId], {
           preferenceType: "CONSULTANCY",
-          title: "Consultoria encerrada pelo aluno",
-          body: "O aluno encerrou a consultoria em andamento. Nenhuma ficha nova será cobrada.",
-          data: { type: "CONSULTANCY_ENDED_BY_CLIENT", contractId: contract.id }
+          title: "Consultoria cancelada pelo aluno",
+          body: "O aluno cancelou a consultoria antes da entrega da primeira ficha.",
+          data: { type: "CONSULTANCY_CANCELLED_BY_CLIENT", contractId: contract.id }
         });
       }
       void notificationService.sendToUsers([contract.clientId], {
         preferenceType: "CONSULTANCY",
-        title: "Consultoria encerrada",
+        title: "Consultoria cancelada",
         body: isProvider
-          ? "Seu profissional encerrou a consultoria em andamento. Nenhuma ficha nova será cobrada."
-          : "Sua consultoria foi encerrada. As fichas já recebidas continuam disponíveis em Seu Treino.",
-        data: { type: "CONSULTANCY_ENDED_BY_CLIENT", contractId: contract.id }
-      });
-
-      return ended;
-    }
-
-    // Cartão (AUTHORIZED): a reserva nunca chegou a ser cobrada — só precisa
-    // ser liberada. PIX/débito (CAPTURED): o valor já foi cobrado de verdade,
-    // precisa de estorno de fato.
-    const isHoldOnly = contract.paymentStatus === ConsultancyPaymentStatus.AUTHORIZED;
-
-    let gatewaySucceeded = true;
-    let mpRefundId: string | null = null;
-
-    if (contract.mpPaymentId) {
-      try {
-        if (isHoldOnly) {
-          await mpPaymentClient.cancel({ id: contract.mpPaymentId });
-        } else {
-          const refund = await mpRefundClient.create({ payment_id: contract.mpPaymentId, body: {} });
-          mpRefundId = String(refund.id);
-        }
-      } catch (error) {
-        console.error(
-          isHoldOnly ? "Consultancy client cancel hold failed (MP error):" : "Consultancy client cancel refund failed (MP error):",
-          { contractId: contract.id, error }
-        );
-        if (!isHoldOnly) {
-          Sentry.captureException(error, { tags: { area: "consultancy" }, extra: { contractId: contract.id, phase: "client_cancel_refund_failed" } });
-        }
-        gatewaySucceeded = false;
-        // Falha ao liberar reserva não precisa de disputa (nada foi cobrado,
-        // a reserva expira sozinha em 5 dias) — só falha ao estornar dinheiro
-        // de verdade precisa de revisão manual.
-        if (!isHoldOnly) {
-          await prisma.disputeCase.create({
-            data: {
-              type: "REFUND_FAILED",
-              clientId: contract.clientId,
-              providerId: contract.providerId,
-              amountCents: contract.paymentAmountCents,
-              mpPaymentId: contract.mpPaymentId,
-              consultancyContractId: contract.id,
-              contextNote: "Reembolso automático falhou ao cancelar consultoria pelo aluno antes da entrega."
-            }
-          });
-        }
-      }
-    }
-
-    const updated = await prisma.consultancyContract.update({
-      where: { id: contract.id },
-      data: {
-        status: ConsultancyContractStatus.CANCELLED,
-        paymentStatus: isHoldOnly
-          ? ConsultancyPaymentStatus.CANCELED
-          : gatewaySucceeded
-            ? ConsultancyPaymentStatus.REFUNDED
-            : ConsultancyPaymentStatus.CAPTURED,
-        refundedAt: !isHoldOnly && gatewaySucceeded ? new Date() : null,
-        paymentCanceledAt: isHoldOnly ? new Date() : null,
-        mpRefundId,
-        refundReason: isHoldOnly
-          ? "Cancelado pelo aluno antes da entrega. Reserva liberada, nunca chegou a ser cobrada."
-          : gatewaySucceeded
-            ? "Cancelado pelo aluno antes da entrega da primeira ficha."
-            : "Cancelado pelo aluno antes da entrega. Reembolso via gateway falhou — pendente revisao manual."
-      }
-    });
-
-    if (!isProvider) {
-      void notificationService.sendToUsers([contract.provider.userId], {
-        preferenceType: "CONSULTANCY",
-        title: "Consultoria cancelada pelo aluno",
-        body: "O aluno cancelou a consultoria antes da entrega da primeira ficha.",
+          ? "Seu profissional cancelou esta consultoria. Qualquer valor já cobrado será estornado."
+          : isHoldOnly
+            ? "Sua consultoria foi cancelada. O valor reservado no cartão nunca chegou a ser cobrado."
+            : gatewaySucceeded
+              ? "Sua consultoria foi cancelada e o valor foi estornado."
+              : "Sua consultoria foi cancelada. Houve uma falha ao processar o reembolso — nossa equipe já foi avisada e vai resolver manualmente.",
         data: { type: "CONSULTANCY_CANCELLED_BY_CLIENT", contractId: contract.id }
       });
-    }
-    void notificationService.sendToUsers([contract.clientId], {
-      preferenceType: "CONSULTANCY",
-      title: "Consultoria cancelada",
-      body: isProvider
-        ? "Seu profissional cancelou esta consultoria. Qualquer valor já cobrado será estornado."
-        : isHoldOnly
-          ? "Sua consultoria foi cancelada. O valor reservado no cartão nunca chegou a ser cobrado."
-          : gatewaySucceeded
-            ? "Sua consultoria foi cancelada e o valor foi estornado."
-            : "Sua consultoria foi cancelada. Houve uma falha ao processar o reembolso — nossa equipe já foi avisada e vai resolver manualmente.",
-      data: { type: "CONSULTANCY_CANCELLED_BY_CLIENT", contractId: contract.id }
-    });
 
-    return updated;
+      return updated;
+    } finally {
+      await prisma.consultancyContract
+        .updateMany({ where: { id: contract.id }, data: { cancelLockedAt: null } })
+        .catch((error) => console.error("Falha ao liberar trava de cancelamento de consultoria:", error));
+    }
   }
 
   // Raio-X de pagamentos, Rodada 4, Lote 10: só existia o aviso de quando o
@@ -3389,7 +3437,12 @@ export class ConsultancyService {
             provider: { select: { userId: true } }
           }
         }
-      }
+      },
+      // Frente 2 (segunda camada), Lote 7: faltava aqui o mesmo `take`
+      // que as funções irmãs deste arquivo já usam — sem ele, esse job
+      // (roda a cada REMINDER_JOB_INTERVAL_SECONDS, ~60s por padrão) fica
+      // mais lento a cada tick conforme a base de fichas cresce, sem teto.
+      take: 200
     });
 
     for (const plan of approaching) {
@@ -3431,7 +3484,8 @@ export class ConsultancyService {
         id: true,
         createdAt: true,
         contract: { select: { id: true, status: true, clientId: true, provider: { select: { userId: true } } } }
-      }
+      },
+      take: 200
     });
 
     for (const plan of expired) {
@@ -3491,7 +3545,10 @@ export class ConsultancyService {
             provider: { select: { userId: true } }
           }
         }
-      }
+      },
+      // Frente 2 (segunda camada), Lote 7: mesma rede de segurança das
+      // funções irmãs deste arquivo — este job também roda a cada ~60s.
+      take: 200
     });
 
     for (const plan of stale) {
@@ -3612,9 +3669,20 @@ export class ConsultancyService {
       if (contract.mpPaymentId) {
         try {
           if (isHoldOnly) {
-            await mpPaymentClient.cancel({ id: contract.mpPaymentId });
+            await mpPaymentClient.cancel({
+              id: contract.mpPaymentId,
+              // Frente 2 (segunda camada), Lote 4: chave estável por
+              // contrato — se o job rodar de novo pro mesmo contrato antes
+              // do status mudar (ex.: falha após o cancelamento mas antes
+              // de gravar no banco), não duplica a chamada no gateway.
+              requestOptions: { idempotencyKey: `consultancy:${contract.id}:cancel` }
+            });
           } else {
-            const refund = await mpRefundClient.create({ payment_id: contract.mpPaymentId, body: {} });
+            const refund = await mpRefundClient.create({
+              payment_id: contract.mpPaymentId,
+              body: {},
+              requestOptions: { idempotencyKey: `consultancy:${contract.id}:refund` }
+            });
             mpRefundId = String(refund.id);
           }
         } catch (error) {

@@ -5,6 +5,7 @@ import { prisma } from "../../../config/prisma";
 import { env } from "../../../config/env";
 import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
+import { EmailQueueService } from "../../../shared/services/email-queue.service";
 import { isAdminEmail } from "../../../shared/utils/admin-access";
 import { decryptSensitiveText, hashLookupValue } from "../../../shared/utils/encryption";
 import { resolveAccessTokenTtlSeconds, setTokenBlacklist } from "../../../shared/security/token-blacklist";
@@ -267,6 +268,7 @@ function decodeChatMessageCursor(cursor?: string | null) {
 
 export class AdminService {
   private emailService = new EmailService();
+  private emailQueueService = new EmailQueueService();
   private notificationService = new NotificationService();
   private dataRetentionService = new DataRetentionService();
   private userService = new UserService();
@@ -1199,16 +1201,20 @@ export class AdminService {
         console.error("Falha ao enviar notificacao de resposta de suporte:", error);
       });
 
+    // Frente 2 (segunda camada), Lote 9: fora da fila com retry — se o SMTP
+    // falhar nesse instante, o usuário nunca ficava sabendo que o chamado
+    // foi respondido. Passa a usar a mesma fila com retry automático já
+    // usada pelos outros e-mails.
     if (this.emailService.canSendEmail()) {
-      void this.emailService
-        .sendSupportReplyEmail({
+      await this.emailQueueService
+        .enqueueSupportReply({
           to: ticket.user.email,
           userName: ticket.user.name,
           subject: ticket.subject,
           responseMessage
         })
         .catch((error) => {
-          console.error("Falha ao enviar e-mail de resposta de suporte:", error);
+          console.error("Falha ao enfileirar e-mail de resposta de suporte:", error);
         });
     }
 

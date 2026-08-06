@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { prisma } from "../../../config/prisma";
 import { env } from "../../../config/env";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
@@ -308,7 +309,10 @@ export function startCommunityJobs() {
           `Community jobs paused: database unavailable. Next retry in ${Math.ceil(backoff / 1000)}s.`
         );
       } else {
+        // Frente 2 (segunda camada), Lote 8: mesmo padrão já usado em
+        // reminder.job.ts/payment-jobs.ts (Frente 9, Lote 14).
         console.error("Community jobs failed:", error);
+        Sentry.captureException(error, { tags: { area: "community-jobs" } });
       }
     } finally {
       if (lockAcquired) {

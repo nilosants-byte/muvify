@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { prisma } from "../../../config/prisma";
 import { checkAndUnlock, checkLevelAchievements } from "./achievement.service";
 import { recordTraining } from "./streak.service";
@@ -7,6 +8,15 @@ import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
 import { NotificationService } from "../../notifications/services/notification.service";
 
 const notificationService = new NotificationService();
+
+// Frente 2 (segunda camada), Lote 8: este arquivo não tinha nenhum import de
+// Sentry — as falhas de evento de gamificação abaixo só chegavam ao
+// console. Severidade baixa (XP/post automático não é crítico pro negócio),
+// mas ainda assim vale ter visibilidade real em vez de silêncio total.
+function reportGamificationFailure(context: string, error: unknown) {
+  console.error(`Gamification: ${context} failed`, error);
+  Sentry.captureException(error, { tags: { area: "gamification" }, extra: { context } });
+}
 
 // Épico de Frentes, Frente 8, Lote 8: o post automático de treino concluído
 // carrega providerName/providerPhotoUrl no metadata "para a collab UI no
@@ -67,20 +77,20 @@ export async function onWorkoutCompleted(
       await createAutoPost(clientId, "LEVEL_UP", {
         referenceId: `level_up:${newLevel.level}`,
         metadata: { newLevel: newLevel.level, levelName: newLevel.name, totalXp: newTotalXp },
-      }).catch((e) => console.error("Gamification: LEVEL_UP post failed", e));
-      await checkLevelAchievements(clientId).catch((e) => console.error("Gamification: checkLevelAchievements failed", e));
+      }).catch((e) => reportGamificationFailure("LEVEL_UP post", e));
+      await checkLevelAchievements(clientId).catch((e) => reportGamificationFailure("checkLevelAchievements", e));
     }
 
     if (milestoneHit && !alreadyTrainedToday) {
       await createAutoPost(clientId, "STREAK_MILESTONE", {
         metadata: { sessions: milestoneHit },
-      }).catch((e) => console.error("Gamification: STREAK_MILESTONE post failed", e));
+      }).catch((e) => reportGamificationFailure("STREAK_MILESTONE post", e));
       await onStreakMilestone(clientId, milestoneHit);
     }
     if (weekMilestoneHit && !alreadyTrainedToday) {
       await createAutoPost(clientId, "STREAK_MILESTONE", {
         metadata: { weeks: weekMilestoneHit },
-      }).catch((e) => console.error("Gamification: STREAK_MILESTONE (weeks) post failed", e));
+      }).catch((e) => reportGamificationFailure("STREAK_MILESTONE (weeks) post", e));
       await onWeekStreakMilestone(clientId, weekMilestoneHit);
     }
 
@@ -109,16 +119,16 @@ export async function onWorkoutCompleted(
     await createAutoPost(clientId, "WORKOUT_COMPLETED", {
       referenceId: bookingId,
       metadata: { type: "PRESENTIAL", ...providerMeta },
-    }).catch((e) => console.error("Gamification: WORKOUT_COMPLETED post failed", e));
+    }).catch((e) => reportGamificationFailure("WORKOUT_COMPLETED post", e));
     await notifyProviderOfWorkoutPost(bookingForPost?.provider?.userId, clientId);
 
     await checkAndUnlock(clientId, [
       "STREAK_SESSIONS",
       "TOTAL_WORKOUTS",
       "DISTINCT_PROVIDERS_TRAINED",
-    ]).catch((e) => console.error("Gamification: checkAndUnlock failed", e));
+    ]).catch((e) => reportGamificationFailure("checkAndUnlock", e));
   } catch (error) {
-    console.error("Gamification: onWorkoutCompleted failed", error);
+    reportGamificationFailure("onWorkoutCompleted", error);
   }
 }
 
@@ -195,7 +205,7 @@ export async function onTrainingPlanCompleted(
       "DISTINCT_PROVIDERS_TRAINED",
     ]);
   } catch (error) {
-    console.error("Gamification: onTrainingPlanCompleted failed", error);
+    reportGamificationFailure("onTrainingPlanCompleted", error);
   }
 }
 
@@ -205,7 +215,7 @@ export async function onReviewSubmitted(userId: string, reviewId: string): Promi
     await awardXp(userId, 15, "REVIEW_SUBMITTED", reviewId);
     await checkAndUnlock(userId, ["TOTAL_REVIEWS_SUBMITTED"]);
   } catch (error) {
-    console.error("Gamification: onReviewSubmitted failed", error);
+    reportGamificationFailure("onReviewSubmitted", error);
   }
 }
 
@@ -225,7 +235,7 @@ export async function onServicePurchased(clientId: string, referenceId: string):
 
     await awardXp(clientId, 25, "SERVICE_PURCHASED", referenceId);
   } catch (error) {
-    console.error("Gamification: onServicePurchased failed", error);
+    reportGamificationFailure("onServicePurchased", error);
   }
 }
 
@@ -253,7 +263,7 @@ export async function onStreakMilestone(userId: string, sessions: number): Promi
       preferenceType: "COMMUNITY",
     }).catch(() => { /* best effort */ });
   } catch (error) {
-    console.error("Gamification: onStreakMilestone failed", error);
+    reportGamificationFailure("onStreakMilestone", error);
   }
 }
 
@@ -288,7 +298,7 @@ export async function onWeekStreakMilestone(userId: string, weeks: number): Prom
       preferenceType: "COMMUNITY",
     }).catch(() => { /* best effort */ });
   } catch (error) {
-    console.error("Gamification: onWeekStreakMilestone failed", error);
+    reportGamificationFailure("onWeekStreakMilestone", error);
   }
 }
 
@@ -308,7 +318,7 @@ export async function onFirstBookingCompleted(clientId: string): Promise<void> {
 
     await awardXp(clientId, 50, "FIRST_BOOKING", clientId);
   } catch (error) {
-    console.error("Gamification: onFirstBookingCompleted failed", error);
+    reportGamificationFailure("onFirstBookingCompleted", error);
   }
 }
 
@@ -323,7 +333,7 @@ export async function onFirstConsultancyContracted(clientId: string): Promise<vo
 
     await awardXp(clientId, 50, "FIRST_CONSULTANCY", clientId);
   } catch (error) {
-    console.error("Gamification: onFirstConsultancyContracted failed", error);
+    reportGamificationFailure("onFirstConsultancyContracted", error);
   }
 }
 
@@ -339,7 +349,7 @@ export async function onEvery10BookingsCompleted(clientId: string): Promise<void
     // referenceId único por milestone garante idempotência com o @@unique constraint
     await awardXp(clientId, 40, "EVERY_10_BOOKINGS", `milestone_${milestoneNumber}`);
   } catch (error) {
-    console.error("Gamification: onEvery10BookingsCompleted failed", error);
+    reportGamificationFailure("onEvery10BookingsCompleted", error);
   }
 }
 

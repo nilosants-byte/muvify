@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { prisma } from "../../../config/prisma";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { NotificationService } from "../services/notification.service";
@@ -53,7 +54,10 @@ export function startNotificationRetryJob() {
           `Notification retry job paused: database unavailable (${error.code}). Next retry in ${Math.ceil(backoffMs / 1000)}s.`
         );
       } else {
+        // Frente 2 (segunda camada), Lote 8: mesmo padrão já usado em
+        // reminder.job.ts/payment-jobs.ts (Frente 9, Lote 14).
         console.error("Notification retry job failed:", error);
+        Sentry.captureException(error, { tags: { area: "notification-retry-job" } });
       }
     } finally {
       if (lockAcquired) {

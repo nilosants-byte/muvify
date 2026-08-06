@@ -7,6 +7,7 @@ import {
   UserRole
 } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
+import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { CURRENT_TERMS_VERSION } from "../../../config/legal";
 import { prisma } from "../../../config/prisma";
@@ -123,6 +124,16 @@ function checkImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
 // de { uri, ... } - a chave privada do R2 só é extraída quando uri começa
 // com "cref-documents/" (mesmo critério já usado em
 // provider.service.ts::upsertOwnCredentials pra validar propriedade).
+// Frente 2 (segunda camada), Lote 8: este arquivo não tinha nenhum import de
+// Sentry — falhas aqui (inclusive apagar mídia do R2 durante exclusão de
+// conta, o gap mais grave: o usuário recebe confirmação de "conta excluída"
+// mas o arquivo continua no R2 porque a chamada de deleção falhou em
+// silêncio) só chegavam ao console, nunca a um alerta de verdade.
+function reportR2CleanupFailure(context: string, error: unknown) {
+  console.error(`Falha ao apagar ${context} no R2 (exclusão de conta):`, error);
+  Sentry.captureException(error, { tags: { area: "users", phase: "account_deletion_r2_cleanup" }, extra: { context } });
+}
+
 function extractCredentialDocumentKeys(value: Prisma.JsonValue | null | undefined): string[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -1025,19 +1036,19 @@ export class UserService {
 
     await Promise.all([
       ...feedPostsToCleanup.map((p) =>
-        deleteMediaByUrl(p.imageUrl!).catch((e) => console.error("Falha ao apagar mídia de post no R2 (exclusão de conta)", e))
+        deleteMediaByUrl(p.imageUrl!).catch((e) => reportR2CleanupFailure("mídia de post", e))
       ),
       ...completionEvidencesToCleanup.map((c) =>
-        deletePrivateObject(c.storageKey!).catch((e) => console.error("Falha ao apagar comprovação de presença no R2 (exclusão de conta)", e))
+        deletePrivateObject(c.storageKey!).catch((e) => reportR2CleanupFailure("comprovação de presença", e))
       ),
-      ...(providerMediaToCleanup?.photoUrl ? [deleteMediaByUrl(providerMediaToCleanup.photoUrl).catch((e) => console.error("Falha ao apagar foto do profissional no R2 (exclusão de conta)", e))] : []),
-      ...(providerMediaToCleanup?.presentationVideoUrl ? [deleteMediaByUrl(providerMediaToCleanup.presentationVideoUrl).catch((e) => console.error("Falha ao apagar vídeo de apresentação no R2 (exclusão de conta)", e))] : []),
-      ...(providerMediaToCleanup?.crefDocumentUrl ? [deletePrivateObject(providerMediaToCleanup.crefDocumentUrl).catch((e) => console.error("Falha ao apagar documento de CREF no R2 (exclusão de conta)", e))] : []),
+      ...(providerMediaToCleanup?.photoUrl ? [deleteMediaByUrl(providerMediaToCleanup.photoUrl).catch((e) => reportR2CleanupFailure("foto do profissional", e))] : []),
+      ...(providerMediaToCleanup?.presentationVideoUrl ? [deleteMediaByUrl(providerMediaToCleanup.presentationVideoUrl).catch((e) => reportR2CleanupFailure("vídeo de apresentação", e))] : []),
+      ...(providerMediaToCleanup?.crefDocumentUrl ? [deletePrivateObject(providerMediaToCleanup.crefDocumentUrl).catch((e) => reportR2CleanupFailure("documento de CREF", e))] : []),
       ...extractCredentialDocumentKeys(providerMediaToCleanup?.credentialDocuments).map((key) =>
-        deletePrivateObject(key).catch((e) => console.error("Falha ao apagar documento de credencial no R2 (exclusão de conta)", e))
+        deletePrivateObject(key).catch((e) => reportR2CleanupFailure("documento de credencial", e))
       ),
       ...providerExercisesToCleanup.map((ex) =>
-        deleteMediaByUrl(ex.mediaUrl!).catch((e) => console.error("Falha ao apagar mídia de exercício no R2 (exclusão de conta)", e))
+        deleteMediaByUrl(ex.mediaUrl!).catch((e) => reportR2CleanupFailure("mídia de exercício", e))
       )
     ]);
 

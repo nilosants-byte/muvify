@@ -311,7 +311,12 @@ export class DisputeCaseService {
       const isFullRefund = amountCents === disputeCase.amountCents;
       await mpRefund.create({
         payment_id: disputeCase.mpPaymentId,
-        body: isFullRefund ? {} : { amount: amountCents / 100 }
+        body: isFullRefund ? {} : { amount: amountCents / 100 },
+        // Frente 2 (segunda camada), Lote 4: chave estável por caso — a
+        // trava resolvingLockedAt (acima) já impede dois admins resolvendo
+        // ao mesmo tempo; isto protege contra um retry de rede da mesma
+        // chamada duplicar o reembolso no gateway.
+        requestOptions: { idempotencyKey: `dispute:${caseId}:refund` }
       });
       resolvedAmountCents = amountCents;
     }

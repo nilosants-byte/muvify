@@ -1231,6 +1231,29 @@ export class PresentialPackageService {
       throw new AppError("Este pacote já não está mais ativo.", StatusCodes.BAD_REQUEST);
     }
 
+    // Frente 2 (segunda camada), Lote 5: trava atômica auto-expirável (mesmo
+    // idioma de ConsultancyContract.cancelLockedAt) contra duplo toque em
+    // "cancelar pacote" — sem isso, duas chamadas concorrentes passavam
+    // ambas pela checagem de status acima antes de qualquer uma escrever, e
+    // ambas seguiam pro reembolso proporcional do último ciclo. Expira
+    // sozinha em 30s.
+    const cancelStaleThreshold = new Date(Date.now() - 30_000);
+    const cancelClaimed = await prisma.presentialPackage.updateMany({
+      where: {
+        id: pkg.id,
+        OR: [{ cancelLockedAt: null }, { cancelLockedAt: { lt: cancelStaleThreshold } }]
+      },
+      data: { cancelLockedAt: new Date() }
+    });
+    if (cancelClaimed.count === 0) {
+      throw new AppError(
+        "Este pacote já está sendo cancelado. Aguarde alguns segundos e tente novamente.",
+        StatusCodes.CONFLICT
+      );
+    }
+
+    try {
+
     await prisma.presentialPackage.update({
       where: { id: pkg.id },
       data: {
@@ -1325,7 +1348,11 @@ export class PresentialPackageService {
           try {
             await mpRefundClient.create({
               payment_id: lastCycle.mpPaymentId,
-              body: isFullRefund ? {} : { amount: refundAmountCents / 100 }
+              body: isFullRefund ? {} : { amount: refundAmountCents / 100 },
+              // Frente 2 (segunda camada), Lote 4: chave estável por ciclo —
+              // qualquer retry desta mesma operação deve colidir com o
+              // mesmo reembolso na MP, nunca estornar duas vezes.
+              requestOptions: { idempotencyKey: `presential-package-cycle:${lastCycle.id}:refund` }
             });
           } catch (error) {
             console.error(`[presential-package] refund do ciclo ${lastCycle.id} falhou:`, error);
@@ -1395,16 +1422,26 @@ export class PresentialPackageService {
 
     const finalPkg = await prisma.presentialPackage.findUniqueOrThrow({ where: { id: pkg.id } });
     return hideClientBillingFieldsFromProvider(finalPkg, userId, pkg.clientId);
+    } finally {
+      await prisma.presentialPackage
+        .updateMany({ where: { id: pkg.id }, data: { cancelLockedAt: null } })
+        .catch((error) => console.error("Falha ao liberar trava de cancelamento de pacote presencial:", error));
+    }
   }
 
   async listMyPackages(clientId: string) {
+    // Frente 2 (segunda camada), Lote 6: rede de segurança contra
+    // crescimento sem limite (mesmo padrão já usado em
+    // financial.service.ts) — sem filtro de status, ativos e histórico
+    // (cancelado/expirado) crescem juntos nessa mesma consulta pra sempre.
     return prisma.presentialPackage.findMany({
       where: { clientId },
       include: {
         offer: true,
         provider: { select: { displayName: true, photoUrl: true } }
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      take: 2000
     });
   }
 
@@ -1413,13 +1450,15 @@ export class PresentialPackageService {
     if (!provider) {
       throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
     }
+    // Frente 2 (segunda camada), Lote 6: mesma rede de segurança do método acima.
     const packages = await prisma.presentialPackage.findMany({
       where: { providerId: provider.id },
       include: {
         offer: true,
         client: { select: { name: true, photoUrl: true } }
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      take: 2000
     });
     return packages.map((pkg) => hideClientBillingFieldsFromProvider(pkg, userId, pkg.clientId));
   }

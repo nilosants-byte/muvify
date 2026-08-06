@@ -26,8 +26,10 @@ import { NotificationService } from "../../notifications/services/notification.s
 import { PaymentService } from "../../payments/services/payment.service";
 import { DebtService } from "../../payments/services/debt.service";
 import { EmailService } from "../../../shared/services/email.service";
+import { EmailQueueService } from "../../../shared/services/email-queue.service";
 
 const emailService = new EmailService();
+const emailQueueService = new EmailQueueService();
 const debtService = new DebtService();
 
 type CompletionProofInput = {
@@ -543,25 +545,29 @@ export class BookingService {
 
     void deleteByPattern(`schedule:${createdBooking.providerId}:*`).catch(() => undefined);
 
-    // Emails de confirmação — fire-and-forget, não bloqueiam a resposta
+    // Frente 2 (segunda camada), Lote 9: antes ia direto por
+    // emailService.sendBookingConfirmationTo*, fire-and-forget com
+    // ".catch(() => undefined)" — o único ponto do sistema onde uma falha
+    // de e-mail não deixava rastro nenhum, nem local. Passa a usar a
+    // mesma fila com retry automático já usada pelos outros e-mails.
     if (emailService.canSendEmail()) {
       const sharedInput = {
         scheduledAt: createdBooking.scheduledAt,
         categoryName: createdBooking.category.name,
         priceCents: createdBooking.priceCents,
       };
-      void emailService.sendBookingConfirmationToClient({
+      await emailQueueService.enqueueBookingConfirmationClient({
         ...sharedInput,
         to: createdBooking.client.email,
         clientName: createdBooking.client.name,
         providerName: createdBooking.provider.displayName,
-      }).catch(() => undefined);
-      void emailService.sendBookingConfirmationToProvider({
+      }).catch((error) => console.error("Falha ao enfileirar e-mail de confirmação de agendamento (cliente):", error));
+      await emailQueueService.enqueueBookingConfirmationProvider({
         ...sharedInput,
         to: createdBooking.provider.user.email,
         providerName: createdBooking.provider.displayName,
         clientName: createdBooking.client.name,
-      }).catch(() => undefined);
+      }).catch((error) => console.error("Falha ao enfileirar e-mail de confirmação de agendamento (profissional):", error));
     }
 
     // Create welcome system message in the booking chat
@@ -772,42 +778,50 @@ export class BookingService {
     });
 
     const now = new Date();
-    await Promise.all(
-      dueBookings.map(async (booking) => {
-        const code = generateAttendanceCode();
-        const expiresAt = new Date(
-          booking.scheduledAt.getTime() + env.BOOKING_ATTENDANCE_CODE_EXPIRY_HOURS * 60 * 60 * 1000
-        );
+    // Frente 2 (segunda camada), Lote 7: mesmo padrão de lotes de 5 já usado
+    // em autoExpireStaleBookings (mesmo arquivo) — sem isso, um pico de
+    // sessões entrando na janela de liberação de código ao mesmo tempo
+    // (horário comercial) disparava conexões simultâneas ao banco sem
+    // nenhum teto, diferente do padrão já adotado nas funções vizinhas.
+    const RELEASE_CONCURRENCY = 5;
+    for (let i = 0; i < dueBookings.length; i += RELEASE_CONCURRENCY) {
+      await Promise.allSettled(
+        dueBookings.slice(i, i + RELEASE_CONCURRENCY).map(async (booking) => {
+          const code = generateAttendanceCode();
+          const expiresAt = new Date(
+            booking.scheduledAt.getTime() + env.BOOKING_ATTENDANCE_CODE_EXPIRY_HOURS * 60 * 60 * 1000
+          );
 
-        const updatedCount = await prisma.booking.updateMany({
-          where: {
-            id: booking.id,
-            attendanceCode: null
-          },
-          data: {
-            attendanceCode: code,
-            attendanceCodeGeneratedAt: now,
-            attendanceCodeExpiresAt: expiresAt
+          const updatedCount = await prisma.booking.updateMany({
+            where: {
+              id: booking.id,
+              attendanceCode: null
+            },
+            data: {
+              attendanceCode: code,
+              attendanceCodeGeneratedAt: now,
+              attendanceCodeExpiresAt: expiresAt
+            }
+          });
+
+          if (updatedCount.count > 0) {
+            void notificationService
+              .sendToUsers([booking.client.id], {
+                preferenceType: "BOOKINGS",
+                title: "Código de presença disponivel",
+                body: "Seu código de 6 dígitos para validação presencial já esta disponivel no agendamento.",
+                data: {
+                  type: "BOOKING_ATTENDANCE_CODE_AVAILABLE",
+                  bookingId: booking.id
+                }
+              })
+              .catch((error) => {
+                console.error("Booking push notification failed:", error);
+              });
           }
-        });
-
-        if (updatedCount.count > 0) {
-          void notificationService
-            .sendToUsers([booking.client.id], {
-        preferenceType: "BOOKINGS",
-              title: "Código de presença disponivel",
-              body: "Seu código de 6 dígitos para validação presencial já esta disponivel no agendamento.",
-              data: {
-                type: "BOOKING_ATTENDANCE_CODE_AVAILABLE",
-                bookingId: booking.id
-              }
-            })
-            .catch((error) => {
-              console.error("Booking push notification failed:", error);
-            });
-        }
-      })
-    );
+        })
+      );
+    }
   }
 
   async sendSessionReminders(referenceDate = new Date()) {

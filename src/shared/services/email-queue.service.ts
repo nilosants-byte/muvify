@@ -12,7 +12,20 @@ const RETRY_DELAY_SECONDS = [30, 300, 1800, 7200, 43200, 86400];
 // vítima nunca era avisada por nenhum canal, já que o envio era síncrono
 // sem retry. Passam a usar a mesma fila já usada por EMAIL_VERIFICATION/
 // PASSWORD_RESET.
-type EmailQueueTemplate = "EMAIL_VERIFICATION" | "PASSWORD_RESET" | "PASSWORD_CHANGED" | "RECOVERY_EMAIL_UPDATED" | "DATA_EXPORT_CONFIRMATION" | "ACCOUNT_DELETED";
+// Frente 2 (segunda camada), Lote 9: SUPPORT_REPLY/BOOKING_CONFIRMATION_*
+// entraram na fila pelo mesmo motivo do Lote 11 acima — eram enviados
+// direto (fire-and-forget ou síncrono), fora da fila com retry automático,
+// e um deles (confirmação de agendamento) nem logava a falha.
+type EmailQueueTemplate =
+  | "EMAIL_VERIFICATION"
+  | "PASSWORD_RESET"
+  | "PASSWORD_CHANGED"
+  | "RECOVERY_EMAIL_UPDATED"
+  | "DATA_EXPORT_CONFIRMATION"
+  | "ACCOUNT_DELETED"
+  | "SUPPORT_REPLY"
+  | "BOOKING_CONFIRMATION_CLIENT"
+  | "BOOKING_CONFIRMATION_PROVIDER";
 
 type VerificationPayload = {
   to: string;
@@ -45,6 +58,33 @@ type DataExportConfirmationPayload = {
 type AccountDeletedPayload = {
   to: string;
   name: string;
+};
+
+type SupportReplyPayload = {
+  to: string;
+  userName: string;
+  subject?: string | null;
+  responseMessage: string;
+};
+
+// scheduledAt vai como string ISO no payload (JSON não guarda Date nativo) e
+// é convertido de volta em Date na hora de entregar.
+type BookingConfirmationClientPayload = {
+  to: string;
+  clientName: string;
+  providerName: string;
+  scheduledAtIso: string;
+  categoryName: string;
+  priceCents: number;
+};
+
+type BookingConfirmationProviderPayload = {
+  to: string;
+  providerName: string;
+  clientName: string;
+  scheduledAtIso: string;
+  categoryName: string;
+  priceCents: number;
 };
 
 export class EmailQueueService {
@@ -100,6 +140,35 @@ export class EmailQueueService {
       data: {
         template: "ACCOUNT_DELETED",
         payload: input
+      }
+    });
+  }
+
+  async enqueueSupportReply(input: SupportReplyPayload) {
+    return prisma.emailDeliveryQueue.create({
+      data: {
+        template: "SUPPORT_REPLY",
+        payload: input
+      }
+    });
+  }
+
+  async enqueueBookingConfirmationClient(input: Omit<BookingConfirmationClientPayload, "scheduledAtIso"> & { scheduledAt: Date }) {
+    const { scheduledAt, ...rest } = input;
+    return prisma.emailDeliveryQueue.create({
+      data: {
+        template: "BOOKING_CONFIRMATION_CLIENT",
+        payload: { ...rest, scheduledAtIso: scheduledAt.toISOString() }
+      }
+    });
+  }
+
+  async enqueueBookingConfirmationProvider(input: Omit<BookingConfirmationProviderPayload, "scheduledAtIso"> & { scheduledAt: Date }) {
+    const { scheduledAt, ...rest } = input;
+    return prisma.emailDeliveryQueue.create({
+      data: {
+        template: "BOOKING_CONFIRMATION_PROVIDER",
+        payload: { ...rest, scheduledAtIso: scheduledAt.toISOString() }
       }
     });
   }
@@ -201,6 +270,21 @@ export class EmailQueueService {
       await this.emailService.sendAccountDeleted(parsed);
       return;
     }
+    if (template === "SUPPORT_REPLY") {
+      const parsed = this.parseSupportReplyPayload(payload);
+      await this.emailService.sendSupportReplyEmail(parsed);
+      return;
+    }
+    if (template === "BOOKING_CONFIRMATION_CLIENT") {
+      const parsed = this.parseBookingConfirmationClientPayload(payload);
+      await this.emailService.sendBookingConfirmationToClient(parsed);
+      return;
+    }
+    if (template === "BOOKING_CONFIRMATION_PROVIDER") {
+      const parsed = this.parseBookingConfirmationProviderPayload(payload);
+      await this.emailService.sendBookingConfirmationToProvider(parsed);
+      return;
+    }
     throw new Error(`Unsupported email queue template: ${template}`);
   }
 
@@ -272,6 +356,62 @@ export class EmailQueueService {
     }
     this.validateEmail(to);
     return { to, name };
+  }
+
+  private parseSupportReplyPayload(payload: Record<string, unknown>): SupportReplyPayload {
+    const to = typeof payload.to === "string" ? payload.to : "";
+    const userName = typeof payload.userName === "string" ? payload.userName : "";
+    const responseMessage = typeof payload.responseMessage === "string" ? payload.responseMessage : "";
+    const subject = typeof payload.subject === "string" ? payload.subject : null;
+    if (!to || !userName || !responseMessage) {
+      throw new Error("Invalid SUPPORT_REPLY payload.");
+    }
+    this.validateEmail(to);
+    return { to, userName, subject, responseMessage };
+  }
+
+  private parseBookingConfirmationClientPayload(payload: Record<string, unknown>): {
+    to: string;
+    clientName: string;
+    providerName: string;
+    scheduledAt: Date;
+    categoryName: string;
+    priceCents: number;
+  } {
+    const to = typeof payload.to === "string" ? payload.to : "";
+    const clientName = typeof payload.clientName === "string" ? payload.clientName : "";
+    const providerName = typeof payload.providerName === "string" ? payload.providerName : "";
+    const categoryName = typeof payload.categoryName === "string" ? payload.categoryName : "";
+    const priceCents = typeof payload.priceCents === "number" ? payload.priceCents : NaN;
+    const scheduledAtIso = typeof payload.scheduledAtIso === "string" ? payload.scheduledAtIso : "";
+    const scheduledAt = new Date(scheduledAtIso);
+    if (!to || !clientName || !providerName || !categoryName || Number.isNaN(priceCents) || Number.isNaN(scheduledAt.getTime())) {
+      throw new Error("Invalid BOOKING_CONFIRMATION_CLIENT payload.");
+    }
+    this.validateEmail(to);
+    return { to, clientName, providerName, scheduledAt, categoryName, priceCents };
+  }
+
+  private parseBookingConfirmationProviderPayload(payload: Record<string, unknown>): {
+    to: string;
+    providerName: string;
+    clientName: string;
+    scheduledAt: Date;
+    categoryName: string;
+    priceCents: number;
+  } {
+    const to = typeof payload.to === "string" ? payload.to : "";
+    const providerName = typeof payload.providerName === "string" ? payload.providerName : "";
+    const clientName = typeof payload.clientName === "string" ? payload.clientName : "";
+    const categoryName = typeof payload.categoryName === "string" ? payload.categoryName : "";
+    const priceCents = typeof payload.priceCents === "number" ? payload.priceCents : NaN;
+    const scheduledAtIso = typeof payload.scheduledAtIso === "string" ? payload.scheduledAtIso : "";
+    const scheduledAt = new Date(scheduledAtIso);
+    if (!to || !providerName || !clientName || !categoryName || Number.isNaN(priceCents) || Number.isNaN(scheduledAt.getTime())) {
+      throw new Error("Invalid BOOKING_CONFIRMATION_PROVIDER payload.");
+    }
+    this.validateEmail(to);
+    return { to, providerName, clientName, scheduledAt, categoryName, priceCents };
   }
 
   async purgeOldFailures(olderThanDays = 30): Promise<number> {

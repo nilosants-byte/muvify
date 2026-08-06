@@ -1,4 +1,5 @@
 import Redis from "ioredis";
+import * as Sentry from "@sentry/node";
 import { env } from "./env";
 
 export const redis = new Redis(env.REDIS_URL, {
@@ -9,6 +10,21 @@ export const redis = new Redis(env.REDIS_URL, {
     const delay = Math.min(100 * 2 ** (times - 1), 5000);
     return delay;
   },
+});
+
+// Frente 2 (segunda camada), Lote 2: um EventEmitter do Node que emite
+// "error" sem nenhum listener registrado lança exceção — que cairia no
+// uncaughtException de server.ts e derrubaria o processo inteiro. O único
+// listener de "error" que existia era temporário (.once, só durante o boot
+// em connectRedis abaixo) e é removido logo em seguida. Qualquer blip de
+// rede com o Redis depois disso (comum em produção) ficava sem nenhum
+// listener e derrubava o sistema pra todos os usuários. Este listener
+// persistente garante que isso nunca mais aconteça — o ioredis já
+// reconecta sozinho por conta do retryStrategy acima, então só precisamos
+// registrar e reportar, nunca deixar o erro sem dono.
+redis.on("error", (error) => {
+  console.error("[redis] Erro de conexão:", error);
+  Sentry.captureException(error, { tags: { area: "redis" } });
 });
 
 let connectPromise: Promise<void> | null = null;

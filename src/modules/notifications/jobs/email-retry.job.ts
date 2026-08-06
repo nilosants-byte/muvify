@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { EmailQueueService } from "../../../shared/services/email-queue.service";
@@ -54,7 +55,13 @@ export function startEmailRetryJob() {
           `Email retry job paused: database unavailable (${error.code}). Next retry in ${Math.ceil(backoffMs / 1000)}s.`
         );
       } else {
+        // Frente 2 (segunda camada), Lote 8: mesmo padrão já usado em
+        // reminder.job.ts/payment-jobs.ts (Frente 9, Lote 14) — um bug
+        // persistente neste job (não é queda de banco, que já tem
+        // tratamento de backoff acima) ficava invisível pra sempre, só
+        // com console.error.
         console.error("Email retry job failed:", error);
+        Sentry.captureException(error, { tags: { area: "email-retry-job" } });
       }
     } finally {
       if (lockAcquired) {
