@@ -1,7 +1,7 @@
 import { UserRole } from "@prisma/client";
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
-import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
+import { writeRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { CategoryController } from "../controllers/category.controller";
@@ -13,7 +13,7 @@ categoryRoutes.post(
   "/",
   ensureAuthenticated,
   ensureRole(UserRole.ADMIN),
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(createCategorySchema),
   categoryController.create
 );
@@ -21,7 +21,7 @@ categoryRoutes.patch(
   "/:categoryId/deactivate",
   ensureAuthenticated,
   ensureRole(UserRole.ADMIN),
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(categoryIdParamsSchema),
   categoryController.deactivate
 );
@@ -29,7 +29,7 @@ categoryRoutes.patch(
   "/:categoryId/reactivate",
   ensureAuthenticated,
   ensureRole(UserRole.ADMIN),
-  uploadRateLimiter,
+  writeRateLimiter,
   validate(categoryIdParamsSchema),
   categoryController.reactivate
 );

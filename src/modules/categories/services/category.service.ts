@@ -12,9 +12,11 @@ export class CategoryService {
   // recebiam adminId - dependiam 100% do ensureRole(ADMIN) da rota (sem
   // revalidação no service, quebrando o padrão de defesa em profundidade
   // já usado desde a Frente 1/Lote 2) e não gravavam audit log nenhum.
+  // Frente 10 (fechamento pós-verificação): faltava emailVerifiedAt aqui,
+  // igual ao que o Lote 7 já corrigiu em admin.service.ts.
   private async ensureAdminAccess(adminId: string) {
-    const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { email: true } });
-    if (!admin || !isAdminEmail(admin.email)) {
+    const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { email: true, emailVerifiedAt: true } });
+    if (!admin || !admin.emailVerifiedAt || !isAdminEmail(admin.email)) {
       throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
     }
   }

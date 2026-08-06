@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ScrollView, Share, TouchableOpacity, View } from "react-native";
+import { ScrollView, TouchableOpacity, View } from "react-native";
 import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { adminApi, AdminUserDetail, AdminUserSearchResult } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { AdminScaffold } from "./AdminScaffold";
 import { handleScreenError } from "../shared/api-helpers";
+import { shareExportedDataAsFile } from "../../utils/exportDataFile";
 
 type Props = {
   navigation: any;
@@ -228,10 +229,7 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
       setExporting(true);
       const data = await runWithAuth((token) => adminApi.exportUserData(token, detail.id));
       showToast("Exportação gerada e registrada em log de auditoria.", "success");
-      await Share.share({
-        message: JSON.stringify(data, null, 2),
-        title: `Dados exportados — ${detail.name}`
-      });
+      await shareExportedDataAsFile(data, `Dados exportados — ${detail.name}`);
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao exportar dados do usuário.", navigation });
     } finally {

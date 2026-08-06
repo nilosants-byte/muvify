@@ -11,7 +11,6 @@ import type { UserProgress, Achievement } from "../types/gamification";
 
 // ── Constantes de pontuação ───────────────────────────────────────────────────
 const PTS_PRESENCIAL = 80;        // aula presencial concluída
-export const PTS_CONSULTORIA = 100;      // consultoria entregue (bookingType = treino liberado)
 const PTS_PER_LEVEL = 500;        // pontos por nível
 
 // ── Helpers de data ───────────────────────────────────────────────────────────

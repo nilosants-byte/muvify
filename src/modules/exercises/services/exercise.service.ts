@@ -42,9 +42,11 @@ export class ExerciseService {
   // dependiam 100% do ensureRole(ADMIN) da rota. E-mail removido de
   // ADMIN_ALLOWED_EMAILS com token ainda válido continuava conseguindo
   // mexer no catálogo de exercícios até o token expirar sozinho.
+  // Frente 10 (fechamento pós-verificação): faltava emailVerifiedAt aqui,
+  // igual ao que o Lote 7 já corrigiu em admin.service.ts.
   private async ensureAdminAccess(adminId: string) {
-    const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { email: true } });
-    if (!admin || !isAdminEmail(admin.email)) {
+    const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { email: true, emailVerifiedAt: true } });
+    if (!admin || !admin.emailVerifiedAt || !isAdminEmail(admin.email)) {
       throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
     }
   }

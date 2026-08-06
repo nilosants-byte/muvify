@@ -759,6 +759,24 @@ export function ClientHomeScreen({ navigation }: Props) {
     void loadProviders(userLat, userLng, hasLocation);
   }, [loadProviders, userLat, userLng, hasLocation, radiusReady]);
 
+  // Épico de Frentes, Frente 9, Lote 3 (fechamento pós-verificação): a
+  // invalidação de queryKeys.notifications.all num push recebido em primeiro
+  // plano (root-stack.tsx) não tinha nenhum efeito aqui - a contagem era só
+  // useState recalculado no focus, nunca passava pelo cache do react-query.
+  // Usar useAuthQuery com a mesma chave (notifications.inbox) faz essa
+  // invalidação de fato disparar um refetch, mesmo com a tela já montada.
+  const notifInboxQuery = useAuthQuery(
+    queryKeys.notifications.inbox(120),
+    (token) => notificationsApi.inbox(token, 120)
+  );
+
+  useEffect(() => {
+    if (!notifInboxQuery.data) return;
+    loadDismissedNotificationIds(user?.id ?? "anonymous")
+      .then((dismissed) => setUnreadNotifCount(countUnreadNotifications(notifInboxQuery.data!, dismissed)))
+      .catch(() => {});
+  }, [notifInboxQuery.data, user?.id]);
+
   // Contagens de não lidos — atualiza toda vez que a tela ganha foco
   useFocusEffect(
     useCallback(() => {
@@ -768,14 +786,7 @@ export function ClientHomeScreen({ navigation }: Props) {
           setUnreadChatCount(total);
         })
         .catch(() => {});
-      Promise.all([
-        runWithAuth((token) => notificationsApi.inbox(token, 120)),
-        loadDismissedNotificationIds(user?.id ?? "anonymous"),
-      ])
-        .then(([inbox, dismissed]) =>
-          setUnreadNotifCount(countUnreadNotifications(inbox, dismissed))
-        )
-        .catch(() => {});
+      notifInboxQuery.refetch().catch(() => {});
     }, [runWithAuth])
   );
 

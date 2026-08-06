@@ -92,7 +92,7 @@ export function FinancialGoalsScreen({ navigation }: Props) {
       const [gl, dash, studs, incs] = await Promise.all([
         financialApi.getGoal(token, month),
         financialApi.dashboard(token, month),
-        financialApi.listStudents(token),
+        financialApi.listStudents(token, month),
         financialApi.listIncomes(token, month),
       ]);
       return { goal: gl as FinancialGoal | null, dashboard: dash as FinancialDashboard, students: studs, incomes: incs };

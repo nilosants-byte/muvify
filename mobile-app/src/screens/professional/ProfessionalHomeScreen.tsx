@@ -225,6 +225,17 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   );
   const needsPayoutReconnect = Boolean(payoutStatusQuery.data?.hasAccount && payoutStatusQuery.data?.needsReconnect);
 
+  // Épico de Frentes, Frente 9, Lote 3 (fechamento pós-verificação): a
+  // invalidação de queryKeys.notifications.all num push recebido em primeiro
+  // plano (root-stack.tsx) não tinha nenhum efeito aqui - a contagem era só
+  // useState recalculado no focus, nunca passava pelo cache do react-query.
+  // Usar useAuthQuery com a mesma chave (notifications.inbox) faz essa
+  // invalidação de fato disparar um refetch, mesmo com a tela já montada.
+  const notifInboxQuery = useAuthQuery(
+    queryKeys.notifications.inbox(120),
+    (token) => notificationsApi.inbox(token, 120)
+  );
+
   // Épico de Frentes, Frente 7, Lote 8: o fluxo de conectar/reconectar
   // Mercado Pago abre o navegador externo (não é WebView in-app) e a MP não
   // redireciona de volta pro app - só voltar pelo multitarefas conta como
@@ -302,18 +313,16 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     setProviderPhotoUrl(resolveMediaUrl(user?.providerProfile?.photoUrl, true));
   }, [user?.name, user?.providerProfile]);
 
+  useEffect(() => {
+    if (!notifInboxQuery.data) return;
+    loadDismissedNotificationIds(user?.id ?? "anonymous")
+      .then((dismissed) => setUnreadNotifCount(countUnreadNotifications(notifInboxQuery.data!, dismissed)))
+      .catch(() => {});
+  }, [notifInboxQuery.data, user?.id]);
+
   const refreshUnreadNotificationCount = useCallback(async () => {
-    try {
-      const userId = user?.id ?? "anonymous";
-      const [inbox, dismissedIds] = await Promise.all([
-        runWithAuth((token) => notificationsApi.inbox(token, 120)),
-        loadDismissedNotificationIds(userId),
-      ]);
-      setUnreadNotifCount(countUnreadNotifications(inbox, dismissedIds));
-    } catch {
-      // best effort
-    }
-  }, [runWithAuth, user?.id]);
+    await notifInboxQuery.refetch().catch(() => {});
+  }, [notifInboxQuery]);
 
   const refreshUnreadChatCount = useCallback(async () => {
     try {

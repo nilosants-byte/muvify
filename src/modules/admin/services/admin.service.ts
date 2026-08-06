@@ -2023,7 +2023,16 @@ export class AdminService {
     // aparecia em lugar nenhum - reincidência ficava invisível sem
     // consultar o AdminAuditLog no banco na mão.
     const recentModerationHistory = await prisma.adminAuditLog.findMany({
-      where: { targetId: userId },
+      where: {
+        OR: [
+          { targetId: userId },
+          // Frente 10 (fechamento pós-verificação): REPORT_CONTENT_HIDDEN
+          // grava targetId = ID do post/mensagem, não do autor - sem este OR,
+          // o histórico de moderação nunca mostrava ocultação de conteúdo
+          // deste usuário, só ações de conta (suspensão, troca de papel...).
+          { action: "REPORT_CONTENT_HIDDEN", metadata: { path: ["authorId"], equals: userId } }
+        ]
+      },
       orderBy: { createdAt: "desc" },
       take: 10,
       select: {

@@ -38,7 +38,6 @@ import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { MvMediaPreviewButton, MvMediaViewer } from "../../components/mv";
 import { formatDateLabel, formatCurrencyBRL } from "../../utils/formatters";
-import { PTS_CONSULTORIA } from "../../utils/gamification";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
@@ -232,7 +231,11 @@ function WorkoutDetailModal({
       if (timerRef.current) clearInterval(timerRef.current);
       // Limpa o timer persistido — treino encerrado manualmente
       if (TIMER_KEY) AsyncStorage.removeItem(TIMER_KEY).catch(() => {});
-      showToast(`Treino concluído! +${PTS_CONSULTORIA} pts`, "success");
+      // 50 XP reais concedidos pelo backend (ONLINE_WORKOUT_COMPLETED,
+      // gamification-events.service.ts) - PTS_CONSULTORIA (módulo legado
+      // "Fase 1" de cálculo client-side) está desatualizado e nunca foi
+      // realinhado com o valor real, mostrando o dobro do XP concedido.
+      showToast("Treino concluído! +50 pts", "success");
       onCompleted();
     } catch (error) {
       setShowFinishConfirm(false);

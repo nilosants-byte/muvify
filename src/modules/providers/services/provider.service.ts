@@ -21,6 +21,7 @@ import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { deleteByPattern, getCache, setCache } from "../../../shared/utils/cache";
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
 import { haversineKm } from "../../../shared/utils/geo";
+import { normalizeLoose } from "../../../shared/utils/normalize-text";
 import {
   toProviderPhotoUrl,
   toProviderVideoUrl,
@@ -132,14 +133,6 @@ function formatMinutes(totalMinutes: number) {
     .padStart(2, "0");
   const m = (clamped % 60).toString().padStart(2, "0");
   return `${h}:${m}`;
-}
-
-function normalizeLoose(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
 }
 
 function sanitizeSpecialties(input?: string[] | null) {

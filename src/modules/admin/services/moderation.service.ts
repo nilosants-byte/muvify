@@ -30,12 +30,16 @@ type UnifiedReport = {
 };
 
 export class ModerationService {
+  // Frente 10 (fechamento pós-verificação): faltava emailVerifiedAt aqui,
+  // igual ao que o Lote 7 já corrigiu em admin.service.ts - um admin com
+  // verificação de e-mail revogada continuava conseguindo moderar denúncias
+  // até o token expirar sozinho.
   private async ensureAdminAccess(adminUserId: string) {
     const admin = await prisma.user.findUnique({
       where: { id: adminUserId },
-      select: { id: true, email: true }
+      select: { id: true, email: true, emailVerifiedAt: true }
     });
-    if (!admin || !isAdminEmail(admin.email)) {
+    if (!admin || !admin.emailVerifiedAt || !isAdminEmail(admin.email)) {
       throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
     }
     return admin;
@@ -202,7 +206,10 @@ export class ModerationService {
     const now = new Date();
 
     if (type === "feed-post") {
-      const report = await prisma.feedPostReport.findUnique({ where: { id: reportId }, select: { postId: true } });
+      const report = await prisma.feedPostReport.findUnique({
+        where: { id: reportId },
+        select: { postId: true, post: { select: { userId: true } } }
+      });
       if (!report) throw new AppError("Denúncia não encontrada.", StatusCodes.NOT_FOUND);
       await prisma.$transaction([
         prisma.feedPost.update({
@@ -218,13 +225,22 @@ export class ModerationService {
         adminId: admin.id,
         action: "REPORT_CONTENT_HIDDEN",
         targetType: type,
-        targetId: report.postId
+        targetId: report.postId,
+        // Frente 10 (fechamento pós-verificação): targetId aqui é o ID do
+        // conteúdo (post), não do autor - sem o authorId em metadata, o
+        // "histórico de moderação" do detalhe do usuário (que filtra por
+        // targetId: userId) nunca mostrava que um post/mensagem DELE tinha
+        // sido ocultado por denúncia procedente.
+        metadata: { authorId: report.post.userId }
       });
       return;
     }
 
     if (type === "booking-message") {
-      const report = await prisma.bookingMessageReport.findUnique({ where: { id: reportId }, select: { messageId: true } });
+      const report = await prisma.bookingMessageReport.findUnique({
+        where: { id: reportId },
+        select: { messageId: true, message: { select: { senderId: true } } }
+      });
       if (!report) throw new AppError("Denúncia não encontrada.", StatusCodes.NOT_FOUND);
       await prisma.$transaction([
         prisma.bookingMessage.update({
@@ -240,12 +256,16 @@ export class ModerationService {
         adminId: admin.id,
         action: "REPORT_CONTENT_HIDDEN",
         targetType: type,
-        targetId: report.messageId
+        targetId: report.messageId,
+        metadata: report.message.senderId ? { authorId: report.message.senderId } : undefined
       });
       return;
     }
 
-    const report = await prisma.consultancyMessageReport.findUnique({ where: { id: reportId }, select: { messageId: true } });
+    const report = await prisma.consultancyMessageReport.findUnique({
+      where: { id: reportId },
+      select: { messageId: true, message: { select: { senderId: true } } }
+    });
     if (!report) throw new AppError("Denúncia não encontrada.", StatusCodes.NOT_FOUND);
     await prisma.$transaction([
       prisma.consultancyMessage.update({
@@ -261,7 +281,8 @@ export class ModerationService {
       adminId: admin.id,
       action: "REPORT_CONTENT_HIDDEN",
       targetType: type,
-      targetId: report.messageId
+      targetId: report.messageId,
+      metadata: report.message.senderId ? { authorId: report.message.senderId } : undefined
     });
   }
 

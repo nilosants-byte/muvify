@@ -1600,7 +1600,21 @@ export class PaymentService {
       select: { id: true }
     });
 
-    if (!payment && !consultancyContract && !presentialPackagePending) {
+    // Épico de Frentes (fechamento, verificação pós-Frente 12): renovação de
+    // ficha (TrainingPlan.renewalMpPaymentId) nunca era buscada aqui - um
+    // chargeback/reembolso aberto direto no Mercado Pago sobre o pagamento
+    // de uma renovação caía no "nao encontrado" abaixo e era silenciosamente
+    // ignorado (nenhum DisputeCase, nenhum refundedAmountCents atualizado).
+    const trainingPlanRenewal = await prisma.trainingPlan.findFirst({
+      where: { renewalMpPaymentId: String(mpPay.id) },
+      select: {
+        id: true,
+        providerId: true,
+        contract: { select: { clientId: true, paymentAmountCents: true, provider: { select: { userId: true } } } }
+      }
+    });
+
+    if (!payment && !consultancyContract && !presentialPackagePending && !trainingPlanRenewal) {
       console.warn(`[webhook] mpPaymentId ${mpPaymentId} nao encontrado em payment ou contract. Status: ${mpStatus}`);
       return;
     }
@@ -1805,13 +1819,37 @@ export class PaymentService {
         await prisma.consultancyContract.updateMany({
           where: {
             id: consultancyContract.id,
-            paymentStatus: { notIn: [ConsultancyPaymentStatus.REFUNDED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] }
+            // Fechamento pós-Frente 12: guard trocado de status (notIn) pra
+            // valor (mesmo padrão do Payment acima) - com notIn, a primeira
+            // notificação de reembolso parcial marcava PARTIALLY_REFUNDED e
+            // qualquer notificação seguinte (inclusive um complemento que
+            // fecha em 100%) nunca mais batia no where, travando o contrato
+            // no valor do primeiro parcial pra sempre.
+            OR: [{ refundedAmountCents: null }, { refundedAmountCents: { not: refundedAmountCentsContract } }]
           },
           data: {
             paymentStatus: isContractPartial ? ConsultancyPaymentStatus.PARTIALLY_REFUNDED : ConsultancyPaymentStatus.REFUNDED,
             refundedAt: new Date(),
             refundedAmountCents: refundedAmountCentsContract
           }
+        });
+      }
+      if (trainingPlanRenewal && trainingPlanRenewal.contract) {
+        // Fechamento pós-Frente 12: mesma lacuna do ConsultancyContract acima,
+        // mas pra renovação de ficha - cada renovação cobra o mesmo valor do
+        // contrato original (ver chargeFichaRenewal em consultancy.service.ts).
+        const totalAmount = trainingPlanRenewal.contract.paymentAmountCents;
+        const refundedAmountCentsPlan =
+          refundedAmountReais != null && refundedAmountReais > 0
+            ? Math.round(refundedAmountReais * 100)
+            : totalAmount;
+
+        await prisma.trainingPlan.updateMany({
+          where: {
+            id: trainingPlanRenewal.id,
+            OR: [{ refundedAmountCents: null }, { refundedAmountCents: { not: refundedAmountCentsPlan } }]
+          },
+          data: { refundedAt: new Date(), refundedAmountCents: refundedAmountCentsPlan }
         });
       }
     }
@@ -1912,6 +1950,34 @@ export class PaymentService {
               amountCents: consultancyContract.paymentAmountCents,
               mpPaymentId: String(mpPay.id),
               consultancyContractId: consultancyContract.id
+            }
+          });
+        }
+      } else if (trainingPlanRenewal && trainingPlanRenewal.contract) {
+        // Fechamento pós-Frente 12: renovação de ficha contestada direto na
+        // MP também precisa abrir DisputeCase, mesmo tratamento do contrato
+        // original acima.
+        if (!existingDisputeCase) {
+          notificationService
+            .sendToUsers(
+              [trainingPlanRenewal.contract.clientId, trainingPlanRenewal.contract.provider.userId],
+              {
+                preferenceType: "PAYMENTS",
+                title: "Contestação de pagamento aberta",
+                body: "Uma contestação foi aberta para um pagamento de renovação de ficha.",
+                data: { type: "PAYMENT_DISPUTED", trainingPlanId: trainingPlanRenewal.id }
+              }
+            )
+            .catch((error) => console.error("Dispute notification failed:", error));
+
+          await prisma.disputeCase.create({
+            data: {
+              type: "CHARGEBACK",
+              clientId: trainingPlanRenewal.contract.clientId,
+              providerId: trainingPlanRenewal.providerId,
+              amountCents: trainingPlanRenewal.contract.paymentAmountCents,
+              mpPaymentId: String(mpPay.id),
+              trainingPlanId: trainingPlanRenewal.id
             }
           });
         }
