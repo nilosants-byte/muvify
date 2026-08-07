@@ -12,7 +12,7 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { typography } from "../../theme/MvTypography";
 import { MvText } from "./MvText";
 
-interface MvInputProps extends Omit<TextInputProps, "style"> {
+interface MvInputProps extends TextInputProps {
   label?: string;
   style?: StyleProp<ViewStyle>;
   secureTextEntry?: boolean;

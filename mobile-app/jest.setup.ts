@@ -1,34 +1,5 @@
 import "react-native-gesture-handler/jestSetup";
 
-// Épico de Frentes - atualização Expo 54→57/RN 0.81→0.86: o worklets/
-// reanimated 4.5 carrega o módulo nativo de verdade se não for mockado
-// explicitamente (antes, versões mais antigas toleravam isso em silêncio) -
-// sem isso, qualquer teste que passe por um componente animado quebra com
-// "Cannot read properties of undefined (reading 'loadUnpackers')".
-jest.mock("react-native-reanimated", () => require("react-native-reanimated/mock"));
-
-// Épico de Frentes - atualização Expo 54→57/RN 0.81→0.86: react-native-maps
-// 1.27 passou a usar TurboModuleRegistry.getEnforcing (lança erro se o
-// módulo nativo não existir) em vez de get (retornava undefined em
-// silêncio) - antes disso os testes que passam por MapView nunca
-// precisaram de mock nenhum. O pacote não traz mock oficial pronto, então
-// só os 4 exports que o app de fato usa (ClientHomeMapSection,
-// ServiceAreaInlineSection) são mockados aqui.
-jest.mock("react-native-maps", () => {
-  const React = require("react");
-  const { View } = require("react-native");
-  const MapView = React.forwardRef((props: any, ref: any) => React.createElement(View, { ...props, ref }, props.children));
-  const Marker = (props: any) => React.createElement(View, props, props.children);
-  const Circle = (props: any) => React.createElement(View, props);
-  return {
-    __esModule: true,
-    default: MapView,
-    Marker,
-    Circle,
-    PROVIDER_DEFAULT: "default"
-  };
-});
-
 jest.mock(
   "@react-native-async-storage/async-storage",
   () => require("@react-native-async-storage/async-storage/jest/async-storage-mock")
