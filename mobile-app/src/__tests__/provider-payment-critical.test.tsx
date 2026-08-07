@@ -158,7 +158,7 @@ describe("Fluxos criticos - profissional e recebimentos", () => {
       providerBooking("CONFIRMED") as any
     );
 
-    const availabilityNavigation = { navigate: jest.fn(), goBack: jest.fn() };
+    const availabilityNavigation = { navigate: jest.fn(), goBack: jest.fn(), addListener: jest.fn(() => () => {}) };
     const availabilityUi = render(<AvailabilityManagerScreen navigation={availabilityNavigation as any} route={{} as any} />);
     expect(await availabilityUi.findByText("Disponibilidade semanal")).toBeTruthy();
 

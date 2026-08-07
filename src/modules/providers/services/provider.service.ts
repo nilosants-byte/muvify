@@ -23,6 +23,7 @@ import { consultancyValidUntil } from "../../../shared/utils/consultancy-validit
 import { haversineKm } from "../../../shared/utils/geo";
 import { normalizeLoose } from "../../../shared/utils/normalize-text";
 import { sessionOverlapsRange } from "../../../shared/utils/time-range";
+import { toDateKeyInTimezone, toTimeInTimezone, toWeekdayInTimezone } from "../../../shared/utils/timezone";
 import {
   toProviderPhotoUrl,
   toProviderVideoUrl,
@@ -87,38 +88,6 @@ function paginateProviders<T>(items: T[], offset: number, take?: number) {
   if (!Number.isFinite(offset) || offset < 0) return take ? items.slice(0, take) : items;
   if (!take) return items.slice(offset);
   return items.slice(offset, offset + take);
-}
-
-function formatDateKeyInTimezone(date: Date, timeZone: string) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(date);
-}
-
-function formatTimeInTimezone(date: Date, timeZone: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    timeZone,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  }).format(date);
-}
-
-function weekdayInTimezone(date: Date, timeZone: string) {
-  const short = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(date);
-  const map: Record<string, number> = {
-    Sun: 0,
-    Mon: 1,
-    Tue: 2,
-    Wed: 3,
-    Thu: 4,
-    Fri: 5,
-    Sat: 6
-  };
-  return map[short] ?? 0;
 }
 
 function parseMinutes(time: string) {
@@ -1109,11 +1078,43 @@ export class ProviderService {
       where: { userId },
       select: {
         id: true,
-        specialties: true
+        specialties: true,
+        sessionDurationMinutes: true
       }
     });
     if (!provider) {
       throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    // Frente 5 (segunda camada), Lote 3: sessionDurationMinutes não é
+    // gravado por agendamento — é lido ao vivo do perfil toda vez que se
+    // checa sobreposição de horário. Mudar esse valor sem revalidar os
+    // agendamentos futuros já marcados podia deixar dois deles se
+    // sobrepondo na prática (marcados sob a duração antiga, mais curta)
+    // sem o sistema nunca avisar — só descoberto pelo profissional no dia.
+    if (
+      input.sessionDurationMinutes !== undefined &&
+      input.sessionDurationMinutes !== provider.sessionDurationMinutes
+    ) {
+      const futureBookings = await prisma.booking.findMany({
+        where: {
+          providerId: provider.id,
+          status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+          scheduledAt: { gt: new Date() }
+        },
+        select: { scheduledAt: true },
+        orderBy: { scheduledAt: "asc" }
+      });
+      const newDurationMs = input.sessionDurationMinutes * 60 * 1000;
+      for (let i = 0; i + 1 < futureBookings.length; i++) {
+        const gapMs = futureBookings[i + 1].scheduledAt.getTime() - futureBookings[i].scheduledAt.getTime();
+        if (gapMs < newDurationMs) {
+          throw new AppError(
+            "Não é possível alterar a duração da sessão: já existem agendamentos futuros que passariam a se sobrepor com a nova duração. Cancele ou reagende um deles antes de mudar.",
+            StatusCodes.BAD_REQUEST
+          );
+        }
+      }
     }
 
     const fixedLocs = input.fixedLocations
@@ -1661,15 +1662,15 @@ export class ProviderService {
     // que a criação real vai recusar por falta de antecedência.
     const minNoticeHours = Math.max(24, provider.minBookingNoticeHours);
     const noticeCutoff = new Date(Date.now() + minNoticeHours * 60 * 60 * 1000);
-    const noticeCutoffDateKey = formatDateKeyInTimezone(noticeCutoff, timezone);
-    const noticeCutoffTime = formatTimeInTimezone(noticeCutoff, timezone);
+    const noticeCutoffDateKey = toDateKeyInTimezone(noticeCutoff, timezone);
+    const noticeCutoffTime = toTimeInTimezone(noticeCutoff, timezone);
 
     const dayRefs = Array.from({ length: days }, (_, index) => {
       const ref = new Date(base);
       ref.setUTCDate(base.getUTCDate() + index);
       return ref;
     });
-    const dayKeys = dayRefs.map((ref) => formatDateKeyInTimezone(ref, timezone));
+    const dayKeys = dayRefs.map((ref) => toDateKeyInTimezone(ref, timezone));
     const dayKeySet = new Set(dayKeys);
 
     const bookingWindowStart = new Date(base);
@@ -1707,9 +1708,9 @@ export class ProviderService {
     // sobreposição de intervalo (mesma duração usada na criação).
     const occupiedByDay = new Map<string, number[]>();
     for (const booking of bookings) {
-      const dayKey = formatDateKeyInTimezone(booking.scheduledAt, timezone);
+      const dayKey = toDateKeyInTimezone(booking.scheduledAt, timezone);
       if (!dayKeySet.has(dayKey)) continue;
-      const time = formatTimeInTimezone(booking.scheduledAt, timezone);
+      const time = toTimeInTimezone(booking.scheduledAt, timezone);
       const existing = occupiedByDay.get(dayKey) ?? [];
       existing.push(parseMinutes(time));
       occupiedByDay.set(dayKey, existing);
@@ -1747,8 +1748,8 @@ export class ProviderService {
         ? (student.weeklySchedule as unknown as Array<{ dayOfWeek: number; startTime: string; endTime: string }>)
         : [];
       if (schedule.length === 0) continue;
-      const startKey = formatDateKeyInTimezone(student.startDate, timezone);
-      const endKey = student.recurrenceEndDate ? formatDateKeyInTimezone(student.recurrenceEndDate, timezone) : null;
+      const startKey = toDateKeyInTimezone(student.startDate, timezone);
+      const endKey = student.recurrenceEndDate ? toDateKeyInTimezone(student.recurrenceEndDate, timezone) : null;
       for (const dayKey of validDayKeys) {
         if (dayKey < startKey) continue;
         if (endKey && dayKey > endKey) continue;
@@ -1765,7 +1766,7 @@ export class ProviderService {
 
     const payload = dayRefs.map((ref, index) => {
       const date = dayKeys[index];
-      const weekday = weekdayInTimezone(ref, timezone);
+      const weekday = toWeekdayInTimezone(ref, timezone);
       const occupiedMinutes = occupiedByDay.get(date) ?? [];
       const blockRanges = blockedByDay.get(date) ?? [];
       const offAppRanges = offAppByDay.get(date) ?? [];

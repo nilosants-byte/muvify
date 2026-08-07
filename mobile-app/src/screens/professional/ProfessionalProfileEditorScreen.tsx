@@ -533,8 +533,8 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                 <Ionicons name="calendar-outline" size={18} color={theme.textGreen} />
               </View>
               <View style={{ flex: 1 }}>
-                <MvText variant="semi2">Meus Horários</MvText>
-                <MvText variant="body4" color="secondary">Dias e horários disponíveis para atendimento</MvText>
+                <MvText variant="semi2">Horários e local de atendimento</MvText>
+                <MvText variant="body4" color="secondary">Dias/horários disponíveis, área e locais onde você atende</MvText>
               </View>
               <Ionicons name="chevron-forward" size={16} color={theme.text3} />
             </PressableScale>

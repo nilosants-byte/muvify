@@ -720,6 +720,21 @@ export class ConsultancyService {
           StatusCodes.BAD_REQUEST
         );
       }
+
+      // Frente 5 (segunda camada), Lote 1: purchaseCombo sempre cobra
+      // comboPresentialShareCents + comboConsultancyShareCents (que a
+      // checagem acima trava para somar exatamente priceCents, o valor
+      // BASE) — não existe como ratear um preço promocional entre as duas
+      // partes fixas sem reabrir essa trava. Um combo com promoção ativa
+      // aparecia com desconto na vitrine mas cobrava o valor cheio no
+      // checkout. Bloqueado até existir um jeito seguro de dividir o
+      // desconto entre as duas partes.
+      if (input.isPromotion) {
+        throw new AppError(
+          "Promoção não está disponível para ofertas do tipo Combo (o desconto não pode ser dividido entre a parte presencial e a de consultoria).",
+          StatusCodes.BAD_REQUEST
+        );
+      }
     }
 
     if (
@@ -1141,6 +1156,26 @@ export class ConsultancyService {
     }
 
     const nextKind = input.kind ?? offer.kind;
+
+    // Frente 5 (segunda camada), Lote 7: deleteProviderOffer recusa excluir
+    // uma oferta com venda histórica (contrato/pacote/agendamento), mas
+    // trocar o `kind` na edição não tinha a mesma proteção — a oferta
+    // mudava de identidade completamente (presencial ↔ consultoria ↔
+    // combo) enquanto ainda tinha histórico vinculado a ela.
+    if (nextKind !== offer.kind) {
+      const [hasContract, hasPackage, hasBooking] = await Promise.all([
+        prisma.consultancyContract.findFirst({ where: { offerId }, select: { id: true } }),
+        prisma.presentialPackage.findFirst({ where: { offerId }, select: { id: true } }),
+        prisma.booking.findFirst({ where: { offerId }, select: { id: true } })
+      ]);
+      if (hasContract || hasPackage || hasBooking) {
+        throw new AppError(
+          "Esta oferta já tem vendas registradas e não pode trocar de tipo — crie uma nova oferta em vez de alterar o tipo desta.",
+          StatusCodes.CONFLICT
+        );
+      }
+    }
+
     const nextPriceCents = input.priceCents ?? offer.priceCents;
     const nextIsPromotion =
       typeof input.isPromotion === "boolean" ? input.isPromotion : offer.isPromotion;
@@ -1334,8 +1369,15 @@ export class ConsultancyService {
         data: updateData
       });
       if (claimed.count === 0) {
+        // Frente 5 (segunda camada), Lote 5: mensagem ia direto pro toast do
+        // app com data em formato técnico (ISO, hora UTC) e sem acentuação —
+        // trocado pelo mesmo padrão de formatação em pt-BR já usado em
+        // outras mensagens deste arquivo (ex.: planValidUntilLabel).
+        const nextAllowedLabel = nextAllowedBasePriceChangeAt.toLocaleDateString("pt-BR", {
+          timeZone: env.APP_TIMEZONE
+        });
         throw new AppError(
-          `Valor base pode ser alterado apenas uma vez a cada 30 dias. Proxima alteracao em ${nextAllowedBasePriceChangeAt.toISOString()}.`,
+          `Valor base pode ser alterado apenas uma vez a cada 30 dias. Próxima alteração em ${nextAllowedLabel}.`,
           StatusCodes.BAD_REQUEST
         );
       }
@@ -1370,6 +1412,25 @@ export class ConsultancyService {
     if (pendingQuote) {
       throw new AppError(
         "Existe uma solicitação de cliente aguardando decisão com esta oferta cotada — não é possível excluir agora. Aguarde o cliente decidir ou desative a oferta em vez de excluir.",
+        StatusCodes.CONFLICT
+      );
+    }
+
+    // Frente 5 (segunda camada), Lote 7: Booking.offerId usa onDelete:
+    // SetNull (ao contrário de ConsultancyContract/PresentialPackage, que
+    // usam Restrict e por isso já caem no catch de P2003 abaixo) — uma
+    // oferta que só tem agendamentos avulsos vinculados (sem pacote/
+    // contrato) podia ser excluída normalmente, e os bookings ficavam com
+    // offerId nulo, perdendo a restrição de forma de pagamento configurada
+    // pra aquela oferta (payment.service.ts só reaplica isso quando
+    // offerId existe).
+    const bookingUsingOffer = await prisma.booking.findFirst({
+      where: { offerId },
+      select: { id: true }
+    });
+    if (bookingUsingOffer) {
+      throw new AppError(
+        "Esta oferta já tem agendamentos registrados e não pode ser excluída — desative-a para parar de recebê-los sem apagar o histórico.",
         StatusCodes.CONFLICT
       );
     }
@@ -2129,19 +2190,12 @@ export class ConsultancyService {
       );
     }
 
-    const paymentAmountCents = this.offerEffectivePriceCents({
-      isPromotion: request.quotedOffer.isPromotion,
-      promotionPriceCents: request.quotedOffer.promotionPriceCents,
-      promotionEndsAt: request.quotedOffer.promotionEndsAt,
-      priceCents: request.quotedOffer.priceCents
-    });
-
     const now = new Date();
     const deliveryDeadlineAt = new Date(
       now.getTime() + env.CONSULTANCY_DELIVERY_DEADLINE_HOURS * 60 * 60 * 1000
     );
 
-    const { updatedRequest, contract } = await prisma.$transaction(async (tx) => {
+    const { updatedRequest, contract, paymentAmountCents } = await prisma.$transaction(async (tx) => {
       // Re-valida o status dentro da transação para prevenir race condition com decideRequest REFUSE
       const freshRequest = await tx.consultancyRequest.findUnique({
         where: { id: request.id },
@@ -2156,7 +2210,11 @@ export class ConsultancyService {
       if (freshRequest.contract) {
         // Re-lê o request para garantir consistência (request fora da tx pode estar stale)
         const consistentRequest = await tx.consultancyRequest.findUniqueOrThrow({ where: { id: request.id } });
-        return { updatedRequest: consistentRequest, contract: freshRequest.contract };
+        return {
+          updatedRequest: consistentRequest,
+          contract: freshRequest.contract,
+          paymentAmountCents: freshRequest.contract.paymentAmountCents
+        };
       }
 
       // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 5: entre
@@ -2172,6 +2230,13 @@ export class ConsultancyService {
           StatusCodes.CONFLICT
         );
       }
+
+      // Frente 5 (segunda camada), Lote 7: freshOffer já era buscado aqui
+      // pra checar isActive, mas o valor cobrado e os campos congelados no
+      // contrato continuavam vindo do `quotedOffer` capturado bem antes da
+      // transação — uma alteração no preço promocional (sem cooldown de 30
+      // dias, ao contrário do preço base) nessa janela não era pega.
+      const paymentAmountCentsTx = this.offerEffectivePriceCents(freshOffer);
       const freshProvider = await tx.providerProfile.findUnique({
         where: { id: request.providerId },
         select: { crefValidationStatus: true, user: { select: { suspendedAt: true } } }
@@ -2205,18 +2270,19 @@ export class ConsultancyService {
           paymentMethod: selectedMethod,
           paymentInstallments: 1,
           paymentStatus: ConsultancyPaymentStatus.PENDING,
-          paymentAmountCents,
-          providerAmountCents: providerAmountFrom(paymentAmountCents),
-          platformAmountCents: platformAmountFrom(paymentAmountCents),
+          paymentAmountCents: paymentAmountCentsTx,
+          providerAmountCents: providerAmountFrom(paymentAmountCentsTx),
+          platformAmountCents: platformAmountFrom(paymentAmountCentsTx),
           deliveryDeadlineAt,
           immediateExecutionAcknowledgedAt: now,
           // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 2:
           // snapshot congelado da oferta no momento da compra — editar a
           // oferta depois não pode mais mudar retroativamente a vigência/
-          // categorização de um contrato já ativo.
-          billingCycle: quotedOffer.billingCycle,
-          kind: quotedOffer.kind,
-          fichaValidityDays: quotedOffer.fichaValidityDays
+          // categorização de um contrato já ativo. Lido de freshOffer (ver
+          // Lote 7 acima), não do quotedOffer capturado antes da transação.
+          billingCycle: freshOffer.billingCycle,
+          kind: freshOffer.kind,
+          fichaValidityDays: freshOffer.fichaValidityDays
         },
         include: {
           offer: true
@@ -2225,7 +2291,8 @@ export class ConsultancyService {
 
       return {
         updatedRequest: updatedRequestTx,
-        contract: contractTx
+        contract: contractTx,
+        paymentAmountCents: paymentAmountCentsTx
       };
     });
 

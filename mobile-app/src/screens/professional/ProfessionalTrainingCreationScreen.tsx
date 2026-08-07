@@ -268,12 +268,22 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
   const [mineExercises, setMineExercises] = useState<Exercise[]>([]);
   const [prebuiltExercises, setPrebuiltExercises] = useState<Exercise[]>([]);
   const [providerPlans, setProviderPlans] = useState<TrainingPlan[]>([]);
+  // Frente 5 (segunda camada), Lote 4: navigation.goBack() disparado logo
+  // depois de um salvamento bem-sucedido não deve acionar o aviso de
+  // "sair sem salvar" — o formulário ainda está preenchido nesse instante
+  // (estado só é limpo depois), então sem esse ref o próprio fluxo de
+  // sucesso ficaria bloqueado pelo aviso que essa correção introduz.
+  const justSavedRef = useRef(false);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("mine");
   const [selectedCategory, setSelectedCategory] = useState<ExerciseCategory | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   const [showCreateExerciseForm, setShowCreateExerciseForm] = useState(false);
+  // Frente 5 (segunda camada), Lote 8: só existia create/delete pro
+  // exercício próprio — reaproveita o mesmo formulário/painel da criação
+  // pra edição, alternando o modo por este id.
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
   const [exerciseForm, setExerciseForm] = useState<CreateExerciseForm>(EMPTY_EXERCISE_FORM);
   const [mediaUrlInput, setMediaUrlInput] = useState("");
   const [savingExercise, setSavingExercise] = useState(false);
@@ -290,6 +300,11 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
   const [editingPlanTitle, setEditingPlanTitle] = useState("");
   const [editingPlanDescription, setEditingPlanDescription] = useState("");
   const [editingPlanExercises, setEditingPlanExercises] = useState<DraftPlanExercise[]>([]);
+  // Frente 5 (segunda camada), Lote 6: entrando por aqui (lista "Treinos
+  // criados") não existia campo de vigência nenhum — só entrando pela tela
+  // do aluno (editPlanId, acima) dava pra mudar a data. Unifica as duas
+  // capacidades.
+  const [editingPlanValidUntil, setEditingPlanValidUntil] = useState<Date | null>(null);
   const [savingEditedPlan, setSavingEditedPlan] = useState(false);
   const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
   const [expandedPlanIds, setExpandedPlanIds] = useState<Record<string, boolean>>({});
@@ -417,7 +432,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
     (exercise: Exercise) => {
       setShowNewPlanBuilder(true);
       setNewPlanExercises((current) => [...current, toDraftExercise(exercise)]);
-      showToast(`${exercise.name} adicionado ao treino em criacao.`, "success");
+      showToast(`${exercise.name} adicionado ao treino em criação.`, "success");
     },
     [showToast]
   );
@@ -439,11 +454,41 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
     setEditingPlanTitle(plan.title);
     setEditingPlanDescription(plan.description ?? "");
     setEditingPlanExercises(draftItems);
+    setEditingPlanValidUntil(plan.validUntil ? new Date(plan.validUntil) : null);
     setExpandedPlanIds((current) => ({ ...current, [plan.id]: true }));
+  }
+
+  // Frente 5 (segunda camada), Lote 9: era possível ter um treino novo em
+  // construção (showNewPlanBuilder) e uma edição inline de outro treino
+  // abertas ao mesmo tempo, sem nenhum aviso — o profissional podia perder
+  // de vista qual das duas estava pendente de salvar. Mesmo aviso que já
+  // existe pra trocar entre duas edições inline (handleAddExerciseToPlan).
+  function handleStartInlinePlanEdit(plan: TrainingPlan) {
+    const hasNewPlanInProgress =
+      showNewPlanBuilder && (newPlanTitle.trim().length > 0 || newPlanExercises.length > 0);
+    if (hasNewPlanInProgress) {
+      Alert.alert(
+        "Treino em criação será descartado",
+        "Existe um treino novo em construção nesta tela. Editar outro treino agora descarta o que você criou até aqui.",
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Continuar",
+            onPress: () => {
+              resetNewPlanBuilder();
+              startInlinePlanEdit(plan);
+            },
+          },
+        ]
+      );
+      return;
+    }
+    startInlinePlanEdit(plan);
   }
 
   function resetInlinePlanEdit() {
     setEditingPlanId(null);
+    setEditingPlanValidUntil(null);
     setEditingPlanTitle("");
     setEditingPlanDescription("");
     setEditingPlanExercises([]);
@@ -452,6 +497,32 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
   function togglePlanExpanded(planId: string) {
     setExpandedPlanIds((current) => ({ ...current, [planId]: !current[planId] }));
   }
+
+  // Frente 5 (segunda camada), Lote 4: sair da tela (botão voltar, gesto,
+  // botão físico) descartava um treino em construção ou edição sem
+  // nenhuma confirmação — mesmo padrão de risco já corrigido em
+  // ProfessionalStudentDetailScreen (avaliação física), agora replicado
+  // aqui via beforeRemove + preventDefault (intercepta qualquer forma de
+  // sair, não só o botão do cabeçalho).
+  const hasUnsavedTrainingWork =
+    Boolean(editingPlanId) ||
+    (showNewPlanBuilder && (newPlanTitle.trim().length > 0 || newPlanExercises.length > 0));
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      if (justSavedRef.current || !hasUnsavedTrainingWork) return;
+      e.preventDefault();
+      Alert.alert(
+        "Sair sem salvar?",
+        "As alterações no treino ainda não foram salvas e serão perdidas.",
+        [
+          { text: "Continuar editando", style: "cancel" },
+          { text: "Sair sem salvar", style: "destructive", onPress: () => navigation.dispatch(e.data.action) },
+        ]
+      );
+    });
+    return unsubscribe;
+  }, [navigation, hasUnsavedTrainingWork]);
 
   useEffect(() => {
     setExpandedPlanIds((current) => {
@@ -512,7 +583,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
       return;
     }
     setNewPlanExercises((current) => [...current, toDraftExercise(targetExercise)]);
-    showToast(`${targetExercise.name} adicionado ao treino em criacao.`, "success");
+    showToast(`${targetExercise.name} adicionado ao treino em criação.`, "success");
     setTargetExercise(null);
   }
 
@@ -632,21 +703,26 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         ? exerciseForm.mediaType || inferMediaTypeFromUrl(normalizedMediaUrl) || "IMAGE"
         : undefined;
 
-      await runWithAuth((token) =>
-        exerciseApi.create(token, {
-          name: exerciseForm.name.trim(),
-          category: exerciseForm.category as ExerciseCategory,
-          description: exerciseForm.description.trim() || undefined,
-          defaultRepetitionsSets: exerciseForm.repetitionsSets.trim(),
-          defaultRestLabel: exerciseForm.restLabel.trim() || undefined,
-          mediaUrl: normalizedMediaUrl || undefined,
-          mediaType: normalizedMediaType,
-        })
-      );
+      const payload = {
+        name: exerciseForm.name.trim(),
+        category: exerciseForm.category as ExerciseCategory,
+        description: exerciseForm.description.trim() || undefined,
+        defaultRepetitionsSets: exerciseForm.repetitionsSets.trim(),
+        defaultRestLabel: exerciseForm.restLabel.trim() || undefined,
+        mediaUrl: normalizedMediaUrl || undefined,
+        mediaType: normalizedMediaType,
+      };
 
-      showToast("Exercicio criado com sucesso.", "success");
+      if (editingExerciseId) {
+        await runWithAuth((token) => exerciseApi.update(token, editingExerciseId, payload));
+        showToast("Exercício atualizado com sucesso.", "success");
+      } else {
+        await runWithAuth((token) => exerciseApi.create(token, payload));
+        showToast("Exercício criado com sucesso.", "success");
+      }
       setExerciseForm(EMPTY_EXERCISE_FORM);
       setMediaUrlInput("");
+      setEditingExerciseId(null);
       setShowCreateExerciseForm(false);
       setActiveTab("mine");
       void trainingQuery.refetch();
@@ -654,12 +730,27 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
       handleScreenError({
         error,
         showToast,
-        fallbackMessage: "Falha ao criar exercício.",
+        fallbackMessage: editingExerciseId ? "Falha ao atualizar exercício." : "Falha ao criar exercício.",
         navigation,
       });
     } finally {
       setSavingExercise(false);
     }
+  }
+
+  function startEditExercise(exercise: Exercise) {
+    setEditingExerciseId(exercise.id);
+    setExerciseForm({
+      name: exercise.name,
+      category: exercise.category as ExerciseCategory,
+      repetitionsSets: exercise.defaultRepetitionsSets ?? "",
+      restLabel: exercise.defaultRestLabel ?? "",
+      description: exercise.description ?? "",
+      mediaUrl: exercise.mediaUrl ?? "",
+      mediaType: exercise.mediaType ?? "",
+    });
+    setMediaUrlInput(exercise.mediaUrl ?? "");
+    setShowCreateExerciseForm(true);
   }
 
   function removeExercise(exerciseId: string) {
@@ -675,7 +766,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
             setMineExercises((current) =>
               current.filter((exercise) => exercise.id !== exerciseId)
             );
-            showToast("Exercicio removido.", "success");
+            showToast("Exercício removido.", "success");
           } catch (error) {
             handleScreenError({
               error,
@@ -718,6 +809,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         );
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast("Treino atualizado com sucesso.", "success");
+        justSavedRef.current = true;
         navigation.goBack();
       } else if (targetContractId) {
         await runWithAuth((token) =>
@@ -730,6 +822,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         );
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast("Treino entregue ao aluno com sucesso.", "success");
+        justSavedRef.current = true;
         navigation.goBack();
       } else {
         await runWithAuth((token) =>
@@ -780,6 +873,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
             restLabel: exercise.restLabel.trim() || undefined,
             demoVideoUrl: exercise.demoVideoUrl?.trim() || undefined,
           })),
+          ...(editingPlanValidUntil ? { validUntil: editingPlanValidUntil.toISOString() } : {}),
         })
       );
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -874,12 +968,19 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
             {editPlanId ? "Editar Treino" : targetContractId ? "Criar Treino" : "Banco de Exercícios"}
           </MvText>
           <MvText variant="body4" color="secondary">
-            {editPlanId ? "Alterações ficam visíveis pro aluno" : targetContractId ? "Montagem e entrega de treino" : "Meus exercícios, Treinos Muvify e Criar Treinos"}
+            {editPlanId ? "Alterações ficam visíveis pro aluno" : targetContractId ? "Montagem e entrega de treino" : "Meus exercícios, Exercícios Muvify e Criar Treinos"}
           </MvText>
         </View>
 
         <TouchableOpacity
-          onPress={() => setShowCreateExerciseForm((current) => !current)}
+          onPress={() => {
+            if (showCreateExerciseForm) {
+              setEditingExerciseId(null);
+              setExerciseForm(EMPTY_EXERCISE_FORM);
+              setMediaUrlInput("");
+            }
+            setShowCreateExerciseForm((current) => !current);
+          }}
           style={{
             width: 36,
             height: 36,
@@ -1085,7 +1186,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                     variant="semi3"
                     style={{ color: active ? theme.textGreen : theme.text2 }}
                   >
-                    {tab === "mine" ? "Meus exercícios" : "Treinos Muvify"}
+                    {tab === "mine" ? "Meus exercícios" : "Exercícios Muvify"}
                   </MvText>
                   <MvText variant="badge" color="secondary">
                     {count} exercícios
@@ -1277,7 +1378,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
               />
 
               <MvButton
-                label="Salvar exercício"
+                label={editingExerciseId ? "Salvar alterações" : "Salvar exercício"}
                 loading={savingExercise}
                 disabled={!crefApproved}
                 onPress={() => void saveExercise()}
@@ -1349,13 +1450,18 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                         <Ionicons name="add-circle" size={14} color={theme.textGreen} />
                         {!exercise.isPrebuilt ? (
-                          <TouchableOpacity
-                            onPress={() => removeExercise(exercise.id)}
-                            disabled={deletingExerciseId === exercise.id}
-                            hitSlop={4}
-                          >
-                            <Ionicons name="trash-outline" size={12} color={deletingExerciseId === exercise.id ? theme.text3 : "#f44336"} />
-                          </TouchableOpacity>
+                          <>
+                            <TouchableOpacity onPress={() => startEditExercise(exercise)} hitSlop={4}>
+                              <Ionicons name="create-outline" size={12} color={theme.text3} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => removeExercise(exercise.id)}
+                              disabled={deletingExerciseId === exercise.id}
+                              hitSlop={4}
+                            >
+                              <Ionicons name="trash-outline" size={12} color={deletingExerciseId === exercise.id ? theme.text3 : "#f44336"} />
+                            </TouchableOpacity>
+                          </>
                         ) : null}
                       </View>
                     </TouchableOpacity>
@@ -1506,7 +1612,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                       </TouchableOpacity>
                       {!isEditing ? (
                         <TouchableOpacity
-                          onPress={() => startInlinePlanEdit(plan)}
+                          onPress={() => handleStartInlinePlanEdit(plan)}
                           style={{
                             width: 34,
                             height: 34,
@@ -1631,6 +1737,18 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                           </ScrollView>
                         </View>
 
+                        {plan.contractId ? (
+                          <View>
+                            <MvText variant="body4" color="secondary" style={{ marginBottom: 6 }}>
+                              Vigência do treino
+                            </MvText>
+                            <MvDatePicker
+                              value={editingPlanValidUntil ?? new Date()}
+                              onChange={setEditingPlanValidUntil}
+                            />
+                          </View>
+                        ) : null}
+
                         <View style={{ flexDirection: "row", gap: 8 }}>
                           <View style={{ flex: 1 }}>
                             <MvButton
@@ -1716,7 +1834,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       {!isEditing ? (
                         <View style={{ flex: 1 }}>
-                          <MvButton variant="outline" label="Editar" onPress={() => startInlinePlanEdit(plan)} />
+                          <MvButton variant="outline" label="Editar" onPress={() => handleStartInlinePlanEdit(plan)} />
                         </View>
                       ) : null}
                       <View style={{ flex: 1 }}>
@@ -1845,7 +1963,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                       paddingHorizontal: 10,
                     }}
                   >
-                    <MvText variant="semi3">Treino em criacao</MvText>
+                    <MvText variant="semi3">Treino em criação</MvText>
                     <MvText variant="body4" color="secondary">
                       {newPlanTitle.trim() || "Sem nome"} - {newPlanExercises.length} exercícios
                     </MvText>

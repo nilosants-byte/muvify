@@ -102,6 +102,27 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [applyToMoreDays, setApplyToMoreDays] = useState(false);
   const [extraDays, setExtraDays] = useState<Set<number>>(new Set());
+  const [serviceAreaDirty, setServiceAreaDirty] = useState(false);
+
+  // Frente 5 (segunda camada), Lote 4: ServiceAreaInlineSection tem seu
+  // próprio rascunho local (pino no mapa, raio, modalidade, locais extras)
+  // que só persiste com "Salvar" explícito — sair desta tela com esse
+  // rascunho pendente perdia tudo em silêncio.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      if (!serviceAreaDirty) return;
+      e.preventDefault();
+      Alert.alert(
+        "Sair sem salvar?",
+        "As alterações na área de atendimento (local, raio ou modalidade) ainda não foram salvas e serão perdidas.",
+        [
+          { text: "Continuar editando", style: "cancel" },
+          { text: "Sair sem salvar", style: "destructive", onPress: () => navigation.dispatch(e.data.action) },
+        ]
+      );
+    });
+    return unsubscribe;
+  }, [navigation, serviceAreaDirty]);
 
   useEffect(() => {
     const err = availabilityQuery.error;
@@ -414,7 +435,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
         />
 
         {/* Área de atendimento */}
-        <ServiceAreaInlineSection navigation={navigation as any} />
+        <ServiceAreaInlineSection navigation={navigation as any} onDirtyChange={setServiceAreaDirty} />
       </ScrollView>
 
       {/* Bottom sheet — novo horário */}

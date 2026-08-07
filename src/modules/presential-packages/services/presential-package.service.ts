@@ -9,6 +9,7 @@ import {
   PaymentMethod,
   PresentialPackageMode,
   PresentialPackageStatus,
+  ProviderServiceMode,
   ServiceOfferKind
 } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
@@ -23,6 +24,7 @@ import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/pl
 import { resolveProviderMpAccessToken, requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { billingCycleDurationDays } from "../../../shared/utils/consultancy-validity";
 import { assertOfferAcceptsPaymentMethod } from "../../../shared/utils/offer-payment-method";
+import { assertOfferAllowsServiceLocation } from "../../../shared/utils/offer-service-mode";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
 import { haversineKm } from "../../../shared/utils/geo";
@@ -225,18 +227,24 @@ async function resolveSessionLocationForPackage(
     latitude: number | null;
     longitude: number | null;
   },
+  offer: { offerServiceMode: ProviderServiceMode | null },
   sessionLocation: string | undefined,
   clientLatitude: number | undefined,
   clientLongitude: number | undefined
 ) {
-  if (!sessionLocation) {
-    return { sessionLocation: null as string | null, clientLatitude: null as number | null, clientLongitude: null as number | null };
-  }
-
   const fixedLocations = Array.isArray(provider.fixedLocations)
     ? (provider.fixedLocations as unknown as Array<{ name: string }>)
     : [];
-  const isFixedLocation = fixedLocations.some((loc) => loc.name === sessionLocation);
+  const isFixedLocation = sessionLocation ? fixedLocations.some((loc) => loc.name === sessionLocation) : true;
+
+  // Frente 5 (segunda camada), Lote 2: a restrição offerServiceMode da
+  // oferta (só local fixo / só a domicílio) só era validada na
+  // criação/edição da oferta — nunca aqui, no momento real da compra.
+  assertOfferAllowsServiceLocation(offer, isFixedLocation);
+
+  if (!sessionLocation) {
+    return { sessionLocation: null as string | null, clientLatitude: null as number | null, clientLongitude: null as number | null };
+  }
 
   if (!isFixedLocation && provider.serviceRadiusKm && provider.latitude != null && provider.longitude != null) {
     if (clientLatitude == null || clientLongitude == null) {
@@ -361,6 +369,7 @@ export class PresentialPackageService {
 
     const resolvedLocation = await resolveSessionLocationForPackage(
       offer.provider,
+      offer,
       input.sessionLocation,
       input.clientLatitude,
       input.clientLongitude
@@ -1586,6 +1595,7 @@ export class PresentialPackageService {
 
     const resolvedComboLocation = await resolveSessionLocationForPackage(
       offer.provider,
+      offer,
       input.sessionLocation,
       input.clientLatitude,
       input.clientLongitude

@@ -4,24 +4,7 @@ import { env } from "../../../../config/env";
 import { prisma } from "../../../../config/prisma";
 import { AppError } from "../../../../shared/errors/app-error";
 import { sessionOverlapsRange } from "../../../../shared/utils/time-range";
-
-function toDateKeyInTimezone(date: Date, timeZone: string) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-
-function toTimeInTimezone(date: Date, timeZone: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    timeZone,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
+import { toDateKeyInTimezone, toTimeInTimezone } from "../../../../shared/utils/timezone";
 
 async function getProviderByUserId(userId: string) {
   const profile = await prisma.providerProfile.findUnique({

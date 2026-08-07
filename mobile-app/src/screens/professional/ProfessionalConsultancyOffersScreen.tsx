@@ -124,6 +124,12 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
 
   const [creatingOffer, setCreatingOffer] = useState(false);
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
+  // Frente 5 (segunda camada), Lote 5: o card fora do formulário já avisava
+  // "Valor alterável a partir de {data}", mas dentro do próprio formulário
+  // de edição o campo de preço continuava normal, sem aviso — o
+  // profissional só descobria a trava depois de preencher tudo e tentar
+  // salvar, com um erro do backend.
+  const [editingOfferPriceLockedUntil, setEditingOfferPriceLockedUntil] = useState<string | null>(null);
   const [deletingOfferId, setDeletingOfferId] = useState<string | null>(null);
   const [offerWizardStep, setOfferWizardStep] = useState(0);
   const [offerFormVisible, setOfferFormVisible] = useState(false);
@@ -156,6 +162,11 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
       handleScreenError({ error: centerQuery.error, showToast, fallbackMessage: "Falha ao carregar ofertas.", navigation });
     }
   }, [centerQuery.error, showToast, navigation]);
+
+  const editingOfferPriceLocked = useMemo(
+    () => Boolean(editingOfferPriceLockedUntil) && new Date(editingOfferPriceLockedUntil!).getTime() > Date.now(),
+    [editingOfferPriceLockedUntil]
+  );
 
   const basePriceCents = useMemo(() => toCents(offerPrice), [offerPrice]);
   const promotionPriceCents = useMemo(() => toCents(promotionPrice), [promotionPrice]);
@@ -231,6 +242,13 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     else if (offerTitle === "Combo") setOfferTitle("");
   }, [offerKind, offerTitle]);
 
+  // Frente 5 (segunda camada), Lote 1: promoção não é suportada em ofertas
+  // Combo (o backend rejeita) — desliga automaticamente se o profissional
+  // trocar o tipo pra Combo com promoção já marcada.
+  useEffect(() => {
+    if (offerKind === "COMBO" && markAsPromotion) setMarkAsPromotion(false);
+  }, [offerKind, markAsPromotion]);
+
   useEffect(() => {
     if (editingOfferId) return;
     setOfferCycle(offerKind === "PRESENTIAL" ? "DAILY" : "MONTHLY");
@@ -245,6 +263,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
 
   function resetOfferForm() {
     setEditingOfferId(null);
+    setEditingOfferPriceLockedUntil(null);
     setOfferTitle("");
     setOfferKind("ONLINE_CONSULTANCY");
     setOfferCycle("MONTHLY");
@@ -272,6 +291,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
 
   function startEditOffer(offer: ProviderServiceOffer) {
     setEditingOfferId(offer.id);
+    setEditingOfferPriceLockedUntil(offer.basePriceChangeLockedUntil ?? null);
     setOfferTitle(offer.title);
     setOfferKind(offer.kind);
     setOfferCycle(offer.billingCycle);
@@ -303,7 +323,33 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     setOfferFormVisible(true);
   }
 
+  // Frente 5 (segunda camada), Lote 4: fechar o formulário (X, "Cancelar"
+  // ou botão físico/gesto de voltar no Android, via onRequestClose)
+  // descartava preço, dias, promoção etc. sem nenhuma confirmação. Editar
+  // uma oferta já vem com os campos preenchidos, então qualquer edição em
+  // andamento é tratada como "tem algo a perder" — mesmo critério usado no
+  // treino (ProfessionalTrainingCreationScreen).
+  const hasOfferFormChanges = Boolean(editingOfferId) || offerTitle.trim().length > 0 || basePriceCents > 0;
+
   function closeOfferForm() {
+    if (hasOfferFormChanges) {
+      Alert.alert(
+        "Sair sem salvar?",
+        "As alterações nesta oferta ainda não foram salvas e serão perdidas.",
+        [
+          { text: "Continuar editando", style: "cancel" },
+          {
+            text: "Sair sem salvar",
+            style: "destructive",
+            onPress: () => {
+              resetOfferForm();
+              setOfferFormVisible(false);
+            },
+          },
+        ]
+      );
+      return;
+    }
     resetOfferForm();
     setOfferFormVisible(false);
   }
@@ -654,6 +700,10 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
             {editingOfferId ? (
               <View style={{ gap: 10 }}>
                 <MvText variant="body4" color="secondary">Altere os campos desejados e salve.</MvText>
+                <MvText variant="caption" color="secondary">
+                  O tipo da oferta (presencial, consultoria, combo) não pode ser trocado depois de criada — crie uma
+                  nova oferta se precisar de um tipo diferente.
+                </MvText>
                 <MvInput
                   editable={offerKind !== "COMBO"}
                   placeholder={offerKind === "COMBO" ? "Combo (titulo fixo)" : "Titulo da oferta"}
@@ -764,16 +814,30 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     ) : null}
                   </View>
                 ) : null}
-                <MvInput keyboardType="numeric" placeholder="Valor base (R$)" value={offerPrice} onChangeText={(value) => setOfferPrice(maskPriceInput(value))} />
-                <MvText variant="caption" color="secondary">O valor base pode ser alterado apenas 1 vez a cada 30 dias.</MvText>
-                <Chip label={markAsPromotion ? "Promoção ativa no cadastro" : "Marcar como promoção"} selected={markAsPromotion} onPress={() => setMarkAsPromotion((current) => !current)} />
-                {markAsPromotion ? (
+                <MvInput
+                  keyboardType="numeric"
+                  placeholder="Valor base (R$)"
+                  value={offerPrice}
+                  onChangeText={(value) => setOfferPrice(maskPriceInput(value))}
+                  editable={!editingOfferPriceLocked}
+                />
+                <MvText variant="caption" color={editingOfferPriceLocked ? "warning" : "secondary"}>
+                  {editingOfferPriceLocked
+                    ? `Valor base travado até ${formatBRDate(editingOfferPriceLockedUntil)} (só pode mudar 1 vez a cada 30 dias).`
+                    : "O valor base pode ser alterado apenas 1 vez a cada 30 dias."}
+                </MvText>
+                {offerKind !== "COMBO" ? (
                   <>
-                    <MvInput keyboardType="numeric" placeholder="Valor promocional (R$)" value={promotionPrice} onChangeText={(value) => setPromotionPrice(maskPriceInput(value))} />
-                    {promotionValueError ? <MvText variant="body4" color="danger">{promotionValueError}</MvText> : null}
-                    <MvInput keyboardType="numeric" placeholder="Validade (DD/MM/AAAA)" value={promotionEndsAt} onChangeText={(value) => setPromotionEndsAt(maskDateInputBR(value))} />
-                    {promotionDateError ? <MvText variant="body4" color="danger">{promotionDateError}</MvText> : null}
-                    <MvInput placeholder="Texto da promoção (opcional)" value={promotionLabel} onChangeText={setPromotionLabel} maxLength={50} />
+                    <Chip label={markAsPromotion ? "Promoção ativa no cadastro" : "Marcar como promoção"} selected={markAsPromotion} onPress={() => setMarkAsPromotion((current) => !current)} />
+                    {markAsPromotion ? (
+                      <>
+                        <MvInput keyboardType="numeric" placeholder="Valor promocional (R$)" value={promotionPrice} onChangeText={(value) => setPromotionPrice(maskPriceInput(value))} />
+                        {promotionValueError ? <MvText variant="body4" color="danger">{promotionValueError}</MvText> : null}
+                        <MvInput keyboardType="numeric" placeholder="Validade (DD/MM/AAAA)" value={promotionEndsAt} onChangeText={(value) => setPromotionEndsAt(maskDateInputBR(value))} />
+                        {promotionDateError ? <MvText variant="body4" color="danger">{promotionDateError}</MvText> : null}
+                        <MvInput placeholder="Texto da promoção (opcional)" value={promotionLabel} onChangeText={setPromotionLabel} maxLength={50} />
+                      </>
+                    ) : null}
                   </>
                 ) : null}
                 {!crefValidated ? (

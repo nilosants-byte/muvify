@@ -273,7 +273,7 @@ describe("Fluxo modular profissional", () => {
       .spyOn(availabilityApi, "create")
       .mockResolvedValue({ id: "slot-2", weekday: 2, startTime: "09:00", endTime: "17:00", isActive: true } as any);
 
-    const availabilityNavigation = { goBack: jest.fn(), navigate: jest.fn() };
+    const availabilityNavigation = { goBack: jest.fn(), navigate: jest.fn(), addListener: jest.fn(() => () => {}) };
     const availabilityUi = renderWithQueryClient(
       <AvailabilityManagerScreen navigation={availabilityNavigation as any} route={{} as any} />
     );

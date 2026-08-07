@@ -19,6 +19,8 @@ import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/utils/encryption";
 import { haversineKm } from "../../../shared/utils/geo";
 import { sessionOverlapsRange } from "../../../shared/utils/time-range";
+import { assertOfferAllowsServiceLocation } from "../../../shared/utils/offer-service-mode";
+import { toDateKeyInTimezone, toTimeInTimezone, toWeekdayInTimezone } from "../../../shared/utils/timezone";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
 import { getPrivateObject, putPrivateObject } from "../../../shared/services/storage.service";
 import { restoreFlexibleCreditForBooking } from "../../../shared/utils/presential-package-credit";
@@ -68,29 +70,6 @@ function checkImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
 
 function toTime(date: Date) {
   return date.toISOString().slice(11, 16);
-}
-
-function toZonedDate(date: Date, timeZone: string) {
-  return new Date(date.toLocaleString("en-US", { timeZone }));
-}
-
-function toTimeInTimezone(date: Date, timeZone: string) {
-  const zonedDate = toZonedDate(date, timeZone);
-  const hours = String(zonedDate.getHours()).padStart(2, "0");
-  const minutes = String(zonedDate.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
-
-function toDateKeyInTimezone(date: Date, timeZone: string) {
-  const zonedDate = toZonedDate(date, timeZone);
-  const year = zonedDate.getFullYear();
-  const month = String(zonedDate.getMonth() + 1).padStart(2, "0");
-  const day = String(zonedDate.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function toWeekdayInTimezone(date: Date, timeZone: string) {
-  return toZonedDate(date, timeZone).getDay();
 }
 
 function formatPtBrDate(date: Date) {
@@ -358,15 +337,34 @@ export class BookingService {
         throw new AppError("Horário fora da disponibilidade informada.");
       }
 
+      // Frente 5 (segunda camada), Lote 2: buscada aqui (antes da checagem
+      // de local) porque a restrição offerServiceMode da oferta precisa
+      // ser validada junto com o local escolhido — antes era buscada só
+      // mais abaixo, depois desse ponto, e essa restrição nunca era
+      // checada em nenhum lugar.
+      let offer: Awaited<ReturnType<typeof tx.providerServiceOffer.findFirst>> = null;
+      if (!presentialPackage && offerId) {
+        offer = await tx.providerServiceOffer.findFirst({
+          where: { id: offerId, providerId, isActive: true }
+        });
+        if (!offer) {
+          throw new AppError("Oferta selecionada não está disponível para este profissional.");
+        }
+      }
+
       // Distance check only applies to at-home visits — a booking at one of the
       // provider's own fixed locations (gym, studio) never needs it, since the
       // client is the one traveling there.
-      if (sessionLocation) {
-        const fixedLocations = Array.isArray(provider.fixedLocations)
-          ? (provider.fixedLocations as unknown as Array<{ name: string }>)
-          : [];
-        const isFixedLocation = fixedLocations.some((loc) => loc.name === sessionLocation);
+      const fixedLocations = Array.isArray(provider.fixedLocations)
+        ? (provider.fixedLocations as unknown as Array<{ name: string }>)
+        : [];
+      const isFixedLocation = sessionLocation ? fixedLocations.some((loc) => loc.name === sessionLocation) : true;
 
+      if (offer) {
+        assertOfferAllowsServiceLocation(offer, isFixedLocation);
+      }
+
+      if (sessionLocation) {
         if (!isFixedLocation && provider.serviceRadiusKm && provider.latitude != null && provider.longitude != null) {
           if (clientLatitude == null || clientLongitude == null) {
             throw new AppError(
@@ -436,19 +434,7 @@ export class BookingService {
         // foi cobrado adiantado, essa sessão segue o mesmo motor de
         // reserva+captura da sessão avulsa comum.
         bookingPriceCents = presentialPackage.sessionPriceCents;
-      } else if (offerId) {
-        const offer = await tx.providerServiceOffer.findFirst({
-          where: {
-            id: offerId,
-            providerId,
-            isActive: true
-          }
-        });
-
-        if (!offer) {
-          throw new AppError("Oferta selecionada não está disponível para este profissional.");
-        }
-
+      } else if (offer) {
         // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 3:
         // booking avulso vinculado a uma oferta nunca checava
         // acceptsPix/acceptsDebitCard/acceptsCreditCard — único dos 3

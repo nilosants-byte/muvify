@@ -964,7 +964,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
             }}
           >
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary, letterSpacing: -0.02 * 14 }}>
-              {creating ? "Criando..." : !anamnesisCompleted ? "Ficha de saúde pendente" : clientHasDebt ? "Pendência financeira" : selectedDateKeys.length > 1 ? "Criar agendamentos" : "Ir para pagamento"}
+              {creating ? "Criando..." : !anamnesisCompleted ? "Ficha de saúde pendente" : clientHasDebt ? "Pendência financeira" : selectedDateKeys.length > 1 ? "Criar agendamentos" : "Confirmar agendamento"}
             </Text>
           </TouchableOpacity>
         </View>

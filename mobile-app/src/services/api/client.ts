@@ -1152,6 +1152,17 @@ export const exerciseApi = {
   }) {
     return apiRequest<Exercise>("/exercises", { method: "POST", token, body });
   },
+  update(token: string, exerciseId: string, body: Partial<{
+    name: string;
+    category: string;
+    description: string;
+    defaultRepetitionsSets: string;
+    defaultRestLabel: string;
+    mediaUrl: string;
+    mediaType: ExerciseMediaType;
+  }>) {
+    return apiRequest<Exercise>(`/exercises/${exerciseId}`, { method: "PATCH", token, body });
+  },
   delete(token: string, exerciseId: string) {
     return apiRequest<void>(`/exercises/${exerciseId}`, { method: "DELETE", token });
   },

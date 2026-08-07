@@ -320,7 +320,18 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
         } else if (result.payment.status === "PENDING" && result.payment.pix) {
           setPixPending(result.payment.pix);
         } else {
-          showToast("Não foi possível confirmar o pagamento. Tente novamente.", "error");
+          // Frente 5 (segunda camada), Lote 12: status não mapeado deixava
+          // o cliente "preso" na mesma tela sem próximo passo — diferente
+          // dos outros casos de sucesso, que sempre levam pra "Meus
+          // pacotes". O pacote já foi criado do lado do backend
+          // (setPurchasedPackage acima), mesmo que este pagamento
+          // específico não tenha fechado — leva pra lá mesmo assim, onde
+          // o status real pode ser conferido.
+          showToast(
+            "Não foi possível confirmar o pagamento agora — confira em \"Meus pacotes\" para ver o status ou tentar de novo.",
+            "info"
+          );
+          navigation.replace("MyPresentialPackages");
         }
       }
     } catch (error) {

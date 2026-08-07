@@ -58,14 +58,31 @@ type NavigationLike = {
 type Props = {
   navigation?: NavigationLike;
   onSaved?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
-export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
+function buildAreaSnapshot(
+  latitude: number,
+  longitude: number,
+  radiusKm: number,
+  serviceMode: ProviderServiceMode,
+  extraLocations: ProviderFixedLocation[]
+) {
+  return JSON.stringify({ latitude, longitude, radiusKm, serviceMode, extraLocations });
+}
+
+export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const isLight = theme.mode === "light";
   const mapRef = useRef<MapView>(null);
   const [mapReady, setMapReady] = useState(false);
+  // Frente 5 (segunda camada), Lote 4: mover o pino, mudar o raio, trocar
+  // a modalidade ou cadastrar um local extra só persistia mesmo quando o
+  // profissional apertava "Salvar" — sair da tela antes disso perdia tudo
+  // em silêncio. Guarda um retrato do último estado salvo pra comparar
+  // contra o atual e avisar o profissional antes de descartar.
+  const savedSnapshotRef = useRef<string>("");
 
   const [latitude, setLatitude] = useState(-23.5505);
   const [longitude, setLongitude] = useState(-46.6333);
@@ -280,10 +297,16 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
         setRadiusKm(nextRadius);
         setCustomRadius(String(nextRadius));
         setServiceMode(profile.serviceMode ?? "BOTH");
-        setExtraLocations(
-          Array.isArray(profile.fixedLocations)
-            ? (profile.fixedLocations as ProviderFixedLocation[])
-            : []
+        const nextExtraLocations = Array.isArray(profile.fixedLocations)
+          ? (profile.fixedLocations as ProviderFixedLocation[])
+          : [];
+        setExtraLocations(nextExtraLocations);
+        savedSnapshotRef.current = buildAreaSnapshot(
+          nextLat,
+          nextLng,
+          nextRadius,
+          profile.serviceMode ?? "BOTH",
+          nextExtraLocations
         );
       }
 
@@ -292,7 +315,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
       handleScreenError({
         error,
         showToast,
-        fallbackMessage: "Falha ao carregar area de atendimento.",
+        fallbackMessage: "Falha ao carregar área de atendimento.",
         navigation,
       });
     } finally {
@@ -303,6 +326,12 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
   useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    if (loading) return;
+    const dirty = buildAreaSnapshot(latitude, longitude, radiusKm, serviceMode, extraLocations) !== savedSnapshotRef.current;
+    onDirtyChange?.(dirty);
+  }, [loading, latitude, longitude, radiusKm, serviceMode, extraLocations, onDirtyChange]);
 
   // Carrega outros personais no raio para exibir como pins não clicáveis (visão de concorrência)
   useEffect(() => {
@@ -420,10 +449,10 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
       if (results[0]) {
         selectAddressSuggestion(results[0]);
       } else {
-        showToast("Endereco não encontrado.", "info");
+        showToast("Endereço não encontrado.", "info");
       }
     } catch {
-      showToast("Falha ao buscar endereco.", "error");
+      showToast("Falha ao buscar endereço.", "error");
     } finally {
       setSearchingAddress(false);
     }
@@ -433,7 +462,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
     const parsedLat = parseFloat(item.lat);
     const parsedLon = parseFloat(item.lon);
     if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLon)) {
-      showToast("Endereco invalido para o mapa.", "error");
+      showToast("Endereço inválido para o mapa.", "error");
       return;
     }
 
@@ -455,11 +484,11 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
   function applyCustomRadius() {
     const value = parseInt(customRadius, 10);
     if (!Number.isFinite(value) || value < 1) {
-      showToast("Raio minimo: 1 km.", "error");
+      showToast("Raio mínimo: 1 km.", "error");
       return;
     }
     if (value > 200) {
-      showToast("Raio maximo: 200 km.", "error");
+      showToast("Raio máximo: 200 km.", "error");
       return;
     }
     applyRadius(value);
@@ -549,13 +578,14 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
           })),
         })
       );
-      showToast("Area de atendimento salva.", "success");
+      savedSnapshotRef.current = buildAreaSnapshot(latitude, longitude, radiusKm, serviceMode, extraLocations);
+      showToast("Área de atendimento salva.", "success");
       onSaved?.();
     } catch (error) {
       handleScreenError({
         error,
         showToast,
-        fallbackMessage: "Falha ao salvar area de atendimento.",
+        fallbackMessage: "Falha ao salvar área de atendimento.",
         navigation,
       });
     } finally {
@@ -757,7 +787,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved }: Props) {
 
       <MvCard>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <MvText variant="semi2">Configuração rapida</MvText>
+          <MvText variant="semi2">Configuração rápida</MvText>
           <TouchableOpacity
             onPress={() => {
               void save();

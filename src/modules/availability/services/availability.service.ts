@@ -4,21 +4,7 @@ import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { deleteByPattern } from "../../../shared/utils/cache";
-
-function toZonedDate(date: Date, timeZone: string) {
-  return new Date(date.toLocaleString("en-US", { timeZone }));
-}
-
-function toTimeInTimezone(date: Date, timeZone: string) {
-  const zonedDate = toZonedDate(date, timeZone);
-  const hours = String(zonedDate.getHours()).padStart(2, "0");
-  const minutes = String(zonedDate.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
-
-function toWeekdayInTimezone(date: Date, timeZone: string) {
-  return toZonedDate(date, timeZone).getDay();
-}
+import { toTimeInTimezone, toWeekdayInTimezone } from "../../../shared/utils/timezone";
 
 export class AvailabilityService {
   async create(userId: string, weekday: number, startTime: string, endTime: string, isActive = true) {

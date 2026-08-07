@@ -60,6 +60,30 @@ export class ExerciseController {
     return res.status(StatusCodes.CREATED).json(exercise);
   }
 
+  async update(req: Request, res: Response) {
+    const userId = req.user!.id;
+    const { exerciseId } = req.params;
+    const {
+      name,
+      category,
+      description,
+      defaultRepetitionsSets,
+      defaultRestLabel,
+      mediaUrl,
+      mediaType
+    } = req.body;
+    const exercise = await exerciseService.update(exerciseId, userId, {
+      name,
+      category,
+      description,
+      defaultRepetitionsSets,
+      defaultRestLabel,
+      mediaUrl,
+      mediaType
+    });
+    return res.json(exercise);
+  }
+
   async delete(req: Request, res: Response) {
     const userId = req.user!.id;
     const { exerciseId } = req.params;

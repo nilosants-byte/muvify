@@ -28,12 +28,17 @@ export class CategoryService {
     // manualmente por admins em momentos diferentes coexistiam como
     // categorias distintas. Mesma normalização já usada na criação
     // automática via especialidade do provider.
-    const activeCategories = await prisma.serviceCategory.findMany({
-      where: { active: true },
+    // Frente 5 (segunda camada), Lote 11: checagem só olhava categorias
+    // `active: true` — resolveCategoryIdsFromSpecialties (mesma ideia, do
+    // lado do provider) já documenta por que precisa considerar inativas
+    // também: recriar "Pilates" com grafia diferente depois que a
+    // original foi desativada não era pego, já que a unique constraint do
+    // banco é por nome exato, independente do status.
+    const allCategories = await prisma.serviceCategory.findMany({
       select: { name: true }
     });
     const normalizedTarget = normalizeLoose(name);
-    const duplicate = activeCategories.some((c) => normalizeLoose(c.name) === normalizedTarget);
+    const duplicate = allCategories.some((c) => normalizeLoose(c.name) === normalizedTarget);
     if (duplicate) {
       throw new AppError("Categoria já existe.", StatusCodes.CONFLICT);
     }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { env } from "../../../../config/env";
+import { toDateKeyInTimezone } from "../../../../shared/utils/timezone";
 
 export const manualBlockIdSchema = z.object({
   params: z.object({ blockId: z.string().uuid() })
@@ -10,12 +11,7 @@ export const manualBlockIdSchema = z.object({
 // Brasília, o dia em UTC já virou o seguinte, rejeitando "hoje" como se
 // fosse passado.
 function todayKeyInAppTimezone(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: env.APP_TIMEZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(new Date());
+  return toDateKeyInTimezone(new Date(), env.APP_TIMEZONE);
 }
 
 export const createManualBlockSchema = z.object({

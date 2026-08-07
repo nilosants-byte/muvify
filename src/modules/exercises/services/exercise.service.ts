@@ -224,6 +224,31 @@ export class ExerciseService {
     const exercise = await prisma.exercise.findUnique({ where: { id: exerciseId } });
     if (!exercise) throw new AppError("Exercício não encontrado.", StatusCodes.NOT_FOUND);
     if (!exercise.isPrebuilt) throw new AppError("Exercício não é pré-montado.", StatusCodes.BAD_REQUEST);
+
+    // Frente 5 (segunda camada), Lote 8: `delete` (exercício próprio do
+    // profissional) já tinha essa mesma checagem desde a Frente 4/Lote 4 —
+    // `deletePrebuilt` (biblioteca compartilhada, admin) ficou de fora. O
+    // FK usa onDelete: SetNull (TrainingPlanExercise guarda cópia própria
+    // do nome/reps/carga, então a ficha do aluno continua funcionando),
+    // mas o admin merece o mesmo aviso antes de excluir algo em uso.
+    const activeUsages = await prisma.trainingPlanExercise.findMany({
+      where: {
+        exerciseId,
+        trainingPlan: {
+          isActive: true,
+          contract: { status: { in: [ConsultancyContractStatus.ACTIVE, ConsultancyContractStatus.DELIVERED] } }
+        }
+      },
+      select: { trainingPlanId: true },
+      distinct: ["trainingPlanId"]
+    });
+    if (activeUsages.length > 0) {
+      throw new AppError(
+        `Este exercício está em uso em ${activeUsages.length} ficha(s) ativa(s) de aluno(s) e não pode ser removido.`,
+        StatusCodes.CONFLICT
+      );
+    }
+
     await prisma.exercise.delete({ where: { id: exerciseId } });
 
     void writeAdminAuditLog({
@@ -232,6 +257,51 @@ export class ExerciseService {
       targetType: "EXERCISE",
       targetId: exerciseId,
       metadata: { name: exercise.name, category: exercise.category }
+    });
+  }
+
+  // Frente 5 (segunda camada), Lote 8: só existia create/delete pro
+  // exercício próprio do profissional — sem edição, um exercício custom em
+  // uso numa ficha ativa (que `delete` bloqueia excluir, ver acima) ficava
+  // permanentemente travado: pra corrigir um erro de digitação seria
+  // preciso remover de todas as fichas ativas primeiro.
+  async update(exerciseId: string, providerId: string, input: {
+    name?: string;
+    category?: string;
+    description?: string;
+    defaultRepetitionsSets?: string;
+    defaultRestLabel?: string;
+    mediaUrl?: string;
+    mediaType?: ExerciseMediaType;
+  }) {
+    const exercise = await prisma.exercise.findUnique({ where: { id: exerciseId } });
+    if (!exercise) throw new AppError("Exercício não encontrado.", StatusCodes.NOT_FOUND);
+
+    const provider = await prisma.providerProfile.findUnique({ where: { userId: providerId } });
+    if (!provider || exercise.providerId !== provider.id) {
+      throw new AppError("Você não tem permissão para editar este exercício.", StatusCodes.FORBIDDEN);
+    }
+    if (exercise.isPrebuilt) {
+      throw new AppError("Exercícios da biblioteca Muvify não podem ser editados.", StatusCodes.FORBIDDEN);
+    }
+
+    const isVideoMedia = (input.mediaType ?? exercise.mediaType) === ExerciseMediaType.VIDEO;
+
+    return prisma.exercise.update({
+      where: { id: exerciseId },
+      data: {
+        ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+        ...(input.category !== undefined ? { category: input.category.trim() } : {}),
+        ...(input.description !== undefined ? { description: input.description.trim() || null } : {}),
+        ...(input.defaultRepetitionsSets !== undefined ? { defaultRepetitionsSets: input.defaultRepetitionsSets.trim() || null } : {}),
+        ...(input.defaultRestLabel !== undefined ? { defaultRestLabel: input.defaultRestLabel.trim() || null } : {}),
+        ...(input.mediaUrl !== undefined
+          ? { mediaUrl: (ENABLE_VIDEO_UPLOAD || !isVideoMedia) ? (input.mediaUrl.trim() || null) : null }
+          : {}),
+        ...(input.mediaType !== undefined
+          ? { mediaType: (ENABLE_VIDEO_UPLOAD || !isVideoMedia) ? (input.mediaType || null) : null }
+          : {}),
+      },
     });
   }
 

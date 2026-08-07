@@ -8,7 +8,8 @@ import { ExerciseController } from "../controllers/exercise.controller";
 import {
   createExerciseSchema,
   exerciseIdSchema,
-  listExercisesSchema
+  listExercisesSchema,
+  updateExerciseSchema
 } from "../validators/exercise.validator";
 
 const exerciseController = new ExerciseController();
@@ -46,6 +47,15 @@ exerciseRoutes.post(
   uploadRateLimiter,
   validate(createExerciseSchema),
   exerciseController.create.bind(exerciseController)
+);
+
+exerciseRoutes.patch(
+  "/:exerciseId",
+  ensureAuthenticated,
+  ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
+  validate(updateExerciseSchema),
+  exerciseController.update.bind(exerciseController)
 );
 
 exerciseRoutes.delete(
