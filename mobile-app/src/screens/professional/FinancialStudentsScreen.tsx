@@ -265,7 +265,14 @@ export function FinancialStudentsScreen({ navigation }: Props) {
   }
 
   async function handleDeleteStudent(id: string, name: string) {
-    Alert.alert("Remover aluno", `Remover "${name}"?`, [
+    // Frente 4 (segunda camada), Lote 6: o aviso já existia, mas não
+    // deixava claro que a receita já lançada pra este aluno CONTINUA
+    // contando nos totais — só perde a atribuição do nome, pra sempre,
+    // sem opção de desfazer.
+    Alert.alert(
+      "Remover aluno",
+      `Remover "${name}"? Os valores já recebidos deste aluno continuam contando no seu financeiro, mas o nome dele some do histórico — essa ação não pode ser desfeita.`,
+      [
       { text: "Cancelar", style: "cancel" },
       { text: "Remover", style: "destructive", onPress: async () => {
         try {
@@ -452,6 +459,15 @@ export function FinancialStudentsScreen({ navigation }: Props) {
               <MvText variant="semi3" style={{ color: green, fontSize: 11, marginTop: 8, marginBottom: 2 }}>
                 Pelo App ({appClients.length})
               </MvText>
+              {/* Frente 4 (segunda camada), Lote 5: esta lista é só quem
+                  gerou receita NESTE mês — diferente de "Gestão de Alunos"
+                  (todo cliente com vínculo ativo/recente, sem filtro de
+                  mês). Um cliente pode aparecer numa tela e não na outra
+                  sem que isso signifique perda de dado — só perguntas
+                  diferentes. */}
+              <MvText variant="caption" color="secondary" style={{ fontSize: 10, marginBottom: 4 }}>
+                Só quem pagou pelo app neste mês. Para ver todos os seus alunos, incluindo meses anteriores, use "Gestão de Alunos".
+              </MvText>
               {appClients.map(c => {
                 const initials = c.name.split(" ").slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase();
                 const sessionLabel = c.sessionCount > 0
@@ -494,6 +510,15 @@ export function FinancialStudentsScreen({ navigation }: Props) {
               <MvText variant="body4" style={{ color: blue, fontSize: 11 }}>+ Novo aluno</MvText>
             </PressableScale>
           </View>
+          {/* Frente 4 (segunda camada), Lote 5: cadastro manual não tem
+              nenhuma ligação com conta de cliente real — se a mesma pessoa
+              também aparecer em "Pelo App" acima, ela contaria duas vezes
+              no total de alunos. Aviso explícito em vez de tentar
+              detectar/impedir automaticamente (o cadastro manual não pede
+              e-mail nem telefone, então não dá pra cruzar com segurança). */}
+          <MvText variant="caption" color="secondary" style={{ fontSize: 10, marginBottom: 2 }}>
+            Só para quem paga por fora do app. Se a pessoa já compra pelo app, não cadastre aqui — ela já aparece em "Pelo App" e em "Gestão de Alunos" automaticamente.
+          </MvText>
 
           {students.length === 0 && appClients.length === 0 ? (
             <MvText variant="body4" color="secondary" style={{ textAlign: "center", marginTop: 24 }}>
@@ -517,6 +542,11 @@ export function FinancialStudentsScreen({ navigation }: Props) {
       {/* Add / Edit Student Modal */}
       <MvModalSheet visible={addStudentModal} title={editingStudent ? "Editar aluno" : "Novo aluno"} onClose={() => { setAddStudentModal(false); resetStudentForm(); }}>
         <View style={{ gap: 10, paddingBottom: 40 }}>
+          {!editingStudent ? (
+            <MvText variant="caption" color="secondary">
+              Use isto só para quem paga por fora do app. Cliente que já compra pelo app não precisa ser cadastrado aqui. Este cadastro é só financeiro — não cria ficha de anamnese, avaliação física nem histórico de sessões (isso só existe pra quem compra pelo app).
+            </MvText>
+          ) : null}
           <MvInput placeholder="Nome do aluno" value={sName} onChangeText={setSName} />
           <View style={{ flexDirection: "row", gap: 6 }}>
             {([{ key: "PRESENTIAL", label: "Presencial" }, { key: "ONLINE", label: "Consultoria" }, { key: "BOTH", label: "Ambos" }] as { key: FinancialStudentType; label: string }[]).map(t => (

@@ -63,7 +63,11 @@ const assessmentFields: Array<{ key: keyof AssessmentForm; label: string; unit: 
   { key: "chest", label: "Peito", unit: "cm" },
   { key: "arm", label: "Braço", unit: "cm" },
   { key: "thigh", label: "Coxa", unit: "cm" },
-  { key: "circumferences", label: "Circunferência geral", unit: "cm" },
+  // Frente 4 (segunda camada), Lote 7: "Circunferência geral" não dizia o
+  // que media em relação aos 5 campos específicos acima (cintura, quadril,
+  // peito, braço, coxa) — rótulo mais claro pra indicar que é uma medida
+  // livre, pra qualquer parte do corpo que não tenha campo próprio.
+  { key: "circumferences", label: "Outra circunferência", unit: "cm" },
 ];
 
 function toAssessmentForm(input: Record<string, unknown> | null | undefined): AssessmentForm {
@@ -255,6 +259,15 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
   const isAnamnesisComplete = detail?.anamnesis?.status === "COMPLETED";
   const physicalAssessment = detail?.physicalAssessment;
   const summary = detail?.serviceSummary;
+  // Frente 4 (segunda camada), Lote 1: vínculo com este aluno é anterior à
+  // janela de retenção de dados de saúde (365 dias) — o backend já manda os
+  // campos vazios por segurança, mas antes a tela mostrava esses campos
+  // vazios como se fossem editáveis normalmente. Se o profissional digitasse
+  // algo, o auto-save reenviava o formulário inteiro e apagava o histórico
+  // real que ainda existia por trás.
+  const healthDataAccessRestricted = Boolean(
+    detail?.anamnesis?.healthDataAccessRestricted || physicalAssessment?.healthDataAccessRestricted
+  );
 
   useEffect(() => {
     setAssessmentForm(emptyAssessment);
@@ -269,10 +282,20 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
     changeCounterRef.current = 0;
   }, [physicalAssessment, clientId]);
 
+  // Frente 4 (segunda camada), Lote 4: o auto-save só disparava depois de
+  // 600ms sem digitar — sair da tela (botão voltar) antes disso descartava
+  // a edição em silêncio, mesmo a etiqueta ao lado dizendo "Salvamento
+  // automático". assessmentFormRef sempre reflete o valor mais recente do
+  // formulário, e pendingSaveRef marca se existe uma edição ainda não
+  // confirmada como salva.
+  const assessmentFormRef = useRef<AssessmentForm>(emptyAssessment);
+  const pendingSaveRef = useRef(false);
+
   const saveAssessment = useCallback(async (form: AssessmentForm) => {
     try {
       setAutoSaving(true);
       await runWithAuth((token) => providersApi.upsertStudentPhysicalAssessment(token, clientId, form));
+      pendingSaveRef.current = false;
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar avaliação física.", navigation });
     } finally {
@@ -281,13 +304,35 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
   }, [clientId, navigation, runWithAuth, showToast]);
 
   useEffect(() => {
-    if (hydratedClientIdRef.current !== clientId || changeCounterRef.current === 0) return;
+    // Frente 4 (segunda camada), Lote 1: nunca tenta salvar quando o acesso
+    // a dado de saúde está restrito — o formulário nem é exibido nesse
+    // caso, mas essa checagem é a rede de segurança contra reenviar campos
+    // vazios por cima de um histórico que ainda existe (o backend também
+    // bloqueia isso, ver upsertStudentPhysicalAssessment).
+    if (hydratedClientIdRef.current !== clientId || changeCounterRef.current === 0 || healthDataAccessRestricted) return;
     const timer = setTimeout(() => { void saveAssessment(assessmentForm); }, 600);
     return () => clearTimeout(timer);
-  }, [assessmentForm, saveAssessment, clientId]);
+  }, [assessmentForm, saveAssessment, clientId, healthDataAccessRestricted]);
+
+  useEffect(() => {
+    assessmentFormRef.current = assessmentForm;
+  }, [assessmentForm]);
+
+  // Frente 4 (segunda camada), Lote 4: dispara o salvamento imediatamente
+  // (sem esperar os 600ms de pausa) assim que a tela começa a ser
+  // removida, se ainda houver uma edição pendente.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", () => {
+      if (pendingSaveRef.current && !healthDataAccessRestricted) {
+        void saveAssessment(assessmentFormRef.current);
+      }
+    });
+    return unsubscribe;
+  }, [navigation, saveAssessment, healthDataAccessRestricted]);
 
   const updateAssessmentField = (key: keyof AssessmentForm, value: string) => {
     changeCounterRef.current += 1;
+    pendingSaveRef.current = true;
     setAssessmentForm((current) => ({ ...current, [key]: value.slice(0, 6) }));
   };
 
@@ -298,6 +343,15 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
   }, [answers?.parq]);
 
   const needsAttention = !isAnamnesisComplete || parqFlags.length > 0;
+  // Frente 4 (segunda camada), Lote 1: com o acesso restrito, parqFlags
+  // sempre vem vazio (não porque não há risco sinalizado, mas porque os
+  // dados estão escondidos) — "Sem alerta de saúde" seria uma afirmação
+  // falsa exatamente no cenário onde pode haver mais risco.
+  const healthBadge = healthDataAccessRestricted
+    ? { label: "Dados de saúde indisponíveis", variant: "gray" as const }
+    : needsAttention
+      ? { label: "Revisão recomendada", variant: "orange" as const }
+      : { label: "Sem alerta de saúde", variant: "green" as const };
 
   const goToAnamnesis = () => {
     if (!detail?.student?.id) return;
@@ -332,10 +386,27 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
 
         {!loading && !detail ? (
           <MvCard>
-            <MvText variant="semi2">Aluno não encontrado</MvText>
-            <MvText variant="body4" color="secondary" style={{ marginTop: 4 }}>
-              Não foi possivel carregar os dados deste aluno agora.
+            <MvText variant="semi2">
+              {/* Frente 4 (segunda camada), Lote 2: "Aluno não encontrado" era
+                  mostrado tanto pra um 404 de verdade quanto pra uma falha
+                  passageira de rede — os dois casos precisam de reação
+                  diferente do profissional (um é definitivo, o outro só
+                  precisa tentar de novo). */}
+              {studentDetailQuery.error ? "Não foi possível carregar este aluno" : "Aluno não encontrado"}
             </MvText>
+            <MvText variant="body4" color="secondary" style={{ marginTop: 4 }}>
+              {studentDetailQuery.error
+                ? "Verifique sua conexão e tente novamente."
+                : "Não foi possivel carregar os dados deste aluno agora."}
+            </MvText>
+            {studentDetailQuery.error ? (
+              <MvButton
+                style={{ marginTop: 10 }}
+                variant="outline"
+                label="Tentar de novo"
+                onPress={() => void studentDetailQuery.refetch()}
+              />
+            ) : null}
           </MvCard>
         ) : null}
 
@@ -371,10 +442,7 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                   label={isAnamnesisComplete ? "Anamnese completa" : "Anamnese pendente"}
                   variant={isAnamnesisComplete ? "green" : "orange"}
                 />
-                <MvBadge
-                  label={needsAttention ? "Revisão recomendada" : "Sem alerta de saúde"}
-                  variant={needsAttention ? "orange" : "green"}
-                />
+                <MvBadge label={healthBadge.label} variant={healthBadge.variant} />
               </View>
 
               <View style={{ flexDirection: "row", gap: 8 }}>
@@ -430,26 +498,34 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
             <MvCard style={{ gap: 4 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                 <MvText variant="semi2">Avaliação física</MvText>
-                <MvText variant="caption" color="secondary">
-                  {autoSaving ? "Salvando..." : "Salvamento automático"}
-                </MvText>
-              </View>
-              {assessmentFields.map((field) => (
-                <View key={field.key} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, paddingVertical: 4 }}>
-                  <MvText variant="body4" color="secondary" style={{ flex: 1 }}>
-                    {field.label} <MvText variant="body4" color="tertiary">({field.unit})</MvText>
+                {!healthDataAccessRestricted ? (
+                  <MvText variant="caption" color="secondary">
+                    {autoSaving ? "Salvando..." : "Salvamento automático"}
                   </MvText>
-                  <MvInput
-                    keyboardType="number-pad"
-                    placeholder="0"
-                    maxLength={6}
-                    textAlign="right"
-                    value={assessmentForm[field.key]}
-                    onChangeText={(value) => updateAssessmentField(field.key, value)}
-                    style={{ width: 96 }}
-                  />
-                </View>
-              ))}
+                ) : null}
+              </View>
+              {healthDataAccessRestricted ? (
+                <MvText variant="body4" color="secondary">
+                  Dados de saúde não disponíveis: o vínculo com este aluno é anterior a 1 ano. O histórico continua guardado, mas fica inacessível até um novo atendimento reativar o vínculo.
+                </MvText>
+              ) : (
+                assessmentFields.map((field) => (
+                  <View key={field.key} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, paddingVertical: 4 }}>
+                    <MvText variant="body4" color="secondary" style={{ flex: 1 }}>
+                      {field.label} <MvText variant="body4" color="tertiary">({field.unit})</MvText>
+                    </MvText>
+                    <MvInput
+                      keyboardType="number-pad"
+                      placeholder="0"
+                      maxLength={6}
+                      textAlign="right"
+                      value={assessmentForm[field.key]}
+                      onChangeText={(value) => updateAssessmentField(field.key, value)}
+                      style={{ width: 96 }}
+                    />
+                  </View>
+                ))
+              )}
             </MvCard>
 
             <MvCard>

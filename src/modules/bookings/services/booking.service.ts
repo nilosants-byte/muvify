@@ -18,6 +18,7 @@ import { deleteByPattern } from "../../../shared/utils/cache";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/utils/encryption";
 import { haversineKm } from "../../../shared/utils/geo";
+import { sessionOverlapsRange } from "../../../shared/utils/time-range";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
 import { getPrivateObject, putPrivateObject } from "../../../shared/services/storage.service";
 import { restoreFlexibleCreditForBooking } from "../../../shared/utils/presential-package-credit";
@@ -413,8 +414,13 @@ export class BookingService {
         where: { providerId, date: scheduleDateKey },
         select: { startTime: true, endTime: true },
       });
+      // Frente 4 (segunda camada), Lote 3: mesmo cuidado de duração já
+      // aplicado ao conflito booking-vs-booking logo acima (Frente 5, Lote
+      // 3) — antes só checava se o INÍCIO do agendamento caía dentro do
+      // bloqueio, permitindo uma sessão de 60min que começa antes do
+      // bloqueio mas invade os primeiros minutos dele.
       const blockedByManual = manualBlocks.some(
-        (block) => scheduleTime >= block.startTime && scheduleTime < block.endTime
+        (block) => sessionOverlapsRange(scheduleTime, provider.sessionDurationMinutes, block.startTime, block.endTime)
       );
       if (blockedByManual) {
         throw new AppError(

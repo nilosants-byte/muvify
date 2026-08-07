@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
-import { StudentAnamnesisResponse, providersApi } from "../../services/api/client";
+import { ApiError, StudentAnamnesisResponse, providersApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvBadge, MvCard, MvText } from "../../components/mv";
@@ -197,6 +197,30 @@ export function ProfessionalStudentAnamnesisScreen({ navigation, route }: Props)
       {loading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator color={theme.primary} size="large" />
+        </View>
+      ) : anamnesisQuery.error ? (
+        // Frente 4 (segunda camada), Lote 2: antes, qualquer falha (rede
+        // instável, erro do servidor, ou o bloqueio de acesso restrito da
+        // Lote 1) caía na mesma tela usada pra "aluno nunca preencheu" —
+        // um profissional podia achar que não existe nenhum dado de saúde
+        // quando na verdade só falhou o carregamento, ou o vínculo é
+        // antigo. Agora tem estado próprio, com botão de tentar de novo.
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 }}>
+          <Ionicons name="alert-circle-outline" size={52} color={theme.text3} />
+          <MvText variant="semi3" style={{ textAlign: "center", color: theme.text2 }}>
+            Não foi possível carregar a ficha
+          </MvText>
+          <MvText variant="body3" color="secondary" style={{ textAlign: "center" }}>
+            {anamnesisQuery.error instanceof ApiError && anamnesisQuery.error.status === 403
+              ? anamnesisQuery.error.message
+              : "Houve uma falha ao buscar os dados. Verifique sua conexão e tente novamente."}
+          </MvText>
+          <TouchableOpacity
+            onPress={() => void anamnesisQuery.refetch()}
+            style={{ paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder }}
+          >
+            <MvText variant="body4" style={{ color: theme.primary }}>Tentar de novo</MvText>
+          </TouchableOpacity>
         </View>
       ) : !anamnesis || anamnesis.status === "NONE" ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 }}>

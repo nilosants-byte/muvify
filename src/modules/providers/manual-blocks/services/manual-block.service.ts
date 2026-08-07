@@ -3,6 +3,7 @@ import { StatusCodes } from "http-status-codes";
 import { env } from "../../../../config/env";
 import { prisma } from "../../../../config/prisma";
 import { AppError } from "../../../../shared/errors/app-error";
+import { sessionOverlapsRange } from "../../../../shared/utils/time-range";
 
 function toDateKeyInTimezone(date: Date, timeZone: string) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -25,7 +26,7 @@ function toTimeInTimezone(date: Date, timeZone: string) {
 async function getProviderByUserId(userId: string) {
   const profile = await prisma.providerProfile.findUnique({
     where: { userId },
-    select: { id: true },
+    select: { id: true, sessionDurationMinutes: true },
   });
   if (!profile) {
     throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
@@ -98,11 +99,15 @@ export class ManualBlockService {
         select: { scheduledAt: true },
       });
 
+      // Frente 4 (segunda camada), Lote 3: antes só checava se o INÍCIO do
+      // agendamento caía dentro da janela do novo bloqueio — um bloqueio
+      // podia ser criado com sucesso mesmo invadindo os minutos finais de
+      // uma sessão já confirmada que começou antes da janela do bloqueio.
       const overlapBooking = bookings.some((booking) => {
         const localDate = toDateKeyInTimezone(booking.scheduledAt, env.APP_TIMEZONE);
         if (localDate !== date) return false;
         const localTime = toTimeInTimezone(booking.scheduledAt, env.APP_TIMEZONE);
-        return localTime >= startTime && localTime < endTime;
+        return sessionOverlapsRange(localTime, provider.sessionDurationMinutes, startTime, endTime);
       });
       if (overlapBooking) {
         throw new AppError("Já existe um agendamento marcado neste horário.", StatusCodes.CONFLICT);

@@ -880,7 +880,6 @@ export type ProviderStudent = {
   email: string;
   phone: string | null;
   profilePhotoUrl: string | null;
-  age?: number | null;
   anamnesisPending: boolean;
   trainingPlanPending: boolean;
   fichaRenewalPending: boolean;
@@ -918,6 +917,8 @@ export type ProviderStudentPhysicalAssessment = {
   thigh: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  /** Frente 4 (segunda camada), Lote 1: vínculo com o aluno é anterior à janela de retenção de dados de saúde (365 dias) — os campos acima vêm sempre null, mas o histórico real continua existindo no banco. */
+  healthDataAccessRestricted?: boolean;
 };
 
 export type ProviderStudentManagementDetail = {
@@ -934,6 +935,8 @@ export type ProviderStudentManagementDetail = {
     status: "DRAFT" | "COMPLETED";
     completedAt: string | null;
     answers: AnamnesisAnswers | null;
+    /** Frente 4 (segunda camada), Lote 1: mesmo sinalizador de ProviderStudentPhysicalAssessment. */
+    healthDataAccessRestricted?: boolean;
   };
   physicalAssessment: ProviderStudentPhysicalAssessment;
   serviceSummary: {

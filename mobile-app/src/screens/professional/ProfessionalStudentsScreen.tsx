@@ -335,7 +335,38 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
           />
         ))}
 
-        {!loading && filteredStudents.length === 0 ? (
+        {/* Frente 4 (segunda camada), Lote 2: antes, uma falha de rede/servidor
+            (não o caso de "perfil incompleto", que já tem tela própria)
+            caía na mesma mensagem de "você não tem nenhum aluno ainda" —
+            pra um profissional com dezenas de alunos, isso passa a
+            impressão errada de ter perdido a base inteira. */}
+        {!loading && studentsQuery.error && !needsProfileSetup ? (
+          <View style={{ alignItems: "center", padding: 32, gap: 14 }}>
+            <Ionicons name="alert-circle-outline" size={40} color={theme.text3} />
+            <View style={{ alignItems: "center", gap: 6 }}>
+              <MvText variant="h3" style={{ letterSpacing: -1, textAlign: "center" }}>
+                Não foi possível carregar seus alunos
+              </MvText>
+              <MvText variant="body4" color="secondary" style={{ textAlign: "center", lineHeight: 20 }}>
+                Verifique sua conexão e tente novamente.
+              </MvText>
+            </View>
+            <PressableScale
+              scale={0.96}
+              onPress={() => void studentsQuery.refetch()}
+              style={{
+                flexDirection: "row", alignItems: "center", gap: 6,
+                paddingHorizontal: 20, paddingVertical: 12,
+                borderRadius: 99,
+                backgroundColor: theme.textGreen,
+              }}
+            >
+              <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>
+                Tentar de novo
+              </MvText>
+            </PressableScale>
+          </View>
+        ) : !loading && filteredStudents.length === 0 ? (
           <View style={{ alignItems: "center", padding: 32, gap: 14 }}>
             <View style={{
               width: 72, height: 72, borderRadius: 36,
@@ -485,23 +516,38 @@ function StudentRow({
                 <Ionicons name="clipboard-outline" size={13} color="#F59E0B" />
               </PressableScale>
             ) : null}
+            {/* Frente 4 (segunda camada), Lote 4: os 3 selos tinham a mesma
+                aparência clicável, mas só o de anamnese realmente levava a
+                algum lugar — tocar nos outros dois não fazia nada. Agora os
+                3 levam pro perfil do aluno, onde dá pra resolver a
+                pendência (criar treino / entregar renovação). */}
             {student.trainingPlanPending ? (
-              <View style={{
-                width: 22, height: 22, borderRadius: 6,
-                backgroundColor: "rgba(245,158,11,0.14)",
-                alignItems: "center", justifyContent: "center",
-              }}>
+              <PressableScale
+                scale={0.85}
+                onPress={onPress}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{
+                  width: 22, height: 22, borderRadius: 6,
+                  backgroundColor: "rgba(245,158,11,0.14)",
+                  alignItems: "center", justifyContent: "center",
+                }}
+              >
                 <Ionicons name="barbell-outline" size={13} color="#F59E0B" />
-              </View>
+              </PressableScale>
             ) : null}
             {student.fichaRenewalPending ? (
-              <View style={{
-                width: 22, height: 22, borderRadius: 6,
-                backgroundColor: "rgba(239,68,68,0.14)",
-                alignItems: "center", justifyContent: "center",
-              }}>
+              <PressableScale
+                scale={0.85}
+                onPress={onPress}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{
+                  width: 22, height: 22, borderRadius: 6,
+                  backgroundColor: "rgba(239,68,68,0.14)",
+                  alignItems: "center", justifyContent: "center",
+                }}
+              >
                 <Ionicons name="refresh-outline" size={13} color="#EF4444" />
-              </View>
+              </PressableScale>
             ) : null}
             <View style={{
               paddingHorizontal: 10,

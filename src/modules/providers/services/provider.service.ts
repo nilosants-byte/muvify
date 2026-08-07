@@ -22,6 +22,7 @@ import { deleteByPattern, getCache, setCache } from "../../../shared/utils/cache
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
 import { haversineKm } from "../../../shared/utils/geo";
 import { normalizeLoose } from "../../../shared/utils/normalize-text";
+import { sessionOverlapsRange } from "../../../shared/utils/time-range";
 import {
   toProviderPhotoUrl,
   toProviderVideoUrl,
@@ -257,25 +258,6 @@ function serviceKindLabel(kind: ServiceOfferKind | "PRESENTIAL") {
   return "Combo (Presencial + Consultoria on-line)";
 }
 
-
-function parseStudentAgeFromAnamnesis(answers: unknown) {
-  if (!answers || typeof answers !== "object") return null;
-  const maybePersonalData = (answers as { personalData?: unknown }).personalData;
-  if (!maybePersonalData || typeof maybePersonalData !== "object") return null;
-  const rawAge = (maybePersonalData as { age?: unknown }).age;
-  if (typeof rawAge === "number" && Number.isFinite(rawAge) && rawAge > 0) {
-    return Math.floor(rawAge);
-  }
-  if (typeof rawAge === "string") {
-    const onlyDigits = rawAge.replace(/\D/g, "");
-    if (!onlyDigits) return null;
-    const parsed = Number(onlyDigits);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return Math.floor(parsed);
-    }
-  }
-  return null;
-}
 
 function parseRange(range: ProviderCalendarRangeInput) {
   const now = new Date();
@@ -921,6 +903,13 @@ export class ProviderService {
     });
   }
 
+  // Frente 4 (segunda camada), Lote 7: esta checagem aceita contrato/pacote
+  // em PENDING_PAYMENT como vínculo válido, mas listStudentsByService (a
+  // tela "Meus Alunos") só lista contrato AUTHORIZED/CAPTURED e pacote
+  // ACTIVE/PAST_DUE — um cliente com pagamento ainda pendente é acessível
+  // via URL direta, mas não aparece na lista. Risco baixo (não é vazamento
+  // pra terceiros, é o próprio futuro aluno do profissional) — documentado
+  // como gap aceito, não corrigido nesta frente.
   private async assertStudentManagedByProvider(providerId: string, clientId: string) {
     const [booking, contract, presentialPackage] = await Promise.all([
       prisma.booking.findFirst({
@@ -1802,8 +1791,13 @@ export class ProviderService {
           // profissional) não sobrepor nenhum booking já existente — não
           // basta o horário exato de início estar livre.
           if (occupiedMinutes.some((occ) => Math.abs(slotMinutes - occ) < provider.sessionDurationMinutes)) return false;
-          if (blockRanges.some((b) => slot >= b.startTime && slot < b.endTime)) return false;
-          if (offAppRanges.some((b) => slot >= b.startTime && slot < b.endTime)) return false;
+          // Frente 4 (segunda camada), Lote 3: antes só checava se o
+          // INÍCIO do slot caía dentro do bloqueio/aluno-fora-do-app, não
+          // se a sessão inteira (que dura sessionDurationMinutes) invadia
+          // o intervalo — um slot podia ser oferecido como livre mesmo
+          // terminando depois do bloqueio começar.
+          if (blockRanges.some((b) => sessionOverlapsRange(slot, provider.sessionDurationMinutes, b.startTime, b.endTime))) return false;
+          if (offAppRanges.some((b) => sessionOverlapsRange(slot, provider.sessionDurationMinutes, b.startTime, b.endTime))) return false;
           if (date < noticeCutoffDateKey) return false;
           if (date === noticeCutoffDateKey && slot < noticeCutoffTime) return false;
           return true;
@@ -2008,8 +2002,7 @@ export class ProviderService {
       updatedAt: true,
       anamnesisProfile: {
         select: {
-          status: true,
-          answers: true
+          status: true
         }
       }
     } as const;
@@ -2026,7 +2019,12 @@ export class ProviderService {
           client: { select: clientSelect }
         },
         orderBy: { scheduledAt: "desc" },
-        take: 1000,
+        // Frente 4 (segunda camada), Lote 7: teto elevado pro mesmo padrão
+        // (2000) já usado como rede de segurança em outras listas do app —
+        // um profissional muito ativo que ultrapassasse os tetos antigos
+        // (1000/500/500) tinha alunos somem inteiros da lista "Meus
+        // Alunos", sem aparecer nem como inativos.
+        take: 2000,
       }),
       prisma.consultancyContract.findMany({
         where: {
@@ -2050,7 +2048,7 @@ export class ProviderService {
           }
         },
         orderBy: { createdAt: "desc" },
-        take: 500,
+        take: 2000,
       }),
       // Pacote presencial cobra em ciclos, nao por sessao - o "preco" do
       // servico presencial pra esses clientes vem daqui (cycleAmountCents),
@@ -2062,7 +2060,7 @@ export class ProviderService {
         },
         include: { client: { select: clientSelect } },
         orderBy: { createdAt: "desc" },
-        take: 500,
+        take: 2000,
       })
     ]);
 
@@ -2087,7 +2085,6 @@ export class ProviderService {
       email: string;
       phone: string | null;
       profilePhotoUrl: string | null;
-      age: number | null;
       anamnesisPending: boolean;
       trainingPlanPending: boolean;
       fichaRenewalPending: boolean;
@@ -2109,7 +2106,6 @@ export class ProviderService {
           email: client.email,
           phone: client.phone,
           profilePhotoUrl: toUserPhotoUrl(client.id, client.photoUrl, client.updatedAt),
-          age: parseStudentAgeFromAnamnesis(client.anamnesisProfile?.answers),
           anamnesisPending: client.anamnesisProfile?.status !== AnamnesisStatus.COMPLETED,
           trainingPlanPending: false,
           fichaRenewalPending: false,
@@ -2120,9 +2116,6 @@ export class ProviderService {
           lastActivityAt: activityAt
         };
         students.set(client.id, student);
-      } else if (student.age == null) {
-        const age = parseStudentAgeFromAnamnesis(client.anamnesisProfile?.answers);
-        if (age != null) student.age = age;
       }
       if (activityAt > student.lastActivityAt) {
         student.lastActivityAt = activityAt;
@@ -2288,7 +2281,6 @@ export class ProviderService {
           email: student.email,
           phone: student.phone,
           profilePhotoUrl: student.profilePhotoUrl,
-          age: student.age,
           anamnesisPending: student.anamnesisPending,
           trainingPlanPending: student.trainingPlanPending,
           fichaRenewalPending: student.fichaRenewalPending,
@@ -2612,6 +2604,22 @@ export class ProviderService {
   ) {
     const provider = await this.getProviderByUserId(userId);
     await this.assertStudentManagedByProvider(provider.id, clientId);
+
+    // Frente 4 (segunda camada), Lote 1: a LEITURA já bloqueia/redige dado
+    // de saúde fora da janela de retenção (ver getStudentAnamnesis/
+    // getStudentManagementDetail), mas a ESCRITA nunca checava a mesma
+    // janela — o app mostra os campos em branco (redigidos) pro
+    // profissional, e se ele digitar um valor novo, o auto-save reenvia o
+    // formulário inteiro, sobrescrevendo com `null` os campos que na
+    // verdade tinham histórico real por trás. Bloqueando aqui também, na
+    // mesma condição, o histórico nunca mais pode ser apagado por engano.
+    const recentHealthAccess = await this.hasRecentHealthDataAccess(provider.id, clientId);
+    if (!recentHealthAccess) {
+      throw new AppError(
+        "Edição de avaliação física bloqueada: o vínculo com este aluno é anterior à janela de retenção de dados de saúde.",
+        StatusCodes.FORBIDDEN
+      );
+    }
 
     const normalize = (value?: string) => {
       const next = value?.trim();
