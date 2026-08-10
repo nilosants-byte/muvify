@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { ActivityIndicator, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -17,6 +17,7 @@ import { formatBRDateTime } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
+import { queryClient } from "../../lib/queryClient";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalConfirmCompletion">;
 
@@ -108,7 +109,10 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
     if (!cameraPermission?.granted) {
       const result = await requestCameraPermission();
       if (!result.granted) {
-        showToast("Permissão de câmera necessária para escanear o QR.", "error");
+        // Frente 6 (segunda camada), Lote 11: mensagem mais seca que a
+        // equivalente já usada em SelfieProofCapture — sem indicar como
+        // liberar o acesso.
+        showToast("Permissão de câmera negada. Vá em Configurações > Privacidade > Câmera para permitir o acesso.", "error");
         return;
       }
     }
@@ -139,13 +143,20 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
     try {
       setSubmitting(true);
       const updated = await runWithAuth((token) => bookingsApi.updateStatus(token, bookingId, "COMPLETED", completionProof));
+      // Frente 6 (segunda camada), Lote 7: sem isso, voltar da tela de
+      // status de pagamento caía de novo aqui (ou no detalhe do
+      // agendamento) mostrando o booking ainda como "Confirmado", com o
+      // botão de confirmar conclusão disponível de novo — risco de
+      // reenviar a mesma ação numa tela desatualizada.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agenda.all });
       if (updated.status === "COMPLETED") {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast("Conclusão registrada com sucesso.", "success");
       } else {
         showToast("Sua confirmação foi registrada.", "info");
       }
-      navigation.navigate("BookingPaymentStatus", { bookingId });
+      navigation.replace("BookingPaymentStatus", { bookingId });
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao confirmar conclusão.", navigation });
     } finally {
@@ -156,10 +167,29 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
   const attendanceValidated = Boolean(booking?.attendanceCodeValidatedAt);
   const isActive = booking?.status === "PENDING" || booking?.status === "CONFIRMED";
 
+  // Frente 6 (segunda camada), Lote 11: sair desta tela não avisava que a
+  // selfie já tirada e salva seria perdida — o fluxo equivalente do
+  // cliente (ClientBookingDetailScreen, estágio "post") já avisa nessa
+  // mesma situação.
+  function handleBack() {
+    if (completionProof) {
+      Alert.alert(
+        "Sair sem confirmar?",
+        "A selfie já capturada será perdida.",
+        [
+          { text: "Continuar aqui", style: "cancel" },
+          { text: "Sair", style: "destructive", onPress: () => navigation.goBack() },
+        ]
+      );
+      return;
+    }
+    navigation.goBack();
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-      <ProfessionalScreenHeader title="Conclusão do atendimento" onBack={() => navigation.goBack()} />
+      <ProfessionalScreenHeader title="Conclusão do atendimento" onBack={handleBack} />
 
       <ScrollView
         automaticallyAdjustKeyboardInsets={true}
@@ -311,7 +341,7 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
             disabled={!completionProof || !attendanceValidated || !booking || booking.status === "CANCELLED" || booking.status === "COMPLETED"}
             onPress={() => void handleConfirm()}
           />
-          <MvButton variant="outline" label="Voltar" onPress={() => navigation.goBack()} />
+          <MvButton variant="outline" label="Voltar" onPress={handleBack} />
         </View>
       </ScrollView>
     </View>

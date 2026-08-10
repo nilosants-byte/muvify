@@ -16,6 +16,13 @@ import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "BookingPaymentStatus">;
 
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CARD: "Cartão",
+  CREDIT_CARD: "Crédito",
+  DEBIT_CARD: "Débito",
+  PIX: "Pix"
+};
+
 function paymentBadge(status: PaymentStatusResponse["status"]): { label: string; variant: "green" | "orange" | "red" | "blue" | "gray" } {
   if (status === "CAPTURED") return { label: "Capturado", variant: "green" };
   if (status === "REFUNDED") return { label: "Estornado", variant: "orange" };
@@ -62,7 +69,7 @@ export function BookingPaymentStatusScreen({ route, navigation }: Props) {
                 {formatCurrencyBRL((payment.amountCents ?? 0) / 100)}
               </MvText>
               <MvText variant="body4" color="secondary">Moeda: {payment.currency}</MvText>
-              <MvText variant="body4" color="secondary">Método: {payment.method ?? "-"}</MvText>
+              <MvText variant="body4" color="secondary">Método: {payment.method ? (PAYMENT_METHOD_LABELS[payment.method] ?? payment.method) : "-"}</MvText>
               {payment.status === "FAILED" && payment.failureReason ? (
                 <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, paddingTop: 4 }}>
                   <Ionicons name="alert-circle-outline" size={14} color={theme.danger} style={{ marginTop: 1 }} />

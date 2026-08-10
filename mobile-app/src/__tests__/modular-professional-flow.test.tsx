@@ -179,7 +179,8 @@ describe("Fluxo modular profissional", () => {
 
     const navigation = {
       navigate: jest.fn(),
-      goBack: jest.fn()
+      goBack: jest.fn(),
+      addListener: jest.fn(() => () => {})
     };
     const route = { params: { bookingId: "booking-pro-1" } };
     const ui = renderWithQueryClient(
@@ -199,7 +200,9 @@ describe("Fluxo modular profissional", () => {
 
     const completionNavigation = {
       navigate: jest.fn(),
-      goBack: jest.fn()
+      replace: jest.fn(),
+      goBack: jest.fn(),
+      addListener: jest.fn(() => () => {})
     };
     const completionUi = renderWithQueryClient(
       <ProfessionalConfirmCompletionScreen
@@ -223,7 +226,7 @@ describe("Fluxo modular profissional", () => {
       )
     );
 
-    expect(completionNavigation.navigate).toHaveBeenCalledWith("BookingPaymentStatus", {
+    expect(completionNavigation.replace).toHaveBeenCalledWith("BookingPaymentStatus", {
       bookingId: "booking-pro-1"
     });
     expect(bookingPaymentSpy).toHaveBeenCalled();

@@ -3,7 +3,7 @@ import { StatusCodes } from "http-status-codes";
 import { env } from "../../../../config/env";
 import { prisma } from "../../../../config/prisma";
 import { AppError } from "../../../../shared/errors/app-error";
-import { sessionOverlapsRange } from "../../../../shared/utils/time-range";
+import { sessionOverlapsRange, sessionOverflowIntoNextDayMinutes } from "../../../../shared/utils/time-range";
 import { toDateKeyInTimezone, toTimeInTimezone } from "../../../../shared/utils/timezone";
 
 async function getProviderByUserId(userId: string) {
@@ -86,11 +86,25 @@ export class ManualBlockService {
       // agendamento caía dentro da janela do novo bloqueio — um bloqueio
       // podia ser criado com sucesso mesmo invadindo os minutos finais de
       // uma sessão já confirmada que começou antes da janela do bloqueio.
+      //
+      // Frente 6 (segunda camada), Lote 14: uma sessão do dia anterior que
+      // começa perto da meia-noite (ex: 23:30) e atravessa pra `date` era
+      // ignorada aqui — comparada só contra bloqueios do PRÓPRIO dia dela,
+      // nunca contra os do dia seguinte que ela na prática também ocupa.
       const overlapBooking = bookings.some((booking) => {
         const localDate = toDateKeyInTimezone(booking.scheduledAt, env.APP_TIMEZONE);
-        if (localDate !== date) return false;
         const localTime = toTimeInTimezone(booking.scheduledAt, env.APP_TIMEZONE);
-        return sessionOverlapsRange(localTime, provider.sessionDurationMinutes, startTime, endTime);
+        if (localDate === date) {
+          return sessionOverlapsRange(localTime, provider.sessionDurationMinutes, startTime, endTime);
+        }
+        const previousDayKey = toDateKeyInTimezone(
+          new Date(booking.scheduledAt.getTime() + 24 * 60 * 60 * 1000),
+          env.APP_TIMEZONE
+        );
+        if (previousDayKey !== date) return false;
+        const overflowMinutes = sessionOverflowIntoNextDayMinutes(localTime, provider.sessionDurationMinutes);
+        if (overflowMinutes <= 0) return false;
+        return sessionOverlapsRange("00:00", overflowMinutes, startTime, endTime);
       });
       if (overlapBooking) {
         throw new AppError("Já existe um agendamento marcado neste horário.", StatusCodes.CONFLICT);

@@ -53,13 +53,17 @@ export class AvailabilityService {
     // bloqueante: só segue sem confirmação extra (force=true) se houver
     // agendamento futuro afetado.
     if (!force) {
+      // Frente 6 (segunda camada), Lote 14: sem limite, destoando do padrão
+      // já usado no resto do módulo (e do projeto em geral) pra evitar
+      // listagem sem teto num profissional com histórico grande.
       const futureBookings = await prisma.booking.findMany({
         where: {
           providerId: profile.id,
           status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
           scheduledAt: { gt: new Date() }
         },
-        select: { scheduledAt: true }
+        select: { scheduledAt: true },
+        take: 2000
       });
       const affectedCount = futureBookings.filter((booking) => {
         if (toWeekdayInTimezone(booking.scheduledAt, env.APP_TIMEZONE) !== slot.weekday) return false;

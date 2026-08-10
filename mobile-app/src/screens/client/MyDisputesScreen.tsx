@@ -110,7 +110,7 @@ export function MyDisputesScreen({ navigation }: Props) {
                 </View>
               </View>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>
-                {isClientSide ? "Como aluno" : `Com ${dispute.provider.displayName}`} · {formatCurrencyBRL(dispute.amountCents / 100)}
+                {isClientSide ? `Com ${dispute.provider.displayName}` : `Com ${dispute.client.name}`} · {formatCurrencyBRL(dispute.amountCents / 100)}
               </Text>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>
                 Aberta em {formatBRDate(dispute.createdAt)}

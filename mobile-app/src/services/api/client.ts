@@ -2023,6 +2023,7 @@ export type MyDisputeCase = {
   createdAt: string;
   resolvedAt: string | null;
   clientId: string;
+  client: { id: string; name: string };
   provider: { id: string; displayName: string; userId: string };
 };
 

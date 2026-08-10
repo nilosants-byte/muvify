@@ -7,6 +7,7 @@ import Animated, {
 import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
@@ -80,6 +81,13 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   const payment = bookingDetailQuery.data?.payment ?? null;
   const loading = bookingDetailQuery.isLoading;
 
+  // Frente 6 (segunda camada), Lote 7: sem isso, voltar pra esta tela (ex:
+  // depois de confirmar a conclusão em ProfessionalConfirmCompletionScreen,
+  // ou depois de validar presença) mostrava dados obsoletos até sair e
+  // voltar de novo manualmente — mesmo padrão já usado em
+  // ClientBookingDetailScreen.
+  useFocusEffect(useCallback(() => { void bookingDetailQuery.refetch(); }, [bookingDetailQuery.refetch]));
+
   const [updating, setUpdating] = useState(false);
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [attendanceCode, setAttendanceCode] = useState("");
@@ -100,6 +108,26 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   const [contestingAutoCapture, setContestingAutoCapture] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [contestReason, setContestReason] = useState("");
+
+  // Frente 6 (segunda camada), Lote 12: motivo de falta/contestação
+  // digitado era perdido ao sair da tela sem nenhuma confirmação — mesmo
+  // padrão de aviso já usado em outras telas do app (ex:
+  // ProfessionalTrainingCreationScreen).
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      if (!reportReason.trim() && !contestReason.trim()) return;
+      e.preventDefault();
+      Alert.alert(
+        "Sair sem enviar?",
+        "O texto digitado será perdido.",
+        [
+          { text: "Continuar aqui", style: "cancel" },
+          { text: "Sair", style: "destructive", onPress: () => navigation.dispatch(e.data.action) },
+        ]
+      );
+    });
+    return unsubscribe;
+  }, [navigation, reportReason, contestReason]);
 
   const noShowReport = booking?.noShowReport;
   const wasReportedAsNoShow = Boolean(noShowReport && noShowReport.reportedUserId === user?.id);
@@ -158,6 +186,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
               setContestingNoShow(true);
               await runWithAuth((token) => bookingsApi.contestNoShow(token, booking.id, contestReason.trim() || undefined));
               showToast("Contestação registrada. Um administrador vai analisar.", "success");
+              setContestReason("");
               void bookingDetailQuery.refetch();
             } catch (error) {
               handleScreenError({ error, showToast, fallbackMessage: "Não foi possível contestar.", navigation });
@@ -238,6 +267,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
               setReportingNoShow(true);
               await runWithAuth((token) => bookingsApi.reportNoShow(token, bookingId, reportReason.trim() || undefined));
               showToast("Agendamento encerrado.", "success");
+              setReportReason("");
               void bookingDetailQuery.refetch();
             } catch (error) {
               handleScreenError({ error, showToast, fallbackMessage: "Não foi possível reportar a falta.", navigation });
@@ -288,7 +318,13 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   async function openQrScanner() {
     if (!cameraPermission?.granted) {
       const requested = await requestCameraPermission();
-      if (!requested.granted) { showToast("Permissão de câmera necessária para ler QR Code.", "error"); return; }
+      if (!requested.granted) {
+        // Frente 6 (segunda camada), Lote 11: mensagem mais seca que a
+        // equivalente já usada em SelfieProofCapture — sem indicar como
+        // liberar o acesso.
+        showToast("Permissão de câmera negada. Vá em Configurações > Privacidade > Câmera para permitir o acesso.", "error");
+        return;
+      }
     }
     scannerReadLockRef.current = false;
     setScannerVisible(true);
@@ -357,6 +393,14 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
             <MvText variant="body4" color="secondary" style={{ marginTop: 4 }}>
               Observações: {booking.notes ?? "Sem observações"}
             </MvText>
+            {/* Frente 6 (segunda camada), Lote 5: o cliente já via este
+              prazo (ClientBookingDetailScreen), mas quem precisa agir
+              dentro dele — o profissional — nunca via nada. */}
+            {booking.status === "PENDING" && booking.confirmationDeadlineAt ? (
+              <MvText variant="caption" color="secondary" style={{ marginTop: 6 }}>
+                Confirme até {formatBRDateTime(booking.confirmationDeadlineAt)} — depois disso o agendamento é cancelado e o valor devolvido ao cliente automaticamente.
+              </MvText>
+            ) : null}
           </MvCard>
 
           {/* Validação presencial — protagonista quando ativo */}

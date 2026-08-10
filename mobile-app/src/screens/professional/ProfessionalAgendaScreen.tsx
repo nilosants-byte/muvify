@@ -87,6 +87,29 @@ function bookingBadge(status: Booking["status"]): { label: string; variant: "gre
   return { label: "Pendente", variant: "orange" };
 }
 
+// Frente 6 (segunda camada), Lote 10: ClientBookingsScreen já sinaliza
+// disputa (falta reportada, contestação em aberto) direto na lista — a
+// agenda do profissional não tinha nada parecido, só descobria abrindo o
+// agendamento. Mesma lógica, espelhada pro lado profissional (aqui é o
+// profissional quem pode não ter confirmado ainda, não o cliente).
+function disputeBadge(item: Booking): { label: string } | null {
+  const report = item.noShowReport;
+  if (report) {
+    if (report.status === "CONTESTED") return { label: "Em disputa" };
+    if (report.status === "PENDING" && new Date(report.contestDeadlineAt) > new Date()) {
+      return { label: "Aguardando contestação" };
+    }
+  }
+  const autoCaptureOpen =
+    item.status === "COMPLETED" &&
+    !!item.completedAt &&
+    !item.providerConfirmedAt &&
+    !!item.clientConfirmedAt &&
+    Date.now() - new Date(item.completedAt).getTime() <= 24 * 60 * 60 * 1000;
+  if (autoCaptureOpen) return { label: "Aguardando contestação" };
+  return null;
+}
+
 function startOfDay(input: Date) {
   const date = new Date(input);
   date.setHours(0, 0, 0, 0);
@@ -863,6 +886,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                     {dayTimeline.map((item, idx) => {
                       if (item.kind === "booking") {
                         const badge = bookingBadge(item.booking.status);
+                        const dispute = disputeBadge(item.booking);
                         const isCompleted = item.booking.status === "COMPLETED" || item.booking.status === "CANCELLED";
                         const isPastConfirmed =
                           item.booking.status === "CONFIRMED" &&
@@ -900,7 +924,10 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                                     <MvText variant="body4" color="secondary" numberOfLines={1}>{item.booking.sessionLocation}</MvText>
                                   ) : null}
                                 </View>
-                                <MvBadge label={badge.label} variant={badge.variant} />
+                                <View style={{ gap: 4, alignItems: "flex-end" }}>
+                                  <MvBadge label={badge.label} variant={badge.variant} />
+                                  {dispute ? <MvBadge label={dispute.label} variant="orange" /> : null}
+                                </View>
                                 <Ionicons name="chevron-forward" size={14} color={theme.text3} />
                               </View>
                             </PressableScale>
@@ -919,7 +946,12 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                               >
                                 <Ionicons name="checkmark-circle-outline" size={16} color={theme.textOnPrimary} />
                                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>
-                                  Validar presença
+                                  {/* Frente 6 (segunda camada), Lote 11: o texto ficava fixo em
+                                    "Validar presença" mesmo depois de já validada — o que falta
+                                    nesse ponto é confirmar a conclusão com a selfie, não validar
+                                    de novo (BookingDetailProfessionalScreen já trata esse estado
+                                    corretamente). */}
+                                  {item.booking.attendanceCodeValidatedAt ? "Confirmar conclusão" : "Validar presença"}
                                 </Text>
                               </TouchableOpacity>
                             ) : null}

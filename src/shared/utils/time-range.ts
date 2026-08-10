@@ -34,3 +34,14 @@ export function sessionOverlapsRange(
   const rEnd = parseTimeToMinutes(rangeEnd);
   return sessionStart < rEnd && sessionEnd > rStart;
 }
+
+// Frente 6 (segunda camada), Lote 14: uma sessão que começa perto da meia-
+// noite (ex: 23:30 com 60min de duração) "vaza" pros primeiros minutos do
+// dia seguinte — as checagens de conflito são todas por dia calendário
+// isolado, então esses minutos nunca eram cruzados contra bloqueios/
+// agendamentos do dia seguinte. Retorna quantos minutos do dia seguinte
+// essa sessão ocupa (0 se não atravessa a meia-noite).
+export function sessionOverflowIntoNextDayMinutes(startTime: string, durationMinutes: number): number {
+  const sessionEnd = parseTimeToMinutes(startTime) + durationMinutes;
+  return Math.max(0, sessionEnd - 24 * 60);
+}

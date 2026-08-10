@@ -20,7 +20,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import QRCode from "react-native-qrcode-svg";
@@ -127,16 +127,41 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   // ── Local attendance state (also refreshable on-demand via button) ─────────
   const [attendance, setAttendance] = useState<AttendanceCodeResponse | null>(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
+  // Frente 6 (segunda camada), Lote 13: falha de rede era tratada igual a
+  // "código ainda não liberado" — o cliente não tinha como distinguir "só
+  // não chegou a hora" de "deu erro, tenta de novo".
+  const [attendanceError, setAttendanceError] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [reportingNoShow, setReportingNoShow] = useState(false);
   const [contestingNoShow, setContestingNoShow] = useState(false);
   const [contestingAutoCapture, setContestingAutoCapture] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [contestReason, setContestReason] = useState("");
+  // Frente 6 (segunda camada), Lote 12: navigation.goBack() logo depois de
+  // reportar falta com sucesso não deve acionar o aviso de "sair sem
+  // enviar" — setReportReason("") acima é assíncrono, então sem este ref
+  // o listener ainda registrado com o texto antigo bloquearia o próprio
+  // fluxo de sucesso que essa correção introduz.
+  const justSubmittedReasonRef = useRef(false);
 
+  // Frente 6 (segunda camada), Lote 12: motivo de falta/contestação
+  // digitado era perdido ao sair da tela sem nenhuma confirmação — mesmo
+  // padrão de aviso já usado em outras telas do app.
   useEffect(() => {
-    if (detailQuery.data) setAttendance(detailQuery.data.attendance);
-  }, [detailQuery.data]);
+    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      if (justSubmittedReasonRef.current || (!reportReason.trim() && !contestReason.trim())) return;
+      e.preventDefault();
+      Alert.alert(
+        "Sair sem enviar?",
+        "O texto digitado será perdido.",
+        [
+          { text: "Continuar aqui", style: "cancel" },
+          { text: "Sair", style: "destructive", onPress: () => navigation.dispatch(e.data.action) },
+        ]
+      );
+    });
+    return unsubscribe;
+  }, [navigation, reportReason, contestReason]);
 
   useEffect(() => {
     if (!isValidBookingId) {
@@ -162,6 +187,38 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
+  // Frente 6 (segunda camada), Lote 12: os estágios "started" (timer em
+  // tela cheia) e "post" (selfie + avaliação) só protegiam contra perda de
+  // dados através do botão de voltar customizado do próprio header — o
+  // botão físico/gesto de voltar do sistema (Android/iOS) ignorava
+  // completamente essa proteção. beforeRemove intercepta qualquer forma de
+  // sair da tela, não só o toque no ícone.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      const hasStartedWork = stage === "started" || (stage === "post" && Boolean(completionProof));
+      if (!hasStartedWork) return;
+      e.preventDefault();
+      Alert.alert(
+        stage === "post" ? "Voltar para o treino?" : "Sair do treino em andamento?",
+        stage === "post"
+          ? "A selfie salva e a avaliação serão perdidas."
+          : "O cronômetro será perdido e o treino voltará ao estado agendado.",
+        [
+          { text: "Ficar aqui", style: "cancel" },
+          {
+            text: "Sair",
+            style: "destructive",
+            onPress: () => {
+              setStage("scheduled");
+              setCompletionProof(null);
+            },
+          },
+        ]
+      );
+    });
+    return unsubscribe;
+  }, [navigation, stage, completionProof]);
+
   // ── Timer ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (stage === "started") {
@@ -174,15 +231,43 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
 
   // ── Data loading ───────────────────────────────────────────────────────────
   const loadAttendance = useCallback(async (b: Booking | null) => {
-    if (!b || (b.status !== "PENDING" && b.status !== "CONFIRMED")) { setAttendance(null); return; }
+    if (!b || (b.status !== "PENDING" && b.status !== "CONFIRMED")) { setAttendance(null); setAttendanceError(false); return; }
     try {
       setAttendanceLoading(true);
       const payload = await runWithAuth((token) => bookingsApi.attendanceCode(token, b.id));
       setAttendance(payload);
-    } catch { setAttendance(null); }
+      setAttendanceError(false);
+    } catch {
+      // Mantém o último código já carregado na tela (uma falha pontual de
+      // polling não deveria fazer o QR/código sumir) — só marca o erro pra
+      // exibir quando ainda não havia nada carregado.
+      setAttendanceError(true);
+    }
     finally { setAttendanceLoading(false); }
   }, [runWithAuth]);
+  const isFocused = useIsFocused();
 
+  useEffect(() => {
+    if (!detailQuery.data) return;
+    if (detailQuery.data.attendance) {
+      setAttendance(detailQuery.data.attendance);
+      setAttendanceError(false);
+      return;
+    }
+    // Frente 6 (segunda camada), Lote 13: a busca embutida em detailQuery
+    // engole qualquer erro (`.catch(() => null)`) pra não derrubar a tela
+    // inteira por causa só do código de presença — mas isso também escondia
+    // "deu erro de rede" atrás de "ainda não liberado". Se veio nulo e o
+    // agendamento está ativo, refaz a busca isolada via loadAttendance, que
+    // já distingue os dois casos.
+    const b = detailQuery.data.booking;
+    if (b && (b.status === "PENDING" || b.status === "CONFIRMED")) {
+      void loadAttendance(b);
+    } else {
+      setAttendance(null);
+      setAttendanceError(false);
+    }
+  }, [detailQuery.data, loadAttendance]);
 
   // ── Computed ───────────────────────────────────────────────────────────────
   const isActive = useMemo(() =>
@@ -217,6 +302,17 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     booking.providerConfirmedAt &&
     Date.now() - new Date(booking.completedAt).getTime() <= 24 * 60 * 60 * 1000
   );
+
+  // Frente 6 (segunda camada), Lote 13: o código/QR só atualizava com o
+  // cliente tocando manualmente em "Atualizar" ou reabrindo a tela — sem
+  // feedback automático no momento exato em que o profissional escaneia.
+  // Mesmo padrão de polling já usado em BookingConfirmationScreen pro
+  // status do Pix.
+  useEffect(() => {
+    if (!isFocused || !isActive || isValidated) return;
+    const interval = setInterval(() => { void loadAttendance(booking); }, 7000);
+    return () => clearInterval(interval);
+  }, [isFocused, isActive, isValidated, booking, loadAttendance]);
 
   // ── Animação de validação do código (scale bounce + fade) ─────────────────
   const checkScale = useSharedValue(0);
@@ -296,6 +392,8 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
               setReportingNoShow(true);
               await runWithAuth((token) => bookingsApi.reportNoShow(token, booking.id, reportReason.trim() || undefined));
               showToast("Agendamento encerrado.", "success");
+              setReportReason("");
+              justSubmittedReasonRef.current = true;
               navigation.goBack();
             } catch (error) {
               void detailQuery.refetch();
@@ -328,6 +426,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
               setContestingNoShow(true);
               await runWithAuth((token) => bookingsApi.contestNoShow(token, booking.id, contestReason.trim() || undefined));
               showToast("Contestação registrada. Um administrador vai analisar.", "success");
+              setContestReason("");
               void detailQuery.refetch();
             } catch (error) {
               handleScreenError({ error, showToast, fallbackMessage: "Não foi possível contestar.", navigation });
@@ -718,6 +817,22 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                   style={{ height: 44, paddingHorizontal: 20, borderRadius: S.chipR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center" }}
                 >
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: C.zinc300 }}>Atualizar código/QR</Text>
+                </TouchableOpacity>
+              </>
+            ) : attendanceError ? (
+              // Frente 6 (segunda camada), Lote 13: antes, qualquer falha de
+              // rede caía nesse mesmo estado de "ainda não liberado" — sem
+              // diferenciar espera normal de erro de verdade.
+              <>
+                <Ionicons name="alert-circle-outline" size={32} color={theme.text3} />
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center" }}>
+                  Não foi possível carregar o código/QR agora. Verifique sua conexão e tente de novo.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => void loadAttendance(booking)}
+                  style={{ height: 44, paddingHorizontal: 20, borderRadius: S.chipR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center" }}
+                >
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: C.zinc300 }}>Tentar novamente</Text>
                 </TouchableOpacity>
               </>
             ) : (

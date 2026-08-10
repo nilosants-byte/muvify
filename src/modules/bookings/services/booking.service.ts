@@ -99,6 +99,24 @@ function generateAttendanceCode() {
   return String(randomInt(0, 1_000_000)).padStart(6, "0");
 }
 
+// Frente 6 (segunda camada), Lote 9: o limite de tentativas do código de
+// presença só era aplicado com Redis disponível — se o Redis caísse, a
+// validação ficava sem limite nenhum de tentativas (só o profissional
+// vinculado ao booking pode chamar essa rota, mas ainda assim). Fallback em
+// memória do próprio processo (não compartilhado entre instâncias, mas
+// muito melhor que nenhum limite) só usado quando o Redis não está pronto.
+const inMemoryAttendanceAttempts = new Map<string, { count: number; resetAt: number }>();
+function checkInMemoryAttendanceAttempts(key: string, maxAttempts: number, windowMs: number): boolean {
+  const now = Date.now();
+  const entry = inMemoryAttendanceAttempts.get(key);
+  if (!entry || entry.resetAt < now) {
+    inMemoryAttendanceAttempts.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= maxAttempts;
+}
+
 type AttendanceQrPayload = {
   bookingId: string;
   code: string;
@@ -423,6 +441,49 @@ export class BookingService {
       if (blockedByManual) {
         throw new AppError(
           "Este horário está bloqueado pelo profissional.",
+          StatusCodes.CONFLICT
+        );
+      }
+
+      // Frente 6 (segunda camada), Lote 4: getPublicSchedulePreview já
+      // marca o horário de alunos presenciais cadastrados fora do app
+      // (Financeiro, com horário fixo semanal) como ocupado, pra impedir
+      // que a pré-visualização mostre um horário como livre quando na
+      // verdade colide com um aluno que só o profissional enxerga — mas
+      // essa proteção existia só ali, cosmética. A criação de agendamento
+      // de verdade nunca checava isso, então dava pra marcar por cima via
+      // API mesmo com a prévia mostrando ocupado (cache de até 60s, app
+      // desatualizado, ou chamada direta).
+      const offAppStudents = await tx.financialStudent.findMany({
+        where: {
+          providerId,
+          isActive: true,
+          type: { in: ["PRESENTIAL", "BOTH"] }
+        },
+        select: { weeklySchedule: true, startDate: true, recurrenceEndDate: true }
+      });
+      // Comparação por chave de data (YYYY-MM-DD no fuso do app), não por
+      // Date bruto — mesmo cuidado já documentado em getPublicSchedulePreview
+      // pra não esbarrar no bug clássico de fronteira UTC×America/Sao_Paulo.
+      const blockedByOffAppStudent = offAppStudents.some((student) => {
+        const startKey = toDateKeyInTimezone(student.startDate, env.APP_TIMEZONE);
+        if (scheduleDateKey < startKey) return false;
+        if (student.recurrenceEndDate) {
+          const endKey = toDateKeyInTimezone(student.recurrenceEndDate, env.APP_TIMEZONE);
+          if (scheduleDateKey > endKey) return false;
+        }
+        const schedule = Array.isArray(student.weeklySchedule)
+          ? (student.weeklySchedule as unknown as Array<{ dayOfWeek: number; startTime: string; endTime: string }>)
+          : [];
+        return schedule.some(
+          (slot) =>
+            slot.dayOfWeek === scheduleWeekday &&
+            sessionOverlapsRange(scheduleTime, provider.sessionDurationMinutes, slot.startTime, slot.endTime)
+        );
+      });
+      if (blockedByOffAppStudent) {
+        throw new AppError(
+          "Este horário está ocupado por outro aluno do profissional.",
           StatusCodes.CONFLICT
         );
       }
@@ -1214,14 +1275,24 @@ export class BookingService {
       };
     }
 
+    // Frente 6 (segunda camada), Lote 1: uma vez que a presença já foi
+    // validada, o código nunca mais deve ser regenerado — reabrir esta
+    // tela (ação corriqueira, ex: no dia seguinte) apagava
+    // attendanceCodeValidatedAt silenciosamente, destravando retroativamente
+    // um relato de falta indevido e a auto-expiração tratando a sessão como
+    // "presença nunca validada".
     let refreshedBooking = booking;
+    const alreadyValidated = Boolean(booking.attendanceCodeValidatedAt);
     const isExpired =
       Boolean(booking.attendanceCodeExpiresAt) && booking.attendanceCodeExpiresAt! < now;
-    if (!booking.attendanceCode || isExpired) {
+    if (!alreadyValidated && (!booking.attendanceCode || isExpired)) {
       const code = generateAttendanceCode();
+      // Bug irmão: calcular a partir de scheduledAt (fixo) fazia o código
+      // "regenerado" nascer com a mesma data de expiração que acabou de
+      // vencer — nunca mais era possível gerar um código válido depois da
+      // janela original. Agora conta a partir do instante da regeneração.
       const expiresAt = new Date(
-        booking.scheduledAt.getTime() +
-          env.BOOKING_ATTENDANCE_CODE_EXPIRY_HOURS * 60 * 60 * 1000
+        now.getTime() + env.BOOKING_ATTENDANCE_CODE_EXPIRY_HOURS * 60 * 60 * 1000
       );
 
       refreshedBooking = await prisma.booking.update({
@@ -1297,6 +1368,18 @@ export class BookingService {
           StatusCodes.TOO_MANY_REQUESTS
         );
       }
+    } else {
+      const withinLimit = checkInMemoryAttendanceAttempts(
+        attemptKey,
+        ATTENDANCE_MAX_ATTEMPTS,
+        ATTENDANCE_WINDOW_SECONDS * 1000
+      );
+      if (!withinLimit) {
+        throw new AppError(
+          "Muitas tentativas de validação. Aguarde 15 minutos antes de tentar novamente.",
+          StatusCodes.TOO_MANY_REQUESTS
+        );
+      }
     }
 
     if (booking.status === BookingStatus.CANCELLED || booking.status === BookingStatus.COMPLETED) {
@@ -1311,6 +1394,19 @@ export class BookingService {
         "Código ainda não foi liberado para este agendamento.",
         StatusCodes.BAD_REQUEST
       );
+    }
+
+    // Frente 6 (segunda camada), Lote 1: com o código nunca mais sendo
+    // regenerado após validado (ver getAttendanceCode acima),
+    // attendanceCodeExpiresAt fica congelado no valor original — uma
+    // reverificação redundante (ex: o profissional toca em validar de
+    // novo por engano) já validada não deveria falhar com "expirado".
+    if (booking.attendanceCodeValidatedAt) {
+      return {
+        bookingId: booking.id,
+        validated: true,
+        validatedAt: booking.attendanceCodeValidatedAt.toISOString()
+      };
     }
 
     const now = new Date();
@@ -1404,9 +1500,64 @@ export class BookingService {
       return this.confirmCompletion(userId, bookingId, completionProof);
     }
 
-    const updated = await prisma.booking.update({
+    // Frente 6 (segunda camada), Lote 9: só o job periódico
+    // (autoExpireStaleBookings) reforçava o prazo de confirmação — nada
+    // impedia o profissional de confirmar depois do prazo já vencido,
+    // contanto que o job ainda não tivesse rodado (janela de segundos a
+    // minutos, maior ainda sob instabilidade de banco, quando o job usa
+    // backoff exponencial).
+    if (
+      status === BookingStatus.CONFIRMED &&
+      booking.confirmationDeadlineAt &&
+      booking.confirmationDeadlineAt < new Date()
+    ) {
+      throw new AppError(
+        "O prazo para confirmar este agendamento já venceu — ele será cancelado automaticamente.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    // Frente 6 (segunda camada), Lote 8: cancelar uma sessão cujo horário
+    // já passou sem a presença ter sido validada tratava os dois lados de
+    // forma inconsistente — cliente que se auto-cancelava tarde era
+    // cobrado na hora, sem os 48h de contestação que "reportar falta" dá; e
+    // o profissional podia usar o mesmo botão genérico de cancelar depois
+    // que o cliente já tinha faltado, devolvendo o dinheiro sem querer, sem
+    // aviso. Passado o horário sem presença validada, o caminho correto
+    // pros dois lados é reportar falta (reportNoShow), nunca um cancelamento
+    // simples.
+    if (
+      status === BookingStatus.CANCELLED &&
+      booking.scheduledAt <= new Date() &&
+      !booking.attendanceCodeValidatedAt
+    ) {
+      throw new AppError(
+        "O horário deste agendamento já passou sem a presença confirmada — use \"Reportar falta\" em vez de cancelar.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    // Frente 6 (segunda camada), Lote 3: escrita incondicional — duas
+    // chamadas de updateStatus quase simultâneas pro mesmo booking (duplo
+    // toque em cancelar, ou uma corrida com confirmCompletion escrevendo
+    // COMPLETED por cima) passavam pela checagem de transição acima (lida
+    // antes de qualquer commit) e as duas executavam os efeitos colaterais
+    // — no caso de CANCELLED, isso duplicava o crédito devolvido de um
+    // pacote de sessões avulsas. Mesmo padrão de "claim" atômico já usado
+    // em Payment.mutationLockedAt/DisputeCase.resolvingLockedAt.
+    const claimed = await prisma.booking.updateMany({
+      where: { id: bookingId, status: booking.status },
+      data: { status }
+    });
+    if (claimed.count === 0) {
+      throw new AppError(
+        "Este agendamento já foi alterado por outra ação. Recarregue para ver o status atual.",
+        StatusCodes.CONFLICT
+      );
+    }
+
+    const updated = await prisma.booking.findUniqueOrThrow({
       where: { id: bookingId },
-      data: { status },
       include: {
         client: {
           select: {
@@ -1441,6 +1592,13 @@ export class BookingService {
         );
       }
     }
+
+    // Frente 6 (segunda camada), Lote 14: a prévia pública de agenda
+    // (getPublicSchedulePreview) só era invalidada na criação de
+    // agendamento — cancelar um agendamento libera o horário de verdade,
+    // mas a prévia continuava mostrando ocupado até o TTL de 60s expirar
+    // sozinho.
+    void deleteByPattern(`schedule:${updated.providerId}:*`).catch(() => undefined);
 
     await this.notifyBookingStatusChange(updated, status, userId);
     return updated;
@@ -1525,6 +1683,19 @@ export class BookingService {
         if (fresh.status === BookingStatus.COMPLETED) {
           const current = await tx.booking.findUniqueOrThrow({ where: { id: bookingId }, include: CONFIRM_INCLUDE });
           return { updated: current, justCompleted: false, stillWaiting: false };
+        }
+
+        // Frente 6 (segunda camada), Lote 3: só o caso "já concluído" era
+        // tratado — se o booking tivesse sido cancelado nesse meio-tempo
+        // (ex: o cliente cancelando quase ao mesmo tempo em que o
+        // profissional confirma a conclusão), o fluxo seguia normalmente e
+        // capturava o pagamento + marcava COMPLETED por cima do
+        // cancelamento que acabou de acontecer.
+        if (fresh.status === BookingStatus.CANCELLED) {
+          throw new AppError(
+            "Este agendamento foi cancelado antes de ser possível confirmar a conclusão.",
+            StatusCodes.CONFLICT
+          );
         }
 
         const alreadyConfirmedByMe = Boolean(fresh[confirmationField]);

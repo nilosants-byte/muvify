@@ -74,6 +74,11 @@ export class DisputeCaseService {
         createdAt: true,
         resolvedAt: true,
         clientId: true,
+        // Frente 6 (segunda camada), Lote 10: MyDisputesScreen agora também
+        // é usada pelo profissional — sem o nome do cliente, a tela mostraria
+        // "Com {o próprio nome do profissional}" nesse caso (reaproveitando
+        // a mesma lógica que já mostrava o nome do profissional pro cliente).
+        client: { select: { id: true, name: true } },
         provider: { select: { id: true, displayName: true, userId: true } }
       }
     });
@@ -297,6 +302,59 @@ export class DisputeCaseService {
       }
     }
 
+    // Frente 6 (segunda camada), Lote 2: NO_SHOW_CONTESTED e
+    // CONFIRMATION_DEADLOCK existem justamente porque o pagamento nunca foi
+    // capturado (fica AUTHORIZED — reservado no cartão — até revisão
+    // manual). A lógica abaixo (REFUNDED estorna via mpRefund, DENIED não
+    // mexe no pagamento) foi escrita pra disputas com pagamento JÁ
+    // capturado (chargeback, entrega contestada, cobrança automática) —
+    // aplicada a estes dois tipos, "REFUNDED" tentava estornar uma cobrança
+    // que nunca existiu (falha na Mercado Pago) e "DENIED" nunca capturava
+    // o pagamento a favor do profissional. Aqui o sentido é invertido:
+    // REFUNDED = liberar a pré-autorização sem cobrar; DENIED = capturar de
+    // verdade, pagando o profissional pela primeira vez.
+    const isUncapturedDisputeType =
+      disputeCase.type === "NO_SHOW_CONTESTED" || disputeCase.type === "CONFIRMATION_DEADLOCK";
+
+    if (isUncapturedDisputeType && (input.resolution === "REFUNDED" || input.resolution === "DENIED")) {
+      if (!disputeCase.bookingId) {
+        throw new AppError("Este caso não tem um agendamento vinculado.", StatusCodes.BAD_REQUEST);
+      }
+      if (
+        input.resolution === "REFUNDED" &&
+        input.amountCents !== undefined &&
+        input.amountCents !== disputeCase.amountCents
+      ) {
+        throw new AppError(
+          "Este caso ainda não teve nenhuma cobrança — só é possível liberar o valor reservado por inteiro, não parcialmente.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+      try {
+        if (input.resolution === "REFUNDED") {
+          await this.paymentService.cancelPaymentForBooking(disputeCase.bookingId);
+          await restoreFlexibleCreditForBooking(prisma, disputeCase.bookingId);
+        } else {
+          // cancelPaymentForBooking já é no-op quando o booking nunca teve um
+          // Payment (ex.: sessão paga com crédito de pacote) — capturePayment
+          // ForBooking lança erro nesse mesmo caso porque também é usado no
+          // retry de captura (CAPTURE_FAILED), onde "sem payment" é um erro
+          // real. Aqui, pra manter a mesma tolerância do lado REFUNDED, só
+          // chama a captura se de fato existir um Payment pra capturar.
+          const existingPayment = await prisma.payment.findUnique({ where: { bookingId: disputeCase.bookingId } });
+          if (existingPayment) {
+            await this.paymentService.capturePaymentForBooking(disputeCase.bookingId);
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Falha desconhecida";
+        throw new AppError(
+          `Não foi possível ${input.resolution === "REFUNDED" ? "liberar a pré-autorização" : "capturar o pagamento"} (${message}). O caso continua em aberto.`,
+          StatusCodes.BAD_REQUEST
+        );
+      }
+    }
+
     let resolvedAmountCents: number | null = null;
 
     if (input.resolution === "REFUNDED") {
@@ -304,20 +362,22 @@ export class DisputeCaseService {
       if (!Number.isInteger(amountCents) || amountCents <= 0 || amountCents > disputeCase.amountCents) {
         throw new AppError("Valor de reembolso inválido.", StatusCodes.BAD_REQUEST);
       }
-      if (!disputeCase.mpPaymentId) {
-        throw new AppError("Este caso não tem um pagamento vinculado para reembolsar.", StatusCodes.BAD_REQUEST);
-      }
+      if (!isUncapturedDisputeType) {
+        if (!disputeCase.mpPaymentId) {
+          throw new AppError("Este caso não tem um pagamento vinculado para reembolsar.", StatusCodes.BAD_REQUEST);
+        }
 
-      const isFullRefund = amountCents === disputeCase.amountCents;
-      await mpRefund.create({
-        payment_id: disputeCase.mpPaymentId,
-        body: isFullRefund ? {} : { amount: amountCents / 100 },
-        // Frente 2 (segunda camada), Lote 4: chave estável por caso — a
-        // trava resolvingLockedAt (acima) já impede dois admins resolvendo
-        // ao mesmo tempo; isto protege contra um retry de rede da mesma
-        // chamada duplicar o reembolso no gateway.
-        requestOptions: { idempotencyKey: `dispute:${caseId}:refund` }
-      });
+        const isFullRefund = amountCents === disputeCase.amountCents;
+        await mpRefund.create({
+          payment_id: disputeCase.mpPaymentId,
+          body: isFullRefund ? {} : { amount: amountCents / 100 },
+          // Frente 2 (segunda camada), Lote 4: chave estável por caso — a
+          // trava resolvingLockedAt (acima) já impede dois admins resolvendo
+          // ao mesmo tempo; isto protege contra um retry de rede da mesma
+          // chamada duplicar o reembolso no gateway.
+          requestOptions: { idempotencyKey: `dispute:${caseId}:refund` }
+        });
+      }
       resolvedAmountCents = amountCents;
     }
 
@@ -372,7 +432,12 @@ export class DisputeCaseService {
       // (reembolso so existe pra pagamento capturado - pre-autorizacao usa
       // cancelamento, nao reembolso), entao o personal ja recebeu esse
       // valor: a divida nasce automatica aqui, sem acao extra do admin.
-      if (input.resolution === "REFUNDED" && resolvedAmountCents !== null) {
+      // Frente 6 (segunda camada), Lote 2: para NO_SHOW_CONTESTED/
+      // CONFIRMATION_DEADLOCK essa premissa é falsa — o profissional nunca
+      // recebeu nada (payment ficou AUTHORIZED), então nada aqui se aplica;
+      // cancelPaymentForBooking (chamado acima) já deixou o Payment como
+      // CANCELED e já notificou as partes.
+      if (input.resolution === "REFUNDED" && resolvedAmountCents !== null && !isUncapturedDisputeType) {
         // Raio-X de pagamentos, Rodada 5, Lote 3: o profissional nunca
         // recebeu o valor bruto da venda — recebeu só o líquido (split),
         // já que a comissão da plataforma ficou retida na venda original.
@@ -477,21 +542,33 @@ export class DisputeCaseService {
       metadata: { resolution: input.resolution, resolvedAmountCents, type: disputeCase.type }
     });
 
+    // Frente 6 (segunda camada), Lote 2: pra NO_SHOW_CONTESTED/
+    // CONFIRMATION_DEADLOCK nunca houve cobrança de verdade — "reembolsado"
+    // e "descontado do próximo repasse" são afirmações falsas nesse caso
+    // (o valor só estava reservado, nunca foi repassado ao profissional).
     const clientMessage =
       input.resolution === "REFUNDED"
-        ? `Seu caso foi resolvido: você foi reembolsado em R$ ${formatCents(resolvedAmountCents!)}. Motivo: ${note}`
+        ? isUncapturedDisputeType
+          ? `Seu caso foi resolvido: a reserva de R$ ${formatCents(resolvedAmountCents!)} no seu cartão foi liberada — você não será cobrado por esta sessão. Motivo: ${note}`
+          : `Seu caso foi resolvido: você foi reembolsado em R$ ${formatCents(resolvedAmountCents!)}. Motivo: ${note}`
         : input.resolution === "RETRY_CAPTURE"
           ? `Seu caso foi resolvido: a cobrança pendente foi confirmada com sucesso. Motivo: ${note}`
-          : clientDebtCents !== null
-            ? `Seu caso foi resolvido: o reembolso não foi aprovado. Motivo: ${note} Além disso, foi identificado que você já havia recebido R$ ${formatCents(clientDebtCents)} indevidamente antes desta disputa — enquanto essa pendência não for regularizada, novas compras ficarão bloqueadas.`
-            : `Seu caso foi resolvido: o reembolso não foi aprovado. Motivo: ${note}`;
+          : isUncapturedDisputeType
+            ? `Seu caso foi resolvido: a cobrança de R$ ${formatCents(disputeCase.amountCents)} pela sessão foi confirmada. Motivo: ${note}`
+            : clientDebtCents !== null
+              ? `Seu caso foi resolvido: o reembolso não foi aprovado. Motivo: ${note} Além disso, foi identificado que você já havia recebido R$ ${formatCents(clientDebtCents)} indevidamente antes desta disputa — enquanto essa pendência não for regularizada, novas compras ficarão bloqueadas.`
+              : `Seu caso foi resolvido: o reembolso não foi aprovado. Motivo: ${note}`;
 
     const providerMessage =
       input.resolution === "REFUNDED"
-        ? `O caso foi resolvido: o cliente foi reembolsado em R$ ${formatCents(resolvedAmountCents!)}. Motivo: ${note} O valor que você recebeu por essa venda (R$ ${formatCents(providerSplitAmount(resolvedAmountCents!))}) será descontado do seu próximo repasse.`
+        ? isUncapturedDisputeType
+          ? `O caso foi resolvido: a reserva no cartão do cliente foi liberada — esta sessão não será cobrada nem repassada a você. Motivo: ${note}`
+          : `O caso foi resolvido: o cliente foi reembolsado em R$ ${formatCents(resolvedAmountCents!)}. Motivo: ${note} O valor que você recebeu por essa venda (R$ ${formatCents(providerSplitAmount(resolvedAmountCents!))}) será descontado do seu próximo repasse.`
         : input.resolution === "RETRY_CAPTURE"
           ? `O caso foi resolvido: a cobrança pendente foi confirmada com sucesso e o repasse segue normalmente. Motivo: ${note}`
-          : `O caso foi resolvido: o pedido de reembolso do cliente não foi aprovado. Motivo: ${note}`;
+          : isUncapturedDisputeType
+            ? `O caso foi resolvido a seu favor: a cobrança de R$ ${formatCents(disputeCase.amountCents)} pela sessão foi confirmada e o repasse segue normalmente. Motivo: ${note}`
+            : `O caso foi resolvido: o pedido de reembolso do cliente não foi aprovado. Motivo: ${note}`;
 
     void this.notificationService
       .sendToUsers([disputeCase.clientId], {

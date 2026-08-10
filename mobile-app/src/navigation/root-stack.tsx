@@ -477,6 +477,14 @@ export function RootNavigator() {
         name="ProviderDebts"
         component={ProviderDebtsScreen as React.ComponentType<any>}
       />
+      {/* Frente 6 (segunda camada), Lote 10: profissional não tinha
+        equivalente a "Minhas disputas" — só via casos em análise abrindo
+        agendamento por agendamento. Mesma tela do cliente, reaproveitada
+        (listMyDisputes já cobre os dois lados no backend). */}
+      <ProfessionalStack.Screen
+        name="MyDisputes"
+        component={MyDisputesScreen as React.ComponentType<any>}
+      />
       <ProfessionalStack.Screen
         name="ProviderPaymentMethod"
         component={ProviderPaymentMethodScreen as React.ComponentType<any>}

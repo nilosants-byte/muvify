@@ -75,6 +75,23 @@ describe("resolveNotificationRoute — cliente", () => {
     });
   });
 
+  // Frente 6 (segunda camada), Lote 6: estes 5 tipos já eram emitidos pro
+  // cliente com bookingId de verdade (booking.service.ts envia pra
+  // clientId e provider.userId juntos), mas caíam no destino genérico
+  // porque só o conjunto PROVIDER tinha sido corrigido (Frente 1, Lote 2).
+  it.each([
+    "BOOKING_NO_SHOW_CONTESTED",
+    "BOOKING_AUTO_CAPTURE_CONTESTED",
+    "BOOKING_ATTENDANCE_NOT_VALIDATED",
+    "BOOKING_CONFIRMATION_DEADLINE_EXPIRED",
+    "BOOKING_CONFIRMATION_DEADLOCK"
+  ])("%s com bookingId abre o detalhe do agendamento", (type) => {
+    expect(resolveNotificationRoute({ type, bookingId: BOOKING_ID }, "CLIENT")).toEqual({
+      screen: "ClientBookingDetail",
+      params: { bookingId: BOOKING_ID }
+    });
+  });
+
   it.each([
     "PAYMENT_AUTHORIZED",
     "PAYMENT_CAPTURED",

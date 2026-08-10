@@ -29,6 +29,13 @@ const BOOKING_TYPES_CLIENT = new Set([
   "REVIEW_REMINDER", "PAYMENT_AUTHORIZED", "PAYMENT_CAPTURED", "PAYMENT_REFUNDED",
   "PAYMENT_CANCELED", "PAYMENT_CAPTURE_FAILED", "PAYMENT_REFUND_FAILED",
   "PAYMENT_IN_MEDIATION", "PAYMENT_DISPUTED",
+  // Frente 6 (segunda camada), Lote 6: mesmo tipo de lacuna já corrigida do
+  // lado profissional na Frente 1/Lote 2 — estes 5 tipos são emitidos pro
+  // cliente também (booking.service.ts envia pra clientId e provider.userId
+  // juntos em todos os casos), mas só o conjunto PRO tinha sido atualizado.
+  "BOOKING_NO_SHOW_CONTESTED", "BOOKING_AUTO_CAPTURE_CONTESTED",
+  "BOOKING_ATTENDANCE_NOT_VALIDATED", "BOOKING_CONFIRMATION_DEADLINE_EXPIRED",
+  "BOOKING_CONFIRMATION_DEADLOCK",
 ]);
 
 // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 9: os tipos de
