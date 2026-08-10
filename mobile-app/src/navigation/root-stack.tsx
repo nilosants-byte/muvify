@@ -118,8 +118,17 @@ function routeNotification(
   // branch inteiro nunca executava, então TODO deep link de notificação
   // pro profissional caía silenciosamente em nada (routeNotification
   // simplesmente não fazia nada, sem navegar pra lugar nenhum).
-  const target = resolveNotificationRoute(data, role) ?? { screen: "Notifications" };
-  (navigationRef as any).navigate(target.screen, target.params);
+  const target = resolveNotificationRoute(data, role);
+  // Frente 7 (segunda camada), Lote 13: o fallback abaixo ("Notifications")
+  // só existe no ClientStack/ProfessionalStack — hoje nenhum push é
+  // enviado pra usuários ADMIN (resolveNotificationRoute sempre retorna
+  // null pra esse role), então isso nunca disparou na prática, mas era uma
+  // armadilha latente: o admin não tem central de avisos nem rota
+  // "Notifications" registrada, e cairia numa navegação pra rota inexistente
+  // no dia em que algum push admin for adicionado.
+  if (!target && role === "ADMIN") return;
+  const finalTarget = target ?? { screen: "Notifications" };
+  (navigationRef as any).navigate(finalTarget.screen, finalTarget.params);
 }
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();

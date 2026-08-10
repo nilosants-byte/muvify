@@ -2,23 +2,16 @@ import { Prisma } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
-import { isAdminEmail } from "../../../shared/utils/admin-access";
+import { assertAdminAccess } from "../../../shared/utils/admin-access";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { deleteByPattern, getCache, setCache } from "../../../shared/utils/cache";
 import { normalizeLoose } from "../../../shared/utils/normalize-text";
 
 export class CategoryService {
-  // Épico de Frentes, Frente 10, Lote 7: create/deactivate/reactivate nem
-  // recebiam adminId - dependiam 100% do ensureRole(ADMIN) da rota (sem
-  // revalidação no service, quebrando o padrão de defesa em profundidade
-  // já usado desde a Frente 1/Lote 2) e não gravavam audit log nenhum.
-  // Frente 10 (fechamento pós-verificação): faltava emailVerifiedAt aqui,
-  // igual ao que o Lote 7 já corrigiu em admin.service.ts.
+  // Frente 7 (segunda camada), Lote 1: implementação movida pra
+  // shared/utils/admin-access.ts::assertAdminAccess (centralizada de vez).
   private async ensureAdminAccess(adminId: string) {
-    const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { email: true, emailVerifiedAt: true } });
-    if (!admin || !admin.emailVerifiedAt || !isAdminEmail(admin.email)) {
-      throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
-    }
+    await assertAdminAccess(adminId);
   }
 
   async create(adminId: string, name: string, description?: string) {

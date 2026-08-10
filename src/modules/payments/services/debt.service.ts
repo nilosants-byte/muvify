@@ -4,7 +4,7 @@ import { CardToken, Payment } from "mercadopago";
 import { mp } from "../../../config/mercadopago";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
-import { isAdminEmail } from "../../../shared/utils/admin-access";
+import { assertAdminAccess } from "../../../shared/utils/admin-access";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { platformFeeAmount } from "../../../shared/utils/platform-fee";
@@ -26,15 +26,11 @@ function formatCents(amountCents: number) {
 // visibilidade, porque o proprio Mercado Pago ja tenta recuperar sozinho do
 // proximo repasse dele.
 export class DebtService {
-  private async ensureAdminAccess(adminUserId: string) {
-    const admin = await prisma.user.findUnique({
-      where: { id: adminUserId },
-      select: { id: true, email: true }
-    });
-    if (!admin || !isAdminEmail(admin.email)) {
-      throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
-    }
-    return admin;
+  // Frente 7 (segunda camada), Lote 1: faltava emailVerifiedAt aqui —
+  // deixava dar baixa em dívida vulnerável a admin com e-mail revogado.
+  // Implementação centralizada em shared/utils/admin-access.ts.
+  private ensureAdminAccess(adminUserId: string) {
+    return assertAdminAccess(adminUserId);
   }
 
   // Raio-X de pagamentos, Rodada 3, Lote 6: o admin não tinha nenhuma visão
@@ -83,7 +79,10 @@ export class DebtService {
       throw new AppError("Informe o motivo da baixa.", StatusCodes.BAD_REQUEST);
     }
 
-    const debt = await prisma.debtRecord.findUnique({ where: { id: debtId } });
+    const debt = await prisma.debtRecord.findUnique({
+      where: { id: debtId },
+      include: { provider: { select: { userId: true } } }
+    });
     if (!debt) {
       throw new AppError("Pendência não encontrada.", StatusCodes.NOT_FOUND);
     }
@@ -91,10 +90,21 @@ export class DebtService {
       throw new AppError("Esta pendência não está mais em aberto.", StatusCodes.BAD_REQUEST);
     }
 
-    const updated = await prisma.debtRecord.update({
-      where: { id: debtId },
+    // Frente 7 (segunda camada), Lote 11: findUnique + checagem em memória +
+    // update direto, diferente do padrão já usado em SupportTicket.reply/
+    // DisputeCase.resolveCase (updateMany filtrando pelo status esperado) —
+    // duas chamadas concorrentes passavam ambas pela checagem antes de
+    // qualquer uma escrever. O efeito final já era idempotente aqui (as
+    // duas terminam em WRITTEN_OFF), mas sem essa trava não dava pra saber
+    // se essa é a chamada que de fato "ganhou" a corrida antes de notificar.
+    const claimed = await prisma.debtRecord.updateMany({
+      where: { id: debtId, status: debt.status },
       data: { status: "WRITTEN_OFF" }
     });
+    if (claimed.count === 0) {
+      throw new AppError("Esta pendência não está mais em aberto.", StatusCodes.BAD_REQUEST);
+    }
+    const updated = await prisma.debtRecord.findUniqueOrThrow({ where: { id: debtId } });
 
     void writeAdminAuditLog({
       adminId: admin.id,
@@ -103,6 +113,21 @@ export class DebtService {
       targetId: debtId,
       metadata: { reason: trimmedReason, amountCents: debt.amountCents }
     });
+
+    // Frente 7 (segunda camada), Lote 11: o devedor nunca era avisado de
+    // que a própria pendência tinha sido perdoada — só descobria se checasse
+    // a lista de dívidas por conta própria, apesar de ser uma notícia boa.
+    const debtorUserId = debt.debtorType === "CLIENT" ? debt.clientId : debt.provider?.userId ?? null;
+    if (debtorUserId) {
+      void notificationService
+        .sendToUsers([debtorUserId], {
+          preferenceType: "SYSTEM",
+          title: "Pendência financeira baixada",
+          body: `Sua pendência de ${formatCents(debt.amountCents)} foi baixada e não será mais cobrada. Motivo: ${trimmedReason}`,
+          data: { type: "DEBT_WRITTEN_OFF" }
+        })
+        .catch((error) => console.error("Falha ao notificar devedor sobre baixa de pendência:", error));
+    }
 
     return updated;
   }

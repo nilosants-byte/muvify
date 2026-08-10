@@ -16,7 +16,7 @@ import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
-import { isAdminEmail } from "../../../shared/utils/admin-access";
+import { assertAdminAccess as assertAdminAccessShared } from "../../../shared/utils/admin-access";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { deleteByPattern, getCache, setCache } from "../../../shared/utils/cache";
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
@@ -334,21 +334,12 @@ export class ProviderService {
     return provider;
   }
 
-  private async assertAdminAccess(adminUserId: string) {
-    const admin = await prisma.user.findUnique({
-      where: { id: adminUserId },
-      select: {
-        id: true,
-        email: true,
-        role: true
-      }
-    });
-
-    if (!admin || !isAdminEmail(admin.email)) {
-      throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
-    }
-
-    return admin;
+  // Frente 7 (segunda camada), Lote 1: faltava emailVerifiedAt aqui —
+  // deixava aprovar/rejeitar CREF (principal controle de confiança de
+  // profissionais na plataforma) vulnerável a admin com e-mail revogado.
+  // Implementação centralizada em shared/utils/admin-access.ts.
+  private assertAdminAccess(adminUserId: string) {
+    return assertAdminAccessShared(adminUserId);
   }
 
   private getCredentialDocuments(value: unknown): Array<{ uri?: string | null }> {
@@ -864,12 +855,6 @@ export class ProviderService {
 
     await deleteByPattern("providers:*");
     return this.mapCredentialsPayload(updated);
-  }
-
-  async validateProviderCref(adminUserId: string, providerId: string) {
-    return this.reviewProviderCref(adminUserId, providerId, {
-      decision: "APPROVE"
-    });
   }
 
   // Frente 4 (segunda camada), Lote 7: esta checagem aceita contrato/pacote

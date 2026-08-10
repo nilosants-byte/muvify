@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { MvCard, MvText } from "../../components/mv";
 import { adminApi } from "../../services/api/client";
@@ -49,6 +50,17 @@ export function AdminHomeScreen({ navigation }: Props) {
       handleScreenError({ error: overviewQuery.error, showToast, fallbackMessage: "Falha ao carregar painel administrativo.", navigation });
     }
   }, [overviewQuery.error, showToast, navigation]);
+
+  // Frente 7 (segunda camada), Lote 6: única fila/painel do módulo admin sem
+  // useFocusEffect — os contadores de "precisa da sua atenção" (disputas,
+  // dívidas, CREFs, tickets) ficavam desatualizados até um pull-to-refresh
+  // manual depois de resolver algo em outra tela e voltar pro painel.
+  useFocusEffect(
+    useCallback(() => {
+      void overviewQuery.refetch();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [overviewQuery.refetch])
+  );
 
   const monthLabel = `${MONTH_LABELS[month - 1]} ${year}`;
   const maxUsersInDay = useMemo(() => {

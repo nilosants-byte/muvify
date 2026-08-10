@@ -6,7 +6,7 @@ import { env } from "../../../config/env";
 import { AppError } from "../../../shared/errors/app-error";
 import { EmailService } from "../../../shared/services/email.service";
 import { EmailQueueService } from "../../../shared/services/email-queue.service";
-import { isAdminEmail } from "../../../shared/utils/admin-access";
+import { assertAdminAccess, isAdminEmail } from "../../../shared/utils/admin-access";
 import { decryptSensitiveText, hashLookupValue } from "../../../shared/utils/encryption";
 import { resolveAccessTokenTtlSeconds, setTokenBlacklist } from "../../../shared/security/token-blacklist";
 import { NotificationService } from "../../notifications/services/notification.service";
@@ -276,29 +276,13 @@ export class AdminService {
   private consultancyService = new ConsultancyService();
   private bookingService = new BookingService();
 
-  // Épico de Frentes, Frente 10, Lote 7: não exigia emailVerifiedAt,
-  // divergindo do critério usado por resolveEffectiveUserRole
-  // (admin-access.ts) pra emitir o token ADMIN em primeiro lugar - um
-  // admin cuja verificação de e-mail fosse revogada por algum canal
-  // (ex: fluxo de recuperação de conta) continuava passando por essa
-  // revalidação até o token expirar sozinho.
-  private async ensureAdminAccess(adminUserId: string) {
-    const admin = await prisma.user.findUnique({
-      where: { id: adminUserId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        emailVerifiedAt: true
-      }
-    });
-
-    if (!admin || !admin.emailVerifiedAt || !isAdminEmail(admin.email)) {
-      throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
-    }
-
-    return admin;
+  // Frente 7 (segunda camada), Lote 1: implementação movida pra
+  // shared/utils/admin-access.ts::assertAdminAccess — essa checagem já tinha
+  // sido corrigida separadamente 3 vezes em services diferentes (sempre
+  // copiando em vez de reaproveitar), e 3 outros services ainda estavam
+  // com a versão antiga. Centralizada de vez.
+  private ensureAdminAccess(adminUserId: string) {
+    return assertAdminAccess(adminUserId);
   }
 
   private parseLegalHoldUserIds() {
@@ -979,8 +963,8 @@ export class AdminService {
     const nextCursor = hasMore ? encodeOffsetCursor(offset + take) : null;
 
     console.info(
-      `[ADMIN_CHAT_AUDIT_LIST] adminId=${admin.id} clientEmail=${clientEmail ?? "-"} providerEmail=${
-        providerEmail ?? "-"
+      `[ADMIN_CHAT_AUDIT_LIST] adminId=${admin.id} clientEmail=${clientEmail ? this.maskRawEmail(clientEmail) : "-"} providerEmail=${
+        providerEmail ? this.maskRawEmail(providerEmail) : "-"
       } startedFrom=${startedFrom?.toISOString() ?? "-"} startedTo=${startedTo?.toISOString() ?? "-"} offset=${offset} take=${take} returned=${items.length}`
     );
 
@@ -1261,6 +1245,18 @@ export class AdminService {
   private maskRawDocument(doc: string): string {
     const d = doc.replace(/\D/g, "");
     return d.length >= 4 ? `***.***.***-${d.slice(-2)}` : "***";
+  }
+
+  // Frente 7 (segunda camada), Lote 12: mesmo raciocínio do maskRawDocument
+  // acima (CPF/CNPJ já mascarado desde a Frente 11/Lote 4), mas o log de
+  // auditoria de busca de conversas por e-mail (ADMIN_CHAT_AUDIT_LIST)
+  // continuava gravando o e-mail completo do cliente/profissional em texto
+  // puro, divergindo do critério já adotado pro resto deste mesmo service.
+  private maskRawEmail(email: string): string {
+    const [local, domain] = email.split("@");
+    if (!local || !domain) return "***";
+    const visible = local.slice(0, 2);
+    return `${visible}${"*".repeat(Math.max(1, local.length - visible.length))}@${domain}`;
   }
 
   // Lookup by document goes through documentHash (a deterministic HMAC) since

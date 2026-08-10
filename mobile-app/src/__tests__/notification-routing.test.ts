@@ -119,6 +119,19 @@ describe("resolveNotificationRoute — cliente", () => {
   });
 });
 
+// Frente 7 (segunda camada), Lote 13: role "ADMIN" nunca era tratado
+// explicitamente — funcionava só por acidente (caindo no "return null" do
+// fim da função). Explícito agora, e routeNotification (root-stack.tsx)
+// para de tentar cair no fallback "Notifications" pra esse role, já que
+// AdminStack não tem essa rota registrada.
+describe("resolveNotificationRoute — admin", () => {
+  it("nenhum destino específico é definido pro role admin (sem central de avisos hoje)", () => {
+    expect(resolveNotificationRoute({ type: "MP_TOKEN_INVALIDATED" }, "ADMIN")).toBeNull();
+    expect(resolveNotificationRoute({ type: "CHAT_MESSAGE", bookingId: BOOKING_ID }, "ADMIN")).toBeNull();
+    expect(resolveNotificationRoute({ type: "ALGO_NUNCA_VISTO" }, "ADMIN")).toBeNull();
+  });
+});
+
 describe("resolveNotificationRoute — mensagem de chat continua priorizada sobre o tipo genérico de agendamento", () => {
   it("CHAT_MESSAGE do profissional abre a conversa, não o detalhe do agendamento", () => {
     expect(resolveNotificationRoute({ type: "CHAT_MESSAGE", bookingId: BOOKING_ID }, "PROVIDER")).toEqual({

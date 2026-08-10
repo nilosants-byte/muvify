@@ -123,7 +123,9 @@ export const adminLookupBookingDetailSchema = z.object({
 
 export const adminListDisputeCasesQuerySchema = z.object({
   query: z.object({
-    status: z.enum(["OPEN", "RESOLVED"]).optional()
+    status: z.enum(["OPEN", "RESOLVED"]).optional(),
+    skip: z.coerce.number().int().min(0).optional(),
+    take: z.coerce.number().int().min(1).max(200).optional()
   })
 });
 

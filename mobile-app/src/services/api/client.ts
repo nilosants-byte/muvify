@@ -1708,6 +1708,9 @@ export const adminApi = {
   hideReportedContent(token: string, type: AdminReportType, reportId: string) {
     return apiRequest<void>(`/admin/reports/${type}/${reportId}/hide-content`, { method: "PATCH", token });
   },
+  unhideReportedContent(token: string, type: AdminReportType, reportId: string) {
+    return apiRequest<void>(`/admin/reports/${type}/${reportId}/unhide-content`, { method: "PATCH", token });
+  },
   listChatAuditSessions(
     token: string,
     params?: {
@@ -1766,11 +1769,13 @@ export const adminApi = {
   lookupBookingDetail(token: string, bookingId: string) {
     return apiRequest<AdminLookupBookingDetail>(`/admin/lookup/bookings/${bookingId}`, { token });
   },
-  listDisputeCases(token: string, params?: { status?: "OPEN" | "RESOLVED" }) {
+  listDisputeCases(token: string, params?: { status?: "OPEN" | "RESOLVED"; skip?: number; take?: number }) {
     const query = new URLSearchParams();
     if (params?.status) query.set("status", params.status);
+    if (params?.skip) query.set("skip", String(params.skip));
+    if (params?.take) query.set("take", String(params.take));
     const suffix = query.toString() ? `?${query}` : "";
-    return apiRequest<AdminDisputeCaseListItem[]>(`/admin/disputes${suffix}`, { token });
+    return apiRequest<{ items: AdminDisputeCaseListItem[]; hasMore: boolean }>(`/admin/disputes${suffix}`, { token });
   },
   getDisputeCaseDetail(token: string, caseId: string) {
     return apiRequest<AdminDisputeCaseDetail>(`/admin/disputes/${caseId}`, { token });

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect } from "react";
 import { ActivityIndicator, ScrollView, TouchableOpacity, View } from "react-native";
-import { MvCard, MvRefreshControl, MvText } from "../../components/mv";
+import { MvButton, MvCard, MvRefreshControl, MvText } from "../../components/mv";
 import { adminApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -121,6 +121,11 @@ export function AdminConsultasBookingDetailScreen({ navigation, route }: Props) 
           />
         }
       >
+        <MvButton
+          variant="outline"
+          label="Voltar para lista"
+          onPress={() => navigation.goBack()}
+        />
 
         <Section title="Resumo">
           <Row icon="calendar-outline" label="Data / Hora" value={formatBRDateTime(booking.scheduledAt)} />

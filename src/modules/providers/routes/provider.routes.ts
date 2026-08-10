@@ -41,14 +41,6 @@ providerRoutes.put(
   providerController.upsertOwnCredentials
 );
 
-providerRoutes.patch(
-  "/:providerId/credentials/validate",
-  ensureAuthenticated,
-  ensureRole(UserRole.ADMIN),
-  validate(providerIdSchema),
-  providerController.validateProviderCredentials
-);
-
 providerRoutes.get(
   "/dashboard/calendar",
   ensureAuthenticated,

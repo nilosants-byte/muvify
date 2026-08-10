@@ -15,6 +15,13 @@ const providerService = new ProviderService();
 const exerciseService = new ExerciseService();
 const debtService = new DebtService();
 
+// Frente 7 (segunda camada), Lote 15: nenhuma fila administrativa (denúncia,
+// ticket de suporte, dívida, disputa, CREF) tem ação em massa — só item a
+// item, apesar de todas as ações já serem idempotentes/guardadas por
+// updateMany com filtro de estado (dariam pra rodar em lote sem risco
+// técnico adicional). Documentado como gap aceito por ora: é atrito
+// operacional real pra uma fila que cresce, mas é uma feature nova de
+// escopo próprio, não um bug — fora do escopo desta frente de auditoria.
 export class AdminController {
   async dashboardOverview(request: Request, response: Response) {
     const payload = await adminService.getDashboardOverview(request.user!.id, {
@@ -234,7 +241,9 @@ export class AdminController {
   async listDisputeCases(request: Request, response: Response) {
     const payload = await disputeCaseService.listCases(
       request.user!.id,
-      request.query.status as DisputeCaseStatus | undefined
+      request.query.status as DisputeCaseStatus | undefined,
+      request.query.skip ? Number(request.query.skip) : undefined,
+      request.query.take ? Number(request.query.take) : undefined
     );
     return response.json(payload);
   }
@@ -269,6 +278,15 @@ export class AdminController {
 
   async hideReportedContent(request: Request, response: Response) {
     await moderationService.hideReportedContent(
+      request.user!.id,
+      request.params.type as "feed-post" | "booking-message" | "consultancy-message",
+      request.params.id
+    );
+    return response.status(StatusCodes.NO_CONTENT).send();
+  }
+
+  async unhideReportedContent(request: Request, response: Response) {
+    await moderationService.unhideContent(
       request.user!.id,
       request.params.type as "feed-post" | "booking-message" | "consultancy-message",
       request.params.id

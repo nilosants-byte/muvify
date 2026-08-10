@@ -27,18 +27,34 @@ const TYPE_LABEL: Record<AdminReportType, string> = {
   "consultancy-message": "Mensagem — chat de consultoria"
 };
 
+type QueueStatus = "PENDING" | "ACTIONED";
+
 export function AdminModerationScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const [processingKey, setProcessingKey] = useState<string | null>(null);
+  const [status, setStatus] = useState<QueueStatus>("PENDING");
+  // Frente 7 (segunda camada), Lote 5: take:50 fixo sem skip nem uso do
+  // `total` que o backend já devolve — denúncias mais antigas ficavam
+  // permanentemente inacessíveis quando a fila passava de 50. Mesmo padrão
+  // "Anterior/Próxima" já usado em AdminDebtsScreen/AdminDisputesScreen.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(0);
 
   const reportsQuery = useAuthQuery(
-    queryKeys.admin.reports({ status: "PENDING", take: 50 }),
-    (token) => adminApi.listReports(token, { status: "PENDING", take: 50 })
+    queryKeys.admin.reports({ status, take: PAGE_SIZE, page }),
+    (token) => adminApi.listReports(token, { status, take: PAGE_SIZE, skip: page * PAGE_SIZE })
   );
+
+  function changeStatus(next: QueueStatus) {
+    setStatus(next);
+    setPage(0);
+  }
 
   const loading = reportsQuery.isLoading;
   const reports = reportsQuery.data?.items ?? [];
+  const total = reportsQuery.data?.total ?? 0;
+  const hasMore = (page + 1) * PAGE_SIZE < total;
 
   useEffect(() => {
     if (reportsQuery.error) {
@@ -67,7 +83,7 @@ export function AdminModerationScreen({ navigation }: Props) {
   function confirmHide(type: AdminReportType, reportId: string) {
     Alert.alert(
       "Ocultar conteúdo?",
-      "O conteúdo denunciado vai sumir para todos os usuários. A ação pode ser revertida diretamente no banco por outro admin, se necessário, mas não existe botão de reverter nesta tela ainda.",
+      "O conteúdo denunciado vai sumir para todos os usuários. Dá pra reverter depois na aba \"Já tratadas\", se necessário.",
       [
         { text: "Cancelar", style: "cancel" },
         { text: "Ocultar", style: "destructive", onPress: () => void hide(type, reportId) }
@@ -89,6 +105,35 @@ export function AdminModerationScreen({ navigation }: Props) {
     }
   }
 
+  // Frente 7 (segunda camada), Lote 10: "hide-content" agora tem reversão de
+  // verdade — antes a única forma de ver "denúncias já tratadas" era esta
+  // tela, que sempre filtrava só PENDING, então não havia nem como alcançar
+  // um conteúdo já oculto pra desocultar.
+  function confirmUnhide(type: AdminReportType, reportId: string) {
+    Alert.alert(
+      "Desocultar conteúdo?",
+      "O conteúdo volta a ficar visível para todos os usuários, e o autor será avisado.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Desocultar", onPress: () => void unhide(type, reportId) }
+      ]
+    );
+  }
+
+  async function unhide(type: AdminReportType, reportId: string) {
+    const key = `unhide:${type}:${reportId}`;
+    try {
+      setProcessingKey(key);
+      await runWithAuth((token) => adminApi.unhideReportedContent(token, type, reportId));
+      showToast("Conteúdo restaurado.", "success");
+      await reportsQuery.refetch();
+    } catch (error) {
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao desocultar conteúdo.", navigation });
+    } finally {
+      setProcessingKey(null);
+    }
+  }
+
   return (
     <AdminScaffold title="Moderação de denúncias" navigation={navigation} currentScreen="AdminModeration">
       <ScrollView
@@ -102,16 +147,38 @@ export function AdminModerationScreen({ navigation }: Props) {
         }
         contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 10 }}
       >
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {(["PENDING", "ACTIONED"] as const).map((option) => (
+            <TouchableOpacity
+              key={option}
+              onPress={() => changeStatus(option)}
+              style={{
+                borderWidth: 1,
+                borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
+                borderRadius: 20,
+                paddingHorizontal: 12,
+                paddingVertical: 8
+              }}
+            >
+              <MvText variant="caption">{option === "PENDING" ? "Pendentes" : "Já tratadas"}</MvText>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {!loading && reports.length === 0 ? (
           <MvCard>
-            <MvText variant="body3">Nenhuma denúncia pendente.</MvText>
+            <MvText variant="body3">
+              {status === "PENDING" ? "Nenhuma denúncia pendente." : "Nenhuma denúncia já tratada ainda."}
+            </MvText>
           </MvCard>
         ) : null}
 
         {reports.map((report) => {
           const dismissKey = `dismiss:${report.type}:${report.reportId}`;
           const hideKey = `hide:${report.type}:${report.reportId}`;
-          const isProcessing = processingKey === dismissKey || processingKey === hideKey;
+          const unhideKey = `unhide:${report.type}:${report.reportId}`;
+          const isProcessing =
+            processingKey === dismissKey || processingKey === hideKey || processingKey === unhideKey;
           return (
             <MvCard key={`${report.type}:${report.reportId}`}>
               <View style={{ gap: 8 }}>
@@ -141,29 +208,60 @@ export function AdminModerationScreen({ navigation }: Props) {
                   </>
                 ) : null}
 
-                <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-                  <View style={{ flex: 1 }}>
+                {status === "PENDING" ? (
+                  <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+                    <View style={{ flex: 1 }}>
+                      <MvButton
+                        variant="outline"
+                        label="Descartar"
+                        loading={processingKey === dismissKey}
+                        disabled={isProcessing}
+                        onPress={() => void dismiss(report.type, report.reportId)}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <MvButton
+                        label="Ocultar conteúdo"
+                        loading={processingKey === hideKey}
+                        disabled={isProcessing}
+                        onPress={() => confirmHide(report.type, report.reportId)}
+                      />
+                    </View>
+                  </View>
+                ) : report.contentHidden ? (
+                  <View style={{ marginTop: 6 }}>
                     <MvButton
                       variant="outline"
-                      label="Descartar"
-                      loading={processingKey === dismissKey}
+                      label="Desocultar conteúdo"
+                      loading={processingKey === unhideKey}
                       disabled={isProcessing}
-                      onPress={() => void dismiss(report.type, report.reportId)}
+                      onPress={() => confirmUnhide(report.type, report.reportId)}
                     />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <MvButton
-                      label="Ocultar conteúdo"
-                      loading={processingKey === hideKey}
-                      disabled={isProcessing}
-                      onPress={() => confirmHide(report.type, report.reportId)}
-                    />
-                  </View>
-                </View>
+                ) : (
+                  <MvText variant="caption" color="secondary">Descartada — conteúdo não foi ocultado.</MvText>
+                )}
               </View>
             </MvCard>
           );
         })}
+
+        {page > 0 || hasMore ? (
+          <View style={{ flexDirection: "row", gap: 8, justifyContent: "center", marginTop: 4 }}>
+            <MvButton
+              variant="outline"
+              label="Anterior"
+              disabled={page === 0}
+              onPress={() => setPage((p) => Math.max(0, p - 1))}
+            />
+            <MvButton
+              variant="outline"
+              label="Próxima"
+              disabled={!hasMore}
+              onPress={() => setPage((p) => p + 1)}
+            />
+          </View>
+        ) : null}
       </ScrollView>
     </AdminScaffold>
   );

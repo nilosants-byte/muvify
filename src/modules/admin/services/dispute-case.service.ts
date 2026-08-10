@@ -4,7 +4,7 @@ import { PaymentRefund } from "mercadopago";
 import { mp } from "../../../config/mercadopago";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
-import { isAdminEmail } from "../../../shared/utils/admin-access";
+import { assertAdminAccess } from "../../../shared/utils/admin-access";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { PaymentService } from "../../payments/services/payment.service";
@@ -40,17 +40,14 @@ export class DisputeCaseService {
   private notificationService = new NotificationService();
   private paymentService = new PaymentService();
 
-  private async ensureAdminAccess(adminUserId: string) {
-    const admin = await prisma.user.findUnique({
-      where: { id: adminUserId },
-      select: { id: true, name: true, email: true }
-    });
-
-    if (!admin || !isAdminEmail(admin.email)) {
-      throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
-    }
-
-    return admin;
+  // Frente 7 (segunda camada), Lote 1: faltava emailVerifiedAt aqui — a
+  // mesma checagem já tinha sido corrigida 3 vezes em outros services
+  // (admin.service.ts, moderation.service.ts, exercise.service.ts) sem
+  // nunca ser reaplicada aqui, deixando resolveCase (reembolso/captura
+  // real via Mercado Pago) vulnerável a um admin com e-mail revogado.
+  // Implementação centralizada em shared/utils/admin-access.ts.
+  private ensureAdminAccess(adminUserId: string) {
+    return assertAdminAccess(adminUserId);
   }
 
   // Raio-X de pagamentos, Rodada 4, Lote 11: cliente não tinha nenhum lugar
@@ -84,14 +81,24 @@ export class DisputeCaseService {
     });
   }
 
-  async listCases(adminId: string, status?: DisputeCaseStatus) {
+  // Frente 7 (segunda camada), Lote 4: take:200 fixo sem skip, ordenado do
+  // mais antigo pro mais recente — se o total (aberto + resolvido) passar de
+  // 200, os casos OPEN mais recentes (os que mais precisam de julgamento)
+  // ficavam inalcançáveis mesmo filtrando por status, porque não havia como
+  // avançar a página. Mesmo padrão de paginação (skip/take + hasMore) já
+  // usado em DebtService.listAllDebts.
+  async listCases(adminId: string, status?: DisputeCaseStatus, skip = 0, take = 50) {
     await this.ensureAdminAccess(adminId);
     console.info(`[ADMIN_LOOKUP] adminId=${adminId} action=listDisputeCases status=${status ?? "all"}`);
 
-    return prisma.disputeCase.findMany({
+    const boundedTake = Math.min(Math.max(take, 1), 200);
+    const boundedSkip = Math.max(skip, 0);
+
+    const rows = await prisma.disputeCase.findMany({
       where: status ? { status } : undefined,
       orderBy: { createdAt: "asc" },
-      take: 200,
+      skip: boundedSkip,
+      take: boundedTake + 1,
       select: {
         id: true,
         type: true,
@@ -105,6 +112,9 @@ export class DisputeCaseService {
         provider: { select: { id: true, displayName: true, user: { select: { email: true } } } }
       }
     });
+
+    const hasMore = rows.length > boundedTake;
+    return { items: rows.slice(0, boundedTake), hasMore };
   }
 
   async getCaseDetail(adminId: string, caseId: string) {

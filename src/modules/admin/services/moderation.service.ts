@@ -2,8 +2,9 @@ import { ContentReportStatus } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
-import { isAdminEmail } from "../../../shared/utils/admin-access";
+import { assertAdminAccess } from "../../../shared/utils/admin-access";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
+import { NotificationService } from "../../notifications/services/notification.service";
 
 // Épico de Frentes, Frente 10, Lote 1: FeedPostReport (Frente 8/Lote 2) e
 // BookingMessageReport/ConsultancyMessageReport (Frente 9/Lote 10) só
@@ -30,19 +31,12 @@ type UnifiedReport = {
 };
 
 export class ModerationService {
-  // Frente 10 (fechamento pós-verificação): faltava emailVerifiedAt aqui,
-  // igual ao que o Lote 7 já corrigiu em admin.service.ts - um admin com
-  // verificação de e-mail revogada continuava conseguindo moderar denúncias
-  // até o token expirar sozinho.
-  private async ensureAdminAccess(adminUserId: string) {
-    const admin = await prisma.user.findUnique({
-      where: { id: adminUserId },
-      select: { id: true, email: true, emailVerifiedAt: true }
-    });
-    if (!admin || !admin.emailVerifiedAt || !isAdminEmail(admin.email)) {
-      throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
-    }
-    return admin;
+  private notificationService = new NotificationService();
+
+  // Frente 7 (segunda camada), Lote 1: implementação movida pra
+  // shared/utils/admin-access.ts::assertAdminAccess (centralizada de vez).
+  private ensureAdminAccess(adminUserId: string) {
+    return assertAdminAccess(adminUserId);
   }
 
   async listReports(
@@ -185,7 +179,11 @@ export class ModerationService {
 
   async dismissReport(adminId: string, type: ReportType, reportId: string): Promise<void> {
     const admin = await this.ensureAdminAccess(adminId);
-    const delegate = this.reportDelegate(type) as { updateMany: (args: any) => Promise<{ count: number }> };
+    const delegate = this.reportDelegate(type) as {
+      findUnique: (args: any) => Promise<{ reporterId: string } | null>;
+      updateMany: (args: any) => Promise<{ count: number }>;
+    };
+    const report = await delegate.findUnique({ where: { id: reportId }, select: { reporterId: true } });
     const result = await delegate.updateMany({
       where: { id: reportId, status: ContentReportStatus.PENDING },
       data: { status: ContentReportStatus.DISMISSED, reviewedAt: new Date(), reviewedById: admin.id }
@@ -199,6 +197,18 @@ export class ModerationService {
       targetType: type,
       targetId: reportId
     });
+    // Frente 7 (segunda camada), Lote 10: nem dismiss nem hide notificavam
+    // ninguém — o denunciante nunca sabia o desfecho da própria denúncia.
+    if (report?.reporterId) {
+      void this.notificationService
+        .sendToUsers([report.reporterId], {
+          preferenceType: "SYSTEM",
+          title: "Sua denúncia foi analisada",
+          body: "Analisamos o conteúdo que você denunciou e não identificamos violação das diretrizes da comunidade.",
+          data: { type: "CONTENT_REPORT_DISMISSED" }
+        })
+        .catch((error) => console.error("Falha ao notificar denunciante sobre denúncia descartada:", error));
+    }
   }
 
   async hideReportedContent(adminId: string, type: ReportType, reportId: string): Promise<void> {
@@ -233,6 +243,7 @@ export class ModerationService {
         // sido ocultado por denúncia procedente.
         metadata: { authorId: report.post.userId }
       });
+      this.notifyContentAuthor(report.post.userId, "post");
       return;
     }
 
@@ -259,6 +270,7 @@ export class ModerationService {
         targetId: report.messageId,
         metadata: report.message.senderId ? { authorId: report.message.senderId } : undefined
       });
+      this.notifyContentAuthor(report.message.senderId, "message");
       return;
     }
 
@@ -284,6 +296,106 @@ export class ModerationService {
       targetId: report.messageId,
       metadata: report.message.senderId ? { authorId: report.message.senderId } : undefined
     });
+    this.notifyContentAuthor(report.message.senderId, "message");
+  }
+
+  // Frente 7 (segunda camada), Lote 10: ocultar/desocultar não notificava o
+  // autor do conteúdo — ele só descobria se reparasse sozinho que o
+  // post/mensagem sumiu.
+  private notifyContentAuthor(userId: string | null, kind: "post" | "message") {
+    if (!userId) return;
+    void this.notificationService
+      .sendToUsers([userId], {
+        preferenceType: "SYSTEM",
+        title: kind === "post" ? "Seu post foi ocultado" : "Sua mensagem foi ocultada",
+        body: `${kind === "post" ? "Seu post" : "Sua mensagem"} foi removido(a) por violar as diretrizes da comunidade, após denúncia analisada por um administrador.`,
+        data: { type: "CONTENT_HIDDEN_BY_ADMIN" }
+      })
+      .catch((error) => console.error("Falha ao notificar autor sobre conteúdo ocultado:", error));
+  }
+
+  // Frente 7 (segunda camada), Lote 10: a rota já prometia "reversível" na
+  // documentação, mas não existia nenhum endpoint que de fato desocultasse
+  // o conteúdo — a ação era permanente na prática, apesar do texto. Age
+  // pelo mesmo reportId usado pra ocultar (report já ACTIONED), já que é o
+  // identificador que a tela de moderação tem à mão.
+  async unhideContent(adminId: string, type: ReportType, reportId: string): Promise<void> {
+    const admin = await this.ensureAdminAccess(adminId);
+
+    if (type === "feed-post") {
+      const report = await prisma.feedPostReport.findUnique({
+        where: { id: reportId },
+        select: { postId: true, post: { select: { userId: true, hiddenByAdminAt: true } } }
+      });
+      if (!report) throw new AppError("Denúncia não encontrada.", StatusCodes.NOT_FOUND);
+      if (!report.post.hiddenByAdminAt) throw new AppError("Este conteúdo não está oculto.", StatusCodes.BAD_REQUEST);
+      await prisma.feedPost.update({
+        where: { id: report.postId },
+        data: { hiddenByAdminAt: null, hiddenByAdminId: null }
+      });
+      await writeAdminAuditLog({
+        adminId: admin.id,
+        action: "REPORT_CONTENT_UNHIDDEN",
+        targetType: type,
+        targetId: report.postId,
+        metadata: { authorId: report.post.userId }
+      });
+      this.notifyContentAuthorRestored(report.post.userId, "post");
+      return;
+    }
+
+    if (type === "booking-message") {
+      const report = await prisma.bookingMessageReport.findUnique({
+        where: { id: reportId },
+        select: { messageId: true, message: { select: { senderId: true, hiddenByAdminAt: true } } }
+      });
+      if (!report) throw new AppError("Denúncia não encontrada.", StatusCodes.NOT_FOUND);
+      if (!report.message.hiddenByAdminAt) throw new AppError("Este conteúdo não está oculto.", StatusCodes.BAD_REQUEST);
+      await prisma.bookingMessage.update({
+        where: { id: report.messageId },
+        data: { hiddenByAdminAt: null, hiddenByAdminId: null }
+      });
+      await writeAdminAuditLog({
+        adminId: admin.id,
+        action: "REPORT_CONTENT_UNHIDDEN",
+        targetType: type,
+        targetId: report.messageId,
+        metadata: report.message.senderId ? { authorId: report.message.senderId } : undefined
+      });
+      this.notifyContentAuthorRestored(report.message.senderId, "message");
+      return;
+    }
+
+    const report = await prisma.consultancyMessageReport.findUnique({
+      where: { id: reportId },
+      select: { messageId: true, message: { select: { senderId: true, hiddenByAdminAt: true } } }
+    });
+    if (!report) throw new AppError("Denúncia não encontrada.", StatusCodes.NOT_FOUND);
+    if (!report.message.hiddenByAdminAt) throw new AppError("Este conteúdo não está oculto.", StatusCodes.BAD_REQUEST);
+    await prisma.consultancyMessage.update({
+      where: { id: report.messageId },
+      data: { hiddenByAdminAt: null, hiddenByAdminId: null }
+    });
+    await writeAdminAuditLog({
+      adminId: admin.id,
+      action: "REPORT_CONTENT_UNHIDDEN",
+      targetType: type,
+      targetId: report.messageId,
+      metadata: report.message.senderId ? { authorId: report.message.senderId } : undefined
+    });
+    this.notifyContentAuthorRestored(report.message.senderId, "message");
+  }
+
+  private notifyContentAuthorRestored(userId: string | null, kind: "post" | "message") {
+    if (!userId) return;
+    void this.notificationService
+      .sendToUsers([userId], {
+        preferenceType: "SYSTEM",
+        title: kind === "post" ? "Seu post foi restaurado" : "Sua mensagem foi restaurada",
+        body: `${kind === "post" ? "Seu post" : "Sua mensagem"} foi revisado(a) novamente e restaurado(a) — voltou a ficar visível.`,
+        data: { type: "CONTENT_UNHIDDEN_BY_ADMIN" }
+      })
+      .catch((error) => console.error("Falha ao notificar autor sobre conteúdo restaurado:", error));
   }
 
   async pendingReportsCount(): Promise<number> {

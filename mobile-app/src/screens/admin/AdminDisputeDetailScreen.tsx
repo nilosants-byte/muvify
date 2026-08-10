@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ScrollView, View } from "react-native";
+import { Alert, ScrollView, TouchableOpacity, View } from "react-native";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { MvButton, MvCard, MvInput, MvText, MvToggle } from "../../components/mv";
@@ -128,6 +128,31 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
     }
   }
 
+  // Frente 7 (segunda camada), Lote 9: resolver uma disputa aciona chamadas
+  // reais ao gateway de pagamento (captura/liberação de pré-autorização) e
+  // não existe "desfazer decisão" em lugar nenhum da tela — diferente de
+  // outras ações de impacto menor (ocultar post, excluir exercício), que já
+  // pedem confirmação nativa antes de executar.
+  function confirmSubmitResolution() {
+    if (!decision) return;
+    const actionLabel =
+      decision === "REFUNDED"
+        ? "liberar a pré-autorização/reembolsar o cliente"
+        : decision === "RETRY_CAPTURE"
+          ? "tentar capturar o pagamento de novo"
+          : disputeCase?.type === "CAPTURE_FAILED"
+            ? "manter sem cobrar"
+            : "negar o reembolso e capturar o pagamento a favor do profissional";
+    Alert.alert(
+      "Confirmar decisão?",
+      `Esta ação vai ${actionLabel}, é executada de verdade no Mercado Pago e não pode ser desfeita nesta tela. As partes serão notificadas imediatamente.`,
+      [
+        { text: "Revisar de novo", style: "cancel" },
+        { text: "Confirmar", style: decision === "DENIED" ? "destructive" : "default", onPress: () => void submitResolution() }
+      ]
+    );
+  }
+
   async function submitSuspension() {
     if (!disputeCase || !suspendTarget) return;
 
@@ -185,6 +210,12 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
   return (
     <AdminScaffold title="Detalhe do caso" navigation={navigation} currentScreen="AdminDisputes">
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 12 }}>
+        <MvButton
+          variant="outline"
+          label="Voltar para lista"
+          onPress={() => navigation.goBack()}
+        />
+
         <MvCard>
           <View style={{ gap: 6 }}>
             <MvText variant="h2">{TYPE_LABEL[disputeCase.type]}</MvText>
@@ -197,6 +228,18 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
             {disputeCase.contextNote ? (
               <MvText variant="body4" color="secondary">Motivo: {disputeCase.contextNote}</MvText>
             ) : null}
+            <View style={{ flexDirection: "row", gap: 16 }}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: disputeCase.client.email })}
+              >
+                <MvText variant="caption" color="green">Ver cadastro do cliente →</MvText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: disputeCase.provider.user.email })}
+              >
+                <MvText variant="caption" color="green">Ver cadastro do profissional →</MvText>
+              </TouchableOpacity>
+            </View>
           </View>
         </MvCard>
 
@@ -482,7 +525,7 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
                             : "Confirmar negativa"
                     }
                     loading={submitting}
-                    onPress={() => void submitResolution()}
+                    onPress={confirmSubmitResolution}
                   />
                   <MvButton
                     variant="ghost"

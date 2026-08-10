@@ -452,6 +452,19 @@ adminRoutes.patch(
   validate(adminReportActionSchema),
   adminController.hideReportedContent
 );
+/**
+ * @swagger
+ * /admin/reports/{type}/{id}/unhide-content:
+ *   patch:
+ *     summary: Reverte a ocultação de um conteúdo denunciado (desfaz hide-content)
+ *     tags: [Admin]
+ */
+adminRoutes.patch(
+  "/reports/:type/:id/unhide-content",
+  writeRateLimiter,
+  validate(adminReportActionSchema),
+  adminController.unhideReportedContent
+);
 
 /**
  * @swagger

@@ -38,14 +38,25 @@ export function AdminDisputesScreen({ navigation }: Props) {
   const { theme } = useMvTheme();
   const { showToast } = useAppState();
   const [status, setStatus] = useState<QueueStatus>("OPEN");
+  // Frente 7 (segunda camada), Lote 4: take:200 fixo sem paginação — casos
+  // OPEN mais recentes podiam ficar inalcançáveis quando o total passava
+  // disso. Mesmo padrão "Anterior/Próxima" já usado em AdminDebtsScreen.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(0);
 
   const disputesQuery = useAuthQuery(
-    queryKeys.admin.disputeCases({ status }),
-    (token) => adminApi.listDisputeCases(token, { status })
+    queryKeys.admin.disputeCases({ status, page }),
+    (token) => adminApi.listDisputeCases(token, { status, skip: page * PAGE_SIZE, take: PAGE_SIZE })
   );
 
   const loading = disputesQuery.isLoading;
-  const items = disputesQuery.data ?? [];
+  const items = disputesQuery.data?.items ?? [];
+  const hasMore = disputesQuery.data?.hasMore ?? false;
+
+  function changeStatus(next: QueueStatus) {
+    setStatus(next);
+    setPage(0);
+  }
 
   useEffect(() => {
     if (disputesQuery.error) {
@@ -88,7 +99,7 @@ export function AdminDisputesScreen({ navigation }: Props) {
           {(["OPEN", "RESOLVED"] as const).map((option) => (
             <TouchableOpacity
               key={option}
-              onPress={() => setStatus(option)}
+              onPress={() => changeStatus(option)}
               style={{
                 borderWidth: 1,
                 borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
@@ -116,6 +127,18 @@ export function AdminDisputesScreen({ navigation }: Props) {
               <MvText variant="body4">Cliente: {item.client.name}</MvText>
               <MvText variant="body4">Profissional: {item.provider.displayName}</MvText>
               <MvText variant="semi3">Valor em disputa: {formatCents(item.amountCents)}</MvText>
+              <View style={{ flexDirection: "row", gap: 16 }}>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.client.email })}
+                >
+                  <MvText variant="caption" color="green">Ver cadastro do cliente →</MvText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.provider.user.email })}
+                >
+                  <MvText variant="caption" color="green">Ver cadastro do profissional →</MvText>
+                </TouchableOpacity>
+              </View>
               {item.status === "RESOLVED" ? (
                 <MvText variant="body4" color="secondary">
                   Decisão:{" "}
@@ -137,6 +160,23 @@ export function AdminDisputesScreen({ navigation }: Props) {
             </View>
           </MvCard>
         ))}
+
+        {page > 0 || hasMore ? (
+          <View style={{ flexDirection: "row", gap: 8, justifyContent: "center", marginTop: 4 }}>
+            <MvButton
+              variant="outline"
+              label="Anterior"
+              disabled={page === 0}
+              onPress={() => setPage((p) => Math.max(0, p - 1))}
+            />
+            <MvButton
+              variant="outline"
+              label="Próxima"
+              disabled={!hasMore}
+              onPress={() => setPage((p) => p + 1)}
+            />
+          </View>
+        ) : null}
       </ScrollView>
     </AdminScaffold>
   );

@@ -572,8 +572,8 @@ describe("DisputeCase — fila de disputas (Fase 6)", () => {
 
   it("lista e detalha casos com o contexto do agendamento (evidências, chat e no-show)", async () => {
     const list = await disputeCaseService.listCases(adminId, "OPEN");
-    expect(Array.isArray(list)).toBe(true);
-    expect(list.every((item) => item.status === "OPEN")).toBe(true);
+    expect(Array.isArray(list.items)).toBe(true);
+    expect(list.items.every((item) => item.status === "OPEN")).toBe(true);
 
     const anyCase = await prisma.disputeCase.findFirst({ where: { clientId } });
     const detail = await disputeCaseService.getCaseDetail(adminId, anyCase!.id);

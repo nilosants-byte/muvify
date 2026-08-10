@@ -13,14 +13,6 @@ export class ProviderController {
     return response.json(payload);
   }
 
-  async validateProviderCredentials(request: Request, response: Response) {
-    const payload = await providerService.validateProviderCref(
-      request.user!.id,
-      request.params.providerId
-    );
-    return response.json(payload);
-  }
-
   async createProfile(request: Request, response: Response) {
     const profile = await providerService.createProfile({
       userId: request.user!.id,

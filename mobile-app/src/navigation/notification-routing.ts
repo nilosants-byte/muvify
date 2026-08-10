@@ -146,6 +146,15 @@ export function resolveNotificationRoute(
     return null;
   }
 
+  // Frente 7 (segunda camada), Lote 13: role "ADMIN" nunca era tratado
+  // explicitamente aqui — caía nos dois "if" de cima (nenhum bate) até o
+  // "return null" do fim da função, funcionando por acidente em vez de por
+  // decisão. Explícito agora: o app não tem central de avisos nem rota de
+  // notificação pro admin hoje (nenhum push é enviado pra esse role).
+  if (role === "ADMIN") {
+    return null;
+  }
+
   if (role === "CLIENT") {
     if (type === "CHAT_MESSAGE") {
       const params = bookingId ? { openBookingId: bookingId } : contractId ? { openContractId: contractId } : undefined;

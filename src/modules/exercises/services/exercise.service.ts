@@ -3,7 +3,7 @@ import { StatusCodes } from "http-status-codes";
 import { ENABLE_VIDEO_UPLOAD } from "../../../config/features";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
-import { isAdminEmail } from "../../../shared/utils/admin-access";
+import { assertAdminAccess } from "../../../shared/utils/admin-access";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 
 type CreateExerciseInput = {
@@ -35,20 +35,10 @@ function stripVideoMedia<T extends { mediaType?: ExerciseMediaType | null; media
 }
 
 export class ExerciseService {
-  // Épico de Frentes, Frente 10, Lote 7: createPrebuilt/updatePrebuilt/
-  // deletePrebuilt recebiam adminId só pro audit log, nunca revalidavam
-  // isAdminEmail no banco (defesa em profundidade, mesmo padrão já usado
-  // em admin.service.ts::ensureAdminAccess desde a Frente 1/Lote 2) -
-  // dependiam 100% do ensureRole(ADMIN) da rota. E-mail removido de
-  // ADMIN_ALLOWED_EMAILS com token ainda válido continuava conseguindo
-  // mexer no catálogo de exercícios até o token expirar sozinho.
-  // Frente 10 (fechamento pós-verificação): faltava emailVerifiedAt aqui,
-  // igual ao que o Lote 7 já corrigiu em admin.service.ts.
+  // Frente 7 (segunda camada), Lote 1: implementação movida pra
+  // shared/utils/admin-access.ts::assertAdminAccess (centralizada de vez).
   private async ensureAdminAccess(adminId: string) {
-    const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { email: true, emailVerifiedAt: true } });
-    if (!admin || !admin.emailVerifiedAt || !isAdminEmail(admin.email)) {
-      throw new AppError("Acesso negado.", StatusCodes.FORBIDDEN);
-    }
+    await assertAdminAccess(adminId);
   }
 
   async list({ userId, category, q, includePrebuilt = true }: ListExercisesInput) {

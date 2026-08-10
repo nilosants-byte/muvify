@@ -245,6 +245,17 @@ function DocButtons({ item }: { item: AdminCrefQueueItem }) {
 
 const PAGE_SIZE = 100;
 
+// Frente 7 (segunda camada), Lote 14: esta tela (e AdminSupportScreen,
+// AdminModerationScreen, AdminDisputesScreen, AdminDebtsScreen,
+// AdminNoShowReportsScreen) renderiza a fila inteira dentro de uma
+// ScrollView + .map, sem virtualização (FlatList), diferente de
+// AdminChatAuditScreen/AdminExercisesScreen. Decisão do usuário: documentar
+// como gap aceito por ora em vez de refatorar — cada item destas telas tem
+// formulário embutido (motivo de baixa/suspensão/resposta), então trocar
+// pra FlatList exige reestruturar RefreshControl/paginação/header em torno
+// de ListHeaderComponent/ListFooterComponent nas 6 telas, sem forma de
+// validar visualmente o resultado nesta sessão — risco desproporcional ao
+// volume real de fila hoje.
 export function AdminCrefValidationScreen({ navigation }: Props) {
   const { theme } = useMvTheme();
   const { runWithAuth, showToast } = useAppState();
@@ -279,12 +290,23 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
     }
   }, [crefQuery.error, showToast, navigation]);
 
-  useFocusEffect(useCallback(() => {
+  // Frente 7 (segunda camada), Lote 7: onRefresh do RefreshControl chamava
+  // crefQuery.refetch() direto, sem resetar offset/accumulatedItems — se o
+  // admin já tivesse usado "Carregar mais" (offset > 0), o efeito acima
+  // concatenava a página recém-buscada em cima da lista já acumulada,
+  // duplicando itens. useFocusEffect já resetava corretamente; extraído
+  // pra uma função só, reaproveitada pelos dois pontos.
+  function resetAndRefetch() {
     setRejectingId(null);
     setJustification("");
     setOffset(0);
     setAccumulatedItems([]);
     void crefQuery.refetch();
+  }
+
+  useFocusEffect(useCallback(() => {
+    resetAndRefetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crefQuery.refetch]));
 
   function loadMore() {
@@ -357,7 +379,7 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
         refreshControl={
           <RefreshControl
             refreshing={crefQuery.isRefetching}
-            onRefresh={() => void crefQuery.refetch()}
+            onRefresh={resetAndRefetch}
             tintColor={theme.primary}
             colors={[theme.primary]}
           />
