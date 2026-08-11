@@ -538,6 +538,14 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
               <AssessmentRow label="Dor no peito em repouso (ultimo mes)" value={answers?.parq?.chestPainAtRestLastMonth} />
             </MvCard>
 
+            {/* Frente 9 (segunda camada), Lote 17: diferente de booking
+                avulso (que tem BookingDetailProfessionalScreen dedicada),
+                pacote presencial e consultoria não têm tela de detalhe
+                própria pro profissional - tudo vive inline aqui, resumido
+                (sem histórico completo de cobrança por ciclo, sem detalhe
+                de disputa). Gap aceito por ora: escopo de feature nova
+                (2 telas dedicadas + navegação), não um bug - documentado
+                em vez de construído nesta frente. */}
             {detail.consultancyContracts.length > 0 ? (
               <MvCard>
                 <MvText variant="semi2" style={{ marginBottom: 8 }}>
@@ -669,6 +677,17 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                             </MvText>
                           </TouchableOpacity>
                         ) : null}
+                        {/* Frente 9 (segunda camada), Lote 13: BookingDetailProfessional
+                            já tem um botão de chat visível (openBookingId) -
+                            consultoria não tinha nenhum equivalente aqui. */}
+                        <TouchableOpacity
+                          onPress={() => navigation.navigate("ProfessionalChatList", { openContractId: contract.id })}
+                          style={{ marginTop: 4 }}
+                        >
+                          <MvText variant="body4" style={{ color: theme.textGreen }}>
+                            💬 Chat com o aluno
+                          </MvText>
+                        </TouchableOpacity>
                       </View>
                     );
                   })}

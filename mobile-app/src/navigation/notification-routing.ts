@@ -102,8 +102,12 @@ export function resolveNotificationRoute(
     if (type === "STUDENT_POST_MENTION" && clientId) {
       return { screen: "ProfessionalStudentAnamnesis", params: { clientId, clientName } };
     }
+    // Frente 9 (segunda camada), Lote 12: sempre caía na tab default
+    // "dashboard" - ProfessionalConsultancyCenterScreen já aceita
+    // initialTab (usado só quando o usuário toca no menu), nunca vinha do
+    // roteamento de notificação.
     if (isConsultancyNotificationType(type)) {
-      return { screen: "ProfessionalConsultancyCenter" };
+      return { screen: "ProfessionalConsultancyCenter", params: { initialTab: "requests" } };
     }
     // Não há tela de detalhe de pacote presencial pro profissional (só
     // clientId, sem packageId, chega no payload) - a lista de alunos é o
@@ -166,8 +170,11 @@ export function resolveNotificationRoute(
     if (isPresentialPackageNotificationType(type) && packageId) {
       return { screen: "PresentialPackageDetail", params: { packageId } };
     }
+    // Frente 9 (segunda camada), Lote 12: sempre caía na tab default
+    // "Ativos" - a proposta/pagamento/entrega que gerou o aviso normalmente
+    // está em "Pendentes".
     if (isConsultancyNotificationType(type)) {
-      return { screen: "MyTraining" };
+      return { screen: "MyTraining", params: { initialTab: "pending" } };
     }
     if (type === "PAYMENT_AUTH_FAILED") {
       return { screen: "ClientPaymentMethod" };

@@ -27,6 +27,7 @@ import { NotificationService } from "../../notifications/services/notification.s
 import { DebtService } from "../../payments/services/debt.service";
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
 import { PUBLIC_PROVIDER_SELECT } from "../../providers/services/provider.service";
+import { EmailQueueService } from "../../../shared/services/email-queue.service";
 
 function startOfTodayInSaoPaulo(): Date {
   const dateKey = new Intl.DateTimeFormat("en-CA", {
@@ -59,6 +60,11 @@ const CLIENT_SAFE_CONTRACT_SELECT = {
   paymentInstallments: true,
   paymentStatus: true,
   paymentAmountCents: true,
+  // Frente 9 (segunda camada), Lote 3: precisa estar aqui pra getMyTraining
+  // conseguir devolver o Pix pendente pro cliente (ver waitingDelivery).
+  pixQrCodeUrl: true,
+  pixCopyPasteCode: true,
+  pixExpiresAt: true,
   paymentCapturedAt: true,
   paymentCanceledAt: true,
   deliveryDeadlineAt: true,
@@ -121,6 +127,7 @@ type ExerciseInput = {
 
 const notificationService = new NotificationService();
 const debtService = new DebtService();
+const emailQueueService = new EmailQueueService();
 
 function providerAmountFrom(priceCents: number) {
   return providerSplitAmount(priceCents);
@@ -1714,7 +1721,8 @@ export class ConsultancyService {
     const provider = await prisma.providerProfile.findUnique({
       where: { id: input.providerId },
       include: {
-        onlineConsultancySetting: true
+        onlineConsultancySetting: true,
+        user: { select: { suspendedAt: true } }
       }
     });
 
@@ -1726,6 +1734,18 @@ export class ConsultancyService {
       provider,
       "Este profissional ainda não está habilitado para consultoria on-line."
     );
+
+    // Frente 9 (segunda camada), Lote 7: booking e pacote presencial já
+    // barram profissional suspenso como uma das primeiras validações da
+    // criação; consultoria só barrava no ACEITE da proposta (decideRequest)
+    // - profissional suspenso continuava recebendo (e podendo responder)
+    // solicitação nova até esse ponto.
+    if (provider.user.suspendedAt) {
+      throw new AppError(
+        "Este profissional não está disponível para novas contratações no momento.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
 
     if (provider.userId === clientId) {
       throw new AppError(
@@ -2064,12 +2084,14 @@ export class ConsultancyService {
       include: {
         quotedOffer: true,
         contract: true,
+        client: { select: { name: true, email: true } },
         provider: {
           include: {
             onlineConsultancySetting: true,
             user: {
               select: {
                 id: true,
+                email: true,
                 suspendedAt: true
               }
             }
@@ -2364,7 +2386,13 @@ export class ConsultancyService {
         data: {
           mpPaymentId: mpPayId,
           paymentStatus: ConsultancyPaymentStatus.PENDING,
-          status: ConsultancyContractStatus.PENDING_PAYMENT
+          status: ConsultancyContractStatus.PENDING_PAYMENT,
+          // Frente 9 (segunda camada), Lote 3: persiste o QR/copia-e-cola
+          // (antes só ia na resposta síncrona e se perdia se o app caísse
+          // ou o usuário saísse da tela antes de escanear).
+          pixQrCodeUrl: pixPayload?.qrCodeUrl ?? null,
+          pixCopyPasteCode: pixPayload?.copyAndPasteCode ?? null,
+          pixExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
         },
         include: { offer: true }
       });
@@ -2400,6 +2428,42 @@ export class ConsultancyService {
         contractId: contract.id
       }
     });
+
+    // Frente 9 (segunda camada), Lote 8: booking presencial já cria uma
+    // mensagem de sistema de boas-vindas no chat assim que agenda ("use
+    // este chat pra tirar dúvidas") - consultoria nunca fazia esse convite,
+    // o chat só existia depois sem nenhuma sinalização de que estava ali.
+    void prisma.consultancyMessage
+      .create({
+        data: {
+          contractId: contract.id,
+          isSystem: true,
+          content: `🎉 Consultoria contratada com ${request.provider.displayName}! Use este chat para tirar dúvidas, combinar detalhes ou se apresentar ao seu personal.`
+        }
+      })
+      .catch(() => undefined);
+
+    // Frente 9 (segunda camada), Lote 9: consultoria nunca mandava e-mail
+    // de confirmação de compra - só booking avulso tinha isso.
+    const consultancyServiceName = `Consultoria online · ${request.quotedOffer?.title ?? "Consultoria"}`;
+    void emailQueueService
+      .enqueuePurchaseConfirmationClient({
+        to: request.client.email,
+        clientName: request.client.name,
+        providerName: request.provider.displayName,
+        serviceName: consultancyServiceName,
+        priceCents: paymentAmountCents
+      })
+      .catch((error) => console.error("Falha ao enfileirar e-mail de confirmação de consultoria (cliente):", error));
+    void emailQueueService
+      .enqueuePurchaseConfirmationProvider({
+        to: request.provider.user.email,
+        providerName: request.provider.displayName,
+        clientName: request.client.name,
+        serviceName: consultancyServiceName,
+        priceCents: paymentAmountCents
+      })
+      .catch((error) => console.error("Falha ao enfileirar e-mail de confirmação de consultoria (profissional):", error));
 
     if (mpStatus === "approved") {
       const {
@@ -2803,7 +2867,16 @@ export class ConsultancyService {
         // AUTHORIZED entra aqui também: cartão com valor reservado (ainda não
         // capturado) já é um contrato ativo de verdade — o aluno precisa ver
         // que está "em preparação" mesmo antes da entrega/captura acontecer.
-        paymentStatus: { in: [ConsultancyPaymentStatus.AUTHORIZED, ConsultancyPaymentStatus.CAPTURED] }
+        // Frente 9 (segunda camada), Lote 3: PENDING (Pix aguardando
+        // confirmação) também precisa entrar aqui - sem isso o contrato
+        // nunca aparecia pro cliente, mesmo já persistindo o QR/copia-e-cola.
+        paymentStatus: {
+          in: [
+            ConsultancyPaymentStatus.AUTHORIZED,
+            ConsultancyPaymentStatus.CAPTURED,
+            ConsultancyPaymentStatus.PENDING
+          ]
+        }
         // Frente 4 (Criação/entrega/evolução do treino), Lote 3: antes só
         // ACTIVE/DELIVERED entravam aqui - assim que o contrato cancelava
         // (inclusive no desfecho automático mais comum: ficha vencida 7
@@ -2868,9 +2941,16 @@ export class ConsultancyService {
     }));
 
     const unlockedContracts = contractsWithPlanValidity.filter((contract) => contract.trainingPlans.length > 0);
+    // Frente 9 (segunda camada), Lote 3: PENDING_PAYMENT nunca entrava aqui -
+    // um contrato pago no Pix (ainda não confirmado) simplesmente não
+    // aparecia em nenhuma lista pro cliente, sem QR nem copia-e-cola pra
+    // completar o pagamento. Silenciosamente expirava sozinho depois de 24h
+    // (expireStalePendingPixConsultancyContracts) sem o cliente nunca saber
+    // que havia algo pra pagar.
     const ACTIVE_CONTRACT_STATUSES_FOR_WAITING: ConsultancyContractStatus[] = [
       ConsultancyContractStatus.ACTIVE,
-      ConsultancyContractStatus.DELIVERED
+      ConsultancyContractStatus.DELIVERED,
+      ConsultancyContractStatus.PENDING_PAYMENT
     ];
 
     return {
@@ -2887,7 +2967,18 @@ export class ConsultancyService {
           contractId: contract.id,
           providerName: contract.provider.displayName,
           deliveryDeadlineAt: contract.deliveryDeadlineAt,
-          status: contract.status
+          status: contract.status,
+          paymentStatus: contract.paymentStatus,
+          paymentMethod: contract.paymentMethod,
+          pix:
+            contract.paymentMethod === ConsultancyPaymentMethod.PIX &&
+            contract.paymentStatus === ConsultancyPaymentStatus.PENDING
+              ? {
+                  qrCodeUrl: contract.pixQrCodeUrl,
+                  copyAndPasteCode: contract.pixCopyPasteCode,
+                  expiresAt: contract.pixExpiresAt
+                }
+              : null
         })),
       contracts: unlockedContracts
     };
@@ -2944,11 +3035,12 @@ export class ConsultancyService {
           StatusCodes.BAD_REQUEST
         );
       }
+      // Frente 9 (segunda camada), Lote 6: 404 em vez de 403 - não diferencia
+      // "não existe" de "existe mas não é seu" pra quem tenta um
+      // trainingPlanId de terceiro, mesmo padrão já usado no resto deste
+      // arquivo (getStudentAnamnesis, contestDelivery, etc.).
       if (trainingPlan.contract.clientId !== clientId) {
-        throw new AppError(
-          "Você não possui acesso para registrar este treino.",
-          StatusCodes.FORBIDDEN
-        );
+        throw new AppError("Treino não encontrado.", StatusCodes.NOT_FOUND);
       }
       if (trainingPlan.contract.paymentStatus !== ConsultancyPaymentStatus.CAPTURED) {
         throw new AppError(

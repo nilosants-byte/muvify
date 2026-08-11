@@ -33,18 +33,27 @@ export function ReviewProfessionalScreen({ navigation, route }: Props) {
       setLoading(true);
       hapticCta();
       await runWithAuth((token) =>
-        reviewsApi.create(token, {
-          bookingId: route.params.bookingId,
-          rating,
-          comment: selectedTags.join(", ") || undefined,
-        })
+        reviewsApi.create(
+          token,
+          route.params.contractId
+            ? { contractId: route.params.contractId, rating, comment: selectedTags.join(", ") || undefined }
+            : { bookingId: route.params.bookingId!, rating, comment: selectedTags.join(", ") || undefined }
+        )
       );
       showToast("Avaliação enviada com sucesso.", "success");
-      navigation.navigate("ClientTabs", { screen: "ClientBookings" });
+      if (route.params.contractId) {
+        navigation.navigate("ClientTabs", { screen: "MyTraining" });
+      } else {
+        navigation.navigate("ClientTabs", { screen: "ClientBookings" });
+      }
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         showToast("Esta aula já foi avaliada.", "info");
-        navigation.navigate("ClientTabs", { screen: "ClientBookings" });
+        if (route.params.contractId) {
+          navigation.navigate("ClientTabs", { screen: "MyTraining" });
+        } else {
+          navigation.navigate("ClientTabs", { screen: "ClientBookings" });
+        }
       } else {
         handleScreenError({ error, showToast, fallbackMessage: "Não foi possível enviar avaliação.", navigation });
       }

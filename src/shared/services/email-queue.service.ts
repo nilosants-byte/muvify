@@ -25,7 +25,13 @@ type EmailQueueTemplate =
   | "ACCOUNT_DELETED"
   | "SUPPORT_REPLY"
   | "BOOKING_CONFIRMATION_CLIENT"
-  | "BOOKING_CONFIRMATION_PROVIDER";
+  | "BOOKING_CONFIRMATION_PROVIDER"
+  // Frente 9 (segunda camada), Lote 9: pacote presencial e consultoria
+  // nunca mandavam e-mail de confirmação de compra - só booking avulso
+  // (BOOKING_CONFIRMATION_*) tinha isso. Template genérico (não amarrado a
+  // "sessão" como o de booking) reaproveitado pelos dois fluxos.
+  | "PURCHASE_CONFIRMATION_CLIENT"
+  | "PURCHASE_CONFIRMATION_PROVIDER";
 
 type VerificationPayload = {
   to: string;
@@ -84,6 +90,22 @@ type BookingConfirmationProviderPayload = {
   clientName: string;
   scheduledAtIso: string;
   categoryName: string;
+  priceCents: number;
+};
+
+type PurchaseConfirmationClientPayload = {
+  to: string;
+  clientName: string;
+  providerName: string;
+  serviceName: string;
+  priceCents: number;
+};
+
+type PurchaseConfirmationProviderPayload = {
+  to: string;
+  providerName: string;
+  clientName: string;
+  serviceName: string;
   priceCents: number;
 };
 
@@ -169,6 +191,24 @@ export class EmailQueueService {
       data: {
         template: "BOOKING_CONFIRMATION_PROVIDER",
         payload: { ...rest, scheduledAtIso: scheduledAt.toISOString() }
+      }
+    });
+  }
+
+  async enqueuePurchaseConfirmationClient(input: PurchaseConfirmationClientPayload) {
+    return prisma.emailDeliveryQueue.create({
+      data: {
+        template: "PURCHASE_CONFIRMATION_CLIENT",
+        payload: input
+      }
+    });
+  }
+
+  async enqueuePurchaseConfirmationProvider(input: PurchaseConfirmationProviderPayload) {
+    return prisma.emailDeliveryQueue.create({
+      data: {
+        template: "PURCHASE_CONFIRMATION_PROVIDER",
+        payload: input
       }
     });
   }
@@ -283,6 +323,16 @@ export class EmailQueueService {
     if (template === "BOOKING_CONFIRMATION_PROVIDER") {
       const parsed = this.parseBookingConfirmationProviderPayload(payload);
       await this.emailService.sendBookingConfirmationToProvider(parsed);
+      return;
+    }
+    if (template === "PURCHASE_CONFIRMATION_CLIENT") {
+      const parsed = this.parsePurchaseConfirmationClientPayload(payload);
+      await this.emailService.sendPurchaseConfirmationToClient(parsed);
+      return;
+    }
+    if (template === "PURCHASE_CONFIRMATION_PROVIDER") {
+      const parsed = this.parsePurchaseConfirmationProviderPayload(payload);
+      await this.emailService.sendPurchaseConfirmationToProvider(parsed);
       return;
     }
     throw new Error(`Unsupported email queue template: ${template}`);
@@ -412,6 +462,32 @@ export class EmailQueueService {
     }
     this.validateEmail(to);
     return { to, providerName, clientName, scheduledAt, categoryName, priceCents };
+  }
+
+  private parsePurchaseConfirmationClientPayload(payload: Record<string, unknown>): PurchaseConfirmationClientPayload {
+    const to = typeof payload.to === "string" ? payload.to : "";
+    const clientName = typeof payload.clientName === "string" ? payload.clientName : "";
+    const providerName = typeof payload.providerName === "string" ? payload.providerName : "";
+    const serviceName = typeof payload.serviceName === "string" ? payload.serviceName : "";
+    const priceCents = typeof payload.priceCents === "number" ? payload.priceCents : NaN;
+    if (!to || !clientName || !providerName || !serviceName || Number.isNaN(priceCents)) {
+      throw new Error("Invalid PURCHASE_CONFIRMATION_CLIENT payload.");
+    }
+    this.validateEmail(to);
+    return { to, clientName, providerName, serviceName, priceCents };
+  }
+
+  private parsePurchaseConfirmationProviderPayload(payload: Record<string, unknown>): PurchaseConfirmationProviderPayload {
+    const to = typeof payload.to === "string" ? payload.to : "";
+    const providerName = typeof payload.providerName === "string" ? payload.providerName : "";
+    const clientName = typeof payload.clientName === "string" ? payload.clientName : "";
+    const serviceName = typeof payload.serviceName === "string" ? payload.serviceName : "";
+    const priceCents = typeof payload.priceCents === "number" ? payload.priceCents : NaN;
+    if (!to || !providerName || !clientName || !serviceName || Number.isNaN(priceCents)) {
+      throw new Error("Invalid PURCHASE_CONFIRMATION_PROVIDER payload.");
+    }
+    this.validateEmail(to);
+    return { to, providerName, clientName, serviceName, priceCents };
   }
 
   async purgeOldFailures(olderThanDays = 30): Promise<number> {

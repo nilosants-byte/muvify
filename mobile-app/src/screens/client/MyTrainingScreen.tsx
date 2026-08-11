@@ -26,6 +26,7 @@ import {
   ConsultancyContract,
   ConsultancyPaymentMethod,
   ConsultancyRequest,
+  gamificationApi,
   MyTrainingResponse,
   paymentsApi,
   TrainingPlan,
@@ -86,6 +87,7 @@ function planValidityStyle(isVigente: boolean, theme: MvTheme) {
 type FlatPlan = TrainingPlan & {
   contractStatus: string;
   providerName: string;
+  providerId: string;
   contractId: string;
   contractDeliveredAt: string | null;
 };
@@ -96,11 +98,17 @@ function flatPlans(contracts: ConsultancyContract[]): FlatPlan[] {
       ...p,
       contractStatus: c.status,
       providerName: c.provider?.displayName ?? "Personal",
+      providerId: c.provider?.id ?? c.providerId,
       contractId: c.id,
       contractDeliveredAt: c.deliveredAt ?? null,
     }))
   );
 }
+
+// Mesma chave usada em WorkoutCelebrationScreen.tsx (equivalente
+// presencial) - conquista já vista ali não é celebrada de novo aqui, e
+// vice-versa.
+const SEEN_ACHIEVEMENTS_KEY = "@muvify/seenAchievements";
 
 const DELIVERY_CONTEST_WINDOW_MS = 48 * 60 * 60 * 1000;
 function canContestDelivery(plan: FlatPlan) {
@@ -123,18 +131,23 @@ function WorkoutDetailModal({
   showToast,
   runWithAuth,
   onCompleted,
+  onReview,
+  fetchNewAchievements,
 }: {
   plan: FlatPlan;
   onClose: () => void;
   showToast: (msg: string, type?: ToastType) => void;
   runWithAuth: <T>(fn: (token: string) => Promise<T>) => Promise<T>;
   onCompleted: () => void;
+  onReview: (plan: FlatPlan) => void;
+  fetchNewAchievements: () => Promise<{ id: string; name: string }[]>;
 }) {
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const [started, setStarted] = useState(false);
   const [done, setDone] = useState<Set<string>>(new Set());
   const [finished, setFinished] = useState(false);
+  const [newAchievements, setNewAchievements] = useState<{ id: string; name: string }[]>([]);
   const [completing, setCompleting] = useState(false);
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
   const [seconds, setSeconds] = useState(0);
@@ -237,6 +250,13 @@ function WorkoutDetailModal({
       // realinhado com o valor real, mostrando o dobro do XP concedido.
       showToast("Treino concluído! +50 pts", "success");
       onCompleted();
+      // Frente 9 (segunda camada), Lote 14: conquista real, não estática -
+      // busca depois de completeTrainingPlan (que já concedeu o XP no
+      // backend), pra pegar qualquer conquista nova desbloqueada por esse
+      // treino especificamente.
+      fetchNewAchievements()
+        .then(setNewAchievements)
+        .catch(() => undefined);
     } catch (error) {
       setShowFinishConfirm(false);
       showToast(
@@ -314,15 +334,21 @@ function WorkoutDetailModal({
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center" }}>
             Tempo: {fmtTimer(seconds)} · {done.size}/{exercises.length} exercícios marcados
           </Text>
-          {/* Badges de conquista */}
-          <View style={{ flexDirection: "row", gap: 12, justifyContent: "center" }}>
-            {[
-              { icon: "flash" as const, label: "+50 pts", color: theme.primary },
-              { icon: "flame" as const, label: "Sequência", color: "#f97316" },
-            ].map((b) => (
-              <View key={b.label} style={{ alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 18, padding: 14 }}>
-                <Ionicons name={b.icon} size={24} color={b.color} />
-                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text1 }}>{b.label}</Text>
+          {/* Badges de conquista — Frente 9 (segunda camada), Lote 14: só o
+              XP (valor fixo real, concedido pelo backend) é sempre exibido;
+              conquistas mostram a lista real desbloqueada por este treino,
+              não um badge "Sequência" estático que aparecia sempre. */}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
+            <View style={{ alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 18, padding: 14 }}>
+              <Ionicons name="flash" size={24} color={theme.primary} />
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text1 }}>+50 pts</Text>
+            </View>
+            {newAchievements.map((a) => (
+              <View key={a.id} style={{ alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 18, padding: 14, maxWidth: 110 }}>
+                <Ionicons name="trophy" size={24} color="#f97316" />
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text1, textAlign: "center" }} numberOfLines={2}>
+                  {a.name}
+                </Text>
               </View>
             ))}
           </View>
@@ -359,6 +385,17 @@ function WorkoutDetailModal({
               </Text>
             </View>
           ) : null}
+
+          {/* Frente 9 (segunda camada), Lote 4: convite pra avaliar o
+              profissional - o fluxo online nunca oferecia isso (só
+              booking presencial tinha ReviewProfessionalScreen). */}
+          <TouchableOpacity
+            onPress={() => onReview(plan)}
+            style={{ height: S.btnH, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", width: "100%", flexDirection: "row", gap: 8 }}
+          >
+            <Ionicons name="star-outline" size={16} color={theme.text1} />
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Avaliar profissional</Text>
+          </TouchableOpacity>
 
           {/* CTA */}
           <TouchableOpacity
@@ -582,7 +619,7 @@ function WorkoutDetailModal({
 }
 
 // ── MyTrainingScreen principal ────────────────────────────────────────────────
-export function MyTrainingScreen({ navigation }: Props) {
+export function MyTrainingScreen({ navigation, route }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
@@ -592,7 +629,7 @@ export function MyTrainingScreen({ navigation }: Props) {
   const [contestingContractId, setContestingContractId] = useState<string | null>(null);
   const [paymentByRequestId, setPaymentByRequestId] = useState<Record<string, ConsultancyPaymentMethod>>({});
   const [consentByRequestId, setConsentByRequestId] = useState<Record<string, boolean>>({});
-  const [activeTab, setActiveTab] = useState<TrainingTab>("active");
+  const [activeTab, setActiveTab] = useState<TrainingTab>(route.params?.initialTab ?? "active");
   const [selectedPlan, setSelectedPlan] = useState<FlatPlan | null>(null);
 
   const trainingQuery = useAuthQuery(
@@ -605,6 +642,17 @@ export function MyTrainingScreen({ navigation }: Props) {
       ]);
       return { training: trainingResult, requests: requestsResult, clientHasDebt: customerStatus.hasOutstandingDebt };
     }
+  );
+
+  // Frente 9 (segunda camada), Lote 14: a celebração pós-treino do fluxo
+  // online (WorkoutDetailModal, "Tá pago!") mostrava um badge "Sequência"
+  // estático, sempre visível, sem checar se o backend de fato concedeu
+  // alguma conquista - mesma fonte real que WorkoutCelebrationScreen (o
+  // equivalente do presencial) já usa.
+  const achievementsQuery = useAuthQuery(
+    queryKeys.gamification.achievements(),
+    (token) => gamificationApi.getAchievements(token),
+    { staleTime: Infinity }
   );
 
   const loading = trainingQuery.isLoading;
@@ -641,6 +689,18 @@ export function MyTrainingScreen({ navigation }: Props) {
   const respondedRequests = useMemo(() => requests.filter((r) => r.status === "RESPONDED"), [requests]);
   const waitingDelivery = data?.waitingDelivery ?? [];
 
+  // Frente 9 (segunda camada), Lote 3: enquanto existir um contrato com Pix
+  // pendente aqui, poll a cada 5s (mesmo padrão de BookingConfirmationScreen)
+  // - assim que o webhook confirmar o pagamento em segundo plano, o card
+  // sai sozinho de "aguardando pagamento" sem o cliente precisar puxar pra
+  // atualizar manualmente.
+  const hasPendingPix = waitingDelivery.some((item) => item.pix !== null);
+  useEffect(() => {
+    if (!hasPendingPix) return;
+    const interval = setInterval(() => { void trainingQuery.refetch(); }, 5000);
+    return () => clearInterval(interval);
+  }, [hasPendingPix, trainingQuery.refetch]);
+
   // Planos por tab — separados pela vigencia de CADA treino, nao pelo status do
   // contrato (um contrato "Entregue" continua podendo ter treinos vigentes e
   // vencidos ao mesmo tempo, ja que agora um contrato pode receber varios treinos).
@@ -658,14 +718,22 @@ export function MyTrainingScreen({ navigation }: Props) {
   async function decideRequest(requestId: string, decision: "ACCEPT" | "REFUSE", pm?: ConsultancyPaymentMethod) {
     try {
       setDecidingRequestId(requestId);
-      await runWithAuth((token) =>
+      const result = await runWithAuth((token) =>
         consultancyApi.decideRequest(token, requestId, {
           decision,
           paymentMethod: pm,
           ...(decision === "ACCEPT" ? { acknowledgedImmediateExecution: true } : {})
         })
       );
-      showToast(decision === "ACCEPT" ? "Proposta aceita com sucesso." : "Proposta recusada.", "success");
+      // Frente 9 (segunda camada), Lote 3: Pix pendente precisa de aviso
+      // específico (o toast genérico "aceita com sucesso" escondia que
+      // ainda faltava pagar) - o código pra pagar aparece no card em
+      // "Pendentes" (ver waitingDelivery).
+      if (decision === "ACCEPT" && result.payment?.status === "PENDING") {
+        showToast("Proposta aceita! Finalize o pagamento Pix na aba Pendentes para liberar a entrega da ficha.", "info");
+      } else {
+        showToast(decision === "ACCEPT" ? "Proposta aceita com sucesso." : "Proposta recusada.", "success");
+      }
       await trainingQuery.refetch();
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao registrar decisão.", navigation });
@@ -816,6 +884,16 @@ export function MyTrainingScreen({ navigation }: Props) {
             </Text>
           </TouchableOpacity>
         ) : null}
+        {/* Frente 9 (segunda camada), Lote 13: mesmo CTA de chat já
+            adicionado no card de "Em preparação" acima. */}
+        <TouchableOpacity
+          onPress={() => navigation.getParent<any>()?.navigate("ClientChatList", { openContractId: item.contractId })}
+          style={{ marginTop: 6 }}
+        >
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: theme.primary, textDecorationLine: "underline" }}>
+            💬 Chat com o personal
+          </Text>
+        </TouchableOpacity>
       </PressableScale>
     );
   }
@@ -964,21 +1042,65 @@ export function MyTrainingScreen({ navigation }: Props) {
             {activeTab === "pending" && waitingDelivery.length > 0 && (
               <View style={{ gap: 8 }}>
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Em preparação</Text>
-                {waitingDelivery.map((item) => (
-                  <View key={item.contractId} style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: C.skyBorder, backgroundColor: C.skyDim, padding: 14, gap: 8 }}>
-                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{item.providerName}</Text>
-                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>Entrega até {formatDateLabel(item.deliveryDeadlineAt)}</Text>
-                    <TouchableOpacity
-                      onPress={() => handleCancelContract(item.contractId)}
-                      disabled={cancellingContractId === item.contractId}
-                      style={{ alignSelf: "flex-start" }}
-                    >
-                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text2, textDecorationLine: "underline" }}>
-                        {cancellingContractId === item.contractId ? "Cancelando..." : "Cancelar consultoria"}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                {waitingDelivery.map((item) => {
+                  const pixExpired = item.pix?.expiresAt ? new Date(item.pix.expiresAt).getTime() < Date.now() : false;
+                  // Frente 9 (segunda camada), Lote 16: booking e pacote
+                  // presencial sempre mostram um badge com o status da
+                  // própria entidade - consultoria nunca mostrava (o único
+                  // sinal era a vigência da FICHA, um conceito diferente).
+                  const statusBadge = contractStatusStyle(item.status, theme);
+                  return (
+                    <View key={item.contractId} style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: item.pix ? C.amberBorder : C.skyBorder, backgroundColor: item.pix ? C.amberDim : C.skyDim, padding: 14, gap: 8 }}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1, flex: 1, marginRight: 10 }}>{item.providerName}</Text>
+                        <View style={{ backgroundColor: statusBadge.bg, borderWidth: 1, borderColor: statusBadge.border, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3, flexShrink: 0 }}>
+                          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: statusBadge.color }}>{statusBadge.label}</Text>
+                        </View>
+                      </View>
+                      {item.pix ? (
+                        <>
+                          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: C.amber }}>
+                            {pixExpired ? "Pix expirado — a solicitação será cancelada automaticamente" : "Pagamento Pix pendente — finalize para liberar a entrega da ficha"}
+                          </Text>
+                          {item.pix.copyAndPasteCode && !pixExpired ? (
+                            <View style={{ gap: 4 }}>
+                              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text1 }}>Código Pix (copia e cola)</Text>
+                              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: C.zinc300 }} selectable>
+                                {item.pix.copyAndPasteCode}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </>
+                      ) : (
+                        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>Entrega até {formatDateLabel(item.deliveryDeadlineAt)}</Text>
+                      )}
+                      <View style={{ flexDirection: "row", gap: 16 }}>
+                        {/* Frente 9 (segunda camada), Lote 13: booking já
+                            tem um botão de chat visível na tela de gestão -
+                            consultoria não tinha nenhum equivalente aqui, só
+                            achável indo até a aba de Conversas por conta
+                            própria. */}
+                        <TouchableOpacity
+                          onPress={() => navigation.getParent<any>()?.navigate("ClientChatList", { openContractId: item.contractId })}
+                          style={{ alignSelf: "flex-start" }}
+                        >
+                          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.primary, textDecorationLine: "underline" }}>
+                            💬 Chat com o personal
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleCancelContract(item.contractId)}
+                          disabled={cancellingContractId === item.contractId}
+                          style={{ alignSelf: "flex-start" }}
+                        >
+                          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text2, textDecorationLine: "underline" }}>
+                            {cancellingContractId === item.contractId ? "Cancelando..." : "Cancelar consultoria"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
             )}
 
@@ -1040,6 +1162,24 @@ export function MyTrainingScreen({ navigation }: Props) {
             showToast={showToast}
             runWithAuth={runWithAuth}
             onCompleted={() => void trainingQuery.refetch()}
+            onReview={(plan) => {
+              setSelectedPlan(null);
+              navigation
+                .getParent<any>()
+                ?.navigate("ReviewProfessional", { contractId: plan.contractId, professionalId: plan.providerId });
+            }}
+            fetchNewAchievements={async () => {
+              const result = await achievementsQuery.refetch();
+              const achievements = result.data ?? [];
+              const seenRaw = await AsyncStorage.getItem(SEEN_ACHIEVEMENTS_KEY);
+              const seen: string[] = seenRaw ? (JSON.parse(seenRaw) as string[]) : [];
+              const unlocked = achievements.filter((a) => a.unlockedAt != null);
+              const newly = unlocked.filter((a) => !seen.includes(a.id));
+              if (newly.length > 0) {
+                await AsyncStorage.setItem(SEEN_ACHIEVEMENTS_KEY, JSON.stringify([...seen, ...newly.map((a) => a.id)]));
+              }
+              return newly.map((a) => ({ id: a.id, name: a.name }));
+            }}
           />
         )}
       </Modal>

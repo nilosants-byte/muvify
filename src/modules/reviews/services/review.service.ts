@@ -1,14 +1,29 @@
-import { BookingStatus, Prisma } from "@prisma/client";
+import { BookingStatus, ConsultancyContractStatus, Prisma } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { deleteByPattern } from "../../../shared/utils/cache";
 export class ReviewService {
-  async create(userId: string, bookingId: string, rating: number, comment?: string) {
+  async create(
+    userId: string,
+    input: { bookingId?: string; contractId?: string },
+    rating: number,
+    comment?: string
+  ) {
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       throw new AppError("A nota deve ser um número inteiro entre 1 e 5.", StatusCodes.BAD_REQUEST);
     }
 
+    if (input.bookingId) {
+      return this.createForBooking(userId, input.bookingId, rating, comment);
+    }
+    if (input.contractId) {
+      return this.createForConsultancyContract(userId, input.contractId, rating, comment);
+    }
+    throw new AppError("Informe um agendamento ou uma consultoria para avaliar.", StatusCodes.BAD_REQUEST);
+  }
+
+  private async createForBooking(userId: string, bookingId: string, rating: number, comment?: string) {
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
       include: { review: true, provider: true }
@@ -26,42 +41,78 @@ export class ReviewService {
       throw new AppError("Este agendamento já foi avaliado.", StatusCodes.CONFLICT);
     }
 
+    return this.createReviewAndRecalculate(
+      { bookingId, userId, providerId: booking.providerId, rating, comment },
+      "Este agendamento já foi avaliado."
+    );
+  }
+
+  // Frente 9 (segunda camada), Lote 4: mesma avaliação, agora também pro
+  // lado online - exigir DELIVERED (pelo menos uma ficha entregue) é o
+  // equivalente de booking.status === COMPLETED (serviço de fato rendido).
+  private async createForConsultancyContract(userId: string, contractId: string, rating: number, comment?: string) {
+    const contract = await prisma.consultancyContract.findUnique({
+      where: { id: contractId },
+      include: { review: true }
+    });
+    if (!contract) {
+      throw new AppError("Consultoria não encontrada.", StatusCodes.NOT_FOUND);
+    }
+    if (contract.clientId !== userId) {
+      throw new AppError("Apenas o cliente pode avaliar.", StatusCodes.FORBIDDEN);
+    }
+    if (contract.status !== ConsultancyContractStatus.DELIVERED) {
+      throw new AppError("A avaliação só pode ser enviada após a entrega da consultoria.", StatusCodes.BAD_REQUEST);
+    }
+    if (contract.review) {
+      throw new AppError("Esta consultoria já foi avaliada.", StatusCodes.CONFLICT);
+    }
+
+    return this.createReviewAndRecalculate(
+      { consultancyContractId: contractId, userId, providerId: contract.providerId, rating, comment },
+      "Esta consultoria já foi avaliada."
+    );
+  }
+
+  private async createReviewAndRecalculate(
+    data: {
+      bookingId?: string;
+      consultancyContractId?: string;
+      userId: string;
+      providerId: string;
+      rating: number;
+      comment?: string;
+    },
+    conflictMessage: string
+  ) {
     let review: Awaited<ReturnType<typeof prisma.review.create>>;
     try {
       review = await prisma.$transaction(async (tx) => {
-      // Lock the provider row to prevent concurrent rating recalculations
-      // from producing stale aggregates under READ COMMITTED isolation.
-      await tx.$executeRaw`SELECT id FROM "ProviderProfile" WHERE id = ${booking.providerId} FOR UPDATE`;
+        // Lock the provider row to prevent concurrent rating recalculations
+        // from producing stale aggregates under READ COMMITTED isolation.
+        await tx.$executeRaw`SELECT id FROM "ProviderProfile" WHERE id = ${data.providerId} FOR UPDATE`;
 
-      const created = await tx.review.create({
-        data: {
-          bookingId,
-          userId,
-          providerId: booking.providerId,
-          rating,
-          comment
-        }
+        const created = await tx.review.create({ data });
+
+        const aggregate = await tx.review.aggregate({
+          where: { providerId: data.providerId },
+          _avg: { rating: true },
+          _count: { id: true }
+        });
+
+        await tx.providerProfile.update({
+          where: { id: data.providerId },
+          data: {
+            averageRating: aggregate._avg.rating ?? 0,
+            totalReviews: aggregate._count.id
+          }
+        });
+
+        return created;
       });
-
-      const aggregate = await tx.review.aggregate({
-        where: { providerId: booking.providerId },
-        _avg: { rating: true },
-        _count: { id: true }
-      });
-
-      await tx.providerProfile.update({
-        where: { id: booking.providerId },
-        data: {
-          averageRating: aggregate._avg.rating ?? 0,
-          totalReviews: aggregate._count.id
-        }
-      });
-
-      return created;
-    });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-        throw new AppError("Este agendamento já foi avaliado.", StatusCodes.CONFLICT);
+        throw new AppError(conflictMessage, StatusCodes.CONFLICT);
       }
       throw err;
     }
@@ -70,11 +121,11 @@ export class ReviewService {
     // schedule preview cache (booking that triggered this review is now COMPLETED).
     await Promise.all([
       deleteByPattern("providers:*"),
-      deleteByPattern(`schedule:${booking.providerId}:*`)
+      deleteByPattern(`schedule:${data.providerId}:*`)
     ]);
 
     const { onReviewSubmitted } = await import("../../gamification/services/gamification-events.service");
-    void onReviewSubmitted(userId, review.id);
+    void onReviewSubmitted(data.userId, review.id);
 
     return review;
   }

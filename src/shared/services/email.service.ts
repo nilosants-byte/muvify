@@ -82,6 +82,22 @@ type BookingConfirmationProviderInput = {
   priceCents: number;
 };
 
+type PurchaseConfirmationClientInput = {
+  to: string;
+  clientName: string;
+  providerName: string;
+  serviceName: string;
+  priceCents: number;
+};
+
+type PurchaseConfirmationProviderInput = {
+  to: string;
+  providerName: string;
+  clientName: string;
+  serviceName: string;
+  priceCents: number;
+};
+
 let transporter: Transporter | null = null;
 
 function isSmtpConfigured() {
@@ -515,6 +531,70 @@ export class EmailService {
           <p>&#128181; <strong>Valor:</strong> ${escapeHtml(priceStr)}</p>
         </div>
         <p>Acesse o aplicativo para confirmar o agendamento e conversar com o aluno pelo <strong>chat</strong>.</p>
+      `)
+    });
+  }
+
+  // Frente 9 (segunda camada), Lote 9: pacote presencial e consultoria
+  // nunca mandavam e-mail de confirmação de compra - template genérico
+  // (não amarrado a "sessão", diferente do de booking) reaproveitado
+  // pelos dois fluxos via serviceName.
+  async sendPurchaseConfirmationToClient(input: PurchaseConfirmationClientInput) {
+    const mailer = requireMailer();
+    const priceStr = (input.priceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+    await mailer.sendMail({
+      from: env.SMTP_FROM,
+      to: input.to,
+      subject: `Muvify — Compra confirmada com ${sanitizeSubject(input.providerName)}`,
+      text: [
+        `Ola, ${input.clientName}!`,
+        "",
+        `Sua compra (${input.serviceName}) com ${input.providerName} foi confirmada.`,
+        `Valor: ${priceStr}`,
+        "",
+        "Acompanhe o status pelo aplicativo e use o chat para tirar duvidas com seu personal."
+      ].join("\n"),
+      html: buildEmailLayout(`
+        <h2>&#9989; Compra confirmada!</h2>
+        <p>Ola, <strong>${escapeHtml(input.clientName)}</strong>!</p>
+        <p>Sua compra foi confirmada. Confira os detalhes abaixo:</p>
+        <div class="info-box">
+          <p>&#127919; <strong>Personal:</strong> ${escapeHtml(input.providerName)}</p>
+          <p>&#127977; <strong>Servi&ccedil;o:</strong> ${escapeHtml(input.serviceName)}</p>
+          <p>&#128181; <strong>Valor:</strong> ${escapeHtml(priceStr)}</p>
+        </div>
+        <p>Acompanhe tudo pelo aplicativo e use o <strong>chat</strong> para tirar d&uacute;vidas com seu personal.</p>
+      `)
+    });
+  }
+
+  async sendPurchaseConfirmationToProvider(input: PurchaseConfirmationProviderInput) {
+    const mailer = requireMailer();
+    const priceStr = (input.priceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+    await mailer.sendMail({
+      from: env.SMTP_FROM,
+      to: input.to,
+      subject: `Muvify — Nova venda de ${sanitizeSubject(input.clientName)}`,
+      text: [
+        `Ola, ${input.providerName}!`,
+        "",
+        `Voce tem uma nova venda (${input.serviceName}) confirmada com ${input.clientName}.`,
+        `Valor: ${priceStr}`,
+        "",
+        "Acesse o aplicativo para ver os detalhes e o chat com o aluno."
+      ].join("\n"),
+      html: buildEmailLayout(`
+        <h2>&#128181; Nova venda confirmada!</h2>
+        <p>Ola, <strong>${escapeHtml(input.providerName)}</strong>!</p>
+        <p>Uma nova venda foi confirmada. Veja os detalhes:</p>
+        <div class="info-box">
+          <p>&#128100; <strong>Aluno:</strong> ${escapeHtml(input.clientName)}</p>
+          <p>&#127977; <strong>Servi&ccedil;o:</strong> ${escapeHtml(input.serviceName)}</p>
+          <p>&#128181; <strong>Valor:</strong> ${escapeHtml(priceStr)}</p>
+        </div>
+        <p>Acesse o aplicativo para conversar com o aluno pelo <strong>chat</strong>.</p>
       `)
     });
   }

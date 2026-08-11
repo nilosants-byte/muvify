@@ -1689,7 +1689,30 @@ export class PaymentService {
       }
     });
 
-    if (!payment && !consultancyContract && !presentialPackagePending && !trainingPlanRenewal) {
+    // Frente 9 (segunda camada), Lote 2: pendingChargeMpPaymentId só existe
+    // ENQUANTO o Pix do ciclo está pendente - é zerado assim que o ciclo é
+    // ativado (cartão nem passa por ali). Qualquer evento sobre um ciclo já
+    // CAPTURADO (inclusive chargeback) caía direto no "não encontrado"
+    // abaixo e nunca chegava no tratamento de disputa mais adiante, ao
+    // contrário de payment/consultancyContract/trainingPlanRenewal, que já
+    // são buscados pelo id definitivo (não um campo "pendente").
+    const presentialPackageCycle = await prisma.presentialPackageCycle.findFirst({
+      where: { mpPaymentId: String(mpPay.id) },
+      select: {
+        id: true,
+        amountCents: true,
+        packageId: true,
+        package: { select: { clientId: true, providerId: true, provider: { select: { userId: true } } } }
+      }
+    });
+
+    if (
+      !payment &&
+      !consultancyContract &&
+      !presentialPackagePending &&
+      !trainingPlanRenewal &&
+      !presentialPackageCycle
+    ) {
       console.warn(`[webhook] mpPaymentId ${mpPaymentId} nao encontrado em payment ou contract. Status: ${mpStatus}`);
       return;
     }
@@ -2056,36 +2079,29 @@ export class PaymentService {
             }
           });
         }
-      } else {
-        const cycle = await prisma.presentialPackageCycle.findFirst({
-          where: { mpPaymentId: String(mpPay.id) },
-          select: {
-            id: true,
-            amountCents: true,
-            packageId: true,
-            package: { select: { clientId: true, providerId: true, provider: { select: { userId: true } } } }
-          }
-        });
-
-        if (cycle && !existingDisputeCase) {
+      } else if (presentialPackageCycle) {
+        if (!existingDisputeCase) {
           notificationService
-            .sendToUsers([cycle.package.clientId, cycle.package.provider.userId], {
-              preferenceType: "PAYMENTS",
-              title: "Contestação de pagamento aberta",
-              body: "Uma contestação foi aberta para uma cobrança de pacote presencial.",
-              data: { type: "PAYMENT_DISPUTED", packageId: cycle.packageId }
-            })
+            .sendToUsers(
+              [presentialPackageCycle.package.clientId, presentialPackageCycle.package.provider.userId],
+              {
+                preferenceType: "PAYMENTS",
+                title: "Contestação de pagamento aberta",
+                body: "Uma contestação foi aberta para uma cobrança de pacote presencial.",
+                data: { type: "PAYMENT_DISPUTED", packageId: presentialPackageCycle.packageId }
+              }
+            )
             .catch((error) => console.error("Dispute notification failed:", error));
 
           await prisma.disputeCase.create({
             data: {
               type: "CHARGEBACK",
-              clientId: cycle.package.clientId,
-              providerId: cycle.package.providerId,
-              amountCents: cycle.amountCents ?? 0,
+              clientId: presentialPackageCycle.package.clientId,
+              providerId: presentialPackageCycle.package.providerId,
+              amountCents: presentialPackageCycle.amountCents ?? 0,
               mpPaymentId: String(mpPay.id),
-              presentialPackageId: cycle.packageId,
-              presentialPackageCycleId: cycle.id
+              presentialPackageId: presentialPackageCycle.packageId,
+              presentialPackageCycleId: presentialPackageCycle.id
             }
           });
         }

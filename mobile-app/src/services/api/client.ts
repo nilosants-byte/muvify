@@ -424,6 +424,13 @@ export type MyTrainingResponse = {
     providerName: string;
     deliveryDeadlineAt: string;
     status: "PENDING_PAYMENT" | "ACTIVE" | "DELIVERED" | "CANCELLED" | "REFUNDED_EXPIRED" | "ARCHIVED";
+    paymentStatus?: string;
+    paymentMethod?: string | null;
+    // Frente 9 (segunda camada), Lote 3: QR/copia-e-cola do Pix pendente de
+    // um contrato de consultoria - antes era devolvido só na resposta
+    // síncrona de decideRequest e se perdia se o app fechasse antes do
+    // usuário escanear.
+    pix: { qrCodeUrl: string | null; copyAndPasteCode: string | null; expiresAt: string | null } | null;
   }>;
   contracts: ConsultancyContract[];
 };
@@ -2580,13 +2587,14 @@ export const consultancyChatApi = {
 };
 
 export const reviewsApi = {
+  // Frente 9 (segunda camada), Lote 4: avaliação passa a aceitar
+  // contractId (consultoria online) além de bookingId (presencial) -
+  // exatamente um dos dois.
   create(
     token: string,
-    body: {
-      bookingId: string;
-      rating: number;
-      comment?: string;
-    }
+    body:
+      | { bookingId: string; contractId?: undefined; rating: number; comment?: string }
+      | { bookingId?: undefined; contractId: string; rating: number; comment?: string }
   ) {
     return apiRequest<unknown>("/reviews", { method: "POST", token, body });
   },
@@ -3091,14 +3099,22 @@ export const consultancyApi = {
       acknowledgedImmediateExecution?: boolean;
     }
   ) {
-    return apiRequest<{ request: ConsultancyRequest; contract: ConsultancyContract | null }>(
-      `/consultancy/requests/${requestId}/decision`,
-      {
-        method: "POST",
-        token,
-        body
-      }
-    );
+    return apiRequest<{
+      request: ConsultancyRequest;
+      contract: ConsultancyContract | null;
+      // Frente 9 (segunda camada), Lote 3: o backend sempre devolveu isso,
+      // mas o tipo aqui descartava o campo - o app nunca sabia se o Pix
+      // ficou pendente (agora também persistido, ver MyTrainingResponse).
+      payment?: {
+        status: "PENDING" | "CAPTURED";
+        method: ConsultancyPaymentMethod;
+        pix?: { qrCodeUrl: string | null; copyAndPasteCode: string | null; hostedInstructionsUrl: string | null; expiresAt: string | null } | null;
+      };
+    }>(`/consultancy/requests/${requestId}/decision`, {
+      method: "POST",
+      token,
+      body
+    });
   },
   cancelContract(token: string, contractId: string) {
     return apiRequest<ConsultancyContract>(`/consultancy/contracts/${contractId}/cancel`, {

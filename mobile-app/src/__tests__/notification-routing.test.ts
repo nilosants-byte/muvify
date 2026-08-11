@@ -140,3 +140,23 @@ describe("resolveNotificationRoute — mensagem de chat continua priorizada sobr
     });
   });
 });
+
+// Frente 9 (segunda camada), Lote 12: notificação de consultoria sempre
+// caía na tab default de cada tela (dashboard/ativos) - agora abre direto
+// na aba de pedidos/pendentes, onde a proposta/pagamento/entrega que gerou
+// o aviso normalmente está.
+describe("resolveNotificationRoute — consultoria abre a aba certa, não a tab default", () => {
+  it("notificação de consultoria pro profissional abre a aba de pedidos", () => {
+    expect(resolveNotificationRoute({ type: "CONSULTANCY_CONTRACT_ACCEPTED" }, "PROVIDER")).toEqual({
+      screen: "ProfessionalConsultancyCenter",
+      params: { initialTab: "requests" }
+    });
+  });
+
+  it("notificação de consultoria pro cliente abre a aba Pendentes de Meu Treino", () => {
+    expect(resolveNotificationRoute({ type: "CONSULTANCY_CONTRACT_ACCEPTED" }, "CLIENT")).toEqual({
+      screen: "MyTraining",
+      params: { initialTab: "pending" }
+    });
+  });
+});

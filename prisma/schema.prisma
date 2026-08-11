@@ -741,20 +741,28 @@ model DebtRecord {
 }
 
 model Review {
-  id        String @id @default(uuid())
-  bookingId String @unique
+  id        String  @id @default(uuid())
+  // Frente 9 (segunda camada), Lote 4: avaliação era exclusiva de booking
+  // presencial - quem contratava consultoria online nunca podia avaliar o
+  // profissional, mesmo isso afetando ranking/busca de verdade (ver
+  // averageRating em provider.service.ts). Mesmo padrão de FKs opcionais já
+  // usado em DisputeCase - exatamente um dos dois é preenchido, nunca os
+  // dois nem nenhum (garantido em ReviewService, não há CHECK constraint).
+  bookingId String? @unique
   userId    String
 
-  providerId          String
-  rating              Int
-  comment             String?
-  providerResponse    String?         @db.VarChar(500)
-  providerRespondedAt DateTime?
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
-  booking             Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider            ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  consultancyContractId String?         @unique
+  providerId            String
+  rating                Int
+  comment               String?
+  providerResponse      String?         @db.VarChar(500)
+  providerRespondedAt   DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  booking               Booking?             @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  consultancyContract   ConsultancyContract? @relation(fields: [consultancyContractId], references: [id], onDelete: Cascade)
+  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider              ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
   @@index([providerId, rating])
   @@index([userId, createdAt])
@@ -1371,6 +1379,14 @@ model ConsultancyContract {
   paymentAmountCents      Int
   providerAmountCents     Int
   platformAmountCents     Int
+  // Frente 9 (segunda camada), Lote 3: o QR code/copia-e-cola do Pix era
+  // devolvido só na resposta síncrona de decideRequest e nunca persistido -
+  // se o app caísse, o usuário saísse da tela, ou a notificação levasse pra
+  // outro lugar antes de escanear, não havia como retomar o pagamento
+  // (PresentialPackage já persiste o equivalente pendingChargePix*).
+  pixQrCodeUrl            String?
+  pixCopyPasteCode        String?
+  pixExpiresAt            DateTime?
   // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 2: snapshot
   // congelado no momento da compra — sem isso, editar billingCycle/kind/
   // fichaValidityDays da oferta depois da venda mudava retroativamente a
@@ -1417,6 +1433,7 @@ model ConsultancyContract {
   presentialPackage       PresentialPackage?
   disputeCases            DisputeCase[]
   messages                ConsultancyMessage[]
+  review                  Review?
 
   @@index([providerId, status, deliveryDeadlineAt])
   @@index([clientId, status, createdAt])

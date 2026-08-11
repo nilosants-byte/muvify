@@ -1013,6 +1013,23 @@ export class UserService {
       await tx.providerStudentAssessment.deleteMany({ where: { clientId: userId } });
       await tx.consultancyRequest.updateMany({ where: { clientId: userId }, data: { trainingNeedText: null, limitationText: null, extraInfoText: null, providerResponseText: null } });
       await tx.consultancyContract.updateMany({ where: { clientId: userId }, data: { mpPaymentId: null, mpRefundId: null } });
+      // Frente 9 (segunda camada), Lote 11: consultancyContract já era
+      // limpo incondicionalmente aqui (linha acima), mas presentialPackage
+      // não - um pacote já CANCELLED/EXPIRED antes da exclusão da conta
+      // (fora de ACTIVE_PACKAGE_STATUSES, então cancelPackage nunca roda
+      // nele como efeito colateral de cancelar) mantinha billingCardId/
+      // pendingChargeMpPaymentId/Pix intactos, associados a um usuário já
+      // anonimizado.
+      await tx.presentialPackage.updateMany({
+        where: { clientId: userId },
+        data: {
+          billingCardId: null,
+          pendingChargeMpPaymentId: null,
+          pendingChargePixQrCodeUrl: null,
+          pendingChargePixCopyPasteCode: null,
+          pendingChargePixExpiresAt: null
+        }
+      });
       await tx.booking.updateMany({ where: { clientId: userId }, data: { notes: null, sessionLocation: null } });
       await tx.trainingPlanCompletion.updateMany({ where: { clientId: userId }, data: { notes: null } });
       await tx.userAchievement.deleteMany({ where: { userId } });

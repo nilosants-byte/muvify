@@ -6,7 +6,7 @@ export class ReviewController {
   async create(request: Request, response: Response) {
     const review = await reviewService.create(
       request.user!.id,
-      request.body.bookingId,
+      { bookingId: request.body.bookingId, contractId: request.body.contractId },
       request.body.rating,
       request.body.comment
     );

@@ -14,7 +14,10 @@ export type ClientTabParamList = {
   ClientHome: undefined;
   Categories: undefined;
   Promotions: undefined;
-  MyTraining: undefined;
+  // Frente 9 (segunda camada), Lote 12: notificação de consultoria sempre
+  // caía na tab default "Ativos" - sem como abrir direto na "Pendentes"
+  // (onde a proposta/pagamento/entrega que gerou o aviso normalmente está).
+  MyTraining: { initialTab?: "active" | "pending" | "history" } | undefined;
   ClientBookings: undefined;
   Favorites: undefined;
   ClientProfile: undefined;
@@ -86,7 +89,11 @@ export type ClientStackParamList = {
   BookingPaymentStatus: { bookingId?: string } | undefined;
   ClientBookingDetail: { bookingId: string };
   WorkoutCelebration: { bookingId: string; professionalId: string; skipReview?: boolean };
-  ReviewProfessional: { bookingId: string; professionalId: string };
+  // Frente 9 (segunda camada), Lote 4: avaliação passa a aceitar consultoria
+  // online (contractId) além de booking presencial (bookingId).
+  ReviewProfessional:
+    | { bookingId: string; contractId?: undefined; professionalId: string }
+    | { bookingId?: undefined; contractId: string; professionalId: string };
   ClientPaymentMethod: undefined;
   ClientSettings: undefined;
   ClientAnamnesis: undefined;

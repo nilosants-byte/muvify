@@ -29,6 +29,7 @@ import { assertOfferAllowsServiceLocation } from "../../../shared/utils/offer-se
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
 import { haversineKm } from "../../../shared/utils/geo";
+import { EmailQueueService } from "../../../shared/services/email-queue.service";
 // PaymentService é importado dinamicamente onde é usado (não no topo do
 // arquivo) porque payment.service.ts também importa PresentialPackageService
 // — import estático dos dois lados cria dependência circular na inicialização
@@ -36,6 +37,7 @@ import { haversineKm } from "../../../shared/utils/geo";
 
 const notificationService = new NotificationService();
 const debtService = new DebtService();
+const emailQueueService = new EmailQueueService();
 const mpPaymentClient = new Payment(mp);
 const mpCardTokenClient = new CardToken(mp);
 const mpRefundClient = new PaymentRefund(mp);
@@ -283,7 +285,7 @@ export class PresentialPackageService {
 
     const offer = await prisma.providerServiceOffer.findFirst({
       where: { id: input.offerId, isActive: true },
-      include: { provider: { include: { user: { select: { suspendedAt: true } } } } }
+      include: { provider: { include: { user: { select: { suspendedAt: true, email: true } } } } }
     });
     if (!offer) {
       throw new AppError("Oferta não encontrada ou indisponível.", StatusCodes.NOT_FOUND);
@@ -438,8 +440,29 @@ export class PresentialPackageService {
 
     const updated = await prisma.presentialPackage.findUniqueOrThrow({
       where: { id: pkg.id },
-      include: { offer: true }
+      include: { offer: true, client: { select: { name: true, email: true } } }
     });
+
+    // Frente 9 (segunda camada), Lote 9: pacote presencial nunca mandava
+    // e-mail de confirmação de compra - só booking avulso tinha isso.
+    void emailQueueService
+      .enqueuePurchaseConfirmationClient({
+        to: updated.client.email,
+        clientName: updated.client.name,
+        providerName: offer.provider.displayName,
+        serviceName: `Pacote presencial · ${offer.title}`,
+        priceCents: cycleAmountCents
+      })
+      .catch((error) => console.error("Falha ao enfileirar e-mail de confirmação de pacote (cliente):", error));
+    void emailQueueService
+      .enqueuePurchaseConfirmationProvider({
+        to: offer.provider.user.email,
+        providerName: offer.provider.displayName,
+        clientName: updated.client.name,
+        serviceName: `Pacote presencial · ${offer.title}`,
+        priceCents: cycleAmountCents
+      })
+      .catch((error) => console.error("Falha ao enfileirar e-mail de confirmação de pacote (profissional):", error));
 
     return { package: updated, payment: chargeResult };
   }
@@ -467,6 +490,11 @@ export class PresentialPackageService {
         nextBillingAt: null
       }
     });
+
+    // Frente 9 (segunda camada), Lote 10: ver comentário em activateCycle -
+    // este método só é chamado na compra (nunca em renovação), sempre XP.
+    const { onServicePurchased } = await import("../../gamification/services/gamification-events.service");
+    void onServicePurchased(pkg.clientId, pkg.id);
 
     return { status: "READY" as const, sessionsAvailable: pkg.sessionsPerCycle };
   }
@@ -745,6 +773,16 @@ export class PresentialPackageService {
         }
       }
     });
+
+    // Frente 9 (segunda camada), Lote 10: booking e consultoria já concedem
+    // XP de "serviço contratado" no momento equivalente (aceite/captura) -
+    // pacote presencial nunca concedia nada pelo ato da compra em si, só
+    // depois, indiretamente, quando uma sessão do pacote era concluída. Só
+    // na primeira ativação (não em renovações de ciclo).
+    if (isFirstCycle) {
+      const { onServicePurchased } = await import("../../gamification/services/gamification-events.service");
+      void onServicePurchased(pkg.clientId, pkg.id);
+    }
   }
 
   // Horário fixo pago em cartão: nenhuma cobrança de ciclo acontece aqui —
@@ -851,6 +889,13 @@ export class PresentialPackageService {
       body: `${generatedCount} sessão(ões) agendada(s) — cada uma será cobrada individualmente perto da data.`,
       data: { type: "PRESENTIAL_PACKAGE_PERIOD_SCHEDULED", packageId: pkg.id, cycleIndex }
     }).catch((error) => console.error("Presential package period notification failed:", error));
+
+    // Frente 9 (segunda camada), Lote 10: ver comentário em activateCycle -
+    // só na primeira ativação (não em renovações de período).
+    if (isFirstCycle) {
+      const { onServicePurchased } = await import("../../gamification/services/gamification-events.service");
+      void onServicePurchased(pkg.clientId, pkg.id);
+    }
 
     return { status: "SCHEDULED" as const, sessionsScheduled: generatedCount };
   }
@@ -1219,8 +1264,13 @@ export class PresentialPackageService {
 
     const isClient = pkg.clientId === userId;
     const isProvider = pkg.provider.userId === userId;
+    // Frente 9 (segunda camada), Lote 5: 404 em vez de 403 - não diferencia
+    // "não existe" de "existe mas não é seu" pra quem tenta um packageId de
+    // terceiro, mesmo padrão já usado em booking.service.ts/consultancy.
+    // service.ts (comentário lá já citava presential-packages como se já
+    // seguisse isso, mas esses dois pontos nunca tinham sido corrigidos).
     if (!isClient && !isProvider) {
-      throw new AppError("Você não tem permissão para cancelar este pacote.", StatusCodes.FORBIDDEN);
+      throw new AppError("Pacote não encontrado.", StatusCodes.NOT_FOUND);
     }
 
     if (
@@ -1475,8 +1525,10 @@ export class PresentialPackageService {
     if (!pkg) {
       throw new AppError("Pacote não encontrado.", StatusCodes.NOT_FOUND);
     }
+    // Frente 9 (segunda camada), Lote 5: 404 em vez de 403, mesma razão de
+    // cancelPackage acima.
     if (pkg.clientId !== userId && pkg.provider.user.id !== userId) {
-      throw new AppError("Você não tem permissão para ver este pacote.", StatusCodes.FORBIDDEN);
+      throw new AppError("Pacote não encontrado.", StatusCodes.NOT_FOUND);
     }
     return hideClientBillingFieldsFromProvider(pkg, userId, pkg.clientId);
   }
@@ -1506,7 +1558,7 @@ export class PresentialPackageService {
 
     const offer = await prisma.providerServiceOffer.findFirst({
       where: { id: input.offerId, isActive: true },
-      include: { provider: { include: { user: { select: { suspendedAt: true } } } } }
+      include: { provider: { include: { user: { select: { suspendedAt: true, email: true } } } } }
     });
     if (!offer) {
       throw new AppError("Oferta não encontrada ou indisponível.", StatusCodes.NOT_FOUND);

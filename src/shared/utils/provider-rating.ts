@@ -22,9 +22,16 @@ export async function recalculateProviderRatingAfterRefund(
   const aggregate = await db.review.aggregate({
     where: {
       providerId: review.providerId,
-      booking: {
-        OR: [{ payment: null }, { payment: { status: { not: PaymentStatus.REFUNDED } } }]
-      }
+      // Frente 9 (segunda camada), Lote 4: bookingId virou opcional (review
+      // de consultoria não tem booking) — o filtro "booking: {...}" sozinho
+      // usa semântica de INNER JOIN pra relação opcional, excluindo do
+      // agregado qualquer review sem bookingId. Sem o OR abaixo, toda
+      // review de consultoria do profissional sumiria do rating sempre que
+      // QUALQUER booking dele fosse reembolsado.
+      OR: [
+        { bookingId: null },
+        { booking: { OR: [{ payment: null }, { payment: { status: { not: PaymentStatus.REFUNDED } } }] } }
+      ]
     },
     _avg: { rating: true },
     _count: { id: true }
