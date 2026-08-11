@@ -292,6 +292,12 @@ model User {
   recoveryEmailEncrypted   String?
   role                     UserRole                    @default(CLIENT)
   emailVerifiedAt          DateTime?
+  // Frente 8 (segunda camada), Lote 8: lembrete de e-mail não verificado.
+  // Fica no User (não no token) porque cada lembrete precisa emitir um
+  // token novo (o valor bruto do token nunca é persistido, só o hash) —
+  // a linha do token antigo é substituída a cada reenvio, então a flag de
+  // "já lembrado" precisa sobreviver a essa troca.
+  emailVerificationReminderSentAt DateTime?
   mpCustomerId             String?
   mpDefaultCardId          String?
   termsAcceptedAt          DateTime?
@@ -1443,6 +1449,11 @@ model ClientAnamnesis {
   // por esses helpers.
   answers     String?
   completedAt DateTime?
+  // Frente 8 (segunda camada), Lote 8: nenhum lembrete cobria anamnese
+  // abandonada em rascunho — combinado com o achado de que a exigência só
+  // era revelada no fim do funil de agendamento (Lote 1), quem parava no
+  // meio simplesmente sumia do radar, sem nenhum nudge automático.
+  draftReminderSentAt DateTime?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   client      User            @relation(fields: [clientId], references: [id], onDelete: Cascade)

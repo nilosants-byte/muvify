@@ -126,6 +126,14 @@ const personalDataSchema = z
   })
   .partial();
 
+// Frente 8 (segunda camada), Lote 12: objetivos de treino (selected/
+// mainObjective/targetTimeframe) são coletados como obrigatórios na
+// anamnese, mas nenhum fluxo de busca ou recomendação de profissional
+// (SearchProfessionalsScreen, discovery.service.ts) hoje filtra ou ordena
+// por eles - o cliente preenche, mas isso não influencia quem aparece pra
+// ele. Gap aceito por ora (o dado já é útil pro profissional lá na frente,
+// via getStudentAnamnesis); vincular à busca é melhoria de produto futura,
+// fora do escopo desta frente.
 const objectivesSchema = z
   .object({
     selected: z.array(choiceGoalSchema).max(6),

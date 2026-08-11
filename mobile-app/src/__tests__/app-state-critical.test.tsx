@@ -71,6 +71,7 @@ afterEach(() => {
 describe("AppStateProvider - fluxos criticos", () => {
   it("hidrata sessão válida e infere role a partir do usuario", async () => {
     asyncStore["@personalapp/onboardingDone"] = "1";
+    asyncStore["@personalapp/onboardingDoneUserId"] = "u1";
     asyncStore["@personalapp/role"] = "CLIENT";
     secureStore["personalapp.accessToken"] = "access-1";
     secureStore["personalapp.refreshToken"] = "refresh-1";
@@ -163,6 +164,38 @@ describe("AppStateProvider - fluxos criticos", () => {
     expect(authApi.logout).toHaveBeenCalledWith("refresh-3");
     expect(context.isAuthenticated).toBe(false);
     expect(context.user).toBeNull();
+  });
+
+  it("onboarding concluído por uma conta não é herdado por outra conta no mesmo dispositivo (Frente 8, Lote 14)", async () => {
+    jest.spyOn(authApi, "logout").mockResolvedValue();
+    jest.spyOn(authApi, "login").mockResolvedValueOnce(
+      buildSession({ id: "ua", name: "User A", email: "a@test.com", role: "CLIENT" }, "access-a", "refresh-a")
+    );
+
+    await renderProvider();
+
+    await act(async () => {
+      await context.login({ email: "a@test.com", password: "StrongPass123" });
+    });
+    expect(context.onboardingDone).toBe(false);
+
+    await act(async () => {
+      await context.completeOnboarding();
+    });
+    expect(context.onboardingDone).toBe(true);
+
+    await act(async () => {
+      await context.signOut();
+    });
+
+    jest.spyOn(authApi, "login").mockResolvedValueOnce(
+      buildSession({ id: "ub", name: "User B", email: "b@test.com", role: "CLIENT" }, "access-b", "refresh-b")
+    );
+    await act(async () => {
+      await context.login({ email: "b@test.com", password: "StrongPass123" });
+    });
+
+    expect(context.onboardingDone).toBe(false);
   });
 
   it("runWithAuth faz retry após 401 quando refresh ocorre com sucesso", async () => {

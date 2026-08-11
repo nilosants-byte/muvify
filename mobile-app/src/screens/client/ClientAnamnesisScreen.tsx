@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -238,18 +238,51 @@ function getValue(input: AnamnesisAnswers, path: readonly string[]) {
   }, input);
 }
 
-function missingRequired(answers: AnamnesisAnswers) {
+// Frente 8 (segunda camada), Lote 6: o erro final só dizia "faltam N
+// respostas obrigatórias", sem indicar em qual das 7 etapas — com 54 campos
+// espalhados, o usuário tinha que navegar manualmente por tudo de novo pra
+// achar o que faltava. Mapeia cada seção pra etapa (mesma correspondência
+// usada em renderCurrentStep/STEPS) pra poder apontar direto.
+const sectionToStep: Record<SectionKey, number> = {
+  personalData: 0,
+  objectives: 1,
+  healthHistory: 2,
+  medicationAndSupplements: 2,
+  familyHistory: 2,
+  activityHistory: 3,
+  lifestyle: 4,
+  nutrition: 4,
+  limitations: 5,
+  behavior: 5,
+  imageAuthorization: 6,
+  parq: 6,
+};
+
+function missingRequired(answers: AnamnesisAnswers): { count: number; steps: Set<number> } {
   let missing = 0;
+  const steps = new Set<number>();
   requiredPaths.forEach((path) => {
     const value = getValue(answers, path);
-    if (typeof value !== "string" || !value.trim()) missing += 1;
+    if (typeof value !== "string" || !value.trim()) {
+      missing += 1;
+      steps.add(sectionToStep[path[0] as SectionKey]);
+    }
   });
   requiredBooleans.forEach((path) => {
-    if (typeof getValue(answers, path) !== "boolean") missing += 1;
+    if (typeof getValue(answers, path) !== "boolean") {
+      missing += 1;
+      steps.add(sectionToStep[path[0] as SectionKey]);
+    }
   });
-  if (!answers.objectives?.selected?.length && !(answers.objectives?.other ?? "").trim()) missing += 1;
-  if (answers.responsibilityTermAccepted !== true) missing += 1;
-  return missing;
+  if (!answers.objectives?.selected?.length && !(answers.objectives?.other ?? "").trim()) {
+    missing += 1;
+    steps.add(1);
+  }
+  if (answers.responsibilityTermAccepted !== true) {
+    missing += 1;
+    steps.add(6);
+  }
+  return { count: missing, steps };
 }
 
 const lifestyleKeyLabel: Record<string, string> = {
@@ -293,8 +326,17 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
   const [weightRaw, setWeightRaw] = useState("");
   const [heightRaw, setHeightRaw] = useState("");
   const [currentStep, setCurrentStep] = useState(0);
+  // Frente 8 (segunda camada), Lote 2: formulário de 7 etapas/54 campos
+  // obrigatórios só persistia por ação manual ("Salvar rascunho"/
+  // "Confirmar") — fechar o app ou sair da tela no meio perdia tudo, sem
+  // aviso nenhum. `dirty` marca mudança local ainda não sincronizada;
+  // autosave dispara ao trocar de etapa (não a cada tecla, pra não estourar
+  // o uploadRateLimiter de 20/hora que PUT /me/anamnesis usa).
+  const [dirty, setDirty] = useState(false);
+  const justLeavingRef = useRef(false);
 
   const patchSection = (section: SectionKey, patch: Record<string, unknown>) => {
+    setDirty(true);
     setAnswers((current) => ({
       ...current,
       [section]: { ...((current[section] as Record<string, unknown>) ?? {}), ...patch },
@@ -324,12 +366,23 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
     }
   }, [anamnesisQuery.error, showToast, navigation]);
 
-  const missingCount = useMemo(() => missingRequired(answers), [answers]);
+  const missingInfo = useMemo(() => missingRequired(answers), [answers]);
+  const missingCount = missingInfo.count;
 
   const save = async (targetStatus: "DRAFT" | "COMPLETED") => {
     if (targetStatus === "COMPLETED" && missingCount > 0) {
-      setErrorText(`Ainda faltam ${missingCount} resposta(s) obrigatória(s).`);
+      // Frente 8 (segunda camada), Lote 6: além de contar quantos campos
+      // faltam, agora aponta em quais etapas eles estão e já leva o usuário
+      // pra primeira delas, em vez de deixar ele navegar manualmente pelas
+      // 7 etapas procurando o que falta.
+      const sortedSteps = Array.from(missingInfo.steps).sort((a, b) => a - b);
+      const stepTitles = sortedSteps.map((i) => `"${STEPS[i].title}"`).join(", ");
+      setErrorText(`Ainda faltam ${missingCount} resposta(s) obrigatória(s), nas etapas: ${stepTitles}.`);
       showToast("Preencha os campos obrigatórios antes de confirmar.", "error");
+      if (sortedSteps.length > 0 && sortedSteps[0] !== currentStep) {
+        setCurrentStep(sortedSteps[0]);
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      }
       return;
     }
     try {
@@ -338,6 +391,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
       await runWithAuth((token) => userApi.upsertMyAnamnesis(token, { status: targetStatus, answers }));
       setStatus(targetStatus);
       setErrorText(null);
+      setDirty(false);
       showToast(targetStatus === "COMPLETED" ? "Anamnese confirmada." : "Rascunho salvo.", "success");
     } catch (error) {
       if (__DEV__ && error instanceof Error) {
@@ -353,7 +407,25 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
     }
   };
 
+  // Frente 8 (segunda camada), Lote 2: autosave silencioso (sem toast) ao
+  // trocar de etapa — só quando ainda é DRAFT. Uma anamnese já COMPLETED
+  // não autosalva como DRAFT aqui: o backend valida o schema inteiro quando
+  // status=COMPLETED (superRefine em upsertMyAnamnesisSchema), então
+  // reenviar como DRAFT no meio de uma edição rebaixaria o status de quem
+  // já tinha concluído, mesmo só navegando entre etapas.
+  const autoSaveDraftIfDirty = async () => {
+    if (!dirty || status !== "DRAFT") return;
+    try {
+      await runWithAuth((token) => userApi.upsertMyAnamnesis(token, { status: "DRAFT", answers }));
+      setDirty(false);
+    } catch {
+      // Falha silenciosa — o dirty continua true, então a próxima troca de
+      // etapa (ou o beforeRemove ao sair) tenta de novo / avisa o usuário.
+    }
+  };
+
   const goNext = () => {
+    void autoSaveDraftIfDirty();
     setCurrentStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   };
@@ -363,9 +435,50 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
       navigation.goBack();
       return;
     }
+    void autoSaveDraftIfDirty();
     setCurrentStep((s) => s - 1);
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   };
+
+  // Frente 8 (segunda camada), Lote 2: autosave por troca de etapa cobre a
+  // maior parte do risco, mas ainda existe uma janela — gesto de voltar
+  // (iOS) ou botão físico de voltar (Android) saem da tela sem passar por
+  // goPrev/goNext, então mudanças feitas na etapa atual (ainda não
+  // autosalvas) seriam perdidas em silêncio. beforeRemove intercepta
+  // qualquer forma de sair, não só os botões da própria tela.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      if (justLeavingRef.current || !dirty || status !== "DRAFT") return;
+      e.preventDefault();
+      Alert.alert(
+        "Sair sem salvar?",
+        "As respostas desta etapa ainda não foram salvas e serão perdidas.",
+        [
+          { text: "Continuar preenchendo", style: "cancel" },
+          {
+            text: "Salvar e sair",
+            onPress: () => {
+              void (async () => {
+                await autoSaveDraftIfDirty();
+                justLeavingRef.current = true;
+                navigation.dispatch(e.data.action);
+              })();
+            }
+          },
+          {
+            text: "Sair sem salvar",
+            style: "destructive",
+            onPress: () => {
+              justLeavingRef.current = true;
+              navigation.dispatch(e.data.action);
+            }
+          },
+        ]
+      );
+    });
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation, dirty, status, answers]);
 
   function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
     return (
@@ -770,7 +883,10 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
               <BinaryChoice
                 label="Declaro que as informações são verdadeiras e informarei alterações de saúde."
                 value={answers.responsibilityTermAccepted}
-                onChange={(value) => setAnswers((current) => ({ ...current, responsibilityTermAccepted: value }))}
+                onChange={(value) => {
+                  setDirty(true);
+                  setAnswers((current) => ({ ...current, responsibilityTermAccepted: value }));
+                }}
               />
               <MvText variant="body4" style={{ fontSize: 12, color: theme.danger, marginTop: 4 }}>
                 O botão confirmar valida termo + campos obrigatórios de todas as etapas.
@@ -834,17 +950,32 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
           </View>
         </View>
 
-        {/* Segmentos de progresso por etapa */}
+        {/* Segmentos de progresso por etapa - Frente 8 (segunda camada),
+            Lote 13: antes coloria por "etapa visitada" (i <= currentStep),
+            um sinal totalmente independente do "{progressPct}% completo" ao
+            lado (baseado em campo obrigatório preenchido). Dava pra navegar
+            até a última etapa sem preencher nada e ver a barra 100% cheia
+            enquanto o texto dizia 0%. Agora os dois vêm da mesma fonte
+            (missingInfo.steps) - uma etapa só aparece "completa" na barra
+            quando não tem nenhum campo obrigatório faltando nela. */}
         <View style={{ flexDirection: "row", gap: 4, marginTop: 12 }}>
-          {STEPS.map((_, i) => (
-            <View
-              key={i}
-              style={{
-                flex: 1, height: 3, borderRadius: 99,
-                backgroundColor: i <= currentStep ? theme.primary : (theme.mode === "dark" ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)"),
-              }}
-            />
-          ))}
+          {STEPS.map((_, i) => {
+            const isComplete = !missingInfo.steps.has(i);
+            const isCurrent = i === currentStep;
+            return (
+              <View
+                key={i}
+                style={{
+                  flex: 1, height: 3, borderRadius: 99,
+                  backgroundColor: isComplete
+                    ? theme.primary
+                    : isCurrent
+                      ? (theme.mode === "dark" ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.25)")
+                      : (theme.mode === "dark" ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)"),
+                }}
+              />
+            );
+          })}
         </View>
 
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 7 }}>

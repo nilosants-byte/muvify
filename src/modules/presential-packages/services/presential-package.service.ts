@@ -18,6 +18,7 @@ import { Payment, CardToken, PaymentRefund } from "mercadopago";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
+import { assertAnamnesisCompleted } from "../../../shared/utils/anamnesis-required";
 import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
@@ -271,19 +272,8 @@ async function resolveSessionLocationForPackage(
 
 export class PresentialPackageService {
 
-  // Frente 3 (Cadastro/onboarding), Lote 3: consultoria online e booking
-  // presencial avulso já exigiam anamnese completa no servidor; pacote
-  // presencial (e combo) só bloqueavam isso na UI do mobile - quem chamasse
-  // a API direto conseguia comprar sem a ficha de saúde preenchida.
   private async assertAnamnesisCompleted(clientId: string) {
-    if (!env.REQUIRE_ANAMNESIS_FOR_CONTRACTS) return;
-    const anamnesis = await prisma.clientAnamnesis.findUnique({ where: { clientId } });
-    if (!anamnesis || anamnesis.status !== "COMPLETED") {
-      throw new AppError(
-        "Preencha a anamnese antes de comprar um pacote presencial.",
-        StatusCodes.BAD_REQUEST
-      );
-    }
+    await assertAnamnesisCompleted(clientId, "Preencha a anamnese antes de comprar um pacote presencial.");
   }
 
   async purchasePackage(clientId: string, input: PurchasePresentialPackageInput) {

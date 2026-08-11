@@ -255,7 +255,14 @@ export function SearchProfessionalsScreen({ route, navigation }: Props) {
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <TouchableOpacity
-              onPress={() => goToList(item.displayName)}
+              // Frente 8 (segunda camada), Lote 15: tocar numa sugestão
+              // reabria a lista de resultados buscando pelo NOME do
+              // profissional (goToList(item.displayName)) em vez de abrir o
+              // perfil direto - se o nome tiver homônimo ou não bater
+              // exatamente com a tokenização da busca, o toque podia levar
+              // pra outro profissional ou pra uma lista vazia. A sugestão já
+              // é o profissional certo (tem o id), então navega direto.
+              onPress={() => navigation.navigate("ProfessionalDetail", { professionalId: item.id })}
               style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 4 }}
             >
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{item.displayName}</Text>

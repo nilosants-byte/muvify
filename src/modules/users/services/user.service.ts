@@ -30,10 +30,12 @@ import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
 import { BookingService } from "../../bookings/services/booking.service";
+import { NotificationService } from "../../notifications/services/notification.service";
 
 const presentialPackageService = new PresentialPackageService();
 const consultancyService = new ConsultancyService();
 const bookingService = new BookingService();
+const notificationService = new NotificationService();
 
 const ACTIVE_PACKAGE_STATUSES = ["PENDING_PAYMENT", "ACTIVE", "PAST_DUE"] as const;
 const ACTIVE_CONTRACT_STATUSES = ["PENDING_PAYMENT", "ACTIVE", "DELIVERED"] as const;
@@ -698,6 +700,50 @@ export class UserService {
       }
     });
     return { ...saved, answers: decryptJson(saved.answers) };
+  }
+
+  // Frente 8 (segunda camada), Lote 8: cliente que começa a preencher a
+  // anamnese e some no meio (rascunho parado) nunca recebia nenhum nudge -
+  // combinado com o achado de que a exigência só era revelada no fim do
+  // funil de agendamento (Lote 1), quem parava no meio simplesmente sumia
+  // do radar. Push/in-app (não e-mail): já é usuário com conta ativa,
+  // provavelmente com token registrado, diferente de quem nem verificou
+  // o e-mail ainda.
+  async sendAnamnesisDraftReminders(referenceDate = new Date()) {
+    const reminderThreshold = new Date(referenceDate.getTime() - 24 * 60 * 60 * 1000);
+    const candidates = await prisma.clientAnamnesis.findMany({
+      where: {
+        status: AnamnesisStatus.DRAFT,
+        draftReminderSentAt: null,
+        updatedAt: { lte: reminderThreshold }
+      },
+      select: { clientId: true },
+      take: 200
+    });
+
+    if (candidates.length === 0) {
+      return;
+    }
+
+    const claimed = await prisma.clientAnamnesis.updateMany({
+      where: { clientId: { in: candidates.map((c) => c.clientId) }, draftReminderSentAt: null },
+      data: { draftReminderSentAt: referenceDate }
+    });
+    if (claimed.count === 0) {
+      return;
+    }
+
+    await notificationService
+      .sendToUsers(
+        candidates.map((c) => c.clientId),
+        {
+          preferenceType: "SYSTEM",
+          title: "Sua ficha de saúde está incompleta",
+          body: "Termine de preencher sua ficha pra poder agendar com qualquer profissional.",
+          data: { type: "ANAMNESIS_DRAFT_REMINDER" }
+        }
+      )
+      .catch((e) => console.error("Anamnesis draft reminder failed:", e));
   }
 
   async deleteMe(userId: string, password: string) {

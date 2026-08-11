@@ -64,6 +64,13 @@ type AppStateContextValue = {
 
 const STORAGE_KEYS = {
   onboardingDone: "@personalapp/onboardingDone",
+  // Frente 8 (segunda camada), Lote 14: onboardingDone sozinho é uma flag
+  // por DISPOSITIVO, não por conta - em aparelho compartilhado, se a conta
+  // A completa o onboarding e depois a conta B faz login no mesmo
+  // dispositivo, B nunca via o onboarding (a flag já estava "1"). Mesmo
+  // padrão de role/roleUserId abaixo: o valor só conta se pertencer ao
+  // userId atual.
+  onboardingDoneUserId: "@personalapp/onboardingDoneUserId",
   themeMode: "@personalapp/themeMode",
   analyticsEnabled: "@personalapp/analyticsEnabled",
   role: "@personalapp/role",
@@ -317,6 +324,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     return null;
   }, []);
 
+  const loadOnboardingDoneForUser = useCallback(async (userId: string) => {
+    const [storedOnboarding, storedOnboardingUserId] = await Promise.all([
+      AsyncStorage.getItem(STORAGE_KEYS.onboardingDone),
+      AsyncStorage.getItem(STORAGE_KEYS.onboardingDoneUserId)
+    ]);
+    return storedOnboarding === "1" && storedOnboardingUserId === userId;
+  }, []);
+
   const setSession = useCallback(async (input: {
     user: AuthUser;
     accessToken: string;
@@ -338,9 +353,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       saveTokens(input.accessToken, input.refreshToken),
       saveUserCache(input.user)
     ]);
-    const preferredRole = await loadPreferredRoleForUser(input.user.id);
+    const [preferredRole, doneOnboarding] = await Promise.all([
+      loadPreferredRoleForUser(input.user.id),
+      loadOnboardingDoneForUser(input.user.id)
+    ]);
     setRole(resolveSessionRole(input.user, preferredRole));
-  }, [loadPreferredRoleForUser]);
+    setOnboardingDone(doneOnboarding);
+  }, [loadPreferredRoleForUser, loadOnboardingDoneForUser]);
 
   const clearSession = useCallback(async () => {
     accessTokenRef.current = null;
@@ -371,9 +390,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     const bootstrapTimeout = setTimeout(() => setBootstrapping(false), 10_000);
     async function hydrate() {
       try {
-        const [storedOnboarding, storedAccessToken, storedRefreshToken, storedThemeMode, storedAnalyticsEnabled, storedPushEnabled, cachedUser] =
+        const [storedAccessToken, storedRefreshToken, storedThemeMode, storedAnalyticsEnabled, storedPushEnabled, cachedUser] =
           await Promise.all([
-            AsyncStorage.getItem(STORAGE_KEYS.onboardingDone),
             secureGet(SECURE_KEYS.accessToken, WEB_SECURE_FALLBACK_KEYS.accessToken),
             secureGet(SECURE_KEYS.refreshToken, WEB_SECURE_FALLBACK_KEYS.refreshToken),
             AsyncStorage.getItem(STORAGE_KEYS.themeMode),
@@ -390,14 +408,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         applyAnalyticsPreference(resolvedAnalyticsEnabled);
         setPushNotificationsEnabledState(storedPushEnabled !== "0");
 
-        // Usuário com sessão existente mas sem onboarding marcado = usuário antigo.
-        // Auto-completa silenciosamente para não forçar onboarding em quem já usa o app.
-        if (storedAccessToken && storedOnboarding !== "1") {
-          await AsyncStorage.setItem(STORAGE_KEYS.onboardingDone, "1");
-          setOnboardingDone(true);
-        } else {
-          setOnboardingDone(storedOnboarding === "1");
-        }
+        // Frente 8 (segunda camada), Lote 14: onboardingDone final é
+        // resolvido por userId (loadOnboardingDoneForUser), assim que ele
+        // for conhecido (cachedUser ou userApi.me() abaixo). Enquanto isso,
+        // chute otimista: sessão existente já usa o app, não força
+        // onboarding.
+        setOnboardingDone(Boolean(storedAccessToken));
         setAccessToken(storedAccessToken ?? null);
         setRefreshToken(storedRefreshToken ?? null);
         if (storedThemeMode === "light" || storedThemeMode === "dark") {
@@ -414,8 +430,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         if (cachedUser && cachedUser.id) {
           setUser(cachedUser);
           setIsAuthenticated(true);
-          const preferredRole = await loadPreferredRoleForUser(cachedUser.id);
+          const [preferredRole, doneOnboarding] = await Promise.all([
+            loadPreferredRoleForUser(cachedUser.id),
+            loadOnboardingDoneForUser(cachedUser.id)
+          ]);
           setRole(resolveSessionRole(cachedUser, preferredRole));
+          setOnboardingDone(doneOnboarding);
           setBootstrapping(false);
         } else {
           setRole(null);
@@ -427,8 +447,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           setUser(me);
           setIsAuthenticated(true);
           void saveUserCache(me);
-          const preferredRole = await loadPreferredRoleForUser(me.id);
+          const [preferredRole, doneOnboarding] = await Promise.all([
+            loadPreferredRoleForUser(me.id),
+            loadOnboardingDoneForUser(me.id)
+          ]);
           setRole(resolveSessionRole(me, preferredRole));
+          setOnboardingDone(doneOnboarding);
         } catch (error) {
           captureException(error, { stage: "app_state_hydrate_me" });
           if (!(error instanceof ApiError) || error.status !== 401 || !storedRefreshToken) {
@@ -454,7 +478,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   async function completeOnboarding() {
     setOnboardingDone(true);
-    await AsyncStorage.setItem(STORAGE_KEYS.onboardingDone, "1");
+    const writes = [AsyncStorage.setItem(STORAGE_KEYS.onboardingDone, "1")];
+    if (user?.id) {
+      writes.push(AsyncStorage.setItem(STORAGE_KEYS.onboardingDoneUserId, user.id));
+    }
+    await Promise.all(writes);
   }
 
   async function setThemePreference(nextMode: ThemeMode) {

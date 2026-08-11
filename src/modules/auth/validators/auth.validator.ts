@@ -46,6 +46,15 @@ export const refreshSchema = z.object({
   })
 });
 
+// Frente 8 (segunda camada), Lote 5: POST que de fato consome o token de
+// verificação de e-mail, disparado pelo clique real no botão da página de
+// confirmação (GET só valida sem consumir — ver auth.controller.ts).
+export const confirmEmailVerificationSchema = z.object({
+  body: z.object({
+    token: z.string().min(1).max(2000)
+  })
+});
+
 export const forgotPasswordSchema = z.object({
   body: z.object({
     channel: z.enum(["EMAIL", "RECOVERY_EMAIL"]).default("EMAIL"),

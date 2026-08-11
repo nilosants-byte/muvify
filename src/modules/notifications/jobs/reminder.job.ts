@@ -2,14 +2,18 @@ import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
+import { AuthService } from "../../auth/services/auth.service";
 import { BookingService } from "../../bookings/services/booking.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
+import { UserService } from "../../users/services/user.service";
 import { NotificationService } from "../services/notification.service";
 
+const authService = new AuthService();
 const bookingService = new BookingService();
 const consultancyService = new ConsultancyService();
 const presentialPackageService = new PresentialPackageService();
+const userService = new UserService();
 const notificationService = new NotificationService();
 
 let timer: NodeJS.Timeout | null = null;
@@ -99,6 +103,18 @@ export function startReminderJob() {
           isolateReminderSubJob(
             () => notificationService.purgeStaleDevices().then(() => undefined),
             "purgeStaleDevices"
+          ),
+          isolateReminderSubJob(
+            () => authService.sendUnverifiedEmailReminders(),
+            "sendUnverifiedEmailReminders"
+          ),
+          isolateReminderSubJob(
+            () => authService.expireUnverifiedRegistrations(),
+            "expireUnverifiedRegistrations"
+          ),
+          isolateReminderSubJob(
+            () => userService.sendAnamnesisDraftReminders(),
+            "sendAnamnesisDraftReminders"
           ),
         ]),
         new Promise<never>((_, reject) =>

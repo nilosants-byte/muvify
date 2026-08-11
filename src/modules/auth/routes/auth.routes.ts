@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
-import { authRateLimiter } from "../../../middlewares/rate-limit.middleware";
+import { authRateLimiter, refreshRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { AuthController } from "../controllers/auth.controller";
 import { TwoFactorController } from "../controllers/two-factor.controller";
 import {
+  confirmEmailVerificationSchema,
   forgotPasswordSchema,
   loginSchema,
   refreshSchema,
@@ -35,7 +36,7 @@ authRoutes.post("/login", authRateLimiter, validate(loginSchema), authController
  *     summary: Renova o access token
  *     tags: [Auth]
  */
-authRoutes.post("/refresh", authRateLimiter, validate(refreshSchema), authController.refresh);
+authRoutes.post("/refresh", refreshRateLimiter, validate(refreshSchema), authController.refresh);
 /**
  * @swagger
  * /auth/logout:
@@ -78,6 +79,19 @@ authRoutes.post(
  *     tags: [Auth]
  */
 authRoutes.get("/verify-email", authRateLimiter, authController.verifyEmail);
+/**
+ * @swagger
+ * /auth/verify-email:
+ *   post:
+ *     summary: Confirma a verificacao do e-mail (consome o token de verdade, disparado por clique real do usuario)
+ *     tags: [Auth]
+ */
+authRoutes.post(
+  "/verify-email",
+  authRateLimiter,
+  validate(confirmEmailVerificationSchema),
+  authController.confirmVerifyEmail
+);
 /**
  * @swagger
  * /auth/resend-verification:

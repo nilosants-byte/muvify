@@ -232,6 +232,13 @@ export class AuthService {
       throw new AppError("Telefone invalido. Informe entre 8 e 15 digitos.", StatusCodes.BAD_REQUEST);
     }
 
+    // Frente 8 (segunda camada), Lote 11: responder "E-mail ja cadastrado"
+    // (409) permite enumerar quais e-mails têm conta - risco conhecido e
+    // aceito por ora (mesma troca de UX que a maioria dos apps faz; a
+    // alternativa, responder sempre 201 e mandar um e-mail avisando "essa
+    // conta já existe" pra quem tenta de novo, exige fluxo de e-mail
+    // transacional dedicado que não existe hoje). O rate limiter da rota
+    // (authRateLimiter) já limita o volume de tentativas de enumeração.
     const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existingUser) {
       throw new AppError("E-mail ja cadastrado.", StatusCodes.CONFLICT);
@@ -325,6 +332,20 @@ export class AuthService {
     };
   }
 
+  // Frente 8 (segunda camada), Lote 5: o link enviado por e-mail consumia o
+  // token na primeira requisição GET — mas gateways corporativos de e-mail
+  // (Microsoft Safe Links, Google Workspace, antivírus de e-mail) costumam
+  // pré-buscar automaticamente todo link recebido pra escaneá-lo antes da
+  // entrega, consumindo o token antes do clique real do usuário. Esta
+  // checagem só confirma que o token existe/está válido, sem marcá-lo como
+  // usado — usada pela página de confirmação (GET), que pede um clique real
+  // (POST) antes de consumir de verdade.
+  async checkVerificationTokenValid(token: string): Promise<boolean> {
+    const tokenHash = hashRefreshToken(token);
+    const record = await prisma.emailVerificationToken.findUnique({ where: { tokenHash } });
+    return Boolean(record && !record.usedAt && record.expiresAt > new Date());
+  }
+
   async verifyEmail(token: string) {
     const tokenHash = hashRefreshToken(token);
     const now = new Date();
@@ -335,6 +356,19 @@ export class AuthService {
       throw new AppError("Link de verificacao invalido ou expirado.", StatusCodes.BAD_REQUEST);
     }
 
+    // Frente 8 (segunda camada), Lote 3: a revogação incondicional de todas
+    // as sessões existia pra forçar re-login com a nova role efetiva — mas
+    // resolveEffectiveUserRole (admin-access.ts) só muda a role em função
+    // de emailVerifiedAt para e-mails da allowlist de admin. Pra
+    // CLIENT/PROVIDER (a esmagadora maioria dos cadastros) a role não muda
+    // nada ao verificar o e-mail, então revogar a sessão recém-criada no
+    // register() (auto-login) só gerava um falso "sessão comprometida" na
+    // hora de ativação: o access token expira em minutos, o app tenta
+    // refresh() logo em seguida, e reuso de refresh token já revogado é
+    // tratado como possível roubo de token.
+    const user = await prisma.user.findUnique({ where: { id: record.userId }, select: { email: true } });
+    const roleMayChange = user ? isAdminEmail(user.email) : false;
+
     await prisma.$transaction([
       prisma.user.update({
         where: { id: record.userId },
@@ -344,11 +378,14 @@ export class AuthService {
         where: { id: record.id },
         data: { usedAt: now }
       }),
-      // Revogar sessões antigas para forçar re-login com nova role efetiva
-      prisma.session.updateMany({
-        where: { userId: record.userId, revokedAt: null },
-        data: { revokedAt: now }
-      })
+      ...(roleMayChange
+        ? [
+            prisma.session.updateMany({
+              where: { userId: record.userId, revokedAt: null },
+              data: { revokedAt: now }
+            })
+          ]
+        : [])
     ]);
   }
 
@@ -395,6 +432,81 @@ export class AuthService {
       email: user.email,
       name: user.name
     });
+  }
+
+  // Frente 8 (segunda camada), Lote 8: quem se cadastra e some sem verificar
+  // o e-mail nunca recebia nenhum nudge automático - só descobria o token
+  // original vencido se voltasse sozinho e tentasse reenviar. A flag fica no
+  // User (não no token) porque emitir o lembrete precisa gerar um token novo
+  // (o valor bruto nunca é persistido, só o hash), o que substitui a linha
+  // do token antigo.
+  async sendUnverifiedEmailReminders(referenceDate = new Date()) {
+    const reminderThreshold = new Date(referenceDate.getTime() - 24 * 60 * 60 * 1000);
+    const candidates = await prisma.user.findMany({
+      where: {
+        emailVerifiedAt: null,
+        emailVerificationReminderSentAt: null,
+        createdAt: { lte: reminderThreshold }
+      },
+      select: { id: true, name: true, email: true },
+      take: 200
+    });
+
+    if (candidates.length === 0) {
+      return;
+    }
+
+    const claimed = await prisma.user.updateMany({
+      where: { id: { in: candidates.map((c) => c.id) }, emailVerificationReminderSentAt: null },
+      data: { emailVerificationReminderSentAt: referenceDate }
+    });
+    if (claimed.count === 0) {
+      return;
+    }
+
+    for (const candidate of candidates) {
+      await this.queueEmailVerificationEmail({
+        userId: candidate.id,
+        email: candidate.email,
+        name: candidate.name
+      }).catch((e) => console.error("Unverified email reminder failed:", e));
+    }
+  }
+
+  // Frente 8 (segunda camada), Lote 9: cadastro nunca verificado reservava o
+  // e-mail para sempre - register() rejeita qualquer e-mail já existente na
+  // tabela, verificado ou não, então um cadastro abandonado (typo, desistiu,
+  // nunca voltou) bloqueava pra sempre o dono de verdade daquele e-mail.
+  // Só expira quem realmente nunca usou a conta pra nada (nenhuma reserva,
+  // nenhuma compra, nenhum engajamento na comunidade) - contas com qualquer
+  // atividade real ficam de fora mesmo sem e-mail verificado, porque este
+  // app permite usar boa parte das funcionalidades antes de verificar.
+  async expireUnverifiedRegistrations(referenceDate = new Date()) {
+    const expiryThreshold = new Date(referenceDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const candidates = await prisma.user.findMany({
+      where: {
+        emailVerifiedAt: null,
+        createdAt: { lte: expiryThreshold },
+        bookings: { none: {} },
+        providerProfile: null,
+        consultancyRequestsSent: { none: {} },
+        consultancyContracts: { none: {} },
+        presentialPackages: { none: {} },
+        supportTicketsSubmitted: { none: {} },
+        followers: { none: {} },
+        following: { none: {} },
+        feedPosts: { none: {} }
+      },
+      select: { id: true, email: true },
+      take: 200
+    });
+
+    for (const candidate of candidates) {
+      if (isAdminEmail(candidate.email)) continue;
+      await prisma.user
+        .delete({ where: { id: candidate.id } })
+        .catch((e) => console.error(`expireUnverifiedRegistrations: falha ao apagar ${candidate.id}:`, e));
+    }
   }
 
   async login(email: string, password: string, userAgent?: string) {

@@ -66,6 +66,16 @@ export function AuthOnboardingScreen({ onDismiss }: AuthOnboardingScreenProps = 
     void completeOnboarding();
   };
 
+  // Frente 8 (segunda camada), Lote 7: "Pular" (visível nos slides 1 e 2)
+  // chamava a mesma finish() do CTA final "Ativar e começar" — pedia
+  // permissão de localização mesmo pra quem nunca chegou no terceiro slide
+  // (o único que explica esse pedido). Pular deveria pular também o pedido
+  // de permissão atrelado ao conteúdo pulado, não só o tutorial visual.
+  const skip = () => {
+    if (onDismiss) { onDismiss(); return; }
+    void completeOnboarding();
+  };
+
   const handleNext = async () => {
     if (isLast) {
       await finish();
@@ -82,7 +92,7 @@ export function AuthOnboardingScreen({ onDismiss }: AuthOnboardingScreenProps = 
       {!isLast ? (
         <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, alignItems: "flex-end" }}>
           <PressableScale
-            onPress={finish}
+            onPress={skip}
             accessibilityRole="button"
             accessibilityLabel="Pular onboarding"
             style={{ paddingHorizontal: 12, paddingVertical: 10, minHeight: 44, justifyContent: "center" }}

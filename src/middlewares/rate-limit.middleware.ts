@@ -72,6 +72,30 @@ export const authRateLimiter = rateLimit({
   }
 });
 
+// Frente 8 (segunda camada), Lote 4: /auth/refresh compartilhava o mesmo
+// balde de 20/15min por IP usado por login/registro/reset de senha — mas
+// refresh não é uma ação iniciada pelo usuário, é chamado automaticamente
+// pelo app a cada ciclo de expiração do access token (15min por padrão,
+// ACCESS_TOKEN_EXPIRES_IN). Em qualquer IP compartilhado por várias sessões
+// (Wi-Fi de academia — o ambiente de uso mais típico deste app —, NAT
+// corporativo, universidade), os refreshes automáticos concorrentes podem
+// esgotar sozinhos o balde compartilhado e travar novos cadastros/logins
+// legítimos vindos daquele IP. Balde próprio, bem mais generoso: reuso de
+// refresh token revogado já é tratado como possível roubo de token
+// (auth.service.ts::refresh), então esse limite aqui é só um teto contra
+// abuso bruto, não a defesa principal.
+export const refreshRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  passOnStoreError: true,
+  store: makeStore("rl:refresh:"),
+  message: {
+    message: "Limite de autenticacao excedido."
+  }
+});
+
 // Upload limit: 20 uploads per hour per user.
 export const uploadRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,

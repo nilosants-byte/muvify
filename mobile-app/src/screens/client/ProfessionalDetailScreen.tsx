@@ -239,17 +239,24 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
   function handleGoToBooking() {
     hapticCta();
     if (anamnesisCompleted === false) {
+      // Frente 8 (segunda camada), Lote 1: o texto antigo prometia "continuar
+      // e preencher depois", mas CreateBookingScreen trava o botão final de
+      // confirmação até a ficha estar completa (backend exige isso pra
+      // criar o agendamento) — o cliente preenchia todo o formulário de
+      // agendamento pra só então descobrir que não dava pra concluir.
+      // Mantém a navegação (a tela de agendamento já mostra um banner com
+      // atalho "Preencher" no topo), mas o texto agora não promete algo que
+      // o app não cumpre.
       Alert.alert(
         "Ficha de saúde incompleta",
-        "Preencha sua ficha de saúde para que o personal personalize seu atendimento com mais segurança. Você pode preencher agora ou continuar e preencher depois.",
+        "Preencha sua ficha de saúde para que o personal personalize seu atendimento com mais segurança. Você pode ir escolhendo os dados do agendamento, mas vai precisar completar a ficha antes de confirmar.",
         [
           {
             text: "Preencher agora",
             onPress: () => navigation.navigate("ClientAnamnesis"),
           },
           {
-            text: "Continuar assim",
-            style: "destructive",
+            text: "Continuar mesmo assim",
             onPress: () => navigation.navigate("CreateBooking", { professionalId: providerId }),
           },
           { text: "Cancelar", style: "cancel" },

@@ -16,6 +16,7 @@ import { redis } from "../../../config/redis";
 import { AppError } from "../../../shared/errors/app-error";
 import { deleteByPattern } from "../../../shared/utils/cache";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
+import { assertAnamnesisCompleted } from "../../../shared/utils/anamnesis-required";
 import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/utils/encryption";
 import { haversineKm } from "../../../shared/utils/geo";
 import { sessionOverlapsRange } from "../../../shared/utils/time-range";
@@ -171,22 +172,7 @@ export class BookingService {
     await debtService.assertNoOutstandingDebt(clientId);
     await debtService.assertProviderNoOutstandingDebt(providerId);
 
-    // Frente 3 (Cadastro/onboarding), Lote 3: a consultoria online já
-    // exigia anamnese completa no servidor antes de contratar; agendamento
-    // presencial só bloqueava isso na UI do mobile - quem chamasse a API
-    // direto conseguia agendar sem a ficha de saúde preenchida. Mesma regra,
-    // mesma flag.
-    if (env.REQUIRE_ANAMNESIS_FOR_CONTRACTS) {
-      const anamnesis = await prisma.clientAnamnesis.findUnique({
-        where: { clientId }
-      });
-      if (!anamnesis || anamnesis.status !== "COMPLETED") {
-        throw new AppError(
-          "Preencha a anamnese antes de agendar com um profissional.",
-          StatusCodes.BAD_REQUEST
-        );
-      }
-    }
+    await assertAnamnesisCompleted(clientId, "Preencha a anamnese antes de agendar com um profissional.");
 
     // Pre-compute timezone-dependent values outside the transaction to
     // minimize the time spent holding the advisory lock.

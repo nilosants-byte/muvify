@@ -16,6 +16,7 @@ import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
+import { assertAnamnesisCompleted } from "../../../shared/utils/anamnesis-required";
 import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
@@ -2120,17 +2121,7 @@ export class ConsultancyService {
     await debtService.assertNoOutstandingDebt(clientId);
     await debtService.assertProviderNoOutstandingDebt(request.providerId);
 
-    if (env.REQUIRE_ANAMNESIS_FOR_CONTRACTS) {
-      const anamnesis = await prisma.clientAnamnesis.findUnique({
-        where: { clientId }
-      });
-      if (!anamnesis || anamnesis.status !== "COMPLETED") {
-        throw new AppError(
-          "Preencha a anamnese antes de contratar um profissional.",
-          StatusCodes.BAD_REQUEST
-        );
-      }
-    }
+    await assertAnamnesisCompleted(clientId, "Preencha a anamnese antes de contratar um profissional.");
 
     if (!request.provider.mpAccountId) {
       throw new AppError(

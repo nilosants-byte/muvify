@@ -810,6 +810,13 @@ export function RootNavigator() {
         ) : role === "ADMIN" ? (
           <AdminNavigator />
         ) : role === "CLIENT" ? (
+          // Frente 8 (segunda camada), Lote 16: onboarding pós-cadastro (3
+          // slides + permissão de localização) só existe pro lado CLIENT -
+          // PROVIDER nunca vê nada equivalente ao entrar pela primeira vez.
+          // Decisão de produto aceita por ora (o fluxo de cadastro do
+          // profissional já é mais longo e guiado por natureza - CREF,
+          // oferta, disponibilidade); estender pro lado PROVIDER é melhoria
+          // futura, fora do escopo desta frente.
           !onboardingDone ? <AuthOnboardingScreen /> : <ClientNavigator />
         ) : role === "PROVIDER" ? (
           <ProfessionalNavigator />
