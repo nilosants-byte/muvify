@@ -95,7 +95,7 @@ export function ClientHomeDrawer({
           bottom: 0,
           width: DRAWER_W,
           borderRightWidth: 1,
-          borderRightColor: isLight ? "rgba(22,163,74,0.12)" : "rgba(34,197,94,0.14)",
+          borderRightColor: theme.primarySubtle,
           transform: [{ translateX: slideAnim }],
           overflow: "hidden",
           shadowColor: "#000",
@@ -121,7 +121,7 @@ export function ClientHomeDrawer({
                 paddingHorizontal: 20,
                 paddingBottom: 20,
                 borderBottomWidth: 1,
-                borderBottomColor: isLight ? "rgba(21,128,61,0.12)" : "rgba(34,197,94,0.12)",
+                borderBottomColor: theme.primarySubtle,
                 alignItems: "center",
                 gap: 10,
               }}
@@ -194,11 +194,11 @@ export function ClientHomeDrawer({
                       height: 30,
                       borderRadius: 9,
                       backgroundColor: item.danger
-                        ? "rgba(239,68,68,0.10)"
+                        ? theme.dangerSubtle
                         : theme.primarySubtle,
                       borderWidth: 1,
                       borderColor: item.danger
-                        ? "rgba(239,68,68,0.25)"
+                        ? theme.dangerSubtleBorder
                         : theme.primarySubtleBorder,
                       alignItems: "center",
                       justifyContent: "center",

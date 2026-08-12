@@ -1319,11 +1319,27 @@ export async function apiRequest<T = unknown>(
   return finalizeResponse<T>(response);
 }
 
+// Frente 10 (segunda camada), Lote 3: quando o backend não manda nenhum
+// texto amigável (payload vazio, corpo não-JSON, etc.), o fallback caía
+// pra "HTTP 500" cru na tela do usuário final - sem contexto nem ação
+// possível. As mensagens específicas por status (429/502/503/504 abaixo)
+// continuam tratadas à parte.
+function buildGenericHttpErrorMessage(status: number) {
+  const friendly = (() => {
+    if (status >= 500) return "Erro interno do servidor. Tente novamente em instantes.";
+    if (status === 404) return "Recurso não encontrado.";
+    if (status === 403) return "Você não tem permissão para fazer isso.";
+    if (status === 401) return "Sessão expirada. Faça login novamente.";
+    return "Não foi possível concluir a ação. Tente novamente.";
+  })();
+  return __DEV__ ? `${friendly} (HTTP ${status})` : friendly;
+}
+
 async function finalizeResponse<T>(response: Response): Promise<T> {
   const payload = await parseResponse(response);
   if (!response.ok) {
     let message: string;
-    if (typeof payload === "string") {
+    if (typeof payload === "string" && payload.trim()) {
       message = payload;
     } else if (payload && typeof payload === "object") {
       const p = payload as Record<string, unknown>;
@@ -1331,12 +1347,12 @@ async function finalizeResponse<T>(response: Response): Promise<T> {
         message = (p.errors as Array<{ message?: string }>)
           .map((e) => e.message)
           .filter(Boolean)
-          .join(", ") || `HTTP ${response.status}`;
+          .join(", ") || buildGenericHttpErrorMessage(response.status);
       } else {
-        message = (p.message as string | undefined) ?? (p.error as string | undefined) ?? (p.detail as string | undefined) ?? `HTTP ${response.status}`;
+        message = (p.message as string | undefined) ?? (p.error as string | undefined) ?? (p.detail as string | undefined) ?? buildGenericHttpErrorMessage(response.status);
       }
     } else {
-      message = `HTTP ${response.status}`;
+      message = buildGenericHttpErrorMessage(response.status);
     }
     if (response.status === 429) {
       const retryAfter = response.headers.get("Retry-After");

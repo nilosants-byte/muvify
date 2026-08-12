@@ -24,9 +24,9 @@ export class TwoFactorService {
       where: { id: userId },
       select: { email: true, twoFactorEnabled: true }
     });
-    if (!user) throw new AppError("Usuario nao encontrado.", StatusCodes.NOT_FOUND);
+    if (!user) throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
     if (user.twoFactorEnabled) {
-      throw new AppError("Autenticacao em dois fatores ja esta ativa.", StatusCodes.CONFLICT);
+      throw new AppError("Autenticação em dois fatores já está ativa.", StatusCodes.CONFLICT);
     }
 
     const secret = authenticator.generateSecret();
@@ -48,22 +48,22 @@ export class TwoFactorService {
       where: { id: userId },
       select: { twoFactorSecret: true, twoFactorEnabled: true }
     });
-    if (!user) throw new AppError("Usuario nao encontrado.", StatusCodes.NOT_FOUND);
+    if (!user) throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
     if (user.twoFactorEnabled) {
-      throw new AppError("Autenticacao em dois fatores ja esta ativa.", StatusCodes.CONFLICT);
+      throw new AppError("Autenticação em dois fatores já está ativa.", StatusCodes.CONFLICT);
     }
     if (!user.twoFactorSecret) {
-      throw new AppError("Inicie o processo de configuracao antes de confirmar.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Inicie o processo de configuração antes de confirmar.", StatusCodes.BAD_REQUEST);
     }
 
     const secret = decryptSensitiveText(user.twoFactorSecret);
     if (!secret) {
-      throw new AppError("Erro interno ao processar configuracao.", StatusCodes.INTERNAL_SERVER_ERROR);
+      throw new AppError("Erro interno ao processar configuração.", StatusCodes.INTERNAL_SERVER_ERROR);
     }
 
     if (!authenticator.verify({ token: code, secret })) {
       await this.registerTwoFactorFailure(userId);
-      throw new AppError("Codigo invalido. Verifique seu app autenticador e tente novamente.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Código inválido. Verifique seu app autenticador e tente novamente.", StatusCodes.BAD_REQUEST);
     }
     await this.clearTwoFactorFailures(userId);
 
@@ -81,9 +81,9 @@ export class TwoFactorService {
       where: { id: userId },
       select: { password: true, twoFactorEnabled: true, twoFactorSecret: true }
     });
-    if (!user) throw new AppError("Usuario nao encontrado.", StatusCodes.NOT_FOUND);
+    if (!user) throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
     if (!user.twoFactorEnabled) {
-      throw new AppError("Autenticacao em dois fatores nao esta ativa.", StatusCodes.CONFLICT);
+      throw new AppError("Autenticação em dois fatores não está ativa.", StatusCodes.CONFLICT);
     }
 
     if (!(await compareHash(password, user.password))) {
@@ -92,7 +92,7 @@ export class TwoFactorService {
 
     const secret = user.twoFactorSecret ? decryptSensitiveText(user.twoFactorSecret) : null;
     if (!secret || !authenticator.verify({ token: code, secret })) {
-      throw new AppError("Codigo invalido. Verifique seu app autenticador.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Código inválido. Verifique seu app autenticador.", StatusCodes.BAD_REQUEST);
     }
 
     await prisma.$transaction([
@@ -139,7 +139,7 @@ export class TwoFactorService {
       });
 
       if (!challenge || challenge.consumedAt || challenge.expiresAt <= now) {
-        throw new AppError("Sessao expirada. Faca login novamente.", StatusCodes.UNAUTHORIZED);
+        throw new AppError("Sessão expirada. Faça login novamente.", StatusCodes.UNAUTHORIZED);
       }
 
       const updated = await tx.twoFactorLoginChallenge.updateMany({
@@ -147,7 +147,7 @@ export class TwoFactorService {
         data: { consumedAt: now }
       });
       if (updated.count !== 1) {
-        throw new AppError("Sessao expirada. Faca login novamente.", StatusCodes.UNAUTHORIZED);
+        throw new AppError("Sessão expirada. Faça login novamente.", StatusCodes.UNAUTHORIZED);
       }
 
       return challenge.userId;
@@ -219,15 +219,15 @@ export class TwoFactorService {
       select: { twoFactorSecret: true, twoFactorEnabled: true }
     });
     if (!user?.twoFactorEnabled || !user.twoFactorSecret) {
-      throw new AppError("Autenticacao em dois fatores nao esta configurada.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Autenticação em dois fatores não está configurada.", StatusCodes.BAD_REQUEST);
     }
 
     const secret = decryptSensitiveText(user.twoFactorSecret);
-    if (!secret) throw new AppError("Erro interno ao verificar codigo.", StatusCodes.INTERNAL_SERVER_ERROR);
+    if (!secret) throw new AppError("Erro interno ao verificar código.", StatusCodes.INTERNAL_SERVER_ERROR);
 
     if (!authenticator.verify({ token: code, secret })) {
       await this.registerTwoFactorFailure(userId);
-      throw new AppError("Codigo invalido ou expirado.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Código inválido ou expirado.", StatusCodes.BAD_REQUEST);
     }
     await this.clearTwoFactorFailures(userId);
 
@@ -235,11 +235,11 @@ export class TwoFactorService {
     // Fail-safe: sem Redis, bloqueia o login para impedir replay attacks
     const replayKey = `totp:used:${userId}:${code}`;
     if (redis.status !== "ready") {
-      throw new AppError("Servico de autenticacao temporariamente indisponivel. Tente novamente.", StatusCodes.SERVICE_UNAVAILABLE);
+      throw new AppError("Serviço de autenticação temporariamente indisponível. Tente novamente.", StatusCodes.SERVICE_UNAVAILABLE);
     }
     const already = await redis.set(replayKey, "1", "EX", 90, "NX");
     if (already === null) {
-      throw new AppError("Codigo ja utilizado. Aguarde o proximo codigo.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Código já utilizado. Aguarde o próximo código.", StatusCodes.BAD_REQUEST);
     }
   }
 
@@ -253,7 +253,7 @@ export class TwoFactorService {
       });
 
       if (!backupCode || backupCode.userId !== userId || backupCode.usedAt !== null) {
-        throw new AppError("Codigo de recuperacao invalido ou ja utilizado.", StatusCodes.UNAUTHORIZED);
+        throw new AppError("Código de recuperação inválido ou já utilizado.", StatusCodes.UNAUTHORIZED);
       }
 
       const updated = await tx.twoFactorBackupCode.updateMany({
@@ -261,7 +261,7 @@ export class TwoFactorService {
         data: { usedAt: new Date() }
       });
       if (updated.count !== 1) {
-        throw new AppError("Codigo de recuperacao invalido ou ja utilizado.", StatusCodes.UNAUTHORIZED);
+        throw new AppError("Código de recuperação inválido ou já utilizado.", StatusCodes.UNAUTHORIZED);
       }
     });
   }

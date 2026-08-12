@@ -171,7 +171,7 @@ export class ReviewService {
     }
 
     if (review.provider.userId !== providerUserId) {
-      throw new AppError("Sem permissao para responder esta avaliação.", StatusCodes.FORBIDDEN);
+      throw new AppError("Sem permissão para responder esta avaliação.", StatusCodes.FORBIDDEN);
     }
 
     return prisma.review.update({

@@ -13,6 +13,7 @@ import { MvButton } from "../../components/mv/MvButton";
 import { MvInput } from "../../components/mv/MvInput";
 import { MvText } from "../../components/mv/MvText";
 import { useMvTheme } from "../../theme/MvThemeContext";
+import { extractApiMessage } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "TwoFactor">;
 
@@ -36,8 +37,7 @@ export function AuthTwoFactorScreen({ route, navigation }: Props) {
       setLoading(true);
       await completeTwoFactorLogin(challengeToken, trimmed);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Código inválido ou expirado.";
-      showToast(message, "error");
+      showToast(extractApiMessage(error, "Código inválido ou expirado."), "error");
     } finally {
       setLoading(false);
     }

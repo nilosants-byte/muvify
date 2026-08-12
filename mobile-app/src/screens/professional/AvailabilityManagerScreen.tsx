@@ -421,7 +421,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
             </MvText>
             <TouchableOpacity
               onPress={() => setShowAddForm(true)}
-              style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: "rgba(34,197,94,0.30)", backgroundColor: "rgba(34,197,94,0.08)" }}
+              style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: "rgba(34,197,94,0.30)", backgroundColor: theme.primarySubtle }}
             >
               <MvText variant="semi3" style={{ color: theme.textGreen, fontSize: 12 }}>+ Adicionar horário</MvText>
             </TouchableOpacity>
@@ -486,7 +486,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
               borderRadius: 10,
               borderWidth: 1,
               borderColor: applyToMoreDays ? "rgba(34,197,94,0.45)" : theme.border,
-              backgroundColor: applyToMoreDays ? "rgba(34,197,94,0.07)" : theme.inputBg,
+              backgroundColor: applyToMoreDays ? theme.primarySubtle : theme.inputBg,
             }}
           >
             <MvText variant="body4" style={{ color: theme.text1 }}>
@@ -515,7 +515,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
                         borderRadius: 20,
                         borderWidth: 1,
                         borderColor: sel ? theme.primary : theme.border,
-                        backgroundColor: sel ? "rgba(34,197,94,0.13)" : theme.inputBg,
+                        backgroundColor: sel ? theme.primarySubtle : theme.inputBg,
                       }}
                     >
                       <MvText

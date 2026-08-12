@@ -7,7 +7,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientStackParamList } from "../../navigation/route-types";
 import {
-  ApiError,
   bookingsApi,
   Category,
   ClientAnamnesisProfile,
@@ -22,7 +21,7 @@ import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar } from "../../components/mv";
 import { formatCurrencyBRL, getInitials } from "../../utils/formatters";
-import { formatPriceFromCents, handleScreenError } from "../shared/api-helpers";
+import { extractApiMessage, formatPriceFromCents, handleScreenError } from "../shared/api-helpers";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { hapticCta } from "../../utils/haptics";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
@@ -493,12 +492,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
         } catch (err) {
           failedDateKeys.push(dateKey);
           if (!firstErrorMessage) {
-            firstErrorMessage =
-              err instanceof ApiError
-                ? err.message
-                : err instanceof Error
-                ? err.message
-                : null;
+            firstErrorMessage = extractApiMessage(err, "") || null;
           }
         }
       }
@@ -869,7 +863,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
         </View>
 
         {/* Card: Ficha de saúde */}
-        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: !anamnesisCompleted ? "rgba(239,68,68,0.35)" : anamnesisOutdated ? C.amberBorder : theme.primarySubtleBorder, backgroundColor: !anamnesisCompleted ? "rgba(239,68,68,0.08)" : anamnesisOutdated ? C.amberDim : "rgba(36,230,109,0.08)", padding: S.cardPad, gap: 10 }}>
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: !anamnesisCompleted ? "rgba(239,68,68,0.35)" : anamnesisOutdated ? C.amberBorder : theme.primarySubtleBorder, backgroundColor: !anamnesisCompleted ? theme.dangerSubtle : anamnesisOutdated ? C.amberDim : "rgba(36,230,109,0.08)", padding: S.cardPad, gap: 10 }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
               <Ionicons name={!anamnesisCompleted ? "alert-circle-outline" : anamnesisOutdated ? "warning-outline" : "checkmark-circle-outline"} size={18} color={!anamnesisCompleted ? theme.danger : anamnesisOutdated ? C.amber : theme.primary} />
@@ -897,7 +891,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
             categoria, data, horário e local — mesmo padrão de aviso
             antecipado já usado pra ficha de saúde/pagamento pendente. */}
         {clientHasDebt ? (
-          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: "rgba(239,68,68,0.35)", backgroundColor: "rgba(239,68,68,0.08)", padding: S.cardPad, gap: 6 }}>
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: "rgba(239,68,68,0.35)", backgroundColor: theme.dangerSubtle, padding: S.cardPad, gap: 6 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Ionicons name="alert-circle-outline" size={18} color={theme.danger} />
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.danger }}>Pendência financeira em aberto</Text>

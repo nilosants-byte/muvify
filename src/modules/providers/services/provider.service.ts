@@ -431,7 +431,7 @@ export class ProviderService {
         sig: input.sig
       })
     ) {
-      throw new AppError("Assinatura de acesso a documento invalida.", StatusCodes.FORBIDDEN);
+      throw new AppError("Assinatura de acesso a documento inválida.", StatusCodes.FORBIDDEN);
     }
 
     const provider = await prisma.providerProfile.findUnique({
@@ -439,7 +439,7 @@ export class ProviderService {
       select: { credentialDocuments: true }
     });
     if (!provider) {
-      throw new AppError("Perfil profissional nao encontrado.", StatusCodes.NOT_FOUND);
+      throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
     }
     const docs = this.getCredentialDocuments(provider.credentialDocuments) as Array<{
       uri?: string | null;
@@ -447,7 +447,7 @@ export class ProviderService {
     }>;
     const doc = docs.find((d) => d.uri === input.key);
     if (!doc) {
-      throw new AppError("Documento nao encontrado.", StatusCodes.NOT_FOUND);
+      throw new AppError("Documento não encontrado.", StatusCodes.NOT_FOUND);
     }
 
     const buffer = await getPrivateMediaBuffer(input.key);
@@ -471,7 +471,7 @@ export class ProviderService {
     });
 
     if (!provider) {
-      throw new AppError("Perfil profissional nao encontrado.", StatusCodes.NOT_FOUND);
+      throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
     }
 
     return this.mapCredentialsPayload(provider);
@@ -490,7 +490,7 @@ export class ProviderService {
     });
 
     if (!provider) {
-      throw new AppError("Perfil profissional nao encontrado.", StatusCodes.NOT_FOUND);
+      throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
     }
 
     if (provider.crefValidationStatus === CrefValidationStatus.REJECTED && provider.crefReviewedAt) {
@@ -542,7 +542,7 @@ export class ProviderService {
         const unowned = privateKeys.filter((key) => !ownedKeys.has(key));
         if (unowned.length > 0) {
           throw new AppError(
-            "Um ou mais documentos enviados nao pertencem a este usuario.",
+            "Um ou mais documentos enviados não pertencem a este usuário.",
             StatusCodes.FORBIDDEN
           );
         }
@@ -677,7 +677,7 @@ export class ProviderService {
     }
 
     if (justification.length > 300) {
-      throw new AppError("A justificativa deve ter no maximo 300 caracteres.", StatusCodes.BAD_REQUEST);
+      throw new AppError("A justificativa deve ter no máximo 300 caracteres.", StatusCodes.BAD_REQUEST);
     }
 
     const reviewedAt = new Date();
@@ -714,20 +714,20 @@ export class ProviderService {
       });
 
       if (!provider) {
-        throw new AppError("Perfil profissional nao encontrado.", StatusCodes.NOT_FOUND);
+        throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
       }
 
       const crefNumber = provider.crefNumber?.trim();
       if (!crefNumber || !this.hasFrontAndBackCredentialDocuments(provider.credentialDocuments)) {
         throw new AppError(
-          "Nao e possivel validar CREF sem frente e verso anexados.",
+          "Não é possível validar CREF sem frente e verso anexados.",
           StatusCodes.BAD_REQUEST
         );
       }
 
       if (provider.crefValidationStatus !== CREF_STATUS_IN_REVIEW) {
         throw new AppError(
-          "Este CREF nao esta em analise no momento.",
+          "Este CREF não está em análise no momento.",
           StatusCodes.BAD_REQUEST
         );
       }
@@ -779,7 +779,7 @@ export class ProviderService {
 
       if (result.count === 0) {
         throw new AppError(
-          "Este CREF ja foi revisado por outro administrador enquanto voce revisava. Recarregue a fila.",
+          "Este CREF já foi revisado por outro administrador enquanto você revisava. Recarregue a fila.",
           StatusCodes.CONFLICT
         );
       }
@@ -986,7 +986,7 @@ export class ProviderService {
           select: { id: true }
         });
         if (categories.length !== requestedCategoryIds.length) {
-          throw new AppError("Uma ou mais categorias sao invalidas.", StatusCodes.BAD_REQUEST);
+          throw new AppError("Uma ou mais categorias são inválidas.", StatusCodes.BAD_REQUEST);
         }
       }
       const specialties = sanitizeSpecialties(input.specialties ?? []);

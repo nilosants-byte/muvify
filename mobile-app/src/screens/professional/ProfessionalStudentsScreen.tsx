@@ -11,7 +11,7 @@ import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { ProviderStudent, ProviderStudentServiceKind, providersApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvInput, MvRefreshControl, MvText } from "../../components/mv";
+import { MvAvatar, MvEmptyState, MvInput, MvRefreshControl, MvText } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
@@ -151,7 +151,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, flex: 1, justifyContent: "center" }}>
         <View style={{ paddingVertical: 40, alignItems: "center", gap: 14 }}>
-          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
             <Ionicons name="people-outline" size={30} color={theme.textGreen} />
           </View>
           <MvText variant="semi1" style={{ textAlign: "center" }}>Finalize seu perfil</MvText>
@@ -223,7 +223,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
         <PressableScale
           scale={0.92}
           onPress={() => navigation.navigate("ProfessionalConsultancyCenter" as never)}
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(34,197,94,0.12)", borderWidth: 1, borderColor: "rgba(34,197,94,0.25)", alignItems: "center", justifyContent: "center" }}
+          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="person-add-outline" size={18} color={theme.textGreen} />
         </PressableScale>
@@ -292,7 +292,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
                   borderRadius: 20,
                   borderWidth: 1,
                   borderColor: selected ? "rgba(34,197,94,0.35)" : theme.border,
-                  backgroundColor: selected ? "rgba(34,197,94,0.12)" : theme.inputBg,
+                  backgroundColor: selected ? theme.primarySubtle : theme.inputBg,
                   paddingHorizontal: 12,
                   paddingVertical: 7,
                 }}
@@ -302,7 +302,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
                 </MvText>
                 <View style={{
                   minWidth: 18, height: 18, borderRadius: 9,
-                  backgroundColor: selected ? "rgba(34,197,94,0.22)" : theme.backBtn,
+                  backgroundColor: selected ? theme.primarySubtleBorder : theme.backBtn,
                   alignItems: "center", justifyContent: "center", paddingHorizontal: 4,
                 }}>
                   <MvText variant="caption" style={{ color: selected ? theme.textGreen : theme.text3, fontSize: 10 }}>
@@ -367,43 +367,23 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
             </PressableScale>
           </View>
         ) : !loading && filteredStudents.length === 0 ? (
-          <View style={{ alignItems: "center", padding: 32, gap: 14 }}>
-            <View style={{
-              width: 72, height: 72, borderRadius: 36,
-              backgroundColor: "rgba(34,197,94,0.10)",
-              alignItems: "center", justifyContent: "center",
-              borderWidth: 1, borderColor: "rgba(34,197,94,0.20)",
-            }}>
-              <Ionicons name="people-outline" size={34} color={theme.textGreen} />
-            </View>
-            <View style={{ alignItems: "center", gap: 6 }}>
-              <MvText variant="h3" style={{ letterSpacing: -1, textAlign: "center" }}>
-                {searchTerm.trim() ? "Nenhum aluno encontrado" : "Seu primeiro aluno está chegando"}
-              </MvText>
-              <MvText variant="body4" color="secondary" style={{ textAlign: "center", lineHeight: 20 }}>
-                {searchTerm.trim()
-                  ? "Tente buscar por um nome ou email diferente."
-                  : "Ative suas ofertas, compartilhe seu perfil e comece a transformar vidas."}
-              </MvText>
-            </View>
-            {!searchTerm.trim() ? (
-              <PressableScale
-                scale={0.96}
-                onPress={() => navigation.navigate("ProfessionalConsultancyCenter", { initialTab: "offers" })}
-                style={{
-                  flexDirection: "row", alignItems: "center", gap: 6,
-                  paddingHorizontal: 20, paddingVertical: 12,
-                  borderRadius: 99,
-                  backgroundColor: theme.textGreen,
-                }}
-              >
-                <Ionicons name="add" size={16} color={theme.textOnPrimary} />
-                <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>
-                  Configurar ofertas
-                </MvText>
-              </PressableScale>
-            ) : null}
-          </View>
+          <MvEmptyState
+            icon="people-outline"
+            tone="green"
+            title={searchTerm.trim() ? "Nenhum aluno encontrado" : "Seu primeiro aluno está chegando"}
+            description={
+              searchTerm.trim()
+                ? "Tente buscar por um nome ou email diferente."
+                : "Ative suas ofertas, compartilhe seu perfil e comece a transformar vidas."
+            }
+            ctaLabel={!searchTerm.trim() ? "Configurar ofertas" : undefined}
+            ctaIcon={!searchTerm.trim() ? "add" : undefined}
+            onCtaPress={
+              !searchTerm.trim()
+                ? () => navigation.navigate("ProfessionalConsultancyCenter", { initialTab: "offers" })
+                : undefined
+            }
+          />
         ) : null}
       </ScrollView>
       </ScreenEntrance>
@@ -542,7 +522,7 @@ function StudentRow({
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{
                   width: 22, height: 22, borderRadius: 6,
-                  backgroundColor: "rgba(239,68,68,0.14)",
+                  backgroundColor: theme.dangerSubtle,
                   alignItems: "center", justifyContent: "center",
                 }}
               >
@@ -554,12 +534,12 @@ function StudentRow({
               paddingVertical: 4,
               borderRadius: 20,
               backgroundColor: student.paymentPastDue
-                ? "rgba(239,68,68,0.14)"
-                : student.active ? "rgba(34,197,94,0.12)" : "rgba(107,114,128,0.10)",
+                ? theme.dangerSubtle
+                : student.active ? theme.primarySubtle : "rgba(107,114,128,0.10)",
               borderWidth: 1,
               borderColor: student.paymentPastDue
                 ? "rgba(239,68,68,0.30)"
-                : student.active ? "rgba(34,197,94,0.25)" : "rgba(107,114,128,0.20)",
+                : student.active ? theme.primarySubtleBorder : "rgba(107,114,128,0.20)",
             }}>
               <MvText
                 variant="body4"

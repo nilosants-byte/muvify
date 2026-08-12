@@ -614,7 +614,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
               onPress={() => setCalendarExpanded((v) => !v)}
               style={{
                 width: 36, height: 36, borderRadius: 18,
-                backgroundColor: calendarExpanded ? "rgba(34,197,94,0.14)" : theme.backBtn,
+                backgroundColor: calendarExpanded ? theme.primarySubtle : theme.backBtn,
                 alignItems: "center", justifyContent: "center",
               }}
             >
@@ -670,7 +670,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                           alignItems: "center",
                           borderWidth: 1,
                           borderColor: isSelected ? "rgba(34,197,94,0.30)" : theme.border,
-                          backgroundColor: isSelected ? "rgba(34,197,94,0.12)" : theme.cardBg,
+                          backgroundColor: isSelected ? theme.primarySubtle : theme.cardBg,
                         }}
                       >
                         <MvText variant="body4" color="secondary" style={{ fontSize: 9, textTransform: "uppercase" }}>
@@ -824,7 +824,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                         borderRadius: 20,
                         borderWidth: 1,
                         borderColor: "rgba(34,197,94,0.30)",
-                        backgroundColor: "rgba(34,197,94,0.08)",
+                        backgroundColor: theme.primarySubtle,
                       }}
                     >
                       <MvText variant="semi3" style={{ color: theme.textGreen, fontSize: 12 }}>Hoje</MvText>
@@ -842,7 +842,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                       flex: 1,
                       paddingVertical: 10,
                       alignItems: "center",
-                      backgroundColor: activeTab === tab.key ? "rgba(34,197,94,0.12)" : "transparent",
+                      backgroundColor: activeTab === tab.key ? theme.primarySubtle : "transparent",
                       borderRightWidth: i < tabs.length - 1 ? 1 : 0,
                       borderRightColor: theme.border,
                     }}
@@ -1008,14 +1008,14 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                         <View key={`fr-${item.time}`} style={{
                           flexDirection: "row", alignItems: "center", gap: 12,
                           borderRadius: 16, borderWidth: 1, borderColor: "rgba(34,197,94,0.28)",
-                          backgroundColor: "rgba(34,197,94,0.06)",
+                          backgroundColor: theme.primarySubtle,
                           paddingHorizontal: 14, paddingVertical: 13,
                         }}>
                           <MvText variant="semi2" style={{ color: theme.textGreen, minWidth: 44, fontSize: 16 }}>{item.time}</MvText>
                           <View style={{ flex: 1, gap: 2 }}>
                             <View style={{
                               flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start",
-                              backgroundColor: "rgba(34,197,94,0.12)",
+                              backgroundColor: theme.primarySubtle,
                               borderRadius: 99, paddingHorizontal: 10, paddingVertical: 3,
                             }}>
                               <MvText variant="body4" style={{ color: theme.textGreen, fontSize: 11 }}>Horário livre</MvText>
@@ -1351,7 +1351,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                             borderRadius: 20,
                             borderWidth: 1,
                             borderColor: isSelected ? theme.textGreen : theme.border,
-                            backgroundColor: isSelected ? "rgba(34,197,94,0.12)" : theme.chipBg,
+                            backgroundColor: isSelected ? theme.primarySubtle : theme.chipBg,
                           }}
                         >
                           <MvText variant="semi3" style={{

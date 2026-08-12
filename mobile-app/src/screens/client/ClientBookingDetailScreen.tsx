@@ -79,7 +79,7 @@ function bookingStatusStyle(status: Booking["status"], theme: MvTheme) {
   if (status === "CONFIRMED") return { label: "Confirmado", color: theme.primary, bg: theme.primarySubtle, border: theme.primarySubtleBorder };
   if (status === "PENDING") return { label: "Pendente", color: C.amber, bg: C.amberDim, border: C.amberBorder };
   if (status === "COMPLETED") return { label: "Concluído", color: theme.text2, bg: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", border: theme.border };
-  return { label: "Cancelado", color: theme.danger, bg: isDark ? "rgba(239,68,68,0.12)" : "rgba(220,38,38,0.09)", border: isDark ? "rgba(239,68,68,0.20)" : "rgba(220,38,38,0.15)" };
+  return { label: "Cancelado", color: theme.danger, bg: isDark ? theme.dangerSubtle : "rgba(220,38,38,0.09)", border: isDark ? theme.dangerSubtleBorder : "rgba(220,38,38,0.15)" };
 }
 
 function getInitials(name?: string | null) {
@@ -917,7 +917,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         )}
 
         {wasReportedAsNoShow && noShowReport ? (
-          <View style={{ marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.danger, backgroundColor: "rgba(239,68,68,0.08)", padding: 14, gap: 8 }}>
+          <View style={{ marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.danger, backgroundColor: theme.dangerSubtle, padding: 14, gap: 8 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>
               Você foi reportado por falta neste agendamento
             </Text>
@@ -954,7 +954,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         ) : null}
 
         {canContestAutoCapture ? (
-          <View style={{ marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.danger, backgroundColor: "rgba(239,68,68,0.08)", padding: 14, gap: 8 }}>
+          <View style={{ marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.danger, backgroundColor: theme.dangerSubtle, padding: 14, gap: 8 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>
               Esta sessão foi cobrada por confirmação única
             </Text>

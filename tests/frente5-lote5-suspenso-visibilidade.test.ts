@@ -120,7 +120,7 @@ describe("Frente 5, Lote 5 — profissional suspenso some de favoritos, perfil e
     const promotions = await consultancyService.listPromotions();
     expect(promotions.some((o: any) => o.id === offerId)).toBe(false);
 
-    await expect(favoriteService.add(clientId, providerId)).rejects.toThrow(/nao disponivel/i);
+    await expect(favoriteService.add(clientId, providerId)).rejects.toThrow(/não disponível/i);
 
     await prisma.user.update({ where: { id: providerUserId }, data: { suspendedAt: null, suspensionReason: null } });
   });

@@ -132,8 +132,8 @@ export function ArchivedRequestsScreen({ navigation }: Props) {
         renderItem={({ item }) => {
           const bs = variantFromStatus(item.status);
           const badgeColor = bs === "orange" ? C.amber : bs === "red" ? theme.danger : bs === "blue" ? C.sky : theme.text2;
-          const badgeBg = bs === "orange" ? C.amberDim : bs === "red" ? "rgba(239,68,68,0.12)" : bs === "blue" ? C.skyDim : "rgba(255,255,255,0.06)";
-          const badgeBorder = bs === "orange" ? C.amberBorder : bs === "red" ? "rgba(239,68,68,0.20)" : bs === "blue" ? C.skyBorder : theme.border;
+          const badgeBg = bs === "orange" ? C.amberDim : bs === "red" ? theme.dangerSubtle : bs === "blue" ? C.skyDim : "rgba(255,255,255,0.06)";
+          const badgeBorder = bs === "orange" ? C.amberBorder : bs === "red" ? theme.dangerSubtleBorder : bs === "blue" ? C.skyBorder : theme.border;
           const hasDetail = Boolean(item.trainingNeedText || item.limitationText || item.extraInfoText);
           const expanded = expandedId === item.id;
           return (
@@ -176,7 +176,7 @@ export function ArchivedRequestsScreen({ navigation }: Props) {
         ListEmptyComponent={
           !loading ? (
             <View style={{ paddingTop: 40, alignItems: "center", gap: 10 }}>
-              <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: loadError ? "rgba(239,68,68,0.10)" : theme.primarySubtle, borderWidth: 1, borderColor: loadError ? "rgba(239,68,68,0.20)" : theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
+              <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: loadError ? theme.dangerSubtle : theme.primarySubtle, borderWidth: 1, borderColor: loadError ? theme.dangerSubtleBorder : theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name={loadError ? "cloud-offline-outline" : "archive-outline"} size={28} color={loadError ? theme.danger : theme.primary} />
               </View>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, textAlign: "center" }}>

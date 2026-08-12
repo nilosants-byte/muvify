@@ -11,13 +11,13 @@ export class FavoriteService {
       include: { user: { select: { suspendedAt: true } } }
     });
     if (!provider) {
-      throw new AppError("Prestador nao encontrado.", StatusCodes.NOT_FOUND);
+      throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
     }
     // Raio-X de pagamentos, Rodada 4, Lote 3: suspensão só bloqueava o
     // próprio login do profissional — a mesma correção já feita na busca
     // pública nunca chegou em favoritos.
     if (provider.crefValidationStatus !== CrefValidationStatus.APPROVED || provider.user.suspendedAt) {
-      throw new AppError("Prestador nao disponivel no momento.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Prestador não disponível no momento.", StatusCodes.BAD_REQUEST);
     }
 
     // Frente 5 (Descoberta, agendamento e agenda), Lote 1: usava `include`

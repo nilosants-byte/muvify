@@ -11,7 +11,7 @@ function assertOwnOrYoutubeDemoVideo(demoVideoUrl: string | undefined, ctx: z.Re
   if (!isOwnBucket && !isYoutubeUrl) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "demoVideoUrl deve apontar para o storage do próprio app ou ser um link do YouTube.",
+      message: "O vídeo de demonstração deve estar no storage do próprio app ou ser um link do YouTube.",
       path: ["demoVideoUrl"]
     });
   }

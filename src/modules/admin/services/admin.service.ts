@@ -1123,7 +1123,7 @@ export class AdminService {
     });
 
     if (!ticket) {
-      throw new AppError("Chamado de suporte nao encontrado.", StatusCodes.NOT_FOUND);
+      throw new AppError("Chamado de suporte não encontrado.", StatusCodes.NOT_FOUND);
     }
 
     const responseMessage = input.responseMessage.trim();

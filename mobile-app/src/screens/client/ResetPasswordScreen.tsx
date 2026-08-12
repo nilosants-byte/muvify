@@ -13,6 +13,7 @@ import { PressableScale } from "../../components/polish/PressableScale";
 import { C, S } from "../../theme/v2tokens";
 import { hapticCta } from "../../utils/haptics";
 import { useMvTheme } from "../../theme/MvThemeContext";
+import { extractApiMessage } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "ResetPassword">;
 
@@ -43,8 +44,7 @@ export function ResetPasswordScreen({ navigation, route }: Props) {
       showToast("Senha redefinida com sucesso. Faça login.", "success");
       navigation.navigate("Login");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao redefinir senha.";
-      showToast(message, "error");
+      showToast(extractApiMessage(error, "Falha ao redefinir senha."), "error");
     } finally { setLoading(false); }
   }
 

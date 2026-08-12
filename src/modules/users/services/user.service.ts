@@ -288,7 +288,7 @@ export class UserService {
       }
     }
     if (nextPhone && !/^\d{8,15}$/.test(nextPhone)) {
-      throw new AppError("Telefone invalido. Informe entre 8 e 15 digitos.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Telefone inválido. Informe entre 8 e 15 dígitos.", StatusCodes.BAD_REQUEST);
     }
 
     const updated = await prisma.user.update({
@@ -548,7 +548,7 @@ export class UserService {
     });
 
     if (!user) {
-      throw new AppError("Usuario nao encontrado.", StatusCodes.NOT_FOUND);
+      throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
     }
 
     const supportRecipient = env.SUPPORT_EMAIL_RECIPIENT?.trim() || env.SMTP_FROM?.trim();
@@ -942,7 +942,7 @@ export class UserService {
       if (sentMessageIds.length > 0) {
         await tx.$executeRaw`
           UPDATE "UserNotification"
-          SET "title" = '💬 Usuário removido', "body" = '[Mensagem removida]'
+          SET "title" = 'Usuário removido', "body" = '[Mensagem removida]'
           WHERE "data"->>'type' = 'CHAT_MESSAGE'
             AND "data"->>'messageId' IN (${Prisma.join(sentMessageIds)})
         `;
@@ -957,7 +957,7 @@ export class UserService {
       if (sentConsultancyMessageIds.length > 0) {
         await tx.$executeRaw`
           UPDATE "UserNotification"
-          SET "title" = '💬 Usuário removido', "body" = '[Mensagem removida]'
+          SET "title" = 'Usuário removido', "body" = '[Mensagem removida]'
           WHERE "data"->>'type' = 'CHAT_MESSAGE'
             AND "data"->>'messageId' IN (${Prisma.join(sentConsultancyMessageIds)})
         `;

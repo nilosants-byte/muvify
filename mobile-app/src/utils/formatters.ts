@@ -149,6 +149,36 @@ export function formatRelativeActivityLabel(dateIso: string | null | undefined):
   if (diffDays === 1) return "Última atividade: há 1 dia";
   return `Última atividade: há ${diffDays} dias`;
 }
+// Frente 10 (segunda camada), Lote 4: sessão criada com o header
+// X-Device-Label (app mobile, via Device.deviceName) já chega com um nome
+// legível ("iPhone 15 Pro") — mas sessões sem esse header (login web,
+// sessões antigas de antes do header existir) guardam o User-Agent técnico
+// cru ("Mozilla/5.0 ... AppleWebKit..."), ilegível pro usuário final.
+export function friendlyDeviceLabel(userAgent: string | null | undefined): string {
+  if (!userAgent) return "Aparelho desconhecido";
+  const looksTechnical = /Mozilla\/|okhttp|CFNetwork|Dalvik|Windows NT|Macintosh|X11;|Linux x86/i.test(userAgent);
+  if (!looksTechnical) return userAgent;
+
+  let os: string;
+  if (/iPhone|iPad|iPod/i.test(userAgent)) os = "iOS";
+  else if (/Android/i.test(userAgent)) os = "Android";
+  else if (/Windows/i.test(userAgent)) os = "Windows";
+  else if (/Macintosh|Mac OS X/i.test(userAgent)) os = "macOS";
+  else if (/Linux/i.test(userAgent)) os = "Linux";
+  else os = "Sistema desconhecido";
+
+  let client: string;
+  if (/OPR\/|Opera/i.test(userAgent)) client = "Opera";
+  else if (/Edg\//i.test(userAgent)) client = "Edge";
+  else if (/CriOS\//i.test(userAgent) || (/Chrome\//i.test(userAgent) && !/Chromium/i.test(userAgent))) client = "Chrome";
+  else if (/FxiOS\//i.test(userAgent) || /Firefox\//i.test(userAgent)) client = "Firefox";
+  else if (/Safari\//i.test(userAgent) && !/Chrome/i.test(userAgent)) client = "Safari";
+  else if (/okhttp/i.test(userAgent)) client = "App";
+  else client = "Navegador";
+
+  return `${os} · ${client}`;
+}
+
 export function getInitials(name: string | null | undefined): string {
   if (!name) return '';
   return name

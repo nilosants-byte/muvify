@@ -30,17 +30,17 @@ const TYPE_LABEL: Record<MyDisputeCase["type"], string> = {
   CONFIRMATION_DEADLOCK: "Sessão pendente por falha técnica"
 };
 
-function statusInfo(dispute: MyDisputeCase) {
+function statusInfo(dispute: MyDisputeCase, theme: ReturnType<typeof useMvTheme>["theme"]) {
   if (dispute.status === "OPEN") {
     return { label: "Em análise", color: C.amber, bg: C.amberDim, border: C.amberBorder };
   }
   if (dispute.resolution === "REFUNDED") {
-    return { label: "Resolvido: reembolsado", color: "#22C55E", bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.2)" };
+    return { label: "Resolvido: reembolsado", color: theme.primary, bg: theme.primarySubtle, border: theme.primarySubtleBorder };
   }
   if (dispute.resolution === "DENIED") {
-    return { label: "Resolvido: reembolso negado", color: "#EF4444", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.2)" };
+    return { label: "Resolvido: reembolso negado", color: theme.danger, bg: theme.dangerSubtle, border: theme.dangerSubtleBorder };
   }
-  return { label: "Resolvido", color: "#22C55E", bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.2)" };
+  return { label: "Resolvido", color: theme.primary, bg: theme.primarySubtle, border: theme.primarySubtleBorder };
 }
 
 export function MyDisputesScreen({ navigation }: Props) {
@@ -94,7 +94,7 @@ export function MyDisputesScreen({ navigation }: Props) {
         ) : null}
 
         {disputes.map((dispute) => {
-          const status = statusInfo(dispute);
+          const status = statusInfo(dispute, theme);
           const isClientSide = dispute.clientId === user?.id;
           return (
             <View

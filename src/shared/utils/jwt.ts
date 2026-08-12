@@ -26,6 +26,6 @@ export function verifyToken(token: string) {
   try {
     return jwt.verify(token, env.JWT_SECRET, { algorithms: ["HS256"] }) as TokenPayload;
   } catch (error) {
-    throw new AppError("Token invalido.", StatusCodes.UNAUTHORIZED);
+    throw new AppError("Token inválido.", StatusCodes.UNAUTHORIZED);
   }
 }

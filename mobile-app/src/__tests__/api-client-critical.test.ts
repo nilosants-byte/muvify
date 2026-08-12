@@ -65,6 +65,18 @@ describe("api client - fluxos criticos", () => {
     } as Partial<ApiError>);
   });
 
+  it("Frente 10 (segunda camada), Lote 3: sem mensagem amigável do backend, cai num texto em português (nunca 'HTTP 500' cru)", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 500));
+    const err500 = (await apiRequest("/broken").catch((e) => e)) as ApiError;
+    expect(err500.status).toBe(500);
+    expect(err500.message).not.toMatch(/^HTTP \d+/);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 401));
+    const err401 = (await apiRequest("/needs-auth").catch((e) => e)) as ApiError;
+    expect(err401.message).not.toMatch(/^HTTP \d+/);
+    expect(err401.message.toLowerCase()).toContain("sessão");
+  });
+
   it("executa endpoints de auth e user", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ user: { id: "u1" }, accessToken: "a", refreshToken: "r" }))

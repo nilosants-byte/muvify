@@ -39,7 +39,8 @@ import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { MvMediaPreviewButton, MvMediaViewer } from "../../components/mv";
 import { formatDateLabel, formatCurrencyBRL } from "../../utils/formatters";
-import { handleScreenError } from "../shared/api-helpers";
+import { extractApiMessage, handleScreenError } from "../shared/api-helpers";
+import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -259,10 +260,7 @@ function WorkoutDetailModal({
         .catch(() => undefined);
     } catch (error) {
       setShowFinishConfirm(false);
-      showToast(
-        error instanceof Error ? error.message : "Não foi possível registrar a conclusão do treino.",
-        "error"
-      );
+      showToast(extractApiMessage(error, "Não foi possível registrar a conclusão do treino."), "error");
     } finally {
       setCompleting(false);
       completingRef.current = false;
@@ -1118,7 +1116,11 @@ export function MyTrainingScreen({ navigation, route }: Props) {
         }
         renderItem={({ item }) => renderPlanCard(item)}
         ListEmptyComponent={
-          !loading ? (
+          loading ? (
+            <View style={{ gap: 10 }}>
+              {[0, 1, 2].map((i) => <SkeletonCard key={i} />)}
+            </View>
+          ) : (
             <View style={{ paddingTop: 40, alignItems: "center", gap: 10 }}>
               <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="barbell-outline" size={28} color={theme.primary} />
@@ -1132,7 +1134,7 @@ export function MyTrainingScreen({ navigation, route }: Props) {
                  "Nenhum treino vencido ainda."}
               </Text>
             </View>
-          ) : null
+          )
         }
         showsVerticalScrollIndicator={false}
       />

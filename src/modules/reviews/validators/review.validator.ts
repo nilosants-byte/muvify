@@ -11,7 +11,7 @@ export const createReviewSchema = z.object({
       comment: z.string().trim().min(1).max(500).optional()
     })
     .refine((body) => Boolean(body.bookingId) !== Boolean(body.contractId), {
-      message: "Informe exatamente um entre bookingId e contractId.",
+      message: "Informe exatamente um agendamento ou contrato de consultoria para avaliar, não os dois.",
       path: ["bookingId"]
     })
 });

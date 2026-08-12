@@ -10,12 +10,12 @@ export async function ensureAuthenticated(request: Request, _response: Response,
   try {
     const authHeader = request.headers.authorization;
     if (!authHeader) {
-      return next(new AppError("Token nao informado.", StatusCodes.UNAUTHORIZED));
+      return next(new AppError("Token não informado.", StatusCodes.UNAUTHORIZED));
     }
 
     const [scheme, token] = authHeader.split(" ");
     if (!scheme || !/^Bearer$/i.test(scheme) || !token) {
-      return next(new AppError("Token invalido.", StatusCodes.UNAUTHORIZED));
+      return next(new AppError("Token inválido.", StatusCodes.UNAUTHORIZED));
     }
 
     const payload = verifyToken(token);
@@ -24,7 +24,7 @@ export async function ensureAuthenticated(request: Request, _response: Response,
       void connectRedis();
       return next(
         new AppError(
-          "Servico temporariamente indisponivel. Tente novamente em instantes.",
+          "Serviço temporariamente indisponível. Tente novamente em instantes.",
           StatusCodes.SERVICE_UNAVAILABLE
         )
       );
@@ -34,7 +34,7 @@ export async function ensureAuthenticated(request: Request, _response: Response,
       allowLocalFallback: !strictRedisForBlacklist
     });
     if (blacklistedSince !== null && payload.iat !== undefined && payload.iat <= blacklistedSince) {
-      return next(new AppError("Sessao encerrada. Faca login novamente.", StatusCodes.UNAUTHORIZED));
+      return next(new AppError("Sessão encerrada. Faça login novamente.", StatusCodes.UNAUTHORIZED));
     }
 
     request.user = { id: payload.sub, role: payload.role, sessionId: payload.sessionId };

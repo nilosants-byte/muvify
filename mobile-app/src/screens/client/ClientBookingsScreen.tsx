@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientTabParamList } from "../../navigation/route-types";
 import { bookingsApi, Booking } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
-import { MvAvatar } from "../../components/mv";
+import { MvAvatar, MvEmptyState } from "../../components/mv";
 import { handleScreenError } from "../shared/api-helpers";
 import { resolveMediaUrl } from "../../utils/media";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -67,7 +67,7 @@ function badgeStyle(status: Booking["status"], theme: MvTheme): { label: string;
   if (status === "CONFIRMED") return { label: "Confirmado", color: theme.primary, bg: theme.primarySubtle, border: theme.primarySubtleBorder };
   if (status === "PENDING") return { label: "Pendente", color: C.amber, bg: C.amberDim, border: C.amberBorder };
   if (status === "COMPLETED") return { label: "Concluído", color: theme.text2, bg: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", border: theme.border };
-  return { label: "Cancelado", color: theme.danger, bg: isDark ? "rgba(239,68,68,0.12)" : "rgba(220,38,38,0.09)", border: isDark ? "rgba(239,68,68,0.20)" : "rgba(220,38,38,0.15)" };
+  return { label: "Cancelado", color: theme.danger, bg: isDark ? theme.dangerSubtle : "rgba(220,38,38,0.09)", border: isDark ? theme.dangerSubtleBorder : "rgba(220,38,38,0.15)" };
 }
 
 function sortByDateAsc(list: Booking[]) {
@@ -316,12 +316,7 @@ export function ClientBookingsScreen({ navigation }: Props) {
               {[0, 1, 2].map((i) => <SkeletonBookingCard key={i} />)}
             </View>
           ) : (
-            <View style={{ paddingTop: 40, alignItems: "center", gap: 10 }}>
-              <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="calendar-outline" size={28} color={theme.primary} />
-              </View>
-              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, textAlign: "center" }}>{emptyText}</Text>
-            </View>
+            <MvEmptyState icon="calendar-outline" style={{ paddingTop: 40 }} description={emptyText} />
           )
         }
         showsVerticalScrollIndicator={false}

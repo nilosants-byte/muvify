@@ -12,6 +12,7 @@ import { ProfessionalScreenHeader } from "../../components/navigation/Profession
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { queryKeys } from "../../lib/queryKeys";
 import { formatBRDateTime } from "../../utils/formatters";
+import { handleScreenError } from "./api-helpers";
 
 const SUPPORT_EMAIL = "suporte@muvify.com.br";
 // Épico de Frentes, Frente 10, Lote 7 (decisão do usuário): card de
@@ -33,10 +34,7 @@ export function SupportScreen({ navigation }: { navigation?: any }) {
     {
       onSuccess: () => { setSubject(""); setMessage(""); setSent(true); },
       onError: (error) => {
-        showToast(
-          error.message || "Falha ao enviar suporte. Tente novamente em instantes.",
-          "error"
-        );
+        handleScreenError({ error, showToast, fallbackMessage: "Falha ao enviar suporte. Tente novamente em instantes.", navigation });
       },
     }
   );
@@ -95,12 +93,12 @@ export function SupportScreen({ navigation }: { navigation?: any }) {
               paddingHorizontal: 14, paddingVertical: 14,
             }}
           >
-            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name="mail-outline" size={18} color={theme.textGreen} />
             </View>
             <View style={{ flex: 1 }}>
               <MvText variant="semi3">E-mail</MvText>
-              <MvText variant="body4" color="secondary" numberOfLines={1}>Resposta em até 2 dias</MvText>
+              <MvText variant="body4" color="secondary" numberOfLines={1}>Resposta em até 2 dias úteis</MvText>
             </View>
           </PressableScale>
         </View>
@@ -116,11 +114,11 @@ export function SupportScreen({ navigation }: { navigation?: any }) {
         {sent ? (
           <View style={{
             borderRadius: 16, borderWidth: 1,
-            borderColor: "rgba(34,197,94,0.25)",
-            backgroundColor: theme.mode === "dark" ? "rgba(34,197,94,0.08)" : "rgba(34,197,94,0.05)",
+            borderColor: theme.primarySubtleBorder,
+            backgroundColor: theme.mode === "dark" ? theme.primarySubtle : theme.primarySubtle,
             padding: 24, alignItems: "center", gap: 12,
           }}>
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: "rgba(34,197,94,0.15)", alignItems: "center", justifyContent: "center" }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name="checkmark-circle" size={32} color={theme.textGreen} />
             </View>
             <MvText variant="semi1" style={{ textAlign: "center" }}>Mensagem enviada!</MvText>
@@ -183,7 +181,7 @@ export function SupportScreen({ navigation }: { navigation?: any }) {
                 {ticket.adminResponse ? (
                   <View style={{
                     marginTop: 4, borderRadius: 10, borderWidth: 1, borderColor: theme.border,
-                    backgroundColor: theme.mode === "dark" ? "rgba(34,197,94,0.06)" : "rgba(34,197,94,0.05)",
+                    backgroundColor: theme.mode === "dark" ? theme.primarySubtle : theme.primarySubtle,
                     padding: 10, gap: 4,
                   }}>
                     <MvText variant="caption" color="secondary">Resposta do suporte</MvText>

@@ -2,6 +2,7 @@ import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import * as Updates from "expo-constants";
 import { captureException } from "../observability/sentry";
+import { GENERIC_ERROR_DESCRIPTION, GENERIC_ERROR_TITLE } from "../config/errorCopy";
 
 interface State {
   hasError: boolean;
@@ -54,7 +55,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             marginBottom: 8,
           }}
         >
-          Algo deu errado
+          {GENERIC_ERROR_TITLE}
         </Text>
         <Text
           style={{
@@ -66,7 +67,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             lineHeight: 20,
           }}
         >
-          Ocorreu um erro inesperado. Tente recarregar o app.
+          {GENERIC_ERROR_DESCRIPTION} Tente recarregar o app.
         </Text>
         <TouchableOpacity
           onPress={this.handleReload}

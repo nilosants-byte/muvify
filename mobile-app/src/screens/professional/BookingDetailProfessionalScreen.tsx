@@ -511,14 +511,16 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
             <View style={{ flexDirection: "row", gap: 8 }}>
               <MvButton
                 style={{ flex: 1 }}
-                label="💬  Chat"
+                icon="chatbubble-outline"
+                label="Chat"
                 onPress={() => navigation.navigate("ProfessionalChatList", { openBookingId: bookingId })}
               />
               {booking.client?.id ? (
                 <MvButton
                   style={{ flex: 1 }}
                   variant="outline"
-                  label="📋  Anamnese"
+                  icon="clipboard-outline"
+                  label="Anamnese"
                   onPress={() =>
                     navigation.navigate("ProfessionalStudentAnamnesis", {
                       clientId: booking.client!.id,

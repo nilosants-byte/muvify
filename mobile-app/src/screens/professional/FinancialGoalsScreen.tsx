@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ActivityIndicator,
   ScrollView, StatusBar, TouchableOpacity, View,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -13,6 +12,7 @@ import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvCard, MvInput, MvModalSheet, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
+import { SkeletonGoalsTab } from "../../components/polish/SkeletonCard";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
@@ -215,9 +215,7 @@ export function FinancialGoalsScreen({ navigation }: Props) {
       </View>
 
       {loading ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color={theme.primary} />
-        </View>
+        <SkeletonGoalsTab />
       ) : !hasGoal ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 12 }}>
           <Ionicons name="flag-outline" size={44} color={theme.text3} />

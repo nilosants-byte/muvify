@@ -60,8 +60,8 @@ function MenuRow({
 }) {
   const { theme } = useMvTheme();
   const iconColor = danger ? theme.danger : theme.primary;
-  const iconBg = danger ? "rgba(239,68,68,0.12)" : theme.primarySubtle;
-  const iconBorder = danger ? "rgba(239,68,68,0.20)" : theme.primarySubtleBorder;
+  const iconBg = danger ? theme.dangerSubtle : theme.primarySubtle;
+  const iconBorder = danger ? theme.dangerSubtleBorder : theme.primarySubtleBorder;
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -76,8 +76,8 @@ function MenuRow({
         {subtitle && <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, marginTop: 1 }} numberOfLines={1}>{subtitle}</Text>}
       </View>
       {badge && (
-        <View style={{ backgroundColor: "rgba(249,115,22,0.10)", borderWidth: 1, borderColor: "rgba(249,115,22,0.38)", borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2 }}>
-          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: "#F97316" }}>{badge}</Text>
+        <View style={{ backgroundColor: theme.warningSubtle, borderWidth: 1, borderColor: theme.warningSubtleBorder, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2 }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.warning }}>{badge}</Text>
         </View>
       )}
       {!badge && <Ionicons name="chevron-forward" size={14} color={theme.labelColor} />}

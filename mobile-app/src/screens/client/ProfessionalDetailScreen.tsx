@@ -18,7 +18,7 @@ import {
 import { useAppState } from "../../state/AppState";
 import { MvAvatar } from "../../components/mv";
 import { MvVideoPlayer } from "../../components/mv/MvVideoPlayer";
-import { averageToFive, formatPriceFromCents, handleScreenError } from "../shared/api-helpers";
+import { averageToFive, extractApiMessage, formatPriceFromCents, handleScreenError } from "../shared/api-helpers";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { resolveMediaUrl } from "../../utils/media";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -154,7 +154,7 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
         showToast("Profissional adicionado aos favoritos.", "success");
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "";
+      const msg = extractApiMessage(error, "");
       if (msg.toLowerCase().includes("disponiv")) {
         showToast("Este profissional não está disponível para favoritos.", "info");
         return;
@@ -359,7 +359,7 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
                   </View>
                 )}
                 {favorite && (
-                  <View style={{ backgroundColor: "rgba(239,68,68,0.12)", borderWidth: 1, borderColor: "rgba(239,68,68,0.20)", borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3 }}>
+                  <View style={{ backgroundColor: theme.dangerSubtle, borderWidth: 1, borderColor: theme.dangerSubtleBorder, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3 }}>
                     <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.danger }}>Favorito</Text>
                   </View>
                 )}
@@ -540,8 +540,8 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1 }}>Consultoria online</Text>
             <View style={{
-              backgroundColor: catalogLoadError ? "rgba(239,68,68,0.08)" : consultancyCatalog?.onlineConsultancyEnabled ? theme.primarySubtle : "rgba(255,255,255,0.06)",
-              borderWidth: 1, borderColor: catalogLoadError ? "rgba(239,68,68,0.20)" : consultancyCatalog?.onlineConsultancyEnabled ? theme.primarySubtleBorder : theme.border,
+              backgroundColor: catalogLoadError ? theme.dangerSubtle : consultancyCatalog?.onlineConsultancyEnabled ? theme.primarySubtle : "rgba(255,255,255,0.06)",
+              borderWidth: 1, borderColor: catalogLoadError ? theme.dangerSubtleBorder : consultancyCatalog?.onlineConsultancyEnabled ? theme.primarySubtleBorder : theme.border,
               borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3,
             }}>
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: catalogLoadError ? theme.danger : consultancyCatalog?.onlineConsultancyEnabled ? theme.primary : theme.text3 }}>
@@ -644,8 +644,8 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
           disabled={savingFavorite}
           style={{
             flex: 1, height: S.btnH, borderRadius: S.btnR,
-            backgroundColor: favorite ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.06)",
-            borderWidth: 1, borderColor: favorite ? "rgba(239,68,68,0.20)" : theme.border,
+            backgroundColor: favorite ? theme.dangerSubtle : "rgba(255,255,255,0.06)",
+            borderWidth: 1, borderColor: favorite ? theme.dangerSubtleBorder : theme.border,
             alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6,
             opacity: savingFavorite ? 0.6 : 1,
           }}

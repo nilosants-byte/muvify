@@ -156,7 +156,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       setPhotoUrl(url);
       showToast("Foto enviada. Salve o perfil para concluir.", "success");
     } catch (error) {
-      showToast(error instanceof Error ? error.message : "Falha ao selecionar a foto.", "error");
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao selecionar a foto.", navigation });
     }
   }
 
@@ -216,7 +216,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       showToast("Vídeo enviado. Salve o perfil para concluir.", "success");
     } catch (error) {
       setVideoProcessing(false);
-      showToast(error instanceof Error ? error.message : "Falha ao selecionar o vídeo.", "error");
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao selecionar o vídeo.", navigation });
     }
   }
 
@@ -453,7 +453,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                       onPress={() => toggleSpecialty(name)}
                       style={{
                         paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-                        backgroundColor: selected ? "rgba(34,197,94,0.12)" : theme.chipBg,
+                        backgroundColor: selected ? theme.primarySubtle : theme.chipBg,
                         borderWidth: 1, borderColor: selected ? "rgba(34,197,94,0.30)" : theme.border,
                       }}
                     >
@@ -471,7 +471,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                     onPress={() => toggleSpecialty(name)}
                     style={{
                       paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-                      backgroundColor: "rgba(34,197,94,0.12)",
+                      backgroundColor: theme.primarySubtle,
                       borderWidth: 1, borderColor: "rgba(34,197,94,0.30)",
                       flexDirection: "row", alignItems: "center", gap: 4,
                     }}
@@ -498,7 +498,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                   onPress={addCustomSpecialty}
                   style={{
                     width: 44, height: 44, borderRadius: 10,
-                    backgroundColor: "rgba(34,197,94,0.12)",
+                    backgroundColor: theme.primarySubtle,
                     borderWidth: 1, borderColor: "rgba(34,197,94,0.30)",
                     alignItems: "center", justifyContent: "center",
                   }}
@@ -529,7 +529,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                 paddingHorizontal: 16, paddingVertical: 14,
               }}
             >
-              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="calendar-outline" size={18} color={theme.textGreen} />
               </View>
               <View style={{ flex: 1 }}>
@@ -549,7 +549,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                 paddingHorizontal: 16, paddingVertical: 14,
               }}
             >
-              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="videocam-outline" size={18} color={theme.textGreen} />
               </View>
               <View style={{ flex: 1 }}>
@@ -569,7 +569,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                 paddingHorizontal: 16, paddingVertical: 14,
               }}
             >
-              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="shield-checkmark-outline" size={18} color={theme.textGreen} />
               </View>
               <View style={{ flex: 1 }}>

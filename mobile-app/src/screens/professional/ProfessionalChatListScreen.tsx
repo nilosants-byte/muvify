@@ -456,9 +456,9 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
                 paddingHorizontal: 10,
                 paddingVertical: 7,
                 borderRadius: 20,
-                backgroundColor: isDark ? "rgba(34,197,94,0.12)" : "rgba(21,128,61,0.09)",
+                backgroundColor: isDark ? theme.primarySubtle : "rgba(21,128,61,0.09)",
                 borderWidth: 1,
-                borderColor: isDark ? "rgba(34,197,94,0.24)" : "rgba(21,128,61,0.20)",
+                borderColor: isDark ? theme.primarySubtleBorder : "rgba(21,128,61,0.20)",
               }}
             >
               <Ionicons name="pulse-outline" size={14} color={isDark ? green : "#15803D"} />
@@ -510,7 +510,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
               renderItem={({ item }) => {
                 if (item.isSystem) {
                   return (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginHorizontal: 16, marginVertical: 4, backgroundColor: isDark ? "rgba(34,197,94,0.10)" : "rgba(22,163,74,0.07)", borderRadius: 12, padding: 10, borderWidth: 1, borderColor: isDark ? "rgba(34,197,94,0.20)" : "rgba(22,163,74,0.15)" }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginHorizontal: 16, marginVertical: 4, backgroundColor: isDark ? theme.primarySubtle : "rgba(22,163,74,0.07)", borderRadius: 12, padding: 10, borderWidth: 1, borderColor: isDark ? theme.primarySubtleBorder : "rgba(22,163,74,0.15)" }}>
                       <Ionicons name="information-circle-outline" size={15} color={green} />
                       <MvText variant="body4" style={{ flex: 1, color: text2, lineHeight: 17, fontSize: 12 }}>
                         {item.content}
@@ -639,7 +639,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
                 key={t}
                 activeOpacity={0.7}
                 onPress={() => setTab(t)}
-                style={{ flex: 1, height: 34, borderRadius: S.chipR, backgroundColor: sel ? (isDark ? "rgba(34,197,94,0.14)" : "rgba(22,163,74,0.10)") : "transparent", borderWidth: sel ? 1 : 0, borderColor: isDark ? "rgba(34,197,94,0.30)" : "rgba(22,163,94,0.25)", alignItems: "center", justifyContent: "center" }}
+                style={{ flex: 1, height: 34, borderRadius: S.chipR, backgroundColor: sel ? (isDark ? theme.primarySubtle : "rgba(22,163,74,0.10)") : "transparent", borderWidth: sel ? 1 : 0, borderColor: isDark ? "rgba(34,197,94,0.30)" : "rgba(22,163,94,0.25)", alignItems: "center", justifyContent: "center" }}
               >
                 <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: sel ? green : text3 }}>
                   {t === "active" ? "Ativas" : "Inativas"}{count > 0 ? ` (${count})` : ""}
@@ -667,7 +667,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
           ListEmptyComponent={
             loadError ? (
               <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32, marginTop: 24 }}>
-                <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: "rgba(239,68,68,0.10)", borderWidth: 1, borderColor: "rgba(239,68,68,0.20)", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+                <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: theme.dangerSubtle, borderWidth: 1, borderColor: theme.dangerSubtleBorder, alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
                   <Ionicons name="cloud-offline-outline" size={30} color="#EF4444" />
                 </View>
                 <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: text1, textAlign: "center", marginBottom: 6 }}>Falha ao carregar conversas</MvText>
@@ -675,7 +675,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
               </View>
             ) : (
               <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32, marginTop: 24 }}>
-                <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: isDark ? "rgba(34,197,94,0.12)" : "rgba(22,163,74,0.09)", borderWidth: 1, borderColor: isDark ? "rgba(34,197,94,0.25)" : "rgba(22,163,74,0.18)", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+                <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: isDark ? theme.primarySubtle : "rgba(22,163,74,0.09)", borderWidth: 1, borderColor: isDark ? theme.primarySubtleBorder : "rgba(22,163,74,0.18)", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
                   <Ionicons name="chatbubbles-outline" size={30} color={green} />
                 </View>
                 <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: text1, textAlign: "center", marginBottom: 6 }}>
@@ -749,7 +749,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
                     {lastContent}
                   </MvText>
                   <View style={{ flexDirection: "row", marginTop: 3, gap: 6 }}>
-                    <View style={{ backgroundColor: item.isOpen ? (isDark ? "rgba(34,197,94,0.12)" : "rgba(22,163,74,0.09)") : (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)"), borderWidth: 1, borderColor: item.isOpen ? (isDark ? "rgba(34,197,94,0.25)" : "rgba(22,163,74,0.20)") : border, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start" }}>
+                    <View style={{ backgroundColor: item.isOpen ? (isDark ? theme.primarySubtle : "rgba(22,163,74,0.09)") : (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)"), borderWidth: 1, borderColor: item.isOpen ? (isDark ? theme.primarySubtleBorder : "rgba(22,163,74,0.20)") : border, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start" }}>
                       <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: item.isOpen ? green : text3 }}>
                         {item.isOpen ? "conversa ativa" : "histórico"}
                       </MvText>

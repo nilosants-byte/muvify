@@ -226,10 +226,10 @@ export class AuthService {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedPhone = phone.replace(/\D/g, "");
     if (consentAccepted !== true) {
-      throw new AppError("Aceite dos termos e obrigatorio para criar conta.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Aceite dos termos é obrigatório para criar conta.", StatusCodes.BAD_REQUEST);
     }
     if (!/^\d{8,15}$/.test(normalizedPhone)) {
-      throw new AppError("Telefone invalido. Informe entre 8 e 15 digitos.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Telefone inválido. Informe entre 8 e 15 dígitos.", StatusCodes.BAD_REQUEST);
     }
 
     // Frente 8 (segunda camada), Lote 11: responder "E-mail ja cadastrado"
@@ -241,7 +241,7 @@ export class AuthService {
     // (authRateLimiter) já limita o volume de tentativas de enumeração.
     const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existingUser) {
-      throw new AppError("E-mail ja cadastrado.", StatusCodes.CONFLICT);
+      throw new AppError("E-mail já cadastrado.", StatusCodes.CONFLICT);
     }
 
     const persistedRole = isAdminEmail(normalizedEmail)
@@ -302,8 +302,8 @@ export class AuthService {
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         const target = (err.meta?.target as string[] | undefined) ?? [];
-        if (target.includes("email")) throw new AppError("E-mail ja cadastrado.", StatusCodes.CONFLICT);
-        if (target.includes("apelido")) throw new AppError("Apelido ja esta em uso.", StatusCodes.CONFLICT);
+        if (target.includes("email")) throw new AppError("E-mail já cadastrado.", StatusCodes.CONFLICT);
+        if (target.includes("apelido")) throw new AppError("Apelido já está em uso.", StatusCodes.CONFLICT);
       }
       throw err;
     }
@@ -353,7 +353,7 @@ export class AuthService {
     const record = await prisma.emailVerificationToken.findUnique({ where: { tokenHash } });
 
     if (!record || record.usedAt || record.expiresAt <= now) {
-      throw new AppError("Link de verificacao invalido ou expirado.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Link de verificação inválido ou expirado.", StatusCodes.BAD_REQUEST);
     }
 
     // Frente 8 (segunda camada), Lote 3: a revogação incondicional de todas
@@ -396,11 +396,11 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new AppError("Usuario nao encontrado.", StatusCodes.NOT_FOUND);
+      throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
     }
 
     if (user.emailVerifiedAt) {
-      throw new AppError("E-mail ja verificado.", StatusCodes.CONFLICT);
+      throw new AppError("E-mail já verificado.", StatusCodes.CONFLICT);
     }
 
     // Throttle por userId: máx 3 reenvios por hora. Frente 3 (Cadastro/
@@ -524,7 +524,7 @@ export class AuthService {
           StatusCodes.TOO_MANY_REQUESTS
         );
       }
-      throw new AppError("Credenciais invalidas.", StatusCodes.UNAUTHORIZED);
+      throw new AppError("Credenciais inválidas.", StatusCodes.UNAUTHORIZED);
     }
 
     await this.clearLoginAttempts(normalizedEmail);
@@ -570,7 +570,7 @@ export class AuthService {
     } else if (code) {
       await this.twoFactorService.verifyCode(userId, code);
     } else {
-      throw new AppError("Informe o codigo do app autenticador ou um codigo de recuperacao.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Informe o código do app autenticador ou um código de recuperação.", StatusCodes.BAD_REQUEST);
     }
 
     const user = await prisma.user.findUnique({
@@ -587,7 +587,7 @@ export class AuthService {
         emailVerifiedAt: true
       }
     });
-    if (!user) throw new AppError("Usuario nao encontrado.", StatusCodes.NOT_FOUND);
+    if (!user) throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
 
     const effectiveRole = resolveEffectiveUserRole(user.email, user.role, user.emailVerifiedAt);
     const { refreshToken, sessionId } = await this.createSession(user.id, prisma, userAgent);
@@ -622,11 +622,11 @@ export class AuthService {
           where: { userId: session.userId, revokedAt: null },
           data: { revokedAt: new Date() }
         });
-        throw new AppError("Sessao comprometida. Faca login novamente.", StatusCodes.UNAUTHORIZED);
+        throw new AppError("Sessão comprometida. Faça login novamente.", StatusCodes.UNAUTHORIZED);
       }
 
       if (!session || session.expiresAt <= new Date()) {
-        throw new AppError("Refresh token invalido.", StatusCodes.UNAUTHORIZED);
+        throw new AppError("Refresh token inválido.", StatusCodes.UNAUTHORIZED);
       }
 
       // Tela "Meus aparelhos conectados": repassa o user-agent da sessão
@@ -775,7 +775,7 @@ export class AuthService {
       });
 
       if (!passwordResetToken || passwordResetToken.usedAt || passwordResetToken.expiresAt <= now) {
-        throw new AppError("Token de recuperacao invalido ou expirado.", StatusCodes.BAD_REQUEST);
+        throw new AppError("Token de recuperação inválido ou expirado.", StatusCodes.BAD_REQUEST);
       }
 
       await tx.user.update({

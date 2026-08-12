@@ -33,7 +33,7 @@ import {
   onNewBookingMessage,
 } from "../../services/realtime/socket";
 import { useAppState } from "../../state/AppState";
-import { MvAvatar } from "../../components/mv";
+import { MvAvatar, MvEmptyState } from "../../components/mv";
 import { formatBRTime } from "../../utils/formatters";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
@@ -611,25 +611,23 @@ export function ClientChatListScreen({ navigation, route }: Props) {
             </View>
           ) : chatsLoadError ? (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
-              <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: "rgba(239,68,68,0.10)", borderWidth: 1, borderColor: "rgba(239,68,68,0.20)", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+              <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: theme.dangerSubtle, borderWidth: 1, borderColor: theme.dangerSubtleBorder, alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
                 <Ionicons name="cloud-offline-outline" size={30} color={theme.danger} />
               </View>
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, textAlign: "center", marginBottom: 6 }}>Falha ao carregar conversas</Text>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center", lineHeight: 20 }}>Verifique sua conexão e puxe para atualizar.</Text>
             </View>
           ) : filteredChats.length === 0 ? (
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
-              <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
-                <Ionicons name="chatbubbles-outline" size={30} color={theme.primary} />
-              </View>
-              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, textAlign: "center", marginBottom: 6 }}>
-                {tab === "active" ? "Nenhuma conversa ativa" : "Nenhuma conversa inativa"}
-              </Text>
-              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center", lineHeight: 20 }}>
-                {tab === "active"
-                  ? "Suas conversas com personais aparecerão aqui após um agendamento ou consultoria."
-                  : "Conversas encerradas aparecerão aqui."}
-              </Text>
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <MvEmptyState
+                icon="chatbubbles-outline"
+                title={tab === "active" ? "Nenhuma conversa ativa" : "Nenhuma conversa inativa"}
+                description={
+                  tab === "active"
+                    ? "Suas conversas com personais aparecerão aqui após um agendamento ou consultoria."
+                    : "Conversas encerradas aparecerão aqui."
+                }
+              />
             </View>
           ) : (
             <FlatList

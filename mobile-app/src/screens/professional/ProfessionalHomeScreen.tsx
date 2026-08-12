@@ -42,12 +42,11 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvBadge, MvCard, MvRefreshControl, MvText, MvToggle } from "../../components/mv";
+import { MvAvatar, MvBadge, MvCard, MvLogoText, MvRefreshControl, MvText, MvToggle } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonHomeScreen } from "../../components/polish/SkeletonCard";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
-import { AppLogoText } from "../../components/ui/AppLogoText";
 import { formatCurrencyBRL, isTodayInAppTimezone } from "../../utils/formatters";
 import { resolveMediaUrl } from "../../utils/media";
 import { handleScreenError } from "../shared/api-helpers";
@@ -550,8 +549,8 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const text2 = theme.text2;
   const text3 = theme.text3;
   const inputBg = theme.inputBg;
-  const heroBg = isLight ? "rgba(34,197,94,0.05)" : "#0F1A12";
-  const heroBorder = isLight ? "rgba(34,197,94,0.18)" : "rgba(34,197,94,0.18)";
+  const heroBg = isLight ? theme.primarySubtle : "#0F1A12";
+  const heroBorder = isLight ? theme.primarySubtleBorder : theme.primarySubtleBorder;
 
   const drawerText  = text1;
   const drawerSub   = text2;
@@ -609,7 +608,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
               color="green"
               photoUri={providerPhotoUrl}
             />
-            <AppLogoText size={22} />
+            <MvLogoText size={22} />
           </PressableScale>
 
           <View style={{ flex: 1 }} />
@@ -708,9 +707,9 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
               paddingVertical: 6,
               borderRadius: 99,
               alignSelf: "flex-start",
-              backgroundColor: isLight ? "rgba(22,163,74,0.08)" : "rgba(34,197,94,0.09)",
+              backgroundColor: theme.primarySubtle,
               borderWidth: 1,
-              borderColor: isLight ? "rgba(22,163,74,0.18)" : "rgba(34,197,94,0.18)",
+              borderColor: theme.primarySubtleBorder,
             }}>
               <View style={{
                 width: 6, height: 6, borderRadius: 3,
@@ -738,7 +737,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
         <SkeletonHomeScreen />
       ) : loadError ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 16 }}>
-          <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: "rgba(239,68,68,0.08)", alignItems: "center", justifyContent: "center" }}>
+          <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: theme.dangerSubtle, alignItems: "center", justifyContent: "center" }}>
             <Ionicons name="cloud-offline-outline" size={30} color={theme.danger} />
           </View>
           <MvText variant="semi2" style={{ textAlign: "center" }}>Não foi possível carregar</MvText>
@@ -865,19 +864,19 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
               onPress={() => goToStack("AvailabilityManager")}
               style={{
                 borderRadius: 18, padding: 18, borderWidth: 1,
-                backgroundColor: isLight ? "rgba(34,197,94,0.04)" : "rgba(34,197,94,0.06)",
-                borderColor: "rgba(34,197,94,0.18)",
+                backgroundColor: isLight ? theme.primarySubtle : theme.primarySubtle,
+                borderColor: theme.primarySubtleBorder,
                 alignItems: "center", gap: 10,
               }}
             >
-              <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+              <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="sunny-outline" size={26} color={green} />
               </View>
               <MvText variant="semi2" style={{ color: text1 }}>Dia livre</MvText>
               <MvText variant="body4" color="secondary" style={{ textAlign: "center", lineHeight: 20 }}>
                 Você não tem sessões hoje. Adicione horários disponíveis para receber novos alunos.
               </MvText>
-              <View style={{ paddingHorizontal: 20, paddingVertical: 9, borderRadius: 12, backgroundColor: "rgba(34,197,94,0.12)", borderWidth: 1, borderColor: "rgba(34,197,94,0.28)" }}>
+              <View style={{ paddingHorizontal: 20, paddingVertical: 9, borderRadius: 12, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: "rgba(34,197,94,0.28)" }}>
                 <MvText variant="semi3" style={{ color: green }}>+ Adicionar horário</MvText>
               </View>
             </PressableScale>
@@ -891,8 +890,8 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
               style={{
                 borderRadius: 16,
                 borderWidth: 1,
-                backgroundColor: isLight ? "rgba(34,197,94,0.06)" : "rgba(34,197,94,0.08)",
-                borderColor: "rgba(34,197,94,0.22)",
+                backgroundColor: isLight ? theme.primarySubtle : theme.primarySubtle,
+                borderColor: theme.primarySubtleBorder,
                 overflow: "hidden",
               }}
             >
@@ -927,14 +926,14 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                   activeOpacity={0.8}
                   style={{
                     borderTopWidth: 1,
-                    borderTopColor: "rgba(34,197,94,0.18)",
+                    borderTopColor: theme.primarySubtleBorder,
                     paddingVertical: 10,
                     paddingHorizontal: 14,
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 6,
-                    backgroundColor: "rgba(34,197,94,0.08)",
+                    backgroundColor: theme.primarySubtle,
                   }}
                 >
                   <Ionicons name="checkmark-circle-outline" size={15} color={green} />
@@ -971,7 +970,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                     width: 32,
                     height: 32,
                     borderRadius: 10,
-                    backgroundColor: "rgba(34,197,94,0.12)",
+                    backgroundColor: theme.primarySubtle,
                     alignItems: "center",
                     justifyContent: "center",
                   }}
@@ -1052,7 +1051,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                   onPress={() => handleShortcut(s.key)}
                   style={{ flex: 1, borderRadius: 14, borderWidth: 1, borderColor: border, backgroundColor: cardBg, paddingVertical: 12, paddingHorizontal: 4, alignItems: "center", gap: 6 }}
                 >
-                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                     <Ionicons name={s.icon} size={18} color={green} />
                   </View>
                   <MvText variant="semi3" style={{ color: text1, fontSize: 10, textAlign: "center" }}>{s.label}</MvText>
@@ -1078,7 +1077,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                   width: 32,
                   height: 32,
                   borderRadius: 10,
-                  backgroundColor: "rgba(34,197,94,0.12)",
+                  backgroundColor: theme.primarySubtle,
                   alignItems: "center",
                   justifyContent: "center",
                 }}
@@ -1141,8 +1140,8 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                   paddingVertical: 10,
                   borderRadius: 10,
                   borderWidth: 1,
-                  borderColor: "rgba(34,197,94,0.25)",
-                  backgroundColor: "rgba(34,197,94,0.06)",
+                  borderColor: theme.primarySubtleBorder,
+                  backgroundColor: theme.primarySubtle,
                   alignItems: "center",
                 }}
               >
@@ -1188,7 +1187,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
               bottom: 0,
               width: DRAWER_W,
               borderRightWidth: 1,
-              borderRightColor: isLight ? "rgba(22,163,74,0.12)" : "rgba(34,197,94,0.14)",
+              borderRightColor: theme.primarySubtle,
               transform: [{ translateX: drawerAnim }],
               overflow: "hidden",
               shadowColor: theme.textOnPrimary,
@@ -1214,7 +1213,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                     paddingHorizontal: 20,
                     paddingBottom: 20,
                     borderBottomWidth: 1,
-                    borderBottomColor: isLight ? "rgba(21,128,61,0.12)" : "rgba(34,197,94,0.12)",
+                    borderBottomColor: theme.primarySubtle,
                     alignItems: "center",
                     gap: 10,
                   }}
@@ -1313,7 +1312,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                   activeOpacity={0.75}
                   style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 20, paddingVertical: 15, marginTop: 12 }}
                 >
-                  <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: "rgba(239,68,68,0.10)", borderWidth: 1, borderColor: "rgba(239,68,68,0.25)", alignItems: "center", justifyContent: "center" }}>
+                  <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: theme.dangerSubtle, borderWidth: 1, borderColor: theme.dangerSubtleBorder, alignItems: "center", justifyContent: "center" }}>
                     <Ionicons name="log-out-outline" size={16} color={theme.danger} />
                   </View>
                   <MvText variant="semi2" style={{ color: theme.danger }}>Sair</MvText>

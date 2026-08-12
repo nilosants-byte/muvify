@@ -17,7 +17,8 @@ import { MvButton } from "../../components/mv/MvButton";
 import { MvInput } from "../../components/mv/MvInput";
 import { MvText } from "../../components/mv/MvText";
 import { PressableScale } from "../../components/polish/PressableScale";
-import { AppLogoText } from "../../components/ui/AppLogoText";
+import { MvLogoText } from "../../components/mv";
+import { extractApiMessage } from "../shared/api-helpers";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { useMvTheme } from "../../theme/MvThemeContext";
 
@@ -78,8 +79,7 @@ export function AuthLoginScreen({ navigation }: Props) {
       clearToast();
     } catch (error) {
       if (isAuthenticatedRef.current) return;
-      const message = error instanceof Error ? error.message : "Falha ao fazer login.";
-      showToast(message, "error");
+      showToast(extractApiMessage(error, "Falha ao fazer login."), "error");
     } finally {
       setLoading(false);
       submittingRef.current = false;
@@ -106,7 +106,7 @@ export function AuthLoginScreen({ navigation }: Props) {
       >
         {/* Logo da marca — elemento de brand com dois tons de cor */}
         <View style={{ marginBottom: 36 }}>
-          <AppLogoText size={28} />
+          <MvLogoText size={28} />
         </View>
 
         <MvText variant="display" style={{ marginBottom: 6 }}>Bem-vindo</MvText>

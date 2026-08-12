@@ -11,6 +11,7 @@ import { MvAvatar, MvPasswordConfirmModal, MvText, MvToggle } from "../../compon
 import { useAppState } from "../../state/AppState";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
+import { extractApiMessage } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalSettings">;
 
@@ -87,7 +88,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
       setShowDeletePasswordModal(false);
       await signOut();
     } catch (error) {
-      Alert.alert("Erro", error instanceof Error ? error.message : "Não foi possível excluir a conta.");
+      Alert.alert("Erro", extractApiMessage(error, "Não foi possível excluir a conta."));
     } finally {
       setDeletingAccount(false);
     }
@@ -161,7 +162,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
     >
       <View style={{
         width: 36, height: 36, borderRadius: 10,
-        backgroundColor: danger ? "rgba(239,68,68,0.08)" : "rgba(156,163,175,0.10)",
+        backgroundColor: danger ? theme.dangerSubtle : "rgba(156,163,175,0.10)",
         alignItems: "center", justifyContent: "center",
       }}>
         <Ionicons name={icon} size={18} color={danger ? theme.danger : text2} />
@@ -200,7 +201,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
           <View style={{ alignItems: "center", gap: 4 }}>
             <MvText variant="semi1" style={{ fontSize: 20 }}>{fullName}</MvText>
             <MvText variant="body4" color="secondary">Personal Trainer</MvText>
-            <View style={{ marginTop: 4, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, backgroundColor: "rgba(34,197,94,0.12)", borderWidth: 1, borderColor: "rgba(34,197,94,0.25)" }}>
+            <View style={{ marginTop: 4, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder }}>
               <MvText variant="badge" style={{ color: green, fontSize: 11 }}>Profissional</MvText>
             </View>
           </View>

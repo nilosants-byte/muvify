@@ -10,7 +10,7 @@ const ownMediaUrl = z
   .trim()
   .url()
   .refine((value) => !env.R2_PUBLIC_URL || value.startsWith(env.R2_PUBLIC_URL), {
-    message: "imageUrl deve apontar para o storage do próprio app."
+    message: "A imagem deve estar no storage do próprio app."
   });
 
 export const userIdParamSchema = z.object({

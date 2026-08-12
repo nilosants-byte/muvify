@@ -74,7 +74,7 @@ export function ProfessionalArchivedRequestsScreen({ navigation }: Props) {
               onPress={() => setFilter(option.value)}
               style={{
                 paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-                backgroundColor: filter === option.value ? "rgba(34,197,94,0.12)" : theme.chipBg,
+                backgroundColor: filter === option.value ? theme.primarySubtle : theme.chipBg,
                 borderWidth: 1, borderColor: filter === option.value ? "rgba(34,197,94,0.28)" : theme.border,
               }}
             >

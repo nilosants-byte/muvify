@@ -524,7 +524,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
               flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
               paddingVertical: 11, borderRadius: 12, borderWidth: 1,
               borderColor: value === false ? "rgba(239,68,68,0.35)" : theme.border,
-              backgroundColor: value === false ? "rgba(239,68,68,0.08)" : "transparent",
+              backgroundColor: value === false ? theme.dangerSubtle : "transparent",
               gap: 6,
             }}
           >
@@ -674,7 +674,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
           <View style={{ gap: 12 }}>
             <MvCard style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="heart-outline" size={14} color={theme.primary} />
                 </View>
                 <MvText variant="semi2">Condições de saúde</MvText>
@@ -686,7 +686,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
 
             <MvCard style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="medical-outline" size={14} color={theme.primary} />
                 </View>
                 <MvText variant="semi2">Medicamentos e suplementos</MvText>
@@ -698,7 +698,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
 
             <MvCard style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="people-outline" size={14} color={theme.primary} />
                 </View>
                 <MvText variant="semi2">
@@ -745,7 +745,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
           <View style={{ gap: 12 }}>
             <MvCard style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="sunny-outline" size={14} color={theme.primary} />
                 </View>
                 <MvText variant="semi2">Estilo de vida</MvText>
@@ -782,7 +782,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
 
             <MvCard style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="restaurant-outline" size={14} color={theme.primary} />
                 </View>
                 <MvText variant="semi2">Hábitos alimentares</MvText>
@@ -801,7 +801,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
           <View style={{ gap: 12 }}>
             <MvCard style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(239,68,68,0.10)", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.dangerSubtle, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="warning-outline" size={14} color={theme.danger} />
                 </View>
                 <MvText variant="semi2">Limitações e restrições</MvText>
@@ -816,7 +816,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
 
             <MvCard style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="bulb-outline" size={14} color={theme.primary} />
                 </View>
                 <MvText variant="semi2">Aspectos comportamentais</MvText>
@@ -838,7 +838,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
           <View style={{ gap: 12 }}>
             <MvCard style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="camera-outline" size={14} color={theme.primary} />
                 </View>
                 <MvText variant="semi2">Autorização de imagem</MvText>
@@ -852,7 +852,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
 
             <MvCard style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(239,68,68,0.10)", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.dangerSubtle, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="shield-checkmark-outline" size={14} color={theme.danger} />
                 </View>
                 <MvText variant="semi2">
@@ -875,7 +875,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
 
             <MvCard style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="document-text-outline" size={14} color={theme.primary} />
                 </View>
                 <MvText variant="semi2">Termo de responsabilidade</MvText>

@@ -11,23 +11,23 @@ export type MetricTone = "green" | "amber" | "sky" | "red";
 
 // ─── Color helpers ────────────────────────────────────────────────────────────
 
-function urgencyColors(tone: UrgencyTone, textGreen: string, danger: string) {
+function urgencyColors(tone: UrgencyTone, textGreen: string, danger: string, dangerSubtle: string) {
   switch (tone) {
     case "amber":
       return { bg: "rgba(245,166,35,0.10)", border: "rgba(245,166,35,0.28)", accent: "#F5A623" };
     case "red":
-      return { bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.28)", accent: danger };
+      return { bg: dangerSubtle, border: "rgba(239,68,68,0.28)", accent: danger };
     default: // sky
       return { bg: "rgba(56,189,248,0.10)", border: "rgba(56,189,248,0.25)", accent: "#38BDF8" };
   }
 }
 
-function metricColors(tone: MetricTone, textGreen: string, danger: string) {
+function metricColors(tone: MetricTone, textGreen: string, danger: string, dangerSubtleBorder: string, primarySubtleBorder: string) {
   switch (tone) {
     case "amber": return { text: "#F5A623", border: "rgba(245,166,35,0.25)" };
     case "sky":   return { text: "#38BDF8", border: "rgba(56,189,248,0.25)" };
-    case "red":   return { text: danger,    border: "rgba(239,68,68,0.25)" };
-    default:      return { text: textGreen, border: "rgba(34,197,94,0.22)" };
+    case "red":   return { text: danger,    border: dangerSubtleBorder };
+    default:      return { text: textGreen, border: primarySubtleBorder };
   }
 }
 
@@ -49,7 +49,7 @@ export type UrgencyCardProps = {
 
 export function UrgencyCard({ icon, tone, subtitle, title, cta, onPress }: UrgencyCardProps) {
   const { theme } = useMvTheme();
-  const c = urgencyColors(tone, theme.textGreen, theme.danger);
+  const c = urgencyColors(tone, theme.textGreen, theme.danger, theme.dangerSubtle);
 
   return (
     <TouchableOpacity
@@ -112,7 +112,7 @@ export type MetricPillProps = {
 
 export function MetricPill({ label, value, tone = "green" }: MetricPillProps) {
   const { theme } = useMvTheme();
-  const c = metricColors(tone, theme.textGreen, theme.danger);
+  const c = metricColors(tone, theme.textGreen, theme.danger, theme.dangerSubtleBorder, theme.primarySubtleBorder);
 
   return (
     <View

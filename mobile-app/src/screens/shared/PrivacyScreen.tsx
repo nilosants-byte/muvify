@@ -154,13 +154,13 @@ export function PrivacyScreen({ navigation }: { navigation?: any }) {
           <Body text="O Muvify não comercializa dados pessoais dos usuários." />
         </Section>
 
-        <Section title="Retencao e Descarte de Dados">
-          <Body text="O Muvify aplica politica formal de retencao com prazos por categoria de dado e expurgo automatico com trilha de auditoria." />
-          <Item text="Dados de autenticacao e tokens tecnicos sao removidos apos janela operacional de seguranca" />
-          <Item text="Dados sensiveis, como anamnese, passam por redacao/anonimizacao apos o prazo definido" />
-          <Item text="Mensagens e evidencias antigas sao redigidas ou excluidas conforme politica vigente" />
-          <Item text="Dados com obrigacao legal/regulatoria podem ser mantidos pelo prazo exigido em lei" />
-          <Body text="Quando houver disputa, ordem legal ou investigacao, o descarte pode ser suspenso (legal hold)." />
+        <Section title="Retenção e Descarte de Dados">
+          <Body text="O Muvify aplica política formal de retenção com prazos por categoria de dado e expurgo automático com trilha de auditoria." />
+          <Item text="Dados de autenticação e tokens técnicos são removidos após janela operacional de segurança" />
+          <Item text="Dados sensíveis, como anamnese, passam por redação/anonimização após o prazo definido" />
+          <Item text="Mensagens e evidências antigas são redigidas ou excluídas conforme política vigente" />
+          <Item text="Dados com obrigação legal/regulatória podem ser mantidos pelo prazo exigido em lei" />
+          <Body text="Quando houver disputa, ordem legal ou investigação, o descarte pode ser suspenso (legal hold)." />
         </Section>
 
         <Section title="Seus Direitos (LGPD)">

@@ -679,7 +679,7 @@ export class PaymentService {
   async completeProviderOnboardingCallback(code: string, state: string) {
     const providerId = this.parseMpOauthState(state);
     if (!providerId) {
-      throw new AppError("State de onboarding invalido ou expirado.", StatusCodes.BAD_REQUEST);
+      throw new AppError("State de onboarding inválido ou expirado.", StatusCodes.BAD_REQUEST);
     }
 
     const appId = env.MP_APP_ID?.trim();
@@ -734,14 +734,14 @@ export class PaymentService {
 
     if (!mpAccountId) {
       throw new AppError(
-        "Nao foi possivel identificar a conta Mercado Pago conectada.",
+        "Não foi possível identificar a conta Mercado Pago conectada.",
         StatusCodes.BAD_GATEWAY
       );
     }
 
     const provider = await prisma.providerProfile.findUnique({ where: { id: providerId } });
     if (!provider) {
-      throw new AppError("Profissional nao encontrado para concluir onboarding.", StatusCodes.NOT_FOUND);
+      throw new AppError("Profissional não encontrado para concluir onboarding.", StatusCodes.NOT_FOUND);
     }
 
     const mpTokenExpiresAt = tokenData.expires_in
@@ -865,7 +865,7 @@ export class PaymentService {
       throw new AppError("Apenas o cliente do agendamento pode iniciar pagamento PIX.", StatusCodes.FORBIDDEN);
     }
     if (payment.method !== PaymentMethod.PIX) {
-      throw new AppError("Este agendamento não esta configurado para pagamento via PIX.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Este agendamento não está configurado para pagamento via PIX.", StatusCodes.BAD_REQUEST);
     }
 
     if (payment.status === PaymentStatus.CAPTURED) {
@@ -1531,7 +1531,7 @@ export class PaymentService {
     });
     if (payment) {
       const canRead = payment.booking.clientId === userId || payment.booking.provider.userId === userId;
-      if (!canRead) throw new AppError("Sem permissao para visualizar este pagamento.", StatusCodes.FORBIDDEN);
+      if (!canRead) throw new AppError("Sem permissão para visualizar este pagamento.", StatusCodes.FORBIDDEN);
       return this.toPublicBookingPayment(payment);
     }
 
@@ -1546,7 +1546,7 @@ export class PaymentService {
     });
     if (!booking) throw new AppError("Agendamento não encontrado.", StatusCodes.NOT_FOUND);
     const canRead = booking.clientId === userId || booking.provider.userId === userId;
-    if (!canRead) throw new AppError("Sem permissao para visualizar este pagamento.", StatusCodes.FORBIDDEN);
+    if (!canRead) throw new AppError("Sem permissão para visualizar este pagamento.", StatusCodes.FORBIDDEN);
     return null;
   }
 
@@ -1560,7 +1560,7 @@ export class PaymentService {
     try {
       body = JSON.parse(rawBody.toString("utf8")) as Record<string, unknown>;
     } catch {
-      throw new AppError("Payload de webhook invalido.", StatusCodes.BAD_REQUEST);
+      throw new AppError("Payload de webhook inválido.", StatusCodes.BAD_REQUEST);
     }
 
     const bodyDataId = String(
@@ -1571,12 +1571,12 @@ export class PaymentService {
     const dataId = queryDataId ?? bodyDataId;
 
     if (!env.MP_WEBHOOK_SECRET) {
-      throw new AppError("Webhook secret nao configurado.", StatusCodes.INTERNAL_SERVER_ERROR);
+      throw new AppError("Webhook secret não configurado.", StatusCodes.INTERNAL_SERVER_ERROR);
     }
 
     {
       if (!signature || Array.isArray(signature)) {
-        throw new AppError("Assinatura de webhook invalida.", StatusCodes.BAD_REQUEST);
+        throw new AppError("Assinatura de webhook inválida.", StatusCodes.BAD_REQUEST);
       }
 
       const requestId = Array.isArray(requestIdHeader)
@@ -1597,12 +1597,12 @@ export class PaymentService {
       const v1 = parts["v1"] ?? "";
 
       if (!dataId || !requestId || !ts || !v1) {
-        throw new AppError("Assinatura de webhook invalida.", StatusCodes.BAD_REQUEST);
+        throw new AppError("Assinatura de webhook inválida.", StatusCodes.BAD_REQUEST);
       }
 
       const tsMs = Number(ts);
       if (isNaN(tsMs) || Date.now() - tsMs > 5 * 60 * 1000) {
-        throw new AppError("Assinatura de webhook invalida.", StatusCodes.BAD_REQUEST);
+        throw new AppError("Assinatura de webhook inválida.", StatusCodes.BAD_REQUEST);
       }
 
       const message = `id:${dataId};request-id:${requestId};ts:${ts};`;
@@ -1614,7 +1614,7 @@ export class PaymentService {
         timingSafeEqual(expectedBuffer, receivedBuffer);
 
       if (!isValid) {
-        throw new AppError("Assinatura de webhook invalida.", StatusCodes.BAD_REQUEST);
+        throw new AppError("Assinatura de webhook inválida.", StatusCodes.BAD_REQUEST);
       }
     }
 

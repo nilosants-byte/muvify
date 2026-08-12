@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ActivityIndicator, Alert, Share,
+  Alert, Share,
   ScrollView, StatusBar, TouchableOpacity, View,
 } from "react-native";
 import { PressableScale } from "../../components/polish/PressableScale";
@@ -759,7 +759,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
             <MvText variant="body4" color="secondary">Cobrança</MvText>
             <View style={{ flexDirection: "row", gap: 6 }}>
               {BILLING_OPTIONS.map(opt => (
-                <PressableScale key={opt.key} scale={0.95} onPress={() => setIBilling(opt.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: iBilling === opt.key ? "rgba(34,197,94,0.12)" : theme.chipBg, borderWidth: 1, borderColor: iBilling === opt.key ? "rgba(34,197,94,0.30)" : theme.border }}>
+                <PressableScale key={opt.key} scale={0.95} onPress={() => setIBilling(opt.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: iBilling === opt.key ? theme.primarySubtle : theme.chipBg, borderWidth: 1, borderColor: iBilling === opt.key ? "rgba(34,197,94,0.30)" : theme.border }}>
                   <MvText variant="body4" style={{ color: iBilling === opt.key ? theme.primary : theme.text2 }}>{opt.label}</MvText>
                 </PressableScale>
               ))}
@@ -786,7 +786,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
           <MvInput keyboardType="numeric" placeholder="Valor (R$)" value={eValue} onChangeText={v => setEValue(maskPriceInput(v))} />
           <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
             {(Object.keys(catLabel) as FinancialExpenseCategory[]).map(c => (
-              <PressableScale key={c} scale={0.95} onPress={() => setECat(c)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: eCat === c ? "rgba(34,197,94,0.12)" : theme.chipBg, borderWidth: 1, borderColor: eCat === c ? "rgba(34,197,94,0.30)" : theme.border }}>
+              <PressableScale key={c} scale={0.95} onPress={() => setECat(c)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: eCat === c ? theme.primarySubtle : theme.chipBg, borderWidth: 1, borderColor: eCat === c ? "rgba(34,197,94,0.30)" : theme.border }}>
                 <MvText variant="body4" style={{ color: eCat === c ? theme.primary : theme.text2, fontSize: 12 }}>{catLabel[c]}</MvText>
               </PressableScale>
             ))}
@@ -797,7 +797,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
             <MvText variant="body4" color="secondary">Cobrança</MvText>
             <View style={{ flexDirection: "row", gap: 6 }}>
               {BILLING_OPTIONS.map(opt => (
-                <PressableScale key={opt.key} scale={0.95} onPress={() => setEBilling(opt.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: eBilling === opt.key ? "rgba(34,197,94,0.12)" : theme.chipBg, borderWidth: 1, borderColor: eBilling === opt.key ? "rgba(34,197,94,0.30)" : theme.border }}>
+                <PressableScale key={opt.key} scale={0.95} onPress={() => setEBilling(opt.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: eBilling === opt.key ? theme.primarySubtle : theme.chipBg, borderWidth: 1, borderColor: eBilling === opt.key ? "rgba(34,197,94,0.30)" : theme.border }}>
                   <MvText variant="body4" style={{ color: eBilling === opt.key ? theme.primary : theme.text2 }}>{opt.label}</MvText>
                 </PressableScale>
               ))}

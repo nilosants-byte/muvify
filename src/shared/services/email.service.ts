@@ -141,7 +141,7 @@ function requireMailer() {
   const mailer = getTransporter();
   if (!mailer) {
     throw new AppError(
-      "Servico de e-mail nao configurado. Tente novamente mais tarde.",
+      "Serviço de e-mail não configurado. Tente novamente mais tarde.",
       StatusCodes.SERVICE_UNAVAILABLE
     );
   }

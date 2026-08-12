@@ -656,8 +656,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         "success"
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao anexar midia.";
-      showToast(message, "error");
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao anexar midia.", navigation });
     } finally {
       setAttachingMedia(false);
     }
@@ -989,7 +988,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
             justifyContent: "center",
             backgroundColor: showCreateExerciseForm
               ? "rgba(244,67,54,0.12)"
-              : "rgba(34,197,94,0.12)",
+              : theme.primarySubtle,
           }}
         >
           <Ionicons
@@ -1078,7 +1077,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                     style={{
                       paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
                       borderWidth: 1, borderColor: "rgba(34,197,94,0.30)",
-                      backgroundColor: "rgba(34,197,94,0.08)",
+                      backgroundColor: theme.primarySubtle,
                     }}
                   >
                     <MvText variant="semi3" style={{ color: theme.textGreen, fontSize: 12 }}>{obj}</MvText>
@@ -1177,7 +1176,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                     borderRadius: 10,
                     borderWidth: 1,
                     borderColor: active ? "rgba(34,197,94,0.35)" : theme.border,
-                    backgroundColor: active ? "rgba(34,197,94,0.12)" : theme.chipBg,
+                    backgroundColor: active ? theme.primarySubtle : theme.chipBg,
                     paddingVertical: 8,
                     alignItems: "center",
                   }}
@@ -1220,7 +1219,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                       borderRadius: 12,
                       borderWidth: 1,
                       borderColor: active ? "rgba(34,197,94,0.35)" : theme.border,
-                      backgroundColor: active ? "rgba(34,197,94,0.12)" : theme.chipBg,
+                      backgroundColor: active ? theme.primarySubtle : theme.chipBg,
                     }}
                   >
                     <MvText
@@ -1271,7 +1270,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                           : theme.border,
                       backgroundColor:
                         exerciseForm.category === category
-                          ? "rgba(34,197,94,0.12)"
+                          ? theme.primarySubtle
                           : theme.chipBg,
                     }}
                   >
@@ -1619,7 +1618,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                             borderRadius: 17,
                             alignItems: "center",
                             justifyContent: "center",
-                            backgroundColor: "rgba(34,197,94,0.12)",
+                            backgroundColor: theme.primarySubtle,
                             borderWidth: 1,
                             borderColor: "rgba(34,197,94,0.35)",
                           }}
@@ -1976,7 +1975,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                     borderWidth: 1,
                     borderColor: "rgba(34,197,94,0.35)",
                     borderRadius: 10,
-                    backgroundColor: "rgba(34,197,94,0.12)",
+                    backgroundColor: theme.primarySubtle,
                     paddingVertical: 10,
                     paddingHorizontal: 10,
                   }}

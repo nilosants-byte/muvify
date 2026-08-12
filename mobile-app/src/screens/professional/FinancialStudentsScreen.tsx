@@ -17,6 +17,7 @@ import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar, MvButton, MvCard, MvInput, MvModalSheet, MvText, MvToggle } from "../../components/mv";
 import { MvDatePicker } from "../../components/mv";
+import { SkeletonFinanceTab } from "../../components/polish/SkeletonCard";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
@@ -97,7 +98,7 @@ function CompactSchedulePicker({ schedule, onChange, theme }: {
         {WEEK_ORDER.map(day => {
           const active = selectedDays.includes(day);
           return (
-            <PressableScale key={`csp-${day}`} scale={0.94} onPress={() => toggleDay(day)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: active ? "rgba(34,197,94,0.45)" : theme.border, backgroundColor: active ? "rgba(34,197,94,0.14)" : theme.chipBg }}>
+            <PressableScale key={`csp-${day}`} scale={0.94} onPress={() => toggleDay(day)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: active ? "rgba(34,197,94,0.45)" : theme.border, backgroundColor: active ? theme.primarySubtle : theme.chipBg }}>
               <MvText variant="badge" style={{ fontSize: 11, color: active ? theme.primary : theme.text2 }}>{DAY_LABELS[day]}</MvText>
             </PressableScale>
           );
@@ -431,9 +432,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
       </View>
 
       {loading ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color={theme.primary} />
-        </View>
+        <SkeletonFinanceTab />
       ) : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 40, gap: 6 }} showsVerticalScrollIndicator={false}>
           {/* Resumo de pendências */}
@@ -550,7 +549,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
           <MvInput placeholder="Nome do aluno" value={sName} onChangeText={setSName} />
           <View style={{ flexDirection: "row", gap: 6 }}>
             {([{ key: "PRESENTIAL", label: "Presencial" }, { key: "ONLINE", label: "Consultoria" }, { key: "BOTH", label: "Ambos" }] as { key: FinancialStudentType; label: string }[]).map(t => (
-              <PressableScale key={t.key} scale={0.95} onPress={() => { setSType(t.key); setSSchedule([]); }} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: sType === t.key ? "rgba(34,197,94,0.12)" : theme.chipBg, borderWidth: 1, borderColor: sType === t.key ? "rgba(34,197,94,0.30)" : theme.border }}>
+              <PressableScale key={t.key} scale={0.95} onPress={() => { setSType(t.key); setSSchedule([]); }} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: sType === t.key ? theme.primarySubtle : theme.chipBg, borderWidth: 1, borderColor: sType === t.key ? "rgba(34,197,94,0.30)" : theme.border }}>
                 <MvText variant="body4" style={{ color: sType === t.key ? theme.primary : theme.text2 }}>{t.label}</MvText>
               </PressableScale>
             ))}
@@ -599,7 +598,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
             <MvText variant="badge" style={{ color: theme.text3, fontSize: 10 }}>Cobrança</MvText>
             <View style={{ flexDirection: "row", gap: 6 }}>
               {BILLING_OPTIONS.map(opt => (
-                <PressableScale key={opt.key} scale={0.95} onPress={() => setSBilling(opt.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: sBilling === opt.key ? "rgba(34,197,94,0.12)" : theme.chipBg, borderWidth: 1, borderColor: sBilling === opt.key ? "rgba(34,197,94,0.30)" : theme.border }}>
+                <PressableScale key={opt.key} scale={0.95} onPress={() => setSBilling(opt.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: sBilling === opt.key ? theme.primarySubtle : theme.chipBg, borderWidth: 1, borderColor: sBilling === opt.key ? "rgba(34,197,94,0.30)" : theme.border }}>
                   <MvText variant="body4" style={{ color: sBilling === opt.key ? theme.primary : theme.text2 }}>{opt.label}</MvText>
                 </PressableScale>
               ))}

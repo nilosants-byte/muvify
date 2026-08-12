@@ -95,7 +95,7 @@ describe("Frente 9, Lote 6 — excluir conta anonimiza a notificação de chat n
     const chatNotification = await prisma.userNotification.create({
       data: {
         userId: recipientId,
-        title: "💬 Sender Client F9L6",
+        title: "Sender Client F9L6",
         body: "Mensagem original que devia sumir",
         data: { type: "CHAT_MESSAGE", bookingId, messageId }
       }
@@ -134,7 +134,7 @@ describe("Frente 9, Lote 6 — excluir conta anonimiza a notificação de chat n
     const chatNotification = await prisma.userNotification.findUnique({ where: { id: chatNotificationId } });
     expect(chatNotification).not.toBeNull();
     expect(chatNotification!.userId).toBe(recipientId);
-    expect(chatNotification!.title).toBe("💬 Usuário removido");
+    expect(chatNotification!.title).toBe("Usuário removido");
     expect(chatNotification!.body).toBe("[Mensagem removida]");
 
     const unrelatedNotification = await prisma.userNotification.findUnique({ where: { id: unrelatedNotificationId } });

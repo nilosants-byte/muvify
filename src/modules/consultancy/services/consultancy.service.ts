@@ -596,7 +596,7 @@ export class ConsultancyService {
       input.daysPerWeek !== null
     ) {
       throw new AppError(
-        "Campo dias por semana e permitido apenas para ofertas presenciais.",
+        "Campo dias por semana é permitido apenas para ofertas presenciais.",
         StatusCodes.BAD_REQUEST
       );
     }
@@ -612,7 +612,7 @@ export class ConsultancyService {
       (input.comboPresentialDaysPerWeek !== null || input.comboOnlineDaysPerWeek !== null)
     ) {
       throw new AppError(
-        "Campos do combo sao permitidos apenas para ofertas do tipo Combo.",
+        "Campos do combo são permitidos apenas para ofertas do tipo Combo.",
         StatusCodes.BAD_REQUEST
       );
     }
@@ -1749,7 +1749,7 @@ export class ConsultancyService {
 
     if (provider.userId === clientId) {
       throw new AppError(
-        "Não é permitido enviar solicitação para o proprio perfil.",
+        "Não é permitido enviar solicitação para o próprio perfil.",
         StatusCodes.BAD_REQUEST
       );
     }
@@ -1785,7 +1785,7 @@ export class ConsultancyService {
     });
     if (recentRequests >= 3) {
       throw new AppError(
-        "Limite de 3 solicitacoes por dia para este profissional atingido.",
+        "Limite de 3 solicitações por dia para este profissional atingido.",
         StatusCodes.TOO_MANY_REQUESTS
       );
     }
@@ -2034,7 +2034,7 @@ export class ConsultancyService {
       !offer.isActive
     ) {
       throw new AppError(
-        "Oferta de consultoria invalida para esta resposta.",
+        "Oferta de consultoria inválida para esta resposta.",
         StatusCodes.BAD_REQUEST
       );
     }
@@ -2059,7 +2059,7 @@ export class ConsultancyService {
 
     await notificationService.sendToUsers([updated.client.id], {
         preferenceType: "CONSULTANCY",
-      title: "Resposta da consultoria disponivel",
+      title: "Resposta da consultoria disponível",
       body: "O profissional respondeu sua solicitação e enviou proposta.",
       data: {
         type: "CONSULTANCY_REQUEST_RESPONDED",
@@ -2106,7 +2106,7 @@ export class ConsultancyService {
 
     if (request.status !== ConsultancyRequestStatus.RESPONDED) {
       throw new AppError(
-        "A solicitação não esta aguardando decisao do aluno.",
+        "A solicitação não está aguardando decisão do aluno.",
         StatusCodes.BAD_REQUEST
       );
     }
@@ -2767,9 +2767,9 @@ export class ConsultancyService {
 
     await notificationService.sendToUsers([contract.client.id], {
       preferenceType: "CONSULTANCY",
-      title: isFirstDelivery ? "Treino personalizado disponivel" : "Novo treino disponivel",
+      title: isFirstDelivery ? "Treino personalizado disponível" : "Novo treino disponível",
       body: isFirstDelivery
-        ? `Seu treino foi entregue e já esta liberado em Seu Treino. Válido até ${planValidUntilLabel}.`
+        ? `Seu treino foi entregue e já está liberado em Seu Treino. Válido até ${planValidUntilLabel}.`
         : `Seu profissional liberou mais um treino (R$ ${chargedAmountLabel} cobrado no seu cartão). Válido até ${planValidUntilLabel}.`,
       data: {
         type: "CONSULTANCY_TRAINING_DELIVERED",

@@ -20,18 +20,18 @@ export function MvBadge({ variant = "green", label, style, accessibilityLabel }:
     switch (variant) {
       case "green":
         return {
-          bg: isLight ? "rgba(34,197,94,0.10)" : "rgba(34,197,94,0.13)",
+          bg: theme.primarySubtle,
           textColor: theme.primary,
         };
       case "greenDark":
         return {
-          bg: "rgba(34,197,94,0.13)",
+          bg: theme.primarySubtle,
           textColor: "#24E66D",
         };
       case "orange":
         return {
-          bg: isLight ? "rgba(217,119,6,0.10)" : "rgba(245,158,11,0.14)",
-          textColor: isLight ? "#D97706" : "#F59E0B",
+          bg: theme.warningSubtle,
+          textColor: theme.warning,
         };
       case "blue":
         return {
@@ -40,8 +40,8 @@ export function MvBadge({ variant = "green", label, style, accessibilityLabel }:
         };
       case "red":
         return {
-          bg: isLight ? "rgba(220,38,38,0.10)" : "rgba(239,68,68,0.14)",
-          textColor: isLight ? "#DC2626" : "#EF4444",
+          bg: theme.dangerSubtle,
+          textColor: theme.danger,
         };
       case "gray":
       default:

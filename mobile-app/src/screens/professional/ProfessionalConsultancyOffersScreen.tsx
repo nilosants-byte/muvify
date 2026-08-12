@@ -657,7 +657,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                           scale={0.94}
                           style={{
                             width: 28, height: 28, borderRadius: 8,
-                            backgroundColor: "rgba(239,68,68,0.08)",
+                            backgroundColor: theme.dangerSubtle,
                             alignItems: "center", justifyContent: "center",
                             opacity: deletingOfferId === offer.id ? 0.45 : 1,
                           }}

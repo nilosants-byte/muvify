@@ -3,6 +3,7 @@ import { NextFunction, Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { ZodError } from "zod";
 import { AppError } from "../shared/errors/app-error";
+import { translateZodIssue } from "./zod-error-translation";
 
 export function errorMiddleware(
   error: Error,
@@ -21,14 +22,22 @@ export function errorMiddleware(
     // exatamente a informação que falta pro usuário corrigir o campo certo.
     // Esconder isso só em produção transformava toda validação em "Erro de
     // validação." genérico bem na hora que mais importa (cadastro/senha).
-    const flat = error.flatten();
-    const detail = Object.entries(flat.fieldErrors ?? {})
-      .filter(([, msgs]) => Array.isArray(msgs) && msgs.length > 0)
-      .map(([field, msgs]) => `${field}: ${(msgs as string[]).join(", ")}`)
-      .join(" | ");
+    //
+    // Frente 10 (segunda camada), Lote 2: essa suposição só valia quando
+    // TODO schema tinha mensagem customizada - na prática a maioria não
+    // tem, e error.flatten().fieldErrors só enxerga a chave de TOPO do
+    // objeto validado (validate.middleware.ts sempre valida
+    // {body, params, query}), então o campo virava sempre "body" e a
+    // mensagem era o texto padrão do Zod em inglês (ex: "Number must be
+    // greater than or equal to 100"). Passa a usar error.issues (path
+    // completo, ex: "priceCents") e traduz a mensagem só quando ela é
+    // detectavelmente a mensagem padrão do Zod - mensagem customizada
+    // (já em português) nunca é tocada.
+    const translated = error.issues.map((issue) => translateZodIssue(issue));
+    const detail = translated.map(({ field, message }) => `${field}: ${message}`).join(" | ");
     return response.status(StatusCodes.BAD_REQUEST).json({
       message: detail ? `Erro de validação — ${detail}` : "Erro de validação.",
-      errors: flat,
+      errors: error.flatten(),
       requestId
     });
   }

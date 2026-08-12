@@ -626,7 +626,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
             radius={radiusKm * 1000}
             strokeColor={theme.primary}
             strokeWidth={1.5}
-            fillColor="rgba(34,197,94,0.09)"
+            fillColor={theme.primarySubtle}
           />
 
           {/* Pins de outros personais — apenas visual, sem interação */}
@@ -800,7 +800,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
               borderRadius: 12,
               borderWidth: 1,
               borderColor: "rgba(34,197,94,0.30)",
-              backgroundColor: "rgba(34,197,94,0.12)",
+              backgroundColor: theme.primarySubtle,
               paddingHorizontal: 10,
               paddingVertical: 6,
               opacity: saving ? 0.7 : 1,
@@ -827,7 +827,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
               borderRadius: 10,
               borderWidth: 1,
               borderColor: "rgba(34,197,94,0.30)",
-              backgroundColor: "rgba(34,197,94,0.08)",
+              backgroundColor: theme.primarySubtle,
               paddingHorizontal: 10,
               paddingVertical: 6,
             }}
@@ -852,7 +852,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
               borderRadius: 10,
               borderWidth: 1,
               borderColor: backgroundLocationEnabled ? "rgba(34,197,94,0.30)" : theme.border,
-              backgroundColor: backgroundLocationEnabled ? "rgba(34,197,94,0.08)" : theme.inputBg,
+              backgroundColor: backgroundLocationEnabled ? theme.primarySubtle : theme.inputBg,
               paddingHorizontal: 10,
               paddingVertical: 6,
               opacity: backgroundLocationBusy ? 0.7 : 1,
@@ -982,7 +982,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
                       borderRadius: 16,
                       borderWidth: 1,
                       borderColor: active ? "rgba(34,197,94,0.40)" : theme.border,
-                      backgroundColor: active ? "rgba(34,197,94,0.13)" : theme.chipBg,
+                      backgroundColor: active ? theme.primarySubtle : theme.chipBg,
                       paddingHorizontal: 9,
                       paddingVertical: 5,
                     }}
@@ -1039,7 +1039,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
                       borderRadius: 16,
                       borderWidth: 1,
                       borderColor: active ? "rgba(34,197,94,0.40)" : theme.border,
-                      backgroundColor: active ? "rgba(34,197,94,0.13)" : theme.chipBg,
+                      backgroundColor: active ? theme.primarySubtle : theme.chipBg,
                       paddingHorizontal: 9,
                       paddingVertical: 5,
                     }}
@@ -1080,7 +1080,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
                   justifyContent: "center",
                   borderWidth: 1,
                   borderColor: addingExtra ? "rgba(239,68,68,0.28)" : "rgba(34,197,94,0.30)",
-                  backgroundColor: addingExtra ? "rgba(239,68,68,0.10)" : "rgba(34,197,94,0.10)",
+                  backgroundColor: addingExtra ? theme.dangerSubtle : theme.primarySubtle,
                 }}
               >
                 <Ionicons name={addingExtra ? "close" : "add"} size={13} color={addingExtra ? "#f44336" : theme.primary} />
@@ -1281,7 +1281,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
                         justifyContent: "center",
                         borderWidth: 1,
                         borderColor: "rgba(34,197,94,0.30)",
-                        backgroundColor: "rgba(34,197,94,0.12)",
+                        backgroundColor: theme.primarySubtle,
                       }}
                     >
                       <Ionicons name="checkmark" size={15} color={theme.primary} />

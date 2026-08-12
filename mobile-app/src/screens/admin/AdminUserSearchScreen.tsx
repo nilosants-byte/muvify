@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, TouchableOpacity, View } from "react-native";
 import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
-import { adminApi, AdminUserDetail, AdminUserSearchResult } from "../../services/api/client";
+import { adminApi, AdminUserDetail, AdminUserSearchResult, DebtRecordStatus } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { AdminScaffold } from "./AdminScaffold";
@@ -11,6 +11,48 @@ import { shareExportedDataAsFile } from "../../utils/exportDataFile";
 type Props = {
   navigation: any;
   route?: { params?: { initialQuery?: string } };
+};
+
+// Épico de Frentes, Frente 10, Lote 8: CREF/dívida/histórico de moderação
+// mostravam o código técnico cru (ex: "IN_REVIEW", "WRITTEN_OFF",
+// "USER_SUSPENDED") — mesmo padrão de tradução já usado em
+// AdminDebtsScreen/AdminConsultasScreen/AdminModerationScreen.
+const CREF_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Pendente",
+  IN_REVIEW: "Em análise",
+  APPROVED: "Aprovado",
+  REJECTED: "Reprovado"
+};
+
+const DEBT_STATUS_LABEL: Record<DebtRecordStatus, string> = {
+  PENDING: "Pendente",
+  NOTIFIED: "Notificado",
+  PAID: "Pago",
+  WRITTEN_OFF: "Baixado (incobrável)"
+};
+
+const AUDIT_ACTION_LABEL: Record<string, string> = {
+  CREF_APPROVED: "CREF aprovado",
+  CREF_REJECTED: "CREF reprovado",
+  SUPPORT_TICKET_REPLIED: "Chamado de suporte respondido",
+  DATA_RETENTION_RUN: "Retenção de dados executada",
+  DISPUTE_CASE_RESOLVED: "Disputa resolvida",
+  USER_SUSPENDED: "Conta suspensa",
+  USER_REACTIVATED: "Conta reativada",
+  USER_ROLE_CHANGED: "Tipo de conta alterado",
+  DEBT_WRITTEN_OFF: "Dívida baixada (incobrável)",
+  EXERCISE_PREBUILT_CREATED: "Exercício pré-montado criado",
+  EXERCISE_PREBUILT_UPDATED: "Exercício pré-montado editado",
+  EXERCISE_PREBUILT_DELETED: "Exercício pré-montado excluído",
+  USER_LEGAL_HOLD_SET: "Legal hold aplicado",
+  USER_LEGAL_HOLD_CLEARED: "Legal hold removido",
+  ADMIN_USER_DATA_EXPORTED: "Dados do usuário exportados",
+  REPORT_DISMISSED: "Denúncia descartada",
+  REPORT_CONTENT_HIDDEN: "Conteúdo ocultado por denúncia",
+  REPORT_CONTENT_UNHIDDEN: "Conteúdo reexibido",
+  CATEGORY_CREATED: "Categoria criada",
+  CATEGORY_DEACTIVATED: "Categoria desativada",
+  CATEGORY_REACTIVATED: "Categoria reativada"
 };
 
 function formatCents(amountCents: number) {
@@ -325,7 +367,7 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
                 ) : null}
                 {detail.provider ? (
                   <MvText variant="body4" color="secondary">
-                    CREF: {detail.provider.crefValidationStatus} · Mercado Pago: {detail.provider.mpConnected ? "conectado" : "não conectado"}
+                    CREF: {CREF_STATUS_LABEL[detail.provider.crefValidationStatus] ?? detail.provider.crefValidationStatus} · Mercado Pago: {detail.provider.mpConnected ? "conectado" : "não conectado"}
                   </MvText>
                 ) : null}
                 {detail.suspendedAt ? (
@@ -349,7 +391,7 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
                 </MvText>
                 {detail.clientDebts.slice(0, 5).map((d) => (
                   <MvText key={d.id} variant="body4">
-                    {formatCents(d.amountCents)} — {d.status} — {d.reason}
+                    {formatCents(d.amountCents)} — {DEBT_STATUS_LABEL[d.status] ?? d.status} — {d.reason}
                   </MvText>
                 ))}
               </View>
@@ -364,7 +406,7 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
                   </MvText>
                   {detail.providerDebts.slice(0, 5).map((d) => (
                     <MvText key={d.id} variant="body4">
-                      {formatCents(d.amountCents)} — {d.status} — {d.reason}
+                      {formatCents(d.amountCents)} — {DEBT_STATUS_LABEL[d.status] ?? d.status} — {d.reason}
                     </MvText>
                   ))}
                 </View>
@@ -380,7 +422,7 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
                   <MvText variant="semi2">Histórico de moderação</MvText>
                   {detail.recentModerationHistory.map((entry) => (
                     <View key={entry.id} style={{ gap: 2, paddingTop: 6, borderTopWidth: 1, borderTopColor: theme.border }}>
-                      <MvText variant="body4">{entry.action}</MvText>
+                      <MvText variant="body4">{AUDIT_ACTION_LABEL[entry.action] ?? entry.action}</MvText>
                       <MvText variant="caption" color="secondary">
                         {entry.admin.name} · {formatDate(entry.createdAt)}
                       </MvText>

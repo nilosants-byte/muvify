@@ -27,8 +27,8 @@ export function MvCard({ variant = "default", style, children }: MvCardProps) {
     switch (variant) {
       case "green":
         return {
-          backgroundColor: isLight ? "rgba(34,197,94,0.06)" : "rgba(34,197,94,0.08)",
-          borderColor: isLight ? "rgba(34,197,94,0.20)" : "rgba(34,197,94,0.22)",
+          backgroundColor: isLight ? theme.primarySubtle : theme.primarySubtle,
+          borderColor: isLight ? theme.primarySubtleBorder : theme.primarySubtleBorder,
           ...shadows.cardGreen,
         };
       case "flat":

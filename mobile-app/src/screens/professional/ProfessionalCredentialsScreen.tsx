@@ -81,8 +81,8 @@ function CrefProgressBar({ status }: { status: string }) {
               <View style={{
                 width: 28, height: 28, borderRadius: 14,
                 backgroundColor: isRejected
-                  ? "rgba(239,68,68,0.14)"
-                  : (isDone || isActive) ? "rgba(34,197,94,0.14)" : theme.chipBg,
+                  ? theme.dangerSubtle
+                  : (isDone || isActive) ? theme.primarySubtle : theme.chipBg,
                 borderWidth: 1.5,
                 borderColor: isRejected ? theme.danger : (isDone || isActive) ? green : theme.border,
                 alignItems: "center", justifyContent: "center",
@@ -120,8 +120,8 @@ function StatusHeroCard({ status, credentials }: { status: string; credentials: 
     APPROVED: {
       icon: "checkmark-circle" as const,
       color: theme.textGreen,
-      bg: "rgba(34,197,94,0.10)" as const,
-      border: "rgba(34,197,94,0.22)" as const,
+      bg: theme.primarySubtle,
+      border: theme.primarySubtleBorder,
       title: "CREF aprovado",
       body: credentials?.crefValidatedAt
         ? `Validado em ${formatBRDate(credentials.crefValidatedAt)}. Você pode oferecer serviços no app.`
@@ -138,8 +138,8 @@ function StatusHeroCard({ status, credentials }: { status: string; credentials: 
     REJECTED: {
       icon: "close-circle" as const,
       color: theme.danger,
-      bg: "rgba(239,68,68,0.10)" as const,
-      border: "rgba(239,68,68,0.22)" as const,
+      bg: theme.dangerSubtle,
+      border: theme.dangerSubtleBorder,
       title: "Documentos reprovados",
       body: credentials?.crefRejectionReason
         ? `Motivo: ${credentials.crefRejectionReason}. Corrija e envie novamente.`
@@ -320,13 +320,13 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
           <View style={{
             flexDirection: "row", alignItems: "center", justifyContent: "space-between",
             padding: 12, borderRadius: 12, borderWidth: 1,
-            borderColor: "rgba(34,197,94,0.30)", backgroundColor: "rgba(34,197,94,0.08)",
+            borderColor: "rgba(34,197,94,0.30)", backgroundColor: theme.primarySubtle,
           }}>
             <View style={{ flex: 1, gap: 2 }}>
               <MvText variant="semi3" style={{ color: theme.textGreen }} numberOfLines={1}>{doc.name}</MvText>
               <MvText variant="body4" color="secondary">Arquivo selecionado</MvText>
             </View>
-            <PressableScale scale={0.94} onPress={() => chooseDocumentSource(side)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.12)" }}>
+            <PressableScale scale={0.94} onPress={() => chooseDocumentSource(side)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: theme.primarySubtle }}>
               <MvText variant="badge" style={{ color: theme.textGreen, letterSpacing: 0, fontSize: 12 }}>Trocar</MvText>
             </PressableScale>
           </View>
@@ -394,7 +394,7 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
               <View style={{
                 flexDirection: "row", alignItems: "center", gap: 10,
                 borderRadius: 12, borderWidth: 1,
-                borderColor: "rgba(239,68,68,0.30)", backgroundColor: "rgba(239,68,68,0.08)",
+                borderColor: "rgba(239,68,68,0.30)", backgroundColor: theme.dangerSubtle,
                 padding: 12,
               }}>
                 <Ionicons name="time-outline" size={18} color={theme.danger} />

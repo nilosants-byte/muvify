@@ -11,6 +11,7 @@ import { useAppState } from "../../state/AppState";
 import { authApi, userApi } from "../../services/api/client";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
+import { handleScreenError } from "./api-helpers";
 
 function ActionRow({
   icon,
@@ -107,8 +108,7 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
       setConfirmCode("");
       setTwoFactorSetupVisible(true);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao iniciar configuração de 2FA.";
-      showToast(message, "error");
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao iniciar configuração de 2FA.", navigation });
     } finally {
       setSettingUpTwoFactor(false);
     }
@@ -127,8 +127,7 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
       setBackupCodesVisible(true);
       if (user) setCurrentUser({ ...user, twoFactorEnabled: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Código inválido.";
-      showToast(message, "error");
+      handleScreenError({ error, showToast, fallbackMessage: "Código inválido.", navigation });
     } finally {
       setConfirmingTwoFactor(false);
     }
@@ -148,8 +147,7 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
       setDisableCode("");
       if (user) setCurrentUser({ ...user, twoFactorEnabled: false });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao desativar 2FA.";
-      showToast(message, "error");
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao desativar 2FA.", navigation });
     } finally {
       setDisablingTwoFactor(false);
     }
@@ -186,8 +184,7 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
       setNewPassword("");
       setConfirmNewPassword("");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao alterar senha.";
-      showToast(message, "error");
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao alterar senha.", navigation });
     } finally {
       setPasswordSaving(false);
     }
@@ -216,8 +213,7 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
       setRecoveryModalVisible(false);
       setRecoveryPassword("");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao atualizar e-mail de recuperação.";
-      showToast(message, "error");
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao atualizar e-mail de recuperação.", navigation });
     } finally {
       setRecoverySaving(false);
     }

@@ -104,7 +104,7 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
           ) : mpStatus?.hasAccount ? (
             <MvCard>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(34,197,94,0.12)", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="shield-checkmark" size={20} color={theme.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -143,7 +143,7 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
               { icon: "pie-chart-outline" as const,        label: "Divisão",   desc: "90% para você · 10% para a Muvify" },
             ].map((item) => (
               <View key={item.label} style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 7, borderTopWidth: 1, borderTopColor: theme.borderSub }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(34,197,94,0.10)", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name={item.icon} size={14} color={theme.primary} />
                 </View>
                 <View style={{ flex: 1 }}>

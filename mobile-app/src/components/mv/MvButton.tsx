@@ -1,5 +1,6 @@
 import React from "react";
-import { ActivityIndicator, Keyboard, StyleProp, ViewStyle } from "react-native";
+import { ActivityIndicator, Keyboard, StyleProp, View, ViewStyle } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { shadows } from "../../theme/tokens";
 import { radius } from "../../theme/MvTypography";
@@ -17,6 +18,11 @@ interface MvButtonProps {
   style?: StyleProp<ViewStyle>;
   testID?: string;
   accessibilityLabel?: string;
+  // Frente 10 (segunda camada), Lote 14: MvButton não tinha slot de ícone —
+  // telas que precisavam de um ícone junto do texto recorriam a emoji
+  // dentro da própria label (ex: "💬  Chat") em vez de um Ionicons de verdade.
+  icon?: keyof typeof Ionicons.glyphMap;
+  iconPosition?: "left" | "right";
 }
 
 export function MvButton({
@@ -28,6 +34,8 @@ export function MvButton({
   style,
   testID,
   accessibilityLabel,
+  icon,
+  iconPosition = "left",
 }: MvButtonProps) {
   const { theme } = useMvTheme();
 
@@ -87,6 +95,14 @@ export function MvButton({
     >
       {loading ? (
         <ActivityIndicator color={textColor} size="small" />
+      ) : icon ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          {iconPosition === "left" ? <Ionicons name={icon} size={16} color={textColor} /> : null}
+          <MvText variant="semi2" numberOfLines={1} style={{ color: textColor }}>
+            {label}
+          </MvText>
+          {iconPosition === "right" ? <Ionicons name={icon} size={16} color={textColor} /> : null}
+        </View>
       ) : (
         <MvText variant="semi2" numberOfLines={1} style={{ color: textColor }}>
           {label}

@@ -81,7 +81,7 @@ function itemCategory(item: NotificationItem): ScreenCategory {
 function variantTone(variant: NotificationVariant, theme: MvTheme) {
   if (variant === "green") return { text: theme.primary, border: theme.primarySubtleBorder, bg: theme.primarySubtle };
   if (variant === "orange") return { text: C.amber, border: C.amberBorder, bg: C.amberDim };
-  if (variant === "red") return { text: theme.danger, border: "rgba(239,68,68,0.20)", bg: "rgba(239,68,68,0.10)" };
+  if (variant === "red") return { text: theme.danger, border: theme.dangerSubtleBorder, bg: theme.dangerSubtle };
   if (variant === "blue") return { text: C.sky, border: C.skyBorder, bg: C.skyDim };
   return { text: theme.text2, border: theme.border, bg: theme.inputBg };
 }

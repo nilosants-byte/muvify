@@ -607,7 +607,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
 
           {/* Card: Resumo */}
           {clientHasDebt ? (
-            <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: "rgba(239,68,68,0.35)", backgroundColor: "rgba(239,68,68,0.08)", padding: S.cardPad, gap: 6 }}>
+            <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: "rgba(239,68,68,0.35)", backgroundColor: theme.dangerSubtle, padding: S.cardPad, gap: 6 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="alert-circle-outline" size={18} color={theme.danger} />
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.danger }}>Pendência financeira em aberto</Text>

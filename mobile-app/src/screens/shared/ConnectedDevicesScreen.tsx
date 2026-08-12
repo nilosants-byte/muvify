@@ -10,7 +10,8 @@ import { useAppState } from "../../state/AppState";
 import { userApi, type ConnectedSession } from "../../services/api/client";
 import { useAuthQuery, useAuthMutation } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
-import { formatRelativeActivityLabel } from "../../utils/formatters";
+import { formatRelativeActivityLabel, friendlyDeviceLabel } from "../../utils/formatters";
+import { handleScreenError } from "./api-helpers";
 
 // Épico de Frentes, "4 temas pendentes" (05/08/2026), Tema 3: mostra os
 // aparelhos com login ativo na conta e deixa desconectar qualquer um à
@@ -44,7 +45,7 @@ export function ConnectedDevicesScreen({ navigation }: { navigation?: any }) {
         showToast("Aparelho desconectado.", "success");
       },
       onError: (error) => {
-        showToast(error instanceof Error ? error.message : "Falha ao desconectar aparelho.", "error");
+        handleScreenError({ error, showToast, fallbackMessage: "Falha ao desconectar aparelho.", navigation });
       },
     }
   );
@@ -103,7 +104,7 @@ export function ConnectedDevicesScreen({ navigation }: { navigation?: any }) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <MvText variant="semi3" numberOfLines={2}>
-                    {item.userAgent ?? "Aparelho desconhecido"}
+                    {friendlyDeviceLabel(item.userAgent)}
                   </MvText>
                   <MvText variant="body4" color="secondary">
                     {formatRelativeActivityLabel(item.lastActiveAt)}

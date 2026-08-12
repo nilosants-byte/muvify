@@ -50,6 +50,7 @@ import {
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar, MvToggle } from "../../components/mv";
+import { SkeletonClientHomeScreen } from "../../components/polish/SkeletonCard";
 import { handleScreenError } from "../shared/api-helpers";
 import { resolveMediaUrl } from "../../utils/media";
 import { ClientBottomNavV2 } from "../../components/navigation/ClientBottomNavV2";
@@ -299,6 +300,13 @@ export function ClientHomeScreen({ navigation }: Props) {
     (token) => bookingsApi.me(token),
   );
   const bookings = bookingsQuery.data ?? ([] as Booking[]);
+  // Frente 10 (segunda camada), Lote 1: sem isso, todo cold start (ou volta
+  // de background) mostrava "Nenhum treino agendado" por um instante -
+  // bookingsQuery.data começa undefined, e o "?? []" acima escondia a
+  // diferença entre "ainda carregando" e "de fato não tem nada". Mesmo
+  // padrão já usado em ProfessionalHomeScreen.tsx (loading/loadError).
+  const homeLoading = bookingsQuery.isLoading;
+  const homeLoadError = bookingsQuery.isError;
   // Initialize from module-level cache so re-entering the screen shows data immediately
   const [providers, setProviders] = useState<ProviderWithExtras[]>(
     () => (globalThis as any).__mvProvidersCache?.data ?? []
@@ -818,8 +826,7 @@ export function ClientHomeScreen({ navigation }: Props) {
       await AsyncStorage.setItem(`@muvify/apelidoPromptShown_${user?.id}`, "1").catch(() => {});
       setApelidoModalVisible(false);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Falha ao salvar apelido.";
-      showToast(msg, "error");
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao salvar apelido.", navigation });
     } finally {
       setApelidoSaving(false);
     }
@@ -1050,8 +1057,24 @@ export function ClientHomeScreen({ navigation }: Props) {
         {/* Spacer */}
         <View style={{ flex: 1 }} />
 
-        {/* Direita: botões de chat e notificações */}
-        <View style={{ flexDirection: "row", gap: 6, width: 80, justifyContent: "flex-end" }}>
+        {/* Direita: botões de favoritos, chat e notificações */}
+        <View style={{ flexDirection: "row", gap: 6, width: 114, justifyContent: "flex-end" }}>
+          {/* Frente 10 (segunda camada), Lote 17: Favoritos só era alcançável
+              pelo menu do perfil (ClientProfileScreen) - nenhum atalho
+              visível na Home, a tela mais visitada do app. */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate("Favorites")}
+            accessibilityRole="button"
+            accessibilityLabel="Favoritos"
+            style={{
+              width: 34, height: 34, borderRadius: 11,
+              backgroundColor: isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)",
+              alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <Ionicons name="heart-outline" size={18} color={isLight ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.6)"} />
+          </TouchableOpacity>
+
           <TouchableOpacity
             onPress={() => { setUnreadChatCount(0); goToStack("ClientChatList"); }}
             accessibilityRole="button"
@@ -1143,9 +1166,9 @@ export function ClientHomeScreen({ navigation }: Props) {
               paddingVertical: 9,
               paddingHorizontal: 12,
               borderRadius: 12,
-              backgroundColor: isLight ? "rgba(249,115,22,0.08)" : "rgba(249,115,22,0.13)",
+              backgroundColor: theme.warningSubtle,
               borderWidth: 1,
-              borderColor: isLight ? "rgba(249,115,22,0.35)" : "rgba(249,115,22,0.40)",
+              borderColor: theme.warningSubtleBorder,
               gap: 5,
               marginLeft: 10,
             }}
@@ -1153,9 +1176,9 @@ export function ClientHomeScreen({ navigation }: Props) {
             <Ionicons
               name="clipboard-outline"
               size={17}
-              color="#F97316"
+              color={theme.warning}
             />
-            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: "#F97316", textAlign: "center", lineHeight: 14 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.warning, textAlign: "center", lineHeight: 14 }}>
               {anamnesisStatus === "outdated" ? "Atualize sua\nficha de saúde ›" : "Preencha sua\nficha de saúde ›"}
             </Text>
           </TouchableOpacity>
@@ -1235,6 +1258,26 @@ export function ClientHomeScreen({ navigation }: Props) {
         </View>
       )}
 
+      {homeLoading ? (
+        <SkeletonClientHomeScreen />
+      ) : homeLoadError ? (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 16 }}>
+          <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: theme.dangerSubtle, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="cloud-offline-outline" size={30} color={theme.danger} />
+          </View>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, textAlign: "center" }}>Não foi possível carregar</Text>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center", lineHeight: 20 }}>
+            Verifique sua conexão e tente novamente.
+          </Text>
+          <TouchableOpacity
+            onPress={() => void bookingsQuery.refetch()}
+            activeOpacity={0.85}
+            style={{ paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, backgroundColor: theme.primary }}
+          >
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Tentar novamente</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
       <ScrollView automaticallyAdjustKeyboardInsets={true}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={
@@ -1488,6 +1531,7 @@ export function ClientHomeScreen({ navigation }: Props) {
         </View>
       </View>
       </ScrollView>
+      )}
 
       <ClientProviderCard
         visible={Boolean(providerModal)}
@@ -1548,15 +1592,15 @@ export function ClientHomeScreen({ navigation }: Props) {
             <View style={{ alignItems: "center" }}>
               <View style={{
                 width: 52, height: 52, borderRadius: 16,
-                backgroundColor: isLight ? "rgba(249,115,22,0.08)" : "rgba(249,115,22,0.13)",
+                backgroundColor: theme.warningSubtle,
                 borderWidth: 1,
-                borderColor: "rgba(249,115,22,0.30)",
+                borderColor: theme.warningSubtleBorder,
                 alignItems: "center", justifyContent: "center",
               }}>
                 <Ionicons
                   name={anamnesisPopup === "outdated" ? "refresh-circle-outline" : "clipboard-outline"}
                   size={24}
-                  color="#F97316"
+                  color={theme.warning}
                 />
               </View>
             </View>

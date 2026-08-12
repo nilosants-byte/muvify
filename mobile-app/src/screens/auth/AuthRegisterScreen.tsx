@@ -18,9 +18,10 @@ import { MvButton } from "../../components/mv/MvButton";
 import { MvInput } from "../../components/mv/MvInput";
 import { MvText } from "../../components/mv/MvText";
 import { PressableScale } from "../../components/polish/PressableScale";
-import { AppLogoText } from "../../components/ui/AppLogoText";
+import { MvLogoText } from "../../components/mv";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { useMvTheme } from "../../theme/MvThemeContext";
+import { extractApiMessage } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "Register">;
 
@@ -156,10 +157,11 @@ export function AuthRegisterScreen({ navigation }: Props) {
         consentAccepted: true,
       });
     } catch (error) {
-      const raw = error instanceof Error ? error.message.toLowerCase() : "";
+      const extracted = extractApiMessage(error, "Falha ao criar conta.");
+      const raw = extracted.toLowerCase();
       const message = raw.includes("email") && (raw.includes("already") || raw.includes("exists") || raw.includes("duplicate") || raw.includes("exist") || raw.includes("em uso") || raw.includes("cadastrado"))
         ? "Este e-mail já está cadastrado. Tente fazer login ou use outro e-mail."
-        : error instanceof Error ? error.message : "Falha ao criar conta.";
+        : extracted;
       showToast(message, "error");
     } finally {
       setLoading(false);
@@ -186,7 +188,7 @@ export function AuthRegisterScreen({ navigation }: Props) {
       >
         {/* Logo da marca */}
         <View style={{ marginBottom: 28 }}>
-          <AppLogoText size={28} />
+          <MvLogoText size={28} />
         </View>
 
         <MvText variant="display" style={{ marginBottom: 6 }}>Criar conta</MvText>

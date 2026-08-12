@@ -344,7 +344,7 @@ export class ChatController {
           // desativar avisos de sessão (BOOKINGS) também silenciava
           // mensagem de chat, sem relação nenhuma entre as duas coisas.
           preferenceType: "CHAT",
-          title: `💬 ${senderName}`,
+          title: senderName,
           body: content.trim().length > 80 ? content.trim().slice(0, 80) + "…" : content.trim(),
           data: { type: "CHAT_MESSAGE", bookingId, messageId: message.id },
         })

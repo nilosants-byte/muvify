@@ -6,7 +6,7 @@ import {
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as Notifications from "expo-notifications";
-import { ToastHost } from "../components/primitives";
+import { MvToastHost } from "../components/mv";
 import {
   resolveNotificationRoute,
   isBookingNotificationType,
@@ -823,7 +823,7 @@ export function RootNavigator() {
         ) : (
           <AuthNavigator />
         )}
-        {toast ? <ToastHost message={toast.message} type={toast.type} /> : null}
+        {toast ? <MvToastHost message={toast.message} type={toast.type} /> : null}
       </NavigationContainer>
     </ErrorBoundary>
   );

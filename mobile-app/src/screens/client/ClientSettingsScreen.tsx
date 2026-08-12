@@ -13,6 +13,7 @@ import { shareExportedDataAsFile } from "../../utils/exportDataFile";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { AuthOnboardingScreen } from "../auth/AuthOnboardingScreen";
+import { extractApiMessage } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ClientSettings">;
 
@@ -32,8 +33,8 @@ function ConfigRow({
 }) {
   const { theme } = useMvTheme();
   const iconColor = danger ? theme.danger : theme.primary;
-  const iconBg = danger ? "rgba(239,68,68,0.12)" : theme.primarySubtle;
-  const iconBorder = danger ? "rgba(239,68,68,0.20)" : theme.primarySubtleBorder;
+  const iconBg = danger ? theme.dangerSubtle : theme.primarySubtle;
+  const iconBorder = danger ? theme.dangerSubtleBorder : theme.primarySubtleBorder;
   const isToggle = typeof toggle === "boolean";
   return (
     <TouchableOpacity
@@ -115,7 +116,7 @@ export function ClientSettingsScreen({ navigation }: Props) {
       setShowDeletePasswordModal(false);
       await signOut();
     } catch (error) {
-      Alert.alert("Erro", error instanceof Error ? error.message : "Não foi possível excluir a conta.");
+      Alert.alert("Erro", extractApiMessage(error, "Não foi possível excluir a conta."));
     } finally {
       setDeletingAccount(false);
     }
@@ -296,7 +297,7 @@ export function ClientSettingsScreen({ navigation }: Props) {
         </ConfigGroup>
 
         {/* Sair */}
-        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: "rgba(239,68,68,0.20)", backgroundColor: theme.cardBg, paddingHorizontal: 14 }}>
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.dangerSubtleBorder, backgroundColor: theme.cardBg, paddingHorizontal: 14 }}>
           <ConfigRow
             icon="log-out-outline"
             title="Sair da conta"

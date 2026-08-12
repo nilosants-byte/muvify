@@ -79,6 +79,10 @@ export function SkeletonCard({ style }: { style?: ViewStyle }) {
   );
 }
 
+// Frente 10 (segunda camada), Lote 18 (B4, observado sem ação): SkeletonCard
+// e SkeletonStudentCard são quase idênticos (avatar + 2 linhas), diferindo só
+// no bloco final (2 linhas genéricas vs. badge+valor à direita). Baixa
+// prioridade — não vale o risco de unificar agora só por semelhança.
 // Variante para cards de alunos (avatar 46px + nome + email + serviço + badge direita)
 export function SkeletonStudentCard({ style }: { style?: ViewStyle }) {
   const { theme } = useMvTheme();
@@ -214,8 +218,8 @@ export function SkeletonHomeScreen() {
   return (
     <View style={{ gap: 14, paddingHorizontal: 16, paddingTop: 4 }}>
       {/* Próxima sessão */}
-      <View style={[cardStyle, { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, backgroundColor: "rgba(34,197,94,0.06)", borderColor: "rgba(34,197,94,0.14)" }]}>
-        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "rgba(34,197,94,0.25)" }} />
+      <View style={[cardStyle, { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, backgroundColor: theme.primarySubtle, borderColor: theme.primarySubtle }]}>
+        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primarySubtleBorder }} />
         <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.inputBg }} />
         <View style={{ flex: 1, gap: 6 }}>
           <SkeletonLine width="50%" height={13} />
@@ -227,7 +231,7 @@ export function SkeletonHomeScreen() {
       {/* Agenda de hoje */}
       <View style={[cardStyle, { gap: 10 }]}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: "rgba(34,197,94,0.10)" }} />
+          <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: theme.primarySubtle }} />
           <View style={{ flex: 1, gap: 5 }}>
             <SkeletonLine width="40%" height={13} />
             <SkeletonLine width="28%" height={10} />
@@ -249,7 +253,7 @@ export function SkeletonHomeScreen() {
         <View style={{ flexDirection: "row", gap: 10 }}>
           {[0, 1, 2, 3].map((i) => (
             <View key={i} style={{ flex: 1, borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, paddingVertical: 14, alignItems: "center", gap: 8 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: "rgba(34,197,94,0.08)" }} />
+              <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: theme.primarySubtle }} />
               <SkeletonLine width="70%" height={10} />
             </View>
           ))}
@@ -278,6 +282,53 @@ export function SkeletonHomeScreen() {
             <SkeletonLine width="70%" height={11} />
           </View>
         ))}
+      </View>
+    </View>
+  );
+}
+
+// Frente 10 (segunda camada), Lote 1: ClientHomeScreen não tinha nenhum
+// estado de loading - a tela mostrava "Nenhum treino agendado" por um
+// instante em todo cold start, mesmo quando o cliente tem sessão marcada
+// (bookingsQuery.data começa undefined). Layout mais simples que
+// SkeletonHomeScreen (que é do profissional - agenda/receita não fazem
+// sentido pro lado cliente).
+export function SkeletonClientHomeScreen() {
+  const { theme } = useMvTheme();
+  const cardStyle: ViewStyle = {
+    backgroundColor: theme.cardBg,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 16,
+  };
+  return (
+    <View style={{ gap: 14, paddingHorizontal: 16, paddingTop: 8 }}>
+      {/* Próxima sessão / estado vazio */}
+      <View style={[cardStyle, { gap: 8 }]}>
+        <SkeletonLine width="60%" height={10} />
+        <SkeletonLine width="70%" height={20} />
+        <SkeletonLine width="45%" height={13} />
+      </View>
+
+      {/* Explorar por especialidade */}
+      <View style={{ gap: 10 }}>
+        <SkeletonLine width="45%" height={16} />
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={{ flex: 1, borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, paddingVertical: 14, alignItems: "center", gap: 8 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: theme.primarySubtle }} />
+              <SkeletonLine width="70%" height={10} />
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Card de promoção/destaque */}
+      <View style={[cardStyle, { gap: 8 }]}>
+        <SkeletonLine width="40%" height={10} />
+        <SkeletonLine width="80%" height={18} />
+        <SkeletonLine width="90%" height={12} />
       </View>
     </View>
   );
@@ -375,6 +426,28 @@ export function SkeletonFinanceTab() {
           <SkeletonLine width={56} height={13} />
         </View>
       ))}
+    </View>
+  );
+}
+
+// Frente 10 (segunda camada), Lote 13: FinancialGoalsScreen mostra barras de
+// progresso dentro de um card (GoalBar), não uma lista de linhas — usar
+// SkeletonFinanceTab aqui ficaria com o formato errado pro conteúdo real.
+export function SkeletonGoalsTab() {
+  const { theme } = useMvTheme();
+  return (
+    <View style={{ padding: 16 }}>
+      <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16 }}>
+        {[0, 1, 2].map((i) => (
+          <View key={i} style={{ marginBottom: i < 2 ? 20 : 0 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+              <SkeletonLine width="40%" height={14} />
+              <SkeletonLine width={30} height={12} />
+            </View>
+            <SkeletonLine width="100%" height={10} style={{ borderRadius: 5 }} />
+          </View>
+        ))}
+      </View>
     </View>
   );
 }

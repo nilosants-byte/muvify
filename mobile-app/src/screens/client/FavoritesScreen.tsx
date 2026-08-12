@@ -10,7 +10,7 @@ import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { averageToFive, handleScreenError } from "../shared/api-helpers";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
-import { MvAvatar } from "../../components/mv";
+import { MvAvatar, MvEmptyState } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
@@ -141,7 +141,7 @@ export function FavoritesScreen({ navigation }: Props) {
                 disabled={removingId === item.providerId}
                 accessibilityRole="button"
                 accessibilityLabel={`Remover ${provider?.displayName ?? "profissional"} dos favoritos`}
-                style={{ height: S.touchMin, borderRadius: 12, borderWidth: 1, borderColor: "rgba(239,68,68,0.20)", backgroundColor: "rgba(239,68,68,0.08)", alignItems: "center", justifyContent: "center", opacity: removingId === item.providerId ? 0.5 : 1 }}
+                style={{ height: S.touchMin, borderRadius: 12, borderWidth: 1, borderColor: theme.dangerSubtleBorder, backgroundColor: theme.dangerSubtle, alignItems: "center", justifyContent: "center", opacity: removingId === item.providerId ? 0.5 : 1 }}
               >
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.danger }}>
                   {removingId === item.providerId ? "Removendo..." : "Remover dos favoritos"}
@@ -152,14 +152,11 @@ export function FavoritesScreen({ navigation }: Props) {
         }}
         ListEmptyComponent={
           !favQuery.isLoading ? (
-            <View style={{ paddingTop: 60, alignItems: "center", gap: 10 }}>
-              <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="heart-outline" size={30} color={theme.primary} />
-              </View>
-              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, textAlign: "center" }}>
-                Você ainda não favoritou nenhum profissional.{"\n"}Explore o mapa para encontrar um!
-              </Text>
-            </View>
+            <MvEmptyState
+              icon="heart-outline"
+              style={{ paddingTop: 60 }}
+              description={"Você ainda não favoritou nenhum profissional.\nExplore o mapa para encontrar um!"}
+            />
           ) : null
         }
         showsVerticalScrollIndicator={false}

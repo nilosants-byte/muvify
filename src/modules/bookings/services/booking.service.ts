@@ -240,7 +240,7 @@ export class BookingService {
 
       if (provider.userId === clientId) {
         throw new AppError(
-          "Voce nao pode agendar um atendimento consigo mesmo.",
+          "Você não pode agendar um atendimento consigo mesmo.",
           StatusCodes.UNPROCESSABLE_ENTITY
         );
       }
@@ -633,8 +633,8 @@ export class BookingService {
       void notificationService
         .sendToUsers([createdBooking.clientId], {
         preferenceType: "BOOKINGS",
-          title: "✅ Agendamento solicitado!",
-          body: `Seu pedido para ${createdBooking.provider.displayName} em ${formatPtBrDate(createdBooking.scheduledAt)} foi enviado. Que tal se apresentar e tirar dúvidas no chat? 💬`,
+          title: "Agendamento solicitado!",
+          body: `Seu pedido para ${createdBooking.provider.displayName} em ${formatPtBrDate(createdBooking.scheduledAt)} foi enviado. Que tal se apresentar e tirar dúvidas no chat?`,
           data: {
             type: "BOOKING_CREATED",
             bookingId: createdBooking.id,
@@ -648,15 +648,15 @@ export class BookingService {
 
       // Notification for provider — differentiated, includes student info
       const providerBody = hasAnamnesis
-        ? `${createdBooking.client.name} agendou para ${formatPtBrDate(createdBooking.scheduledAt)}. A ficha de anamnese está preenchida — confira para se preparar! 📋`
+        ? `${createdBooking.client.name} agendou para ${formatPtBrDate(createdBooking.scheduledAt)}. A ficha de anamnese está preenchida — confira para se preparar!`
         : hasDraftAnamnesis
-          ? `${createdBooking.client.name} agendou para ${formatPtBrDate(createdBooking.scheduledAt)}. Anamnese incompleta — solicite via chat para se preparar melhor. 📋`
-          : `${createdBooking.client.name} agendou para ${formatPtBrDate(createdBooking.scheduledAt)}. Sem anamnese ainda — peça ao aluno pelo chat! 📋`;
+          ? `${createdBooking.client.name} agendou para ${formatPtBrDate(createdBooking.scheduledAt)}. Anamnese incompleta — solicite via chat para se preparar melhor.`
+          : `${createdBooking.client.name} agendou para ${formatPtBrDate(createdBooking.scheduledAt)}. Sem anamnese ainda — peça ao aluno pelo chat!`;
 
       void notificationService
         .sendToUsers([createdBooking.provider.userId], {
         preferenceType: "BOOKINGS",
-          title: "📅 Novo agendamento recebido!",
+          title: "Novo agendamento recebido!",
           body: providerBody,
           data: {
             type: "BOOKING_CREATED",
@@ -847,8 +847,8 @@ export class BookingService {
             void notificationService
               .sendToUsers([booking.client.id], {
                 preferenceType: "BOOKINGS",
-                title: "Código de presença disponivel",
-                body: "Seu código de 6 dígitos para validação presencial já esta disponivel no agendamento.",
+                title: "Código de presença disponível",
+                body: "Seu código de 6 dígitos para validação presencial já está disponível no agendamento.",
                 data: {
                   type: "BOOKING_ATTENDANCE_CODE_AVAILABLE",
                   bookingId: booking.id
@@ -1468,7 +1468,7 @@ export class BookingService {
 
     const canManage = booking.clientId === userId || booking.provider.userId === userId;
     if (!canManage) {
-      throw new AppError("Sem permissao para alterar este agendamento.", StatusCodes.FORBIDDEN);
+      throw new AppError("Sem permissão para alterar este agendamento.", StatusCodes.FORBIDDEN);
     }
 
     const allowedTransitions: Record<BookingStatus, BookingStatus[]> = {
@@ -1786,7 +1786,7 @@ export class BookingService {
         .sendToUsers([updated.clientId, updated.provider.userId], {
         preferenceType: "BOOKINGS",
           title: "Serviço concluído",
-          body: `Agendamento ${bookingId.slice(0, 8)} concluído com confirmacao das duas partes.`,
+          body: `Agendamento ${bookingId.slice(0, 8)} concluído com confirmação das duas partes.`,
           data: {
             type: "BOOKING_COMPLETED",
             bookingId
@@ -1803,8 +1803,8 @@ export class BookingService {
     void notificationService
       .sendToUsers([counterpartUserId], {
         preferenceType: "BOOKINGS",
-        title: "Confirmacao pendente",
-        body: `${actorLabel} confirmou a conclusao do agendamento ${bookingId.slice(0, 8)}.`,
+        title: "Confirmação pendente",
+        body: `${actorLabel} confirmou a conclusão do agendamento ${bookingId.slice(0, 8)}.`,
         data: {
           type: "BOOKING_CONFIRMATION_PENDING",
           bookingId
@@ -2132,7 +2132,7 @@ export class BookingService {
   private validateCompletionProof(completionProof?: CompletionProofInput) {
     if (!completionProof) {
       throw new AppError(
-        "Selfie de confirmacao obrigatória para concluir atendimento.",
+        "Selfie de confirmação obrigatória para concluir atendimento.",
         StatusCodes.BAD_REQUEST
       );
     }

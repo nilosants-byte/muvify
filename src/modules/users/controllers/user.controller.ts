@@ -17,7 +17,7 @@ export class UserController {
         sig: request.query.sig as string | undefined
       })
     ) {
-      throw new AppError("Assinatura de acesso a foto invalida.", StatusCodes.FORBIDDEN);
+      throw new AppError("Assinatura de acesso a foto inválida.", StatusCodes.FORBIDDEN);
     }
 
     const { buffer, mimeType } = await userService.getPhotoById(request.params.userId);

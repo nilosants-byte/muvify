@@ -105,7 +105,7 @@ export function AdminNoShowReportsScreen({ navigation }: Props) {
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <MvText variant="semi2">{item.reportedUser.name}</MvText>
                 <View style={{
-                  backgroundColor: "rgba(239,68,68,0.12)",
+                  backgroundColor: theme.dangerSubtle,
                   borderRadius: 12,
                   paddingHorizontal: 10,
                   paddingVertical: 3

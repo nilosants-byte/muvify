@@ -11,7 +11,7 @@ import { averageToFive, formatPriceFromCents, handleScreenError } from "../share
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { S } from "../../theme/v2tokens";
 import { PressableScale } from "../../components/polish/PressableScale";
-import { MvAvatar, MvText } from "../../components/mv";
+import { MvAvatar, MvEmptyState, MvText } from "../../components/mv";
 import { resolveMediaUrl } from "../../utils/media";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ProfessionalsList">;
@@ -203,13 +203,15 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
         }}
         ListEmptyComponent={
           !initialLoading ? (
-            <View style={{ paddingTop: 60, alignItems: "center", gap: 10 }}>
-              <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="search-outline" size={28} color={theme.primary} />
-              </View>
-              <MvText variant="body4" color="tertiary">Nenhum profissional encontrado.</MvText>
-              {hasGeo && <MvText variant="caption" color="tertiary" style={{ textAlign: "center", paddingHorizontal: 24 }}>Tente remover filtros ou buscar por outro termo.</MvText>}
-            </View>
+            <MvEmptyState
+              icon="search-outline"
+              style={{ paddingTop: 60 }}
+              description={
+                hasGeo
+                  ? "Nenhum profissional encontrado.\nTente remover filtros ou buscar por outro termo."
+                  : "Nenhum profissional encontrado."
+              }
+            />
           ) : null
         }
         ListFooterComponent={

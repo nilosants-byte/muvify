@@ -1,14 +1,11 @@
 import React from "react";
-import { StyleProp, TextStyle, View } from "react-native";
-import { AppText } from "./AppText";
+import { StyleProp, Text, TextStyle, View } from "react-native";
 import { useMvTheme } from "../../theme/MvThemeContext";
 
-interface AppLogoTextProps {
-  size?: number;
-  style?: StyleProp<TextStyle>;
-}
-
-export function AppLogoText({ size = 18, style }: AppLogoTextProps) {
+// Frente 10 (segunda camada), Lote 11: migrado de components/ui/AppLogoText.tsx
+// (sistema de design legado, removido) — usado por AuthLoginScreen,
+// AuthRegisterScreen e ProfessionalHomeScreen.
+export function MvLogoText({ size = 18, style }: { size?: number; style?: StyleProp<TextStyle> }) {
   const lineHeight = Math.round(size * 1.15);
   const letterSpacing = -0.03 * size;
   const { theme } = useMvTheme();
@@ -24,8 +21,8 @@ export function AppLogoText({ size = 18, style }: AppLogoTextProps) {
   };
   return (
     <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 1 }} accessibilityLabel="muvify">
-      <AppText style={[baseStyle, { color: muviColor }, style]}>muvi</AppText>
-      <AppText style={[baseStyle, { color: fyColor }, style]}>fy</AppText>
+      <Text style={[baseStyle, { color: muviColor }, style]}>muvi</Text>
+      <Text style={[baseStyle, { color: fyColor }, style]}>fy</Text>
     </View>
   );
 }

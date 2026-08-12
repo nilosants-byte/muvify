@@ -311,8 +311,8 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
             {(() => {
               const v = paymentVariant(payment?.status);
               const col = v === "green" ? theme.primary : v === "red" ? theme.danger : C.amber;
-              const bg = v === "green" ? theme.primarySubtle : v === "red" ? "rgba(239,68,68,0.12)" : C.amberDim;
-              const border = v === "green" ? theme.primarySubtleBorder : v === "red" ? "rgba(239,68,68,0.20)" : C.amberBorder;
+              const bg = v === "green" ? theme.primarySubtle : v === "red" ? theme.dangerSubtle : C.amberDim;
+              const border = v === "green" ? theme.primarySubtleBorder : v === "red" ? theme.dangerSubtleBorder : C.amberBorder;
               return (
                 <View style={{ backgroundColor: bg, borderWidth: 1, borderColor: border, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3 }}>
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: col }}>{paymentLabel(payment?.status)}</Text>
