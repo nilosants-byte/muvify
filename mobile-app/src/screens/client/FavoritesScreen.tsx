@@ -2,7 +2,7 @@
 import { Alert, FlatList, RefreshControl, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientTabParamList } from "../../navigation/route-types";
 import { favoritesApi, Favorite } from "../../services/api/client";
@@ -40,7 +40,7 @@ export function FavoritesScreen({ navigation }: Props) {
   // Frente 5 (Descoberta, agendamento e agenda), Lote 10: favoritar na tela
   // de detalhe do profissional não refletia aqui sem pull-to-refresh manual
   // — mesmo padrão de refetch-ao-focar já usado em ProfessionalReviewsScreen.
-  useFocusEffect(useCallback(() => { void favQuery.refetch(); }, [favQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void favQuery.refetch(); }, [favQuery.refetch]));
 
   const goToDetail = (providerId: string) => {
     const parent = navigation.getParent<any>();

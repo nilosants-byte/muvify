@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Alert, Share,
@@ -265,7 +265,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   // Épico de Frentes, Frente 7, Lote 10: Extrato ficava sem recarregar ao
   // voltar de outra tela (ex: editar um lançamento em outro lugar, ou
   // voltar da tela de conexão MP) - só dashboard e Home tinham esse padrão.
-  useFocusEffect(useCallback(() => {
+  useFocusEffectSkippingFirst(useCallback(() => {
     void reportQuery.refetch();
     void txQuery.refetch();
   }, [reportQuery.refetch, txQuery.refetch]));

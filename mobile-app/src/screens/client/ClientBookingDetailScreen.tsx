@@ -20,7 +20,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect, useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import QRCode from "react-native-qrcode-svg";
@@ -122,7 +123,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   // profissional cancelasse enquanto o cliente estava com a tela de
   // detalhe aberta (ou voltando de uma notificação push), os dados
   // ficavam desatualizados até sair e voltar manualmente.
-  useFocusEffect(useCallback(() => { void detailQuery.refetch(); }, [detailQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void detailQuery.refetch(); }, [detailQuery.refetch]));
 
   // ── Local attendance state (also refreshable on-demand via button) ─────────
   const [attendance, setAttendance] = useState<AttendanceCodeResponse | null>(null);

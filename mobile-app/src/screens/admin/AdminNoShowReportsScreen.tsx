@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
@@ -50,7 +50,7 @@ export function AdminNoShowReportsScreen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportsQuery.error, navigation]);
 
-  useFocusEffect(
+  useFocusEffectSkippingFirst(
     useCallback(() => {
       void reportsQuery.refetch();
       // eslint-disable-next-line react-hooks/exhaustive-deps

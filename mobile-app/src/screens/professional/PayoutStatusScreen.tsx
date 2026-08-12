@@ -6,7 +6,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { AppState as RNAppState, ScrollView, StatusBar, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
@@ -209,7 +209,7 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
     }
   }, [payoutQuery.error, showToast, navigation]);
 
-  useFocusEffect(useCallback(() => { void payoutQuery.refetch(); }, [payoutQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void payoutQuery.refetch(); }, [payoutQuery.refetch]));
 
   // Épico de Frentes, Frente 7, Lote 8: mesmo problema de ConnectPayoutAccountScreen -
   // conectar/reconectar Mercado Pago abre o navegador externo sem voltar

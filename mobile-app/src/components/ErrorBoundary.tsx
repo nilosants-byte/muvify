@@ -11,6 +11,16 @@ interface State {
 
 interface Props {
   children: React.ReactNode;
+  // Frente 11 (engenharia mobile), Lote 10: até aqui só existia uma
+  // instância deste boundary, no topo do app (root-stack.tsx envolvendo
+  // NavigationContainer) — um erro de render em QUALQUER tela profunda
+  // (pagamento, chat, upload...) derrubava a pilha de navegação inteira. As
+  // props abaixo permitem instâncias LOCAIS, com copy contextual em vez do
+  // genérico "recarregue o app" (que não faz sentido pra uma seção
+  // específica) e um retry que não depende de fechar/reabrir nada.
+  title?: string;
+  description?: string;
+  retryLabel?: string;
 }
 
 export class ErrorBoundary extends React.Component<Props, State> {
@@ -35,6 +45,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
   render() {
     if (!this.state.hasError) return this.props.children;
 
+    const title = this.props.title ?? GENERIC_ERROR_TITLE;
+    const description = this.props.description ?? `${GENERIC_ERROR_DESCRIPTION} Tente recarregar o app.`;
+    const retryLabel = this.props.retryLabel ?? "Recarregar";
+
     return (
       <View
         style={{
@@ -55,7 +69,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             marginBottom: 8,
           }}
         >
-          {GENERIC_ERROR_TITLE}
+          {title}
         </Text>
         <Text
           style={{
@@ -67,12 +81,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
             lineHeight: 20,
           }}
         >
-          {GENERIC_ERROR_DESCRIPTION} Tente recarregar o app.
+          {description}
         </Text>
         <TouchableOpacity
           onPress={this.handleReload}
           accessibilityRole="button"
-          accessibilityLabel="Recarregar app"
+          accessibilityLabel={retryLabel}
           style={{
             height: 52,
             paddingHorizontal: 32,
@@ -83,10 +97,30 @@ export class ErrorBoundary extends React.Component<Props, State> {
           }}
         >
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: "#030806" }}>
-            Recarregar
+            {retryLabel}
           </Text>
         </TouchableOpacity>
       </View>
     );
   }
+}
+
+// Frente 11 (engenharia mobile), Lote 10: contenção local por tela — envolve
+// só o component de uma rota específica (pagamento, chat, upload), sem
+// mudar nada no cadastro de rotas além de trocar o component passado pro
+// Stack.Screen/Tab.Screen. Um erro de render nessas telas volta pra lista/
+// tela anterior em vez de derrubar a navegação inteira.
+export function withScreenErrorBoundary<P extends object>(
+  Component: React.ComponentType<P>,
+  boundaryProps?: { title?: string; description?: string; retryLabel?: string }
+): React.ComponentType<P> {
+  function ScreenWithErrorBoundary(props: P) {
+    return (
+      <ErrorBoundary {...boundaryProps}>
+        <Component {...props} />
+      </ErrorBoundary>
+    );
+  }
+  ScreenWithErrorBoundary.displayName = `withScreenErrorBoundary(${Component.displayName ?? Component.name ?? "Screen"})`;
+  return ScreenWithErrorBoundary;
 }

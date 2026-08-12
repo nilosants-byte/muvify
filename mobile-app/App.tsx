@@ -10,6 +10,7 @@ import { queryClient } from "./src/lib/queryClient";
 import { initSentry } from "./src/observability/sentry";
 import { RootNavigator } from "./src/navigation/root-stack";
 import { AppStateProvider } from "./src/state/AppState";
+import { ToastProvider } from "./src/state/ToastState";
 import { PostHogProvider } from "posthog-react-native";
 import { posthog } from "./src/services/analytics";
 import { useTheme } from "./src/theme/useTheme";
@@ -75,9 +76,11 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
           <MvThemeProvider>
-            <AppStateProvider>
-              <AppContent />
-            </AppStateProvider>
+            <ToastProvider>
+              <AppStateProvider>
+                <AppContent />
+              </AppStateProvider>
+            </ToastProvider>
           </MvThemeProvider>
         </SafeAreaProvider>
       </QueryClientProvider>

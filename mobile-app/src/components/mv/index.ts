@@ -21,3 +21,4 @@ export { MvModalSheet } from "./MvModalSheet";
 export { MvToastHost } from "./MvToastHost";
 export { MvLogoText } from "./MvLogoText";
 export { MvEmptyState } from "./MvEmptyState";
+export { MvOfflineBanner } from "./MvOfflineBanner";

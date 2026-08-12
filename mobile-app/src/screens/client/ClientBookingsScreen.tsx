@@ -1,7 +1,8 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, RefreshControl, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientTabParamList } from "../../navigation/route-types";
@@ -87,7 +88,7 @@ export function ClientBookingsScreen({ navigation }: Props) {
   const bookingsQuery = useAuthQuery(queryKeys.bookings.me(), (token) => bookingsApi.me(token));
   const bookings = bookingsQuery.data ?? [];
 
-  useFocusEffect(useCallback(() => { void bookingsQuery.refetch(); return undefined; }, [bookingsQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void bookingsQuery.refetch(); return undefined; }, [bookingsQuery.refetch]));
 
   useEffect(() => {
     if (bookingsQuery.error) {

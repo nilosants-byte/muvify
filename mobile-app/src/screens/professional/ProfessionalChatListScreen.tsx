@@ -33,6 +33,7 @@ import {
 } from "../../services/realtime/socket";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
+import type { MvTheme } from "../../theme/MvColors";
 import { MvAvatar, MvText } from "../../components/mv";
 import { S } from "../../theme/v2tokens";
 import { PressableScale } from "../../components/polish/PressableScale";
@@ -152,6 +153,71 @@ async function enrichMissingPhotos(
   });
 }
 
+// Frente 11 (engenharia mobile), Lote 7: composer isolado num componente
+// próprio (React.memo), com texto/envio como estado LOCAL — antes,
+// inputText vivia no mesmo componente que a lista de mensagens, então cada
+// tecla digitada re-renderizava ProfessionalChatListScreen inteiro
+// (redesenhando todas as bolhas visíveis do FlatList de mensagens).
+export const ProfessionalChatComposer = React.memo(function ProfessionalChatComposer({
+  onSend,
+  theme,
+}: {
+  onSend: (text: string) => Promise<boolean>;
+  theme: MvTheme;
+}) {
+  const insets = useSafeAreaInsets();
+  const isDark = theme.mode === "dark";
+  const bg = theme.bg;
+  const border = theme.border;
+  const green = theme.textGreen;
+  const text1 = theme.text1;
+  const text3 = theme.text3;
+  const inputBg = theme.inputBg;
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const handlePress = useCallback(async () => {
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
+    setText("");
+    const ok = await onSend(trimmed);
+    if (!ok) setText(trimmed);
+    setSending(false);
+  }, [text, sending, onSend]);
+
+  return (
+    <View style={{ paddingHorizontal: 10, paddingVertical: 10, paddingBottom: Math.max(16, insets.bottom + 8), backgroundColor: bg, borderTopWidth: 1, borderTopColor: border }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: inputBg, borderWidth: 1, borderColor: sending ? "rgba(34,197,94,0.3)" : border, borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8, opacity: sending ? 0.75 : 1 }}>
+        <TextInput
+          value={text}
+          onChangeText={setText}
+          placeholder={sending ? "Enviando..." : "Mensagem para o aluno..."}
+          placeholderTextColor={sending ? green : text3}
+          editable={!sending}
+          multiline
+          maxLength={1000}
+          selectionColor={green}
+          style={{ flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: text1, maxHeight: 100, lineHeight: 19 }}
+        />
+        <PressableScale
+          scale={0.90}
+          onPress={() => void handlePress()}
+          disabled={!text.trim() || sending}
+          accessibilityRole="button"
+          accessibilityLabel="Enviar mensagem"
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: text.trim() ? green : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+        >
+          {sending
+            ? <ActivityIndicator size="small" color="#fff" />
+            : <Ionicons name="send" size={16} color={text.trim() ? "#fff" : text3} />
+          }
+        </PressableScale>
+      </View>
+    </View>
+  );
+});
+
 export function ProfessionalChatListScreen({ navigation, route }: Props) {
   const { runWithAuth, user, showToast } = useAppState();
   const { theme } = useMvTheme();
@@ -167,8 +233,6 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
   const [chatOpen, setChatOpen] = useState(true);
   const [panelLoading, setPanelLoading] = useState(false);
   const [panelError, setPanelError] = useState(false);
-  const [inputText, setInputText] = useState("");
-  const [sending, setSending] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -331,28 +395,32 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
   const closeChat = useCallback(() => {
     setSelectedId(null);
     setMessages([]);
-    setInputText("");
   }, []);
 
-  const sendMessage = useCallback(async () => {
-    const text = inputText.trim();
-    if (!text || !selectedChat || sending) return;
-    try {
-      setSending(true);
-      setInputText("");
-      const chat = selectedChat;
-      await runWithAuth((t) =>
-        chat.kind === "booking"
-          ? chatApi.sendMessage(t, chat.rawId, text)
-          : consultancyChatApi.sendMessage(t, chat.rawId, text)
-      );
-      await fetchMessages(chat, false);
-    } catch {
-      setInputText(text);
-      showToast("Não foi possível enviar a mensagem.", "error");
-    }
-    finally { setSending(false); }
-  }, [inputText, selectedChat, sending, runWithAuth, fetchMessages]);
+  // Frente 11 (engenharia mobile), Lote 7: recebe o texto como argumento (em
+  // vez de ler inputText do próprio componente) e devolve sucesso/falha —
+  // permite que o composer (ChatComposer, abaixo) seja um componente à parte
+  // com seu próprio estado de texto/envio, sem re-renderizar
+  // ProfessionalChatListScreen (e a lista de mensagens) a cada tecla digitada.
+  const sendMessage = useCallback(
+    async (text: string): Promise<boolean> => {
+      if (!text || !selectedChat) return false;
+      try {
+        const chat = selectedChat;
+        await runWithAuth((t) =>
+          chat.kind === "booking"
+            ? chatApi.sendMessage(t, chat.rawId, text)
+            : consultancyChatApi.sendMessage(t, chat.rawId, text)
+        );
+        await fetchMessages(chat, false);
+        return true;
+      } catch {
+        showToast("Não foi possível enviar a mensagem.", "error");
+        return false;
+      }
+    },
+    [selectedChat, runWithAuth, fetchMessages, showToast]
+  );
 
   // Épico de Frentes, Frente 9, Lote 10: chat ganha ação de denunciar
   // mensagem, reaproveitando o mesmo padrão já usado em posts da comunidade.
@@ -556,36 +624,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
           )}
 
           {/* Input */}
-          {chatOpen ? (
-            <View style={{ paddingHorizontal: 10, paddingVertical: 10, paddingBottom: Math.max(16, insets.bottom + 8), backgroundColor: bg, borderTopWidth: 1, borderTopColor: border }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: inputBg, borderWidth: 1, borderColor: sending ? "rgba(34,197,94,0.3)" : border, borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8, opacity: sending ? 0.75 : 1 }}>
-                <TextInput
-                  value={inputText}
-                  onChangeText={setInputText}
-                  placeholder={sending ? "Enviando..." : "Mensagem para o aluno..."}
-                  placeholderTextColor={sending ? green : text3}
-                  editable={!sending}
-                  multiline
-                  maxLength={1000}
-                  selectionColor={green}
-                  style={{ flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: text1, maxHeight: 100, lineHeight: 19 }}
-                />
-                <PressableScale
-                  scale={0.90}
-                  onPress={() => void sendMessage()}
-                  disabled={!inputText.trim() || sending}
-                  accessibilityRole="button"
-                  accessibilityLabel="Enviar mensagem"
-                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: inputText.trim() ? green : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-                >
-                  {sending
-                    ? <ActivityIndicator size="small" color="#fff" />
-                    : <Ionicons name="send" size={16} color={inputText.trim() ? "#fff" : text3} />
-                  }
-                </PressableScale>
-              </View>
-            </View>
-          ) : null}
+          {chatOpen ? <ProfessionalChatComposer onSend={sendMessage} theme={theme} /> : null}
         </KeyboardAvoidingView>
 
       </View>

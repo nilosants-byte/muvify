@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 import { ClientStackParamList } from "../../navigation/route-types";
@@ -42,7 +42,7 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
   // sem esse padrão - se o profissional cancelasse o pacote, ou um ciclo/Pix
   // fosse pago enquanto o cliente estava com esta tela aberta em segundo
   // plano, os dados ficavam desatualizados até sair e voltar manualmente.
-  useFocusEffect(useCallback(() => { void detailQuery.refetch(); }, [detailQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void detailQuery.refetch(); }, [detailQuery.refetch]));
 
   useEffect(() => {
     if (detailQuery.error) {

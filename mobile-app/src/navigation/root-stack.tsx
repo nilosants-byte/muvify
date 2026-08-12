@@ -6,7 +6,7 @@ import {
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as Notifications from "expo-notifications";
-import { MvToastHost } from "../components/mv";
+import { MvOfflineBanner, MvToastHost } from "../components/mv";
 import {
   resolveNotificationRoute,
   isBookingNotificationType,
@@ -81,7 +81,7 @@ import { ProviderPaymentMethodScreen } from "../screens/professional/ProviderPay
 import { ProfessionalTrainingCreationScreen } from "../screens/professional/ProfessionalTrainingCreationScreen";
 import { ProfessionalChatListScreen } from "../screens/professional/ProfessionalChatListScreen";
 import { GenericErrorScreen } from "../screens/shared/GenericErrorScreen";
-import { ErrorBoundary } from "../components/ErrorBoundary";
+import { ErrorBoundary, withScreenErrorBoundary } from "../components/ErrorBoundary";
 import { NotificationsScreen } from "../screens/shared/NotificationsScreen";
 import { OfflineRequiredScreen } from "../screens/shared/OfflineRequiredScreen";
 import { ReconsentGateScreen } from "../screens/shared/ReconsentGateScreen";
@@ -91,9 +91,11 @@ import { PrivacyScreen } from "../screens/shared/PrivacyScreen";
 import { SecurityScreen } from "../screens/shared/SecurityScreen";
 import { ConnectedDevicesScreen } from "../screens/shared/ConnectedDevicesScreen";
 import { useAppState } from "../state/AppState";
+import { useToast } from "../state/ToastState";
 import { queryClient } from "../lib/queryClient";
 import { queryKeys } from "../lib/queryKeys";
 import { useConnectivity } from "../state/useConnectivity";
+import { useOfflineGate } from "../state/useOfflineGate";
 import { darkColors, lightColors } from "../theme/tokens";
 import { HeaderBackButton } from "./header-components";
 import { ClientTabsNavigator } from "./client-tabs";
@@ -107,6 +109,44 @@ import type {
 
 const OFFLINE_GRACE_MS = 4000;
 const navigationRef = createNavigationContainerRef();
+
+// Frente 11 (engenharia mobile), Lote 10: até aqui só existia um
+// ErrorBoundary no app inteiro (envolvendo o NavigationContainer, no fim
+// deste arquivo) — um erro de render em qualquer tela profunda derrubava a
+// pilha de navegação inteira, voltando pro cliente pra tela de erro
+// genérica de app inteiro. Pagamento, chat e upload são as áreas de maior
+// risco (dependem de dado externo/formatação sensível a variação) e maior
+// custo se o usuário perder a tela sem querer (fluxo de pagamento em
+// andamento, mensagens não enviadas, upload em progresso) — ganham
+// contenção local: um erro de render aqui volta pra tela anterior com
+// opção de tentar de novo, sem afetar o resto da navegação. Definidos uma
+// única vez no escopo do módulo (não inline no JSX) pra manter a mesma
+// identidade de componente entre renders do RootNavigator — um novo
+// componente a cada render faria a navegação remontar a tela.
+const PAYMENT_ERROR_BOUNDARY_PROPS = {
+  title: "Não foi possível abrir o pagamento",
+  description: "Algo deu errado ao carregar esta tela. Toque para tentar de novo.",
+  retryLabel: "Tentar de novo",
+};
+const CHAT_ERROR_BOUNDARY_PROPS = {
+  title: "Não foi possível abrir a conversa",
+  description: "Algo deu errado ao carregar o chat. Toque para tentar de novo.",
+  retryLabel: "Tentar de novo",
+};
+const UPLOAD_ERROR_BOUNDARY_PROPS = {
+  title: "Não foi possível abrir esta tela",
+  description: "Algo deu errado ao carregar esta seção. Toque para tentar de novo.",
+  retryLabel: "Tentar de novo",
+};
+
+const BookingPaymentStatusScreenSafe = withScreenErrorBoundary(BookingPaymentStatusScreen, PAYMENT_ERROR_BOUNDARY_PROPS);
+const PayoutStatusScreenSafe = withScreenErrorBoundary(PayoutStatusScreen, PAYMENT_ERROR_BOUNDARY_PROPS);
+const ConnectPayoutAccountScreenSafe = withScreenErrorBoundary(ConnectPayoutAccountScreen, PAYMENT_ERROR_BOUNDARY_PROPS);
+const ClientPaymentMethodScreenSafe = withScreenErrorBoundary(ClientPaymentMethodScreen, PAYMENT_ERROR_BOUNDARY_PROPS);
+const ProviderPaymentMethodScreenSafe = withScreenErrorBoundary(ProviderPaymentMethodScreen, PAYMENT_ERROR_BOUNDARY_PROPS);
+const ClientChatListScreenSafe = withScreenErrorBoundary(ClientChatListScreen, CHAT_ERROR_BOUNDARY_PROPS);
+const ProfessionalChatListScreenSafe = withScreenErrorBoundary(ProfessionalChatListScreen, CHAT_ERROR_BOUNDARY_PROPS);
+const ProfessionalCredentialsScreenSafe = withScreenErrorBoundary(ProfessionalCredentialsScreen, UPLOAD_ERROR_BOUNDARY_PROPS);
 
 function routeNotification(
   data: Record<string, unknown>,
@@ -200,13 +240,14 @@ export function RootNavigator() {
     isAuthenticated,
     onboardingDone,
     themeMode,
-    toast,
-    clearToast,
     user
   } = useAppState();
+  // Frente 11 (engenharia mobile), Lote 4: toast agora é um contexto próprio
+  // (ver ToastState.tsx) — só este arquivo lê o payload de verdade, então só
+  // ele precisa re-renderizar quando um toast aparece.
+  const { toast, clearToast } = useToast();
   const { online, recheckNow } = useConnectivity(5000, false);
-  const [hadOnlineSession, setHadOnlineSession] = useState(false);
-  const [offlineGraceExpired, setOfflineGraceExpired] = useState(false);
+  const { shouldHardBlockColdStart, showOfflineBanner } = useOfflineGate(online, OFFLINE_GRACE_MS);
   const [showLaunchSplash, setShowLaunchSplash] = useState(
     process.env.EXPO_PUBLIC_SKIP_LAUNCH_SPLASH === "true" ? false : true
   );
@@ -334,7 +375,7 @@ export function RootNavigator() {
       />
       <ClientStack.Screen
         name="BookingPaymentStatus"
-        component={BookingPaymentStatusScreen as React.ComponentType<any>}
+        component={BookingPaymentStatusScreenSafe as React.ComponentType<any>}
         options={{ gestureEnabled: false }}
       />
       <ClientStack.Screen
@@ -360,12 +401,12 @@ export function RootNavigator() {
       />
       <ClientStack.Screen
         name="ClientChatList"
-        component={ClientChatListScreen as React.ComponentType<any>}
+        component={ClientChatListScreenSafe as React.ComponentType<any>}
         options={{ headerShown: false }}
       />
       <ClientStack.Screen
         name="ClientPaymentMethod"
-        component={ClientPaymentMethodScreen as React.ComponentType<any>}
+        component={ClientPaymentMethodScreenSafe as React.ComponentType<any>}
       />
       <ClientStack.Screen
         name="Notifications"
@@ -414,7 +455,7 @@ export function RootNavigator() {
       />
       <ProfessionalStack.Screen
         name="PayoutStatus"
-        component={PayoutStatusScreen as React.ComponentType<any>}
+        component={PayoutStatusScreenSafe as React.ComponentType<any>}
         options={{ headerShown: false }}
       />
       <ProfessionalStack.Screen
@@ -439,7 +480,7 @@ export function RootNavigator() {
       />
       <ProfessionalStack.Screen
         name="ProfessionalCredentials"
-        component={ProfessionalCredentialsScreen as React.ComponentType<any>}
+        component={ProfessionalCredentialsScreenSafe as React.ComponentType<any>}
       />
       <ProfessionalStack.Screen
         name="ProfessionalReviews"
@@ -464,7 +505,7 @@ export function RootNavigator() {
       />
       <ProfessionalStack.Screen
         name="ConnectPayoutAccount"
-        component={ConnectPayoutAccountScreen as React.ComponentType<any>}
+        component={ConnectPayoutAccountScreenSafe as React.ComponentType<any>}
       />
       <ProfessionalStack.Screen
         name="BookingDetailProfessional"
@@ -476,7 +517,7 @@ export function RootNavigator() {
       />
       <ProfessionalStack.Screen
         name="BookingPaymentStatus"
-        component={BookingPaymentStatusScreen as React.ComponentType<any>}
+        component={BookingPaymentStatusScreenSafe as React.ComponentType<any>}
       />
       <ProfessionalStack.Screen
         name="ProfessionalStudents"
@@ -496,7 +537,7 @@ export function RootNavigator() {
       />
       <ProfessionalStack.Screen
         name="ProviderPaymentMethod"
-        component={ProviderPaymentMethodScreen as React.ComponentType<any>}
+        component={ProviderPaymentMethodScreenSafe as React.ComponentType<any>}
       />
       <ProfessionalStack.Screen
         name="ProfessionalStudentDetail"
@@ -514,7 +555,7 @@ export function RootNavigator() {
       />
       <ProfessionalStack.Screen
         name="ProfessionalChatList"
-        component={ProfessionalChatListScreen as React.ComponentType<any>}
+        component={ProfessionalChatListScreenSafe as React.ComponentType<any>}
         options={{ headerShown: false }}
       />
       <ProfessionalStack.Screen
@@ -660,25 +701,6 @@ export function RootNavigator() {
   }, []);
 
   useEffect(() => {
-    if (online) {
-      setHadOnlineSession(true);
-      setOfflineGraceExpired(false);
-      return;
-    }
-
-    if (!hadOnlineSession) {
-      setOfflineGraceExpired(true);
-      return;
-    }
-
-    setOfflineGraceExpired(false);
-    const timer = setTimeout(() => {
-      setOfflineGraceExpired(true);
-    }, OFFLINE_GRACE_MS);
-    return () => clearTimeout(timer);
-  }, [online, hadOnlineSession]);
-
-  useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(clearToast, 2200);
     return () => clearTimeout(timer);
@@ -769,9 +791,7 @@ export function RootNavigator() {
     return <MuvifySplash colorScheme={themeMode} />;
   }
 
-  const shouldHardBlockOffline = !online && (!hadOnlineSession || offlineGraceExpired);
-
-  if (shouldHardBlockOffline) {
+  if (shouldHardBlockColdStart) {
     return <OfflineRequiredScreen onRetry={() => void recheckNow()} />;
   }
 
@@ -823,6 +843,7 @@ export function RootNavigator() {
         ) : (
           <AuthNavigator />
         )}
+        {showOfflineBanner ? <MvOfflineBanner onRetry={() => void recheckNow()} /> : null}
         {toast ? <MvToastHost message={toast.message} type={toast.type} /> : null}
       </NavigationContainer>
     </ErrorBoundary>

@@ -17,15 +17,9 @@ import {
 import { stopProviderBackgroundLocation } from "../services/location/providerBackgroundLocation";
 import { getPushRegistrationPayload } from "../services/notifications/push";
 import { ThemeMode, setThemeMode } from "../theme/tokens";
+import { ToastType, useToast } from "./ToastState";
 
 type UserRole = "CLIENT" | "PROVIDER" | "ADMIN";
-type ToastType = "success" | "error" | "info";
-
-type ToastPayload = {
-  id: number;
-  message: string;
-  type: ToastType;
-};
 
 type AppStateContextValue = {
   bootstrapping: boolean;
@@ -36,7 +30,6 @@ type AppStateContextValue = {
   pushNotificationsEnabled: boolean;
   role: UserRole | null;
   user: AuthUser | null;
-  toast: ToastPayload | null;
   completeOnboarding: () => Promise<void>;
   chooseRole: (role: UserRole) => Promise<void>;
   setThemePreference: (mode: ThemeMode) => Promise<void>;
@@ -216,7 +209,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
-  const [toast, setToast] = useState<ToastPayload | null>(null);
+  // Frente 11 (engenharia mobile), Lote 4: toast agora é um contexto próprio
+  // (ver ToastState.tsx) — showToast/clearToast aqui são só um repasse das
+  // funções estáveis de lá, mantendo os 380+ call sites existentes de
+  // `useAppState().showToast(...)` funcionando sem mudança nenhuma.
+  const { showToast, clearToast } = useToast();
 
   const accessTokenRef = useRef<string | null>(null);
   const refreshTokenRef = useRef<string | null>(null);
@@ -369,7 +366,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setAccessToken(null);
     setRefreshToken(null);
-    setToast(null);
+    clearToast();
     try {
       await stopProviderBackgroundLocation({ preservePreference: true });
     } catch {
@@ -653,14 +650,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     return me;
   }, [setCurrentUser]);
 
-  const showToast = useCallback((message: string, type: ToastType = "info") => {
-    setToast({ id: Date.now() + Math.random() * 100_000, message, type });
-  }, []);
-
-  const clearToast = useCallback(() => {
-    setToast(null);
-  }, []);
-
   const runWithAuth = useCallback(async <T,>(operation: (token: string) => Promise<T>): Promise<T> => {
     const token = accessTokenRef.current;
     if (!token) {
@@ -723,7 +712,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       pushNotificationsEnabled,
       role,
       user,
-      toast,
       completeOnboarding,
       chooseRole,
       setThemePreference,
@@ -749,7 +737,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       pushNotificationsEnabled,
       role,
       user,
-      toast,
       setCurrentUser,
       syncCurrentUser,
       runWithAuth,

@@ -7,8 +7,20 @@ import { ProfessionalAgendaScreen } from "../screens/professional/ProfessionalAg
 import { ProfessionalConsultancyCenterScreen } from "../screens/professional/ProfessionalConsultancyCenterScreen";
 import { ProfessionalHomeScreen } from "../screens/professional/ProfessionalHomeScreen";
 import { ProfessionalProfileEditorScreen } from "../screens/professional/ProfessionalProfileEditorScreen";
+import { withScreenErrorBoundary } from "../components/ErrorBoundary";
 
 const Tab = createBottomTabNavigator<ProfessionalTabParamList>();
+
+// Frente 11 (engenharia mobile), Lote 10: contenção local — upload de foto/
+// vídeo de apresentação é uma das áreas de maior risco/custo se um erro de
+// render derrubasse a navegação inteira. Definido uma única vez no escopo
+// do módulo (não inline no JSX) pra manter a mesma identidade de componente
+// entre renders do navigator.
+const ProfessionalProfileEditorScreenSafe = withScreenErrorBoundary(ProfessionalProfileEditorScreen, {
+  title: "Não foi possível abrir esta tela",
+  description: "Algo deu errado ao carregar esta seção. Toque para tentar de novo.",
+  retryLabel: "Tentar de novo",
+});
 
 export function ProfessionalTabsNavigator() {
   return (
@@ -44,7 +56,7 @@ export function ProfessionalTabsNavigator() {
         options={{ title: "Avisos" }}
       />
       <Tab.Screen
-        component={ProfessionalProfileEditorScreen}
+        component={ProfessionalProfileEditorScreenSafe}
         name="ProfessionalProfileEditor"
         options={{ title: "Perfil" }}
       />

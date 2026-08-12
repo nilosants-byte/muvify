@@ -1,6 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
 import React, { useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { resolveMediaUrl } from "../../utils/media";
 import { DISPLAY } from "../../theme/v2tokens";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -84,11 +85,17 @@ export function MvAvatar({
   let content: React.ReactNode;
 
   if (resolvedPhotoUri && !photoError) {
+    // Frente 11 (engenharia mobile), Lote 11: expo-image (em vez do Image
+    // nativo) — cache persistente em disco por padrão (cachePolicy
+    // "memory-disk"), então o avatar de um usuário já visto não baixa de
+    // novo a cada montagem/lista nova, só a cada troca real de foto (a URL
+    // muda quando a foto é trocada, invalidando o cache naturalmente).
     content = (
       <Image
         source={{ uri: resolvedPhotoUri }}
         style={{ width: dim, height: dim, borderRadius: br }}
-        resizeMode="cover"
+        contentFit="cover"
+        cachePolicy="memory-disk"
         onError={() => setPhotoError(true)}
       />
     );

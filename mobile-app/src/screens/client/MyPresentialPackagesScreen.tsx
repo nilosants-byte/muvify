@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect } from "react";
 import { ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientStackParamList } from "../../navigation/route-types";
@@ -46,7 +46,7 @@ export function MyPresentialPackagesScreen({ navigation }: Props) {
   const packagesQuery = useAuthQuery(queryKeys.presentialPackages.myList(), (token) => presentialPackagesApi.my(token));
   const packages = packagesQuery.data ?? [];
 
-  useFocusEffect(useCallback(() => { void packagesQuery.refetch(); return undefined; }, [packagesQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void packagesQuery.refetch(); return undefined; }, [packagesQuery.refetch]));
 
   useEffect(() => {
     if (packagesQuery.error) {

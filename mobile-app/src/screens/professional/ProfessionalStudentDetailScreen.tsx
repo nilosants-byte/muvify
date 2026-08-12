@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
@@ -184,7 +184,7 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
   const studentBookings = studentDetailQuery.data?.studentBookings ?? ([] as Booking[]);
   const loading = studentDetailQuery.isLoading;
 
-  useFocusEffect(useCallback(() => { void studentDetailQuery.refetch(); }, [studentDetailQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void studentDetailQuery.refetch(); }, [studentDetailQuery.refetch]));
 
   useEffect(() => {
     if (studentDetailQuery.error) {

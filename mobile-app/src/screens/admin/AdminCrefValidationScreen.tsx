@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import {
@@ -304,7 +304,7 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
     void crefQuery.refetch();
   }
 
-  useFocusEffect(useCallback(() => {
+  useFocusEffectSkippingFirst(useCallback(() => {
     resetAndRefetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crefQuery.refetch]));

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Alert, RefreshControl, ScrollView, View } from "react-native";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
@@ -49,7 +49,7 @@ export function AdminDataRetentionScreen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runsQuery.error, navigation]);
 
-  useFocusEffect(
+  useFocusEffectSkippingFirst(
     useCallback(() => {
       void runsQuery.refetch();
       // eslint-disable-next-line react-hooks/exhaustive-deps

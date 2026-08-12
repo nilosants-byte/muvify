@@ -64,6 +64,14 @@ afterAll(() => {
   (console.error as jest.Mock).mockRestore();
 });
 
+// Frente 11 (engenharia mobile), Lote 6: este arquivo monta várias telas
+// reais em sequência (várias com useAuthQuery + múltiplas interações) — em
+// máquina lenta sob carga (suíte completa rodando junto), o timeout padrão
+// de 5000ms do Jest estourava de forma não-determinística, ora num teste,
+// ora no afterEach (cleanup do testing-library), sempre passando limpo
+// quando rodado isolado. Timeout maior pro arquivo inteiro (testes e hooks).
+jest.setTimeout(30000);
+
 // As telas reais (fora do barrel legado Screens.tsx) usam useAuthQuery/useQueryClient
 // (TanStack Query) de verdade — precisam de um QueryClientProvider no ancestral,
 // igual ao App.tsx faz em produção.
@@ -230,7 +238,7 @@ describe("Fluxo modular profissional", () => {
       bookingId: "booking-pro-1"
     });
     expect(bookingPaymentSpy).toHaveBeenCalled();
-  });
+  }, 30000);
 
   it("financeiro, conta bancária e disponibilidade executam fluxo de API real", async () => {
     const runWithAuth = jest.fn(async (operation: (token: string) => Promise<unknown>) =>

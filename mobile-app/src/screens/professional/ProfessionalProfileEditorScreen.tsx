@@ -57,6 +57,9 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
   // Local file:// URI for crash-free preview; URL real do R2 vive em presentationVideoUrl para submissão
   const [videoLocalUri, setVideoLocalUri] = useState<string | null>(null);
   const [videoProcessing, setVideoProcessing] = useState(false);
+  // Frente 11 (engenharia mobile), Lote 2: antes só existia um spinner
+  // indeterminado — sem noção de quanto falta pra um vídeo de até 40MB.
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
   // Sinaliza que o usuário removeu um vídeo já salvo — precisa virar "" no payload para o backend apagar
   const [videoRemoved, setVideoRemoved] = useState(false);
   const [experienceYears, setExperienceYears] = useState(
@@ -204,11 +207,16 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       setPresentationVideoUrl(null); // limpa a URL anterior até o novo upload terminar
       setVideoRemoved(false);
       setVideoProcessing(true);
-      showToast("Enviando vídeo...", "info");
+      setVideoUploadProgress(0);
 
       const extension = mimeType === "video/quicktime" ? "mov" : mimeType === "video/webm" ? "webm" : mimeType === "video/3gpp" ? "3gp" : "mp4";
       const { url } = await runWithAuth((token) =>
-        uploadsApi.uploadMedia(token, { uri: asset.uri, mimeType, fileName: `presentation-video.${extension}` }, "presentation-videos")
+        uploadsApi.uploadMedia(
+          token,
+          { uri: asset.uri, mimeType, fileName: `presentation-video.${extension}`, fileSizeBytes: asset.fileSize },
+          "presentation-videos",
+          setVideoUploadProgress
+        )
       );
       setPresentationVideoUrl(url);
       setVideoLocalUri(null); // troca pra URL real do R2 assim que sobe — a prévia local pode não tocar no WebView
@@ -216,7 +224,11 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       showToast("Vídeo enviado. Salve o perfil para concluir.", "success");
     } catch (error) {
       setVideoProcessing(false);
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao selecionar o vídeo.", navigation });
+      // Frente 11 (engenharia mobile), Lote 2: videoLocalUri não é limpo em
+      // caso de falha — a prévia e o botão "Trocar vídeo" continuam
+      // visíveis, então tentar de novo é reabrir a galeria e reselecionar o
+      // mesmo arquivo (poucos toques), não recomeçar o fluxo do zero.
+      handleScreenError({ error, showToast, fallbackMessage: "Falha ao enviar o vídeo.", navigation });
     }
   }
 
@@ -356,7 +368,11 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
               {videoProcessing && (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4 }}>
                   <ActivityIndicator size="small" color={theme.primary} />
-                  <MvText variant="body4" color="secondary">Processando vídeo para salvar…</MvText>
+                  <MvText variant="body4" color="secondary">
+                    {videoUploadProgress > 0
+                      ? `Enviando vídeo… ${Math.round(videoUploadProgress * 100)}%`
+                      : "Enviando vídeo…"}
+                  </MvText>
                 </View>
               )}
               <View style={{ flexDirection: "row", gap: 8 }}>

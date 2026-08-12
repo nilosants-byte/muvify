@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientStackParamList } from "../../navigation/route-types";
@@ -27,7 +27,7 @@ export function MyDebtsScreen({ navigation }: Props) {
   const debtsQuery = useAuthQuery(queryKeys.debts.my(), (token) => debtsApi.myDebts(token));
   const debts = (debtsQuery.data ?? []).filter((debt) => debt.status !== "PAID" && debt.status !== "WRITTEN_OFF");
 
-  useFocusEffect(useCallback(() => { void debtsQuery.refetch(); return undefined; }, [debtsQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void debtsQuery.refetch(); return undefined; }, [debtsQuery.refetch]));
 
   useEffect(() => {
     if (debtsQuery.error) {

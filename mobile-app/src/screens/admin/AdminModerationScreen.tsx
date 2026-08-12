@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Alert, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { MvBadge, MvButton, MvCard, MvText } from "../../components/mv";
 import { AdminReportType, adminApi } from "../../services/api/client";
@@ -62,7 +62,7 @@ export function AdminModerationScreen({ navigation }: Props) {
     }
   }, [reportsQuery.error, showToast, navigation]);
 
-  useFocusEffect(useCallback(() => {
+  useFocusEffectSkippingFirst(useCallback(() => {
     void reportsQuery.refetch();
   }, [reportsQuery.refetch]));
 

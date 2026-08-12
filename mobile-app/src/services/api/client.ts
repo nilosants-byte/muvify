@@ -1335,79 +1335,136 @@ function buildGenericHttpErrorMessage(status: number) {
   return __DEV__ ? `${friendly} (HTTP ${status})` : friendly;
 }
 
+// Extraída de finalizeResponse pra ser reaproveitada por apiUploadRequest
+// (que não usa fetch/Response — ver Frente 11, Lote 2 abaixo), sem duplicar
+// a lógica de montar a mensagem de erro.
+function buildErrorMessage(
+  payload: unknown,
+  status: number,
+  getHeader: (name: string) => string | null
+): string {
+  let message: string;
+  if (typeof payload === "string" && payload.trim()) {
+    message = payload;
+  } else if (payload && typeof payload === "object") {
+    const p = payload as Record<string, unknown>;
+    if (Array.isArray(p.errors) && p.errors.length > 0) {
+      message = (p.errors as Array<{ message?: string }>)
+        .map((e) => e.message)
+        .filter(Boolean)
+        .join(", ") || buildGenericHttpErrorMessage(status);
+    } else {
+      message = (p.message as string | undefined) ?? (p.error as string | undefined) ?? (p.detail as string | undefined) ?? buildGenericHttpErrorMessage(status);
+    }
+  } else {
+    message = buildGenericHttpErrorMessage(status);
+  }
+  if (status === 429) {
+    const retryAfter = getHeader("Retry-After");
+    const wait = retryAfter ? parseInt(retryAfter, 10) : 60;
+    message = `Muitas requisições. Aguarde ${wait}s e tente novamente.`;
+  } else if (status === 503 || status === 502 || status === 504) {
+    message = (payload as Record<string, unknown> | null)?.message as string | undefined
+      ?? "Serviço temporariamente indisponível. Tente novamente em alguns minutos.";
+  }
+  return message;
+}
+
 async function finalizeResponse<T>(response: Response): Promise<T> {
   const payload = await parseResponse(response);
   if (!response.ok) {
-    let message: string;
-    if (typeof payload === "string" && payload.trim()) {
-      message = payload;
-    } else if (payload && typeof payload === "object") {
-      const p = payload as Record<string, unknown>;
-      if (Array.isArray(p.errors) && p.errors.length > 0) {
-        message = (p.errors as Array<{ message?: string }>)
-          .map((e) => e.message)
-          .filter(Boolean)
-          .join(", ") || buildGenericHttpErrorMessage(response.status);
-      } else {
-        message = (p.message as string | undefined) ?? (p.error as string | undefined) ?? (p.detail as string | undefined) ?? buildGenericHttpErrorMessage(response.status);
-      }
-    } else {
-      message = buildGenericHttpErrorMessage(response.status);
-    }
-    if (response.status === 429) {
-      const retryAfter = response.headers.get("Retry-After");
-      const wait = retryAfter ? parseInt(retryAfter, 10) : 60;
-      message = `Muitas requisições. Aguarde ${wait}s e tente novamente.`;
-    } else if (response.status === 503 || response.status === 502 || response.status === 504) {
-      message = (payload as Record<string, unknown> | null)?.message as string | undefined
-        ?? "Serviço temporariamente indisponível. Tente novamente em alguns minutos.";
-    }
+    const message = buildErrorMessage(payload, response.status, (name) => response.headers.get(name));
     throw new ApiError(response.status, message, payload);
   }
   return payload as T;
 }
 
+// Frente 11 (engenharia mobile), Lote 2: uploads de mídia (foto de perfil,
+// vídeo de apresentação de até 40MB, documento de CREF) usavam o mesmo
+// timeout fixo de 30s de uma chamada JSON pequena — em conexão 3G/4G fraca,
+// um arquivo grande estoura os 30s de forma sistemática, não excepcional.
+// Timeout agora é proporcional ao tamanho real do arquivo (quando o
+// chamador informa), com piso de 30s pra uploads pequenos/desconhecidos.
+const UPLOAD_MIN_TIMEOUT_MS = 30000;
+// Throughput mínimo assumido pra dimensionar o timeout: uma conexão móvel
+// ruim mas real (~1.2Mbps), não a melhor nem a pior possível. + 20s de
+// margem fixa pra latência de conexão/handshake, à parte da transferência.
+const UPLOAD_ASSUMED_MIN_KBPS = 150;
+const UPLOAD_TIMEOUT_FIXED_OVERHEAD_MS = 20000;
+
+function computeUploadTimeoutMs(fileSizeBytes?: number): number {
+  if (!fileSizeBytes || fileSizeBytes <= 0) return UPLOAD_MIN_TIMEOUT_MS;
+  const transferMs = (fileSizeBytes / 1024 / UPLOAD_ASSUMED_MIN_KBPS) * 1000;
+  return Math.max(UPLOAD_MIN_TIMEOUT_MS, Math.ceil(transferMs) + UPLOAD_TIMEOUT_FIXED_OVERHEAD_MS);
+}
+
 type UploadRequestConfig = {
   token?: string;
   formData: FormData;
+  // Tamanho do arquivo em bytes, quando o chamador já sabe (ex: ImagePicker/
+  // DocumentPicker devolvem isso) — usado só pra dimensionar o timeout.
+  fileSizeBytes?: number;
+  // Progresso real de envio (0 a 1) — só possível com XMLHttpRequest;
+  // fetch não expõe evento de progresso de upload.
+  onProgress?: (fraction: number) => void;
 };
 
-// Multipart uploads: no Content-Type header here on purpose — fetch/RN sets
-// "multipart/form-data; boundary=..." automatically based on the FormData body.
-export async function apiUploadRequest<T = unknown>(
+// Multipart uploads: no Content-Type header aqui de propósito — o RN seta
+// "multipart/form-data; boundary=..." sozinho a partir do corpo FormData.
+// Usa XMLHttpRequest (não fetch) pelo único motivo de precisar do evento
+// de progresso de upload, que fetch não oferece em nenhuma plataforma.
+export function apiUploadRequest<T = unknown>(
   path: string,
-  { token, formData }: UploadRequestConfig
+  { token, formData, fileSizeBytes, onProgress }: UploadRequestConfig
 ): Promise<T> {
   const requestUrl = `${API_BASE_URL}${path}`;
-  let response: Response;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
+  const timeoutMs = computeUploadTimeoutMs(fileSizeBytes);
 
-  try {
-    response = await fetch(requestUrl, {
-      method: "POST",
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(__DEV__ ? { "ngrok-skip-browser-warning": "true" } : {})
-      },
-      body: formData,
-      signal: controller.signal
-    });
-  } catch (error) {
-    const timedOut =
-      error instanceof Error &&
-      (error.name === "AbortError" || /aborted|timeout/i.test(error.message));
-    const cause = error instanceof Error ? error.message : "Network request failed";
-    throw new ApiError(0, timedOut ? buildTimeoutErrorMessage() : buildNetworkErrorMessage(), {
-      cause,
-      requestUrl,
-      method: "POST"
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", requestUrl);
+    xhr.timeout = timeoutMs;
+    xhr.responseType = "text";
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    if (__DEV__) xhr.setRequestHeader("ngrok-skip-browser-warning", "true");
 
-  return finalizeResponse<T>(response);
+    if (onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          onProgress(event.loaded / event.total);
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      const contentType = xhr.getResponseHeader("content-type") ?? "";
+      let payload: unknown = xhr.responseText;
+      if (contentType.includes("application/json") && xhr.responseText) {
+        try {
+          payload = JSON.parse(xhr.responseText);
+        } catch {
+          // corpo não é JSON válido apesar do header — mantém texto cru
+        }
+      }
+      const ok = xhr.status >= 200 && xhr.status < 300;
+      if (!ok) {
+        const message = buildErrorMessage(payload, xhr.status, (name) => xhr.getResponseHeader(name));
+        reject(new ApiError(xhr.status, message, payload));
+        return;
+      }
+      resolve((xhr.status === 204 ? undefined : payload) as T);
+    };
+
+    xhr.ontimeout = () => {
+      reject(new ApiError(0, buildTimeoutErrorMessage(), { requestUrl, method: "POST", timeoutMs }));
+    };
+
+    xhr.onerror = () => {
+      reject(new ApiError(0, buildNetworkErrorMessage(), { requestUrl, method: "POST" }));
+    };
+
+    xhr.send(formData);
+  });
 }
 
 export const authApi = {
@@ -1501,10 +1558,19 @@ export type UploadFile = {
   uri: string;
   mimeType: string;
   fileName?: string;
+  // Frente 11 (engenharia mobile), Lote 2: usado só pra dimensionar o
+  // timeout do upload (ver computeUploadTimeoutMs) — ImagePicker/
+  // DocumentPicker já devolvem isso no resultado da seleção.
+  fileSizeBytes?: number;
 };
 
 export const uploadsApi = {
-  async uploadMedia(token: string, file: UploadFile, folder: UploadFolder) {
+  async uploadMedia(
+    token: string,
+    file: UploadFile,
+    folder: UploadFolder,
+    onProgress?: (fraction: number) => void
+  ) {
     const formData = new FormData();
     formData.append("folder", folder);
     const fileName = file.fileName ?? `upload-${Date.now()}`;
@@ -1522,7 +1588,9 @@ export const uploadsApi = {
     }
     return apiUploadRequest<{ url: string; mimeType: string; sizeBytes: number }>("/uploads/media", {
       token,
-      formData
+      formData,
+      fileSizeBytes: file.fileSizeBytes,
+      onProgress
     });
   }
 };

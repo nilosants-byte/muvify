@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -45,6 +45,7 @@ export function ConsultancyRequestScreen({ route, navigation }: Props) {
   const [trainingNeedText, setTrainingNeedText] = useState("");
   const [limitationText, setLimitationText] = useState("");
   const [extraInfoText, setExtraInfoText] = useState("");
+  const justSavedRef = useRef(false);
 
   const catalogQuery = useAuthQuery(
     queryKeys.consultancy.catalog(providerId),
@@ -73,6 +74,32 @@ export function ConsultancyRequestScreen({ route, navigation }: Props) {
 
   const selectedOffer = useMemo(() => onlineOffers.find((offer) => offer.id === selectedOfferId) ?? null, [onlineOffers, selectedOfferId]);
 
+  // Frente 11 (engenharia mobile), Lote 9: sair da tela (botão voltar, gesto,
+  // botão físico) descartava as respostas já digitadas sem confirmação —
+  // mesmo padrão de risco já corrigido em telas irmãs (ClientAnamnesisScreen,
+  // ProfessionalTrainingCreationScreen, AvailabilityManagerScreen...), via
+  // beforeRemove + preventDefault (intercepta qualquer forma de sair, não só
+  // o botão do cabeçalho).
+  const hasUnsavedRequestText = Boolean(
+    trainingNeedText.trim() || limitationText.trim() || extraInfoText.trim()
+  );
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      if (justSavedRef.current || !hasUnsavedRequestText) return;
+      e.preventDefault();
+      Alert.alert(
+        "Sair sem enviar?",
+        "As respostas preenchidas ainda não foram enviadas e serão perdidas.",
+        [
+          { text: "Continuar preenchendo", style: "cancel" },
+          { text: "Sair sem enviar", style: "destructive", onPress: () => navigation.dispatch(e.data.action) },
+        ]
+      );
+    });
+    return unsubscribe;
+  }, [navigation, hasUnsavedRequestText]);
+
   async function submitRequest() {
     if (!catalog?.onlineConsultancyEnabled) {
       showToast("Consultoria online ainda não habilitada por este profissional.", "error");
@@ -94,6 +121,7 @@ export function ConsultancyRequestScreen({ route, navigation }: Props) {
         limitationText: limitationText.trim() || undefined,
         extraInfoText: extraInfoText.trim() || undefined,
       }));
+      justSavedRef.current = true;
       Alert.alert(
         "Solicitação enviada!",
         "O profissional responderá em até 48h.\n\nVocê receberá uma notificação quando ele enviar uma proposta.\n\nAcompanhe em Treinos → aba Pendentes.",

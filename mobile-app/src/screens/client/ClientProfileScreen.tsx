@@ -4,7 +4,7 @@ import { queryKeys } from "../../lib/queryKeys";
 import { Alert, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -181,7 +181,7 @@ export function ClientProfileScreen({ navigation }: Props) {
     })();
   }, [achievements]);
 
-  useFocusEffect(useCallback(() => { void profileQuery.refetch(); return undefined; }, [profileQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void profileQuery.refetch(); return undefined; }, [profileQuery.refetch]));
 
   const saveNameIfNeeded = useCallback(async () => {
     const trimmed = displayName.trim();

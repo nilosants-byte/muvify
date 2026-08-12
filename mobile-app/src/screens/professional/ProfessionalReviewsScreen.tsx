@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ScrollView, StatusBar, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { useCallback } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
@@ -53,7 +53,7 @@ export function ProfessionalReviewsScreen({ navigation }: Props) {
     (token) => favoritesApi.countFavoritedByMe(token)
   );
 
-  useFocusEffect(useCallback(() => {
+  useFocusEffectSkippingFirst(useCallback(() => {
     void reviewsQuery.refetch();
     void favoritedByQuery.refetch();
   }, [reviewsQuery.refetch, favoritedByQuery.refetch]));

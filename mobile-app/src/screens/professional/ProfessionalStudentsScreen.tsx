@@ -2,9 +2,9 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import * as Haptics from "expo-haptics";
-import { ScrollView, StatusBar, View } from "react-native";
+import { FlatList, ScrollView, StatusBar, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
@@ -56,7 +56,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
   const refreshing = studentsQuery.isRefetching;
   const needsProfileSetup = studentsQuery.isError && isProfileMissingError(studentsQuery.error);
 
-  useFocusEffect(useCallback(() => { void studentsQuery.refetch(); }, [studentsQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void studentsQuery.refetch(); }, [studentsQuery.refetch]));
 
   const onRefresh = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -71,6 +71,17 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
 
   const [activeServiceFilter, setActiveServiceFilter] = useState<ServiceFilter>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
+  // Frente 11 (engenharia mobile), Lote 5: filtro é 100% local (a lista
+  // inteira já veio do backend, com teto de 2000 alunos) — não existe
+  // chamada de rede por tecla aqui, mas recalcular filteredStudents sobre
+  // até 2000 itens a cada tecla, síncrono, ainda pesa. searchTerm continua
+  // refletindo a tecla imediatamente (input responsivo); só o valor usado
+  // pra filtrar de fato espera o usuário pausar de digitar.
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 250);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const students = useMemo(() => data?.students ?? [], [data?.students]);
   const totalStudents = data?.totalStudents ?? 0;
@@ -114,14 +125,31 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
       rows = rows.filter((student) => student.services.some((service) => service.serviceKind === activeServiceFilter));
     }
     const normalize = (s: string) => s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-    const query = normalize(searchTerm);
+    const query = normalize(debouncedSearchTerm);
     if (!query) return rows;
     return rows.filter((student) => {
       const name = normalize(student.name ?? "");
       const email = normalize(student.email ?? "");
       return name.includes(query) || email.includes(query);
     });
-  }, [activeServiceFilter, searchTerm, students]);
+  }, [activeServiceFilter, debouncedSearchTerm, students]);
+
+  // Frente 11 (engenharia mobile), Lote 5: callbacks estáveis repassados ao
+  // StudentRow memoizado — antes eram funções inline recriadas por linha a
+  // cada render do ScrollView pai (busca, troca de filtro...), o que
+  // invalidava o React.memo do row.
+  const handleOpenStudent = useCallback(
+    (clientId: string) => {
+      navigation.navigate("ProfessionalStudentDetail", { clientId });
+    },
+    [navigation]
+  );
+  const handleOpenAnamnesis = useCallback(
+    (clientId: string, clientName: string) => {
+      navigation.navigate("ProfessionalStudentAnamnesis", { clientId, clientName });
+    },
+    [navigation]
+  );
 
   const renderProfileSetupState = () => (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.students">
@@ -230,13 +258,80 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
       </View>
 
       <ScreenEntrance>
-      <ScrollView
+      {/* Frente 11 (engenharia mobile), Lote 5: virou FlatList (virtualização
+          real — antes era ScrollView + filteredStudents.map() sem limite,
+          com o backend permitindo até 2000 alunos por profissional). Métricas
+          + busca + filtros viram cabeçalho da lista, sem scroll aninhado. */}
+      <FlatList
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 12 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <MvRefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />
         }
-      >
+        data={loading ? [] : filteredStudents}
+        keyExtractor={(student) => student.clientId}
+        renderItem={({ item: student }) => (
+          <StudentRow
+            student={student}
+            onPress={handleOpenStudent}
+            onPressAnamnesis={handleOpenAnamnesis}
+          />
+        )}
+        ListEmptyComponent={
+          loading ? (
+            <View style={{ gap: 12 }}>
+              <SkeletonStudentCard />
+              <SkeletonStudentCard />
+              <SkeletonStudentCard />
+            </View>
+          ) : studentsQuery.error && !needsProfileSetup ? (
+            <View style={{ alignItems: "center", padding: 32, gap: 14 }}>
+              <Ionicons name="alert-circle-outline" size={40} color={theme.text3} />
+              <View style={{ alignItems: "center", gap: 6 }}>
+                <MvText variant="h3" style={{ letterSpacing: -1, textAlign: "center" }}>
+                  Não foi possível carregar seus alunos
+                </MvText>
+                <MvText variant="body4" color="secondary" style={{ textAlign: "center", lineHeight: 20 }}>
+                  Verifique sua conexão e tente novamente.
+                </MvText>
+              </View>
+              <PressableScale
+                scale={0.96}
+                onPress={() => void studentsQuery.refetch()}
+                style={{
+                  flexDirection: "row", alignItems: "center", gap: 6,
+                  paddingHorizontal: 20, paddingVertical: 12,
+                  borderRadius: 99,
+                  backgroundColor: theme.textGreen,
+                }}
+              >
+                <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>
+                  Tentar de novo
+                </MvText>
+              </PressableScale>
+            </View>
+          ) : (
+            <MvEmptyState
+              icon="people-outline"
+              tone="green"
+              title={searchTerm.trim() ? "Nenhum aluno encontrado" : "Seu primeiro aluno está chegando"}
+              description={
+                searchTerm.trim()
+                  ? "Tente buscar por um nome ou email diferente."
+                  : "Ative suas ofertas, compartilhe seu perfil e comece a transformar vidas."
+              }
+              ctaLabel={!searchTerm.trim() ? "Configurar ofertas" : undefined}
+              ctaIcon={!searchTerm.trim() ? "add" : undefined}
+              onCtaPress={
+                !searchTerm.trim()
+                  ? () => navigation.navigate("ProfessionalConsultancyCenter", { initialTab: "offers" })
+                  : undefined
+              }
+            />
+          )
+        }
+        ListHeaderComponent={
+        <View style={{ gap: 12 }}>
         {/* ── Métricas ── */}
         <View style={{ flexDirection: "row", gap: 10 }}>
           <View style={{ flex: 1, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 10, borderWidth: 1, backgroundColor: theme.cardBg, borderColor: theme.border, alignItems: "center" }}>
@@ -313,79 +408,9 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
             );
           })}
         </ScrollView>
-
-        {/* ── Lista de alunos ── */}
-        {loading ? (
-          <>
-            <SkeletonStudentCard />
-            <SkeletonStudentCard />
-            <SkeletonStudentCard />
-          </>
-        ) : filteredStudents.map((student) => (
-          <StudentRow
-            key={student.clientId}
-            student={student}
-            onPress={() => navigation.navigate("ProfessionalStudentDetail", { clientId: student.clientId })}
-            onPressAnamnesis={() =>
-              navigation.navigate("ProfessionalStudentAnamnesis", {
-                clientId: student.clientId,
-                clientName: student.name,
-              })
-            }
-          />
-        ))}
-
-        {/* Frente 4 (segunda camada), Lote 2: antes, uma falha de rede/servidor
-            (não o caso de "perfil incompleto", que já tem tela própria)
-            caía na mesma mensagem de "você não tem nenhum aluno ainda" —
-            pra um profissional com dezenas de alunos, isso passa a
-            impressão errada de ter perdido a base inteira. */}
-        {!loading && studentsQuery.error && !needsProfileSetup ? (
-          <View style={{ alignItems: "center", padding: 32, gap: 14 }}>
-            <Ionicons name="alert-circle-outline" size={40} color={theme.text3} />
-            <View style={{ alignItems: "center", gap: 6 }}>
-              <MvText variant="h3" style={{ letterSpacing: -1, textAlign: "center" }}>
-                Não foi possível carregar seus alunos
-              </MvText>
-              <MvText variant="body4" color="secondary" style={{ textAlign: "center", lineHeight: 20 }}>
-                Verifique sua conexão e tente novamente.
-              </MvText>
-            </View>
-            <PressableScale
-              scale={0.96}
-              onPress={() => void studentsQuery.refetch()}
-              style={{
-                flexDirection: "row", alignItems: "center", gap: 6,
-                paddingHorizontal: 20, paddingVertical: 12,
-                borderRadius: 99,
-                backgroundColor: theme.textGreen,
-              }}
-            >
-              <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>
-                Tentar de novo
-              </MvText>
-            </PressableScale>
-          </View>
-        ) : !loading && filteredStudents.length === 0 ? (
-          <MvEmptyState
-            icon="people-outline"
-            tone="green"
-            title={searchTerm.trim() ? "Nenhum aluno encontrado" : "Seu primeiro aluno está chegando"}
-            description={
-              searchTerm.trim()
-                ? "Tente buscar por um nome ou email diferente."
-                : "Ative suas ofertas, compartilhe seu perfil e comece a transformar vidas."
-            }
-            ctaLabel={!searchTerm.trim() ? "Configurar ofertas" : undefined}
-            ctaIcon={!searchTerm.trim() ? "add" : undefined}
-            onCtaPress={
-              !searchTerm.trim()
-                ? () => navigation.navigate("ProfessionalConsultancyCenter", { initialTab: "offers" })
-                : undefined
-            }
-          />
-        ) : null}
-      </ScrollView>
+        </View>
+        }
+      />
       </ScreenEntrance>
 
       <ProfessionalBottomNav
@@ -412,16 +437,27 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
   );
 }
 
-function StudentRow({
+// Frente 11 (engenharia mobile), Lote 5: React.memo — a lista pode ter até
+// 2000 linhas (teto do backend); sem memo, digitar na busca ou trocar de
+// filtro re-renderizava toda linha visível mesmo quando o dado dela não
+// mudou. onPress/onPressAnamnesis recebem o id (e não vêm fechados sobre o
+// student) pra poderem ser funções estáveis (useCallback) no pai — ver
+// handleOpenStudent/handleOpenAnamnesis.
+const StudentRow = React.memo(function StudentRow({
   student,
   onPress,
   onPressAnamnesis,
 }: {
   student: ProviderStudent;
-  onPress: () => void;
-  onPressAnamnesis: () => void;
+  onPress: (clientId: string) => void;
+  onPressAnamnesis: (clientId: string, clientName: string) => void;
 }) {
   const { theme } = useMvTheme();
+  const handlePress = useCallback(() => onPress(student.clientId), [onPress, student.clientId]);
+  const handlePressAnamnesis = useCallback(
+    () => onPressAnamnesis(student.clientId, student.name),
+    [onPressAnamnesis, student.clientId, student.name]
+  );
 
   const initials = student.name
     .split(/\s+/).slice(0, 2).map((p) => p[0] ?? "").join("").toUpperCase();
@@ -440,7 +476,7 @@ function StudentRow({
     : null;
 
   return (
-    <PressableScale scale={0.97} onPress={onPress}>
+    <PressableScale scale={0.97} onPress={handlePress}>
       <View style={{
         flexDirection: "row",
         alignItems: "center",
@@ -485,8 +521,9 @@ function StudentRow({
             {student.anamnesisPending ? (
               <PressableScale
                 scale={0.85}
-                onPress={onPressAnamnesis}
+                onPress={handlePressAnamnesis}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                testID={`student-row-anamnesis-${student.clientId}`}
                 style={{
                   width: 22, height: 22, borderRadius: 6,
                   backgroundColor: "rgba(245,158,11,0.14)",
@@ -504,7 +541,7 @@ function StudentRow({
             {student.trainingPlanPending ? (
               <PressableScale
                 scale={0.85}
-                onPress={onPress}
+                onPress={handlePress}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{
                   width: 22, height: 22, borderRadius: 6,
@@ -518,7 +555,7 @@ function StudentRow({
             {student.fichaRenewalPending ? (
               <PressableScale
                 scale={0.85}
-                onPress={onPress}
+                onPress={handlePress}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{
                   width: 22, height: 22, borderRadius: 6,
@@ -557,4 +594,4 @@ function StudentRow({
       </View>
     </PressableScale>
   );
-}
+});

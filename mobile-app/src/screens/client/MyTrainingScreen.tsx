@@ -16,7 +16,8 @@ import {
   View,
 } from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import { useFocusEffect } from "@react-navigation/native";
+import { useIsFocused } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientTabParamList } from "../../navigation/route-types";
@@ -621,6 +622,11 @@ export function MyTrainingScreen({ navigation, route }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
+  // Frente 11 (engenharia mobile), Lote 8: tela de bottom-tab — fica montada
+  // mesmo quando o usuário navega pra outra aba. Sem checar foco, o polling
+  // do Pix pendente (abaixo) continuava rodando indefinidamente em segundo
+  // plano. Mesmo padrão já usado em ClientBookingDetailScreen.tsx.
+  const isFocused = useIsFocused();
 
   const [decidingRequestId, setDecidingRequestId] = useState<string | null>(null);
   const [cancellingContractId, setCancellingContractId] = useState<string | null>(null);
@@ -665,7 +671,7 @@ export function MyTrainingScreen({ navigation, route }: Props) {
   // Frente 4 (Criação/entrega/evolução do treino), Lote 5: única tela do
   // cliente sem refetch ao voltar pro foco — ficha nova entregue pelo
   // profissional só aparecia depois de fechar e reabrir o app.
-  useFocusEffect(useCallback(() => { void trainingQuery.refetch(); }, [trainingQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void trainingQuery.refetch(); }, [trainingQuery.refetch]));
 
   useEffect(() => {
     if (trainingQuery.error) {
@@ -694,10 +700,10 @@ export function MyTrainingScreen({ navigation, route }: Props) {
   // atualizar manualmente.
   const hasPendingPix = waitingDelivery.some((item) => item.pix !== null);
   useEffect(() => {
-    if (!hasPendingPix) return;
+    if (!hasPendingPix || !isFocused) return;
     const interval = setInterval(() => { void trainingQuery.refetch(); }, 5000);
     return () => clearInterval(interval);
-  }, [hasPendingPix, trainingQuery.refetch]);
+  }, [hasPendingPix, isFocused, trainingQuery.refetch]);
 
   // Planos por tab — separados pela vigencia de CADA treino, nao pelo status do
   // contrato (um contrato "Entregue" continua podendo ter treinos vigentes e

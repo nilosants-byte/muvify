@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator, Alert,
@@ -158,7 +158,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
   // financeiras sem esse padrão (as outras 5 já corrigiram, cada uma no seu
   // próprio momento, o mesmo problema de dado desatualizado ao voltar de
   // outra tela — ex: registrar um pagamento em Alunos Financeiros).
-  useFocusEffect(useCallback(() => { void studentsQuery.refetch(); }, [studentsQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void studentsQuery.refetch(); }, [studentsQuery.refetch]));
 
   const [saving, setSaving] = useState(false);
   const [addStudentModal, setAddStudentModal] = useState(false);

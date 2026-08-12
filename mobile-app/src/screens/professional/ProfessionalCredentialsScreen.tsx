@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Alert, ScrollView, StatusBar, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,7 +21,7 @@ import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalCredentials">;
-type AttachedDoc = { name: string; uri: string; mimeType: string };
+type AttachedDoc = { name: string; uri: string; mimeType: string; fileSizeBytes?: number };
 
 // Raio-X de pagamentos, Rodada 4, Lote 13: o cooldown de 7 dias pra reenviar
 // CREF reprovado (provider.service.ts::upsertOwnCredentials) só aparecia
@@ -184,6 +184,13 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
   const [crefNumber, setCrefNumber] = useState("");
   const [frontDoc, setFrontDoc] = useState<AttachedDoc | null>(null);
   const [backDoc, setBackDoc] = useState<AttachedDoc | null>(null);
+  // Frente 11 (engenharia mobile), Lote 2: frente e verso subiam em
+  // sequência - se o verso falhasse depois da frente já ter subido, o
+  // objeto da frente ficava órfão no storage (upsertMyCredentials só roda
+  // depois dos dois terminarem) e uma nova tentativa reenviava a frente de
+  // novo, criando outro órfão. Cache por uri evita reenviar um lado que já
+  // subiu com sucesso numa tentativa anterior.
+  const uploadedCacheRef = useRef<Map<string, ProviderCredentialsDocument>>(new Map());
 
   const credentialsQuery = useAuthQuery(
     queryKeys.providers.myCredentials(),
@@ -208,7 +215,7 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
     }
   }, [credentialsQuery.error, showToast, navigation]);
 
-  useFocusEffect(useCallback(() => { void credentialsQuery.refetch(); }, [credentialsQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void credentialsQuery.refetch(); }, [credentialsQuery.refetch]));
 
   function applyPickedDoc(side: "front" | "back", doc: AttachedDoc) {
     if (side === "front") setFrontDoc(doc);
@@ -230,7 +237,7 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
       const asset = result.assets?.[0];
       if (!asset) return;
       if (isFileTooLarge(asset.size)) { showToast("O arquivo deve ter no máximo 5MB.", "error"); return; }
-      applyPickedDoc(side, { name: asset.name, uri: asset.uri, mimeType: asset.mimeType ?? "application/octet-stream" });
+      applyPickedDoc(side, { name: asset.name, uri: asset.uri, mimeType: asset.mimeType ?? "application/octet-stream", fileSizeBytes: asset.size ?? undefined });
     } catch {
       showToast("Falha ao selecionar o arquivo.", "error");
     }
@@ -250,7 +257,7 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
       if (!asset) return;
       if (isFileTooLarge(asset.fileSize)) { showToast("A imagem deve ter no máximo 5MB.", "error"); return; }
       const fallbackName = side === "front" ? "cref-frente.jpg" : "cref-verso.jpg";
-      applyPickedDoc(side, { name: asset.fileName ?? fallbackName, uri: asset.uri, mimeType: asset.mimeType ?? "image/jpeg" });
+      applyPickedDoc(side, { name: asset.fileName ?? fallbackName, uri: asset.uri, mimeType: asset.mimeType ?? "image/jpeg", fileSizeBytes: asset.fileSize });
     } catch {
       showToast("Falha ao selecionar o documento.", "error");
     }
@@ -280,22 +287,32 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
           existing: ProviderCredentialsDocument | undefined
         ): Promise<ProviderCredentialsDocument> {
           if (!doc) return { name: existing!.name, uri: existing!.uri, mimeType: existing!.mimeType };
+          const cached = uploadedCacheRef.current.get(doc.uri);
+          if (cached) return cached;
           const { url } = await uploadsApi.uploadMedia(
             token,
-            { uri: doc.uri, mimeType: doc.mimeType, fileName: doc.name },
+            { uri: doc.uri, mimeType: doc.mimeType, fileName: doc.name, fileSizeBytes: doc.fileSizeBytes },
             "cref-documents"
           );
-          return { name: doc.name, uri: url, mimeType: doc.mimeType };
+          const entry = { name: doc.name, uri: url, mimeType: doc.mimeType };
+          uploadedCacheRef.current.set(doc.uri, entry);
+          return entry;
         }
 
-        const frontEntry = await resolveEntry(frontDoc, existingDocs[0]);
-        const backEntry = await resolveEntry(backDoc, existingDocs[1]);
+        // Em paralelo (mais rápido) — se um dos dois falhar, o outro que já
+        // tiver subido fica no cache acima e não é reenviado na próxima
+        // tentativa (ver comentário no uploadedCacheRef).
+        const [frontEntry, backEntry] = await Promise.all([
+          resolveEntry(frontDoc, existingDocs[0]),
+          resolveEntry(backDoc, existingDocs[1]),
+        ]);
 
         return providersApi.upsertMyCredentials(token, {
           crefNumber: crefNumber.trim(),
           credentials: [frontEntry, backEntry],
         });
       }) as ProviderCredentials;
+      uploadedCacheRef.current.clear();
       queryClient.setQueryData(queryKeys.providers.myCredentials(), updated);
       showToast("Credenciais salvas com sucesso.", "success");
     } catch (error) {

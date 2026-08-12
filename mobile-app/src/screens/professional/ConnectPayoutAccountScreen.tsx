@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { AppState as RNAppState, Linking, ScrollView, StatusBar, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
@@ -31,7 +31,7 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
   const loading = mpStatusQuery.isLoading;
   const [connectingMp, setConnectingMp] = useState(false);
 
-  useFocusEffect(useCallback(() => { void mpStatusQuery.refetch(); }, [mpStatusQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void mpStatusQuery.refetch(); }, [mpStatusQuery.refetch]));
 
   // Épico de Frentes, Frente 7, Lote 8: o fluxo de conectar/reconectar abre
   // o navegador externo (não é WebView in-app), sem redirecionar de volta

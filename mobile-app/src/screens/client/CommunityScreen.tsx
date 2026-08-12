@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  FlatList,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -18,6 +19,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "@react-navigation/native";
@@ -313,12 +315,19 @@ function FeedImage({ uri, fallback }: {
     );
   }
   return (
-    <Image
+    // Frente 11 (engenharia mobile), Lote 11: expo-image (em vez do Image
+    // nativo) — cache persistente em disco por padrão (cachePolicy
+    // "memory-disk"), então rolar o feed pra frente e voltar não baixa a
+    // mesma foto de novo. Image.getSize acima continua usando o Image
+    // nativo (react-native) de propósito — expo-image não expõe esse
+    // método estático; ver Lote 12 pra revisão desse round-trip extra.
+    <ExpoImage
       source={{ uri }}
       style={{ width: "100%", aspectRatio: ratio, borderRadius: 12 }}
-      resizeMode="cover"
+      contentFit="cover"
+      cachePolicy="memory-disk"
       onLoad={(e) => {
-        const { width, height } = e.nativeEvent.source;
+        const { width, height } = e.source;
         if (width && height && !feedImageRatioCache.has(uri)) {
           const clamped = clampFeedRatio(width, height);
           feedImageRatioCache.set(uri, clamped);
@@ -428,7 +437,11 @@ const FeedPostCard = React.memo(function FeedPostCard({
   runWithAuth: (fn: (token: string) => Promise<any>) => Promise<any>;
   onNavigateToProvider: (id: string) => void;
   onNavigateToProfile: (userId: string) => void;
-  onCommentFocus: () => void;
+  // Frente 11 (engenharia mobile), Lote 3: recebe o id do post (em vez de vir
+  // fechada sobre ele) pra poder ser uma função estável (useCallback sem
+  // depender do post individual) no componente pai — necessário pro
+  // React.memo deste card ter efeito de verdade.
+  onCommentFocus: (postId: string) => void;
   onDeletePost: (postId: string) => void;
   showToast: (msg: string, type?: "success" | "error" | "info") => void;
   viewerId: string;
@@ -833,7 +846,7 @@ const FeedPostCard = React.memo(function FeedPostCard({
               onChangeText={setCommentText}
               placeholder="Escreva um comentário..."
               placeholderTextColor={theme.text3}
-              onFocus={onCommentFocus}
+              onFocus={() => onCommentFocus(post.id)}
               style={{
                 flex: 1,
                 fontFamily: "DMSans_400Regular",
@@ -976,9 +989,12 @@ export function CommunityScreen({ navigation }: Props) {
     setMonthlyGoalTarget((v) => Math.min(v, maxM));
     setAnnualGoalTarget((v) => Math.min(v, maxY));
   }, [showGoalModal]);
-  const feedScrollRef = useRef<ScrollView>(null);
-  const feedContainerYRef = useRef(0);
-  const postYOffsetsRef = useRef<Record<string, number>>({});
+  // Frente 11 (engenharia mobile), Lote 3: era ScrollView com feedItems.map()
+  // sem limite — todo post carregado ficava montado o tempo todo, mesmo fora
+  // de tela. Virou FlatList (virtualização real: só posts próximos da área
+  // visível ficam montados). scrollToIndex substitui o rastreamento manual
+  // de offsets em pixel que existia antes (feedContainerYRef/postYOffsetsRef).
+  const feedListRef = useRef<FlatList<FeedPost>>(null);
   const [refreshing, setRefreshing] = useState(false);
   const lastFocusRefreshRef = useRef(0);
   const initialLoadDoneRef = useRef(false);
@@ -1074,7 +1090,11 @@ export function CommunityScreen({ navigation }: Props) {
     finally { followInFlightRef.current.delete(targetId); }
   }
 
-  async function openUserProfile(userId: string) {
+  // Frente 11 (engenharia mobile), Lote 3: useCallback (era function comum,
+  // recriada a cada render) — passada como onNavigateToProfile pro
+  // FeedPostCard memoizado, uma referência nova a cada render derrotava o
+  // React.memo dele mesmo com onCommentFocus/onDeletePost já estáveis.
+  const openUserProfile = useCallback(async (userId: string) => {
     setProfileUserId(userId);
     setProfileData(null);
     setProfileLoading(true);
@@ -1083,7 +1103,7 @@ export function CommunityScreen({ navigation }: Props) {
       setProfileData(profile);
     } catch { /* best effort */ }
     finally { setProfileLoading(false); }
-  }
+  }, [runWithAuth]);
 
   // ── Ranking ──────────────────────────────────────────────────────────────────
   type RankingPeriod = "WEEKLY" | "MONTHLY" | "ALLTIME";
@@ -1118,6 +1138,41 @@ export function CommunityScreen({ navigation }: Props) {
     } catch { /* best effort */ }
     finally { setFeedLoadingMore(false); }
   }, [feedHasMore, feedLoadingMore, feedPage, runWithAuth]);
+
+  // Frente 11 (engenharia mobile), Lote 3: callbacks estáveis (useCallback,
+  // sem depender de feedItems em si) repassados ao FeedPostCard memoizado —
+  // antes eram funções inline recriadas a cada render do FeedPostCard.tsx do
+  // parent (uma por post, a cada re-render de CommunityScreen inteiro:
+  // digitar na busca, trocar de aba do ranking, etc.), o que invalidava o
+  // React.memo do card e derrubava a economia de re-render pretendida por ele.
+  const feedItemsRef = useRef<FeedPost[]>([]);
+  useEffect(() => {
+    feedItemsRef.current = feedItems;
+  }, [feedItems]);
+
+  const handleNavigateToProvider = useCallback(
+    (id: string) => {
+      navigation.getParent<any>()?.navigate("ProfessionalDetail", { professionalId: id });
+    },
+    [navigation]
+  );
+
+  const handleCommentFocus = useCallback((postId: string) => {
+    const index = feedItemsRef.current.findIndex((p) => p.id === postId);
+    if (index < 0) return;
+    setTimeout(() => {
+      feedListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0 });
+    }, 120);
+  }, []);
+
+  const handleDeletePost = useCallback((postId: string) => {
+    setFeedItems((prev) => prev.filter((p) => p.id !== postId));
+  }, []);
+
+  const handleScrollToIndexFailed = useCallback((info: { index: number; averageItemLength: number }) => {
+    feedListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+    setTimeout(() => feedListRef.current?.scrollToIndex({ index: info.index, animated: true }), 50);
+  }, []);
 
   // ── Dados principais: bookings + gamificação + sugestões + conquistas + seguindo
   const communityQuery = useAuthQuery(
@@ -1265,6 +1320,13 @@ export function CommunityScreen({ navigation }: Props) {
     if (result.canceled) return;
     const asset = result.assets?.[0];
     if (!asset?.uri) { showToast("Não foi possível carregar a imagem.", "error"); return; }
+    // Frente 11 (engenharia mobile), Lote 12: mesmo teto já aplicado na foto
+    // de perfil (ProfessionalProfileEditorScreen) — a foto do post não tinha
+    // limite nenhum.
+    if (asset.fileSize && asset.fileSize > 3 * 1024 * 1024) {
+      showToast("A foto deve ter no máximo 3MB.", "error");
+      return;
+    }
     setCreatePhotoUri(asset.uri);
     setCreatePhotoData({ uri: asset.uri, mimeType: asset.mimeType ?? "image/jpeg" });
   }
@@ -1422,9 +1484,13 @@ export function CommunityScreen({ navigation }: Props) {
       </View>
 
       <ScreenEntrance>
-      {/* ScrollView único — sem scroll aninhado (regra V2) */}
-      <ScrollView
-        ref={feedScrollRef}
+      {/* FlatList único — virtualização real do feed (Frente 11, Lote 3: era
+          ScrollView + feedItems.map() sem limite, todo post ficava montado
+          mesmo fora de tela). Tudo que vem antes do feed (progresso, streak,
+          ranking, sugestões) roda como ListHeaderComponent — continua sem
+          scroll aninhado (regra V2), agora dentro do mesmo FlatList. */}
+      <FlatList
+        ref={feedListRef}
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 120, paddingTop: 16 }}
         showsVerticalScrollIndicator={false}
@@ -1432,14 +1498,12 @@ export function CommunityScreen({ navigation }: Props) {
         automaticallyAdjustKeyboardInsets
         removeClippedSubviews
         scrollEventThrottle={400}
-        onScroll={(e) => {
-          const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
-          const distanceFromBottom = contentSize.height - (layoutMeasurement.height + contentOffset.y);
-          if (distanceFromBottom < 300 && !feedLoadingMore && feedHasMore && !feedLoading) {
-            void loadMoreFeed();
-          }
-          setShowScrollTop(contentOffset.y > 300);
+        onScroll={(e) => setShowScrollTop(e.nativeEvent.contentOffset.y > 300)}
+        onEndReachedThreshold={0.5}
+        onEndReached={() => {
+          if (!feedLoadingMore && feedHasMore && !feedLoading) void loadMoreFeed();
         }}
+        onScrollToIndexFailed={handleScrollToIndexFailed}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -1448,7 +1512,69 @@ export function CommunityScreen({ navigation }: Props) {
             colors={[theme.primary]}
           />
         }
-      >
+        data={feedItems}
+        keyExtractor={(post) => post.id}
+        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+        renderItem={({ item: post }) => (
+          <View style={{ paddingHorizontal: S.px }}>
+            <FeedPostCard
+              post={post}
+              runWithAuth={runWithAuth}
+              showToast={showToast}
+              viewerId={user?.id ?? ""}
+              onNavigateToProvider={handleNavigateToProvider}
+              onNavigateToProfile={openUserProfile}
+              onCommentFocus={handleCommentFocus}
+              onDeletePost={handleDeletePost}
+            />
+          </View>
+        )}
+        ListFooterComponent={
+          feedLoadingMore ? (
+            <View style={{ paddingHorizontal: S.px, paddingVertical: 20, alignItems: "center" }}>
+              <ActivityIndicator size="small" color={theme.primary} />
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
+          <View style={{ paddingHorizontal: S.px }}>
+            {feedLoading ? (
+              <View style={{ gap: 10 }}>
+                {[1, 2].map((i) => (
+                  <View key={i} style={{ height: 90, borderRadius: S.cardR, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: theme.border }} />
+                ))}
+              </View>
+            ) : (
+              <View style={{ padding: 28, alignItems: "center", gap: 12, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg }}>
+                <View style={{ width: 64, height: 64, borderRadius: 22, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="people-outline" size={32} color={theme.primary} />
+                </View>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, textAlign: "center" }}>
+                  Sem posts ainda
+                </Text>
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, textAlign: "center", lineHeight: 19 }}>
+                  Siga amigos e os posts de evolução deles vão aparecer aqui. Você também pode publicar o seu!
+                </Text>
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+                  <TouchableOpacity
+                    onPress={() => { setSearchQuery(""); setSearchResults([]); setShowFollowModal(true); }}
+                    style={{ height: 38, paddingHorizontal: 16, borderRadius: 99, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: "#fff" }}>Seguir alguém</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => { setCreateCaption(""); setShowCreatePost(true); }}
+                    style={{ height: 38, paddingHorizontal: 16, borderRadius: 99, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>Criar post</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        }
+        ListHeaderComponent={
+        <>
         {/* ── Bloco 1: Seu resumo ──────────────────────────────────────── */}
         <View style={{ paddingHorizontal: S.px }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -1812,7 +1938,7 @@ export function CommunityScreen({ navigation }: Props) {
                 setFeedPage(1);
                 setFeedHasMore(pendingFeedItems.length === 20);
                 setPendingFeedItems([]);
-                feedScrollRef.current?.scrollTo({ y: 0, animated: true });
+                feedListRef.current?.scrollToOffset({ offset: 0, animated: true });
               }}
               style={{
                 flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
@@ -1826,77 +1952,10 @@ export function CommunityScreen({ navigation }: Props) {
               </Text>
             </TouchableOpacity>
           )}
-
-          {feedLoading ? (
-            <View style={{ gap: 10 }}>
-              {[1, 2].map((i) => (
-                <View key={i} style={{ height: 90, borderRadius: S.cardR, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: theme.border }} />
-              ))}
-            </View>
-          ) : feedItems.length === 0 ? (
-            <View style={{ padding: 28, alignItems: "center", gap: 12, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg }}>
-              <View style={{ width: 64, height: 64, borderRadius: 22, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="people-outline" size={32} color={theme.primary} />
-              </View>
-              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, textAlign: "center" }}>
-                Sem posts ainda
-              </Text>
-              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, textAlign: "center", lineHeight: 19 }}>
-                Siga amigos e os posts de evolução deles vão aparecer aqui. Você também pode publicar o seu!
-              </Text>
-              <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
-                <TouchableOpacity
-                  onPress={() => { setSearchQuery(""); setSearchResults([]); setShowFollowModal(true); }}
-                  style={{ height: 38, paddingHorizontal: 16, borderRadius: 99, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center" }}
-                >
-                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: "#fff" }}>Seguir alguém</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => { setCreateCaption(""); setShowCreatePost(true); }}
-                  style={{ height: 38, paddingHorizontal: 16, borderRadius: 99, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
-                >
-                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>Criar post</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <View
-              style={{ gap: 10 }}
-              onLayout={(e) => { feedContainerYRef.current = e.nativeEvent.layout.y; }}
-            >
-              {feedItems.map((post) => (
-                <View
-                  key={post.id}
-                  onLayout={(e) => { postYOffsetsRef.current[post.id] = e.nativeEvent.layout.y; }}
-                >
-                  <FeedPostCard
-                    post={post}
-                    runWithAuth={runWithAuth}
-                    showToast={showToast}
-                    viewerId={user?.id ?? ""}
-                    onNavigateToProvider={(id) =>
-                      navigation.getParent<any>()?.navigate("ProfessionalDetail", { professionalId: id })
-                    }
-                    onNavigateToProfile={openUserProfile}
-                    onCommentFocus={() => {
-                      const y = feedContainerYRef.current + (postYOffsetsRef.current[post.id] ?? 0);
-                      setTimeout(() => feedScrollRef.current?.scrollTo({ y: Math.max(0, y - 16), animated: true }), 120);
-                    }}
-                    onDeletePost={(postId) => {
-                      setFeedItems((prev) => prev.filter((p) => p.id !== postId));
-                    }}
-                  />
-                </View>
-              ))}
-            </View>
-          )}
-          {feedLoadingMore && (
-            <View style={{ paddingVertical: 20, alignItems: "center" }}>
-              <ActivityIndicator size="small" color={theme.primary} />
-            </View>
-          )}
         </View>
-      </ScrollView>
+        </>
+        }
+      />
       </ScreenEntrance>
 
       <ClientBottomNavV2
@@ -1913,7 +1972,7 @@ export function CommunityScreen({ navigation }: Props) {
       {/* ── Botão voltar ao topo ────────────────────────────────────── */}
       {showScrollTop && (
         <TouchableOpacity
-          onPress={() => feedScrollRef.current?.scrollTo({ y: 0, animated: true })}
+          onPress={() => feedListRef.current?.scrollToOffset({ offset: 0, animated: true })}
           accessibilityRole="button"
           accessibilityLabel="Voltar ao topo"
           style={{

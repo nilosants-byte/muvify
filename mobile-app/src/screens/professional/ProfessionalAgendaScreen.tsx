@@ -17,7 +17,7 @@ import {
   View,
 } from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -213,7 +213,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     }
   }, [agendaQuery.error, showToast, navigation]);
 
-  useFocusEffect(useCallback(() => { void agendaQuery.refetch(); }, [agendaQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void agendaQuery.refetch(); }, [agendaQuery.refetch]));
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";

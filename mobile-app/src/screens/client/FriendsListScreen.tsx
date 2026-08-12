@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  ScrollView,
+  FlatList,
   Text,
   TouchableOpacity,
   View,
@@ -51,7 +51,7 @@ export function FriendsListScreen({ navigation }: Props) {
     setHasMore(res.items.length === 20);
   }, [friendsQuery.data]);
 
-  async function handleUnfollow(userId: string) {
+  const handleUnfollow = useCallback(async (userId: string) => {
     if (unfollowInFlightRef.current.has(userId)) return;
     unfollowInFlightRef.current.add(userId);
     setUnfollowingIds((prev) => new Set([...prev, userId]));
@@ -74,9 +74,9 @@ export function FriendsListScreen({ navigation }: Props) {
         return next;
       });
     }
-  }
+  }, [runWithAuth]);
 
-  async function loadMore() {
+  const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
@@ -91,7 +91,7 @@ export function FriendsListScreen({ navigation }: Props) {
     } finally {
       setLoadingMore(false);
     }
-  }
+  }, [loadingMore, hasMore, page, runWithAuth]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -155,17 +155,19 @@ export function FriendsListScreen({ navigation }: Props) {
           </Text>
         </View>
       ) : (
-        <ScrollView
+        // Frente 11 (engenharia mobile), Lote 12: virou FlatList (virtualização
+        // real — antes era ScrollView + friends.map() sem limite).
+        <FlatList
+          data={friends}
+          keyExtractor={(friend) => friend.id}
           contentContainerStyle={{ padding: S.px, gap: 10, paddingBottom: insets.bottom + 24 }}
           showsVerticalScrollIndicator={false}
-        >
-          {friends.map((friend) => {
+          renderItem={({ item: friend }) => {
             const followsBack = friend.isFollowing === true;
             const isUnfollowing = unfollowingIds.has(friend.id);
 
             return (
               <View
-                key={friend.id}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -246,33 +248,33 @@ export function FriendsListScreen({ navigation }: Props) {
                 </TouchableOpacity>
               </View>
             );
-          })}
-
-          {/* Carregar mais */}
-          {hasMore && (
-            <TouchableOpacity
-              onPress={loadMore}
-              disabled={loadingMore}
-              style={{
-                marginTop: 4,
-                paddingVertical: 14,
-                borderRadius: S.cardR,
-                borderWidth: 1,
-                borderColor: theme.border,
-                backgroundColor: theme.cardBg,
-                alignItems: "center",
-              }}
-            >
-              {loadingMore ? (
-                <ActivityIndicator size="small" color={theme.primary} />
-              ) : (
-                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>
-                  Carregar mais
-                </Text>
-              )}
-            </TouchableOpacity>
-          )}
-        </ScrollView>
+          }}
+          ListFooterComponent={
+            hasMore ? (
+              <TouchableOpacity
+                onPress={() => void loadMore()}
+                disabled={loadingMore}
+                style={{
+                  marginTop: 4,
+                  paddingVertical: 14,
+                  borderRadius: S.cardR,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  backgroundColor: theme.cardBg,
+                  alignItems: "center",
+                }}
+              >
+                {loadingMore ? (
+                  <ActivityIndicator size="small" color={theme.primary} />
+                ) : (
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>
+                    Carregar mais
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ) : null
+          }
+        />
       )}
     </View>
   );

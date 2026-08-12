@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ScrollView, TouchableOpacity, View } from "react-native";
+import { FlatList, TouchableOpacity, View } from "react-native";
 import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { adminApi, AdminUserDetail, AdminUserSearchResult, DebtRecordStatus } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
@@ -281,68 +281,79 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
 
   return (
     <AdminScaffold title="Buscar usuário" navigation={navigation} currentScreen="AdminUserSearch">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 12 }}>
-        <MvText variant="body4" color="secondary">
-          Busque um cliente ou profissional por nome ou e-mail pra ver dívidas, disputas e status de suspensão num
-          lugar só.
-        </MvText>
+      {/* Frente 11 (engenharia mobile), Lote 12: virou FlatList (virtualização
+          real — antes era ScrollView + results.map() sem limite). Busca +
+          mensagem de vazio viram cabeçalho; "carregar mais"/detalhe do
+          usuário selecionado (dívidas, disputas, ações administrativas)
+          viram rodapé — os dois nunca aparecem ao mesmo tempo que a lista de
+          resultados (selectedUserId esvazia os dados da lista). */}
+      <FlatList
+        data={!selectedUserId ? (results ?? []) : []}
+        keyExtractor={(u) => u.id}
+        contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 12 }}
+        ListHeaderComponent={
+          <View style={{ gap: 12 }}>
+            <MvText variant="body4" color="secondary">
+              Busque um cliente ou profissional por nome ou e-mail pra ver dívidas, disputas e status de suspensão num
+              lugar só.
+            </MvText>
 
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <MvInput
-            style={{ flex: 1 }}
-            placeholder="Nome ou e-mail"
-            value={query}
-            onChangeText={setQuery}
-            autoCapitalize="none"
-          />
-          <MvButton label="Buscar" loading={searching} onPress={() => void search()} />
-        </View>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <MvInput
+                style={{ flex: 1 }}
+                placeholder="Nome ou e-mail"
+                value={query}
+                onChangeText={setQuery}
+                autoCapitalize="none"
+              />
+              <MvButton label="Buscar" loading={searching} onPress={() => void search()} />
+            </View>
 
-        {results && results.length === 0 ? (
-          <MvCard>
-            <MvText variant="body3">Nenhum usuário encontrado.</MvText>
-          </MvCard>
-        ) : null}
+            {results && results.length === 0 ? (
+              <MvCard>
+                <MvText variant="body3">Nenhum usuário encontrado.</MvText>
+              </MvCard>
+            ) : null}
+          </View>
+        }
+        renderItem={({ item: u }) => (
+          <TouchableOpacity onPress={() => void openUser(u.id)}>
+            <MvCard>
+              <View style={{ gap: 4 }}>
+                <MvText variant="semi2">
+                  {u.name} {u.suspendedAt ? "— suspenso" : ""}
+                </MvText>
+                <MvText variant="body4" color="secondary">{u.email}</MvText>
+                <MvText variant="caption" color="secondary">
+                  {u.role === "PROVIDER" || u.isProvider ? "Profissional" : "Cliente"} · desde {formatDate(u.createdAt)}
+                </MvText>
+              </View>
+            </MvCard>
+          </TouchableOpacity>
+        )}
+        ListFooterComponent={
+          <View style={{ gap: 12 }}>
+            {results && !selectedUserId && results.length < resultsTotal ? (
+              <MvButton
+                variant="outline"
+                label={loadingMoreResults ? "Carregando..." : "Carregar mais"}
+                loading={loadingMoreResults}
+                onPress={() => void loadMoreResults()}
+              />
+            ) : null}
 
-        {results && !selectedUserId
-          ? results.map((u) => (
-              <TouchableOpacity key={u.id} onPress={() => void openUser(u.id)}>
-                <MvCard>
-                  <View style={{ gap: 4 }}>
-                    <MvText variant="semi2">
-                      {u.name} {u.suspendedAt ? "— suspenso" : ""}
-                    </MvText>
-                    <MvText variant="body4" color="secondary">{u.email}</MvText>
-                    <MvText variant="caption" color="secondary">
-                      {u.role === "PROVIDER" || u.isProvider ? "Profissional" : "Cliente"} · desde {formatDate(u.createdAt)}
-                    </MvText>
-                  </View>
-                </MvCard>
-              </TouchableOpacity>
-            ))
-          : null}
+            {selectedUserId ? (
+              <MvButton variant="ghost" label="← Voltar aos resultados" onPress={() => { setSelectedUserId(null); setDetail(null); }} />
+            ) : null}
 
-        {results && !selectedUserId && results.length < resultsTotal ? (
-          <MvButton
-            variant="outline"
-            label={loadingMoreResults ? "Carregando..." : "Carregar mais"}
-            loading={loadingMoreResults}
-            onPress={() => void loadMoreResults()}
-          />
-        ) : null}
+            {loadingDetail ? (
+              <MvCard>
+                <MvText variant="body3">Carregando...</MvText>
+              </MvCard>
+            ) : null}
 
-        {selectedUserId ? (
-          <MvButton variant="ghost" label="← Voltar aos resultados" onPress={() => { setSelectedUserId(null); setDetail(null); }} />
-        ) : null}
-
-        {loadingDetail ? (
-          <MvCard>
-            <MvText variant="body3">Carregando...</MvText>
-          </MvCard>
-        ) : null}
-
-        {detail ? (
-          <>
+            {detail ? (
+              <>
             <MvCard>
               <View style={{ gap: 6 }}>
                 <MvText variant="h2">{detail.name}</MvText>
@@ -528,8 +539,10 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
               </View>
             </MvCard>
           </>
-        ) : null}
-      </ScrollView>
+            ) : null}
+          </View>
+        }
+      />
     </AdminScaffold>
   );
 }

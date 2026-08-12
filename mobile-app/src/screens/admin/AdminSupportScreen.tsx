@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Alert, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { adminApi, AdminSupportTicket } from "../../services/api/client";
@@ -85,7 +85,7 @@ export function AdminSupportScreen({ navigation }: Props) {
     }
   }, [ticketsQuery.error, showToast, navigation]);
 
-  useFocusEffect(useCallback(() => {
+  useFocusEffectSkippingFirst(useCallback(() => {
     setAnsweringId(null);
     setResponseMessage("");
     void ticketsQuery.refetch();

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect } from "react";
 import { RefreshControl, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientStackParamList } from "../../navigation/route-types";
@@ -51,7 +51,7 @@ export function MyDisputesScreen({ navigation }: Props) {
   const disputesQuery = useAuthQuery(queryKeys.disputes.mine(), (token) => userApi.myDisputes(token));
   const disputes = disputesQuery.data ?? [];
 
-  useFocusEffect(useCallback(() => { void disputesQuery.refetch(); return undefined; }, [disputesQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void disputesQuery.refetch(); return undefined; }, [disputesQuery.refetch]));
 
   useEffect(() => {
     if (disputesQuery.error) {

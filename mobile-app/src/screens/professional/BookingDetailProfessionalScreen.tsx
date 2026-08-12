@@ -7,7 +7,7 @@ import Animated, {
 import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
@@ -86,7 +86,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   // ou depois de validar presença) mostrava dados obsoletos até sair e
   // voltar de novo manualmente — mesmo padrão já usado em
   // ClientBookingDetailScreen.
-  useFocusEffect(useCallback(() => { void bookingDetailQuery.refetch(); }, [bookingDetailQuery.refetch]));
+  useFocusEffectSkippingFirst(useCallback(() => { void bookingDetailQuery.refetch(); }, [bookingDetailQuery.refetch]));
 
   const [updating, setUpdating] = useState(false);
   const [cancelModalVisible, setCancelModalVisible] = useState(false);

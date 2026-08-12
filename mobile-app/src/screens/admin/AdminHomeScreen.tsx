@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { MvCard, MvText } from "../../components/mv";
 import { adminApi } from "../../services/api/client";
@@ -55,7 +55,7 @@ export function AdminHomeScreen({ navigation }: Props) {
   // useFocusEffect — os contadores de "precisa da sua atenção" (disputas,
   // dívidas, CREFs, tickets) ficavam desatualizados até um pull-to-refresh
   // manual depois de resolver algo em outra tela e voltar pro painel.
-  useFocusEffect(
+  useFocusEffectSkippingFirst(
     useCallback(() => {
       void overviewQuery.refetch();
       // eslint-disable-next-line react-hooks/exhaustive-deps

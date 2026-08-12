@@ -108,6 +108,15 @@ jest.mock("expo-image-picker", () => ({
   }
 }));
 
+jest.mock("expo-image", () => {
+  const React = require("react");
+  const { Image: RNImage } = require("react-native");
+  return {
+    Image: ({ source, ...props }: any) =>
+      React.createElement(RNImage, { ...props, source }, undefined)
+  };
+});
+
 jest.mock("expo-camera", () => {
   const React = require("react");
   const { View } = require("react-native");

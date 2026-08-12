@@ -36,6 +36,7 @@ import { useAppState } from "../../state/AppState";
 import { MvAvatar, MvEmptyState } from "../../components/mv";
 import { formatBRTime } from "../../utils/formatters";
 import { useMvTheme } from "../../theme/MvThemeContext";
+import type { MvTheme } from "../../theme/MvColors";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { SkeletonChatItem } from "../../components/polish/SkeletonCard";
 import { hapticCta } from "../../utils/haptics";
@@ -156,6 +157,63 @@ async function enrichMissingChatPhotos(
   });
 }
 
+// Frente 11 (engenharia mobile), Lote 7: composer isolado num componente
+// próprio (React.memo), com texto/envio como estado LOCAL — antes,
+// inputText vivia no mesmo componente que a lista de mensagens, então cada
+// tecla digitada re-renderizava ClientChatListScreen inteiro (recriando
+// renderMessage e redesenhando todas as bolhas visíveis do FlatList).
+export const ChatComposer = React.memo(function ChatComposer({
+  onSend,
+  theme,
+}: {
+  onSend: (text: string) => Promise<boolean>;
+  theme: MvTheme;
+}) {
+  const insets = useSafeAreaInsets();
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const handlePress = useCallback(async () => {
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+    hapticCta();
+    setSending(true);
+    setText("");
+    const ok = await onSend(trimmed);
+    if (!ok) setText(trimmed);
+    setSending(false);
+  }, [text, sending, onSend]);
+
+  return (
+    <View style={{ paddingHorizontal: 10, paddingVertical: 10, paddingBottom: Math.max(16, insets.bottom + 8), backgroundColor: theme.bg, borderTopWidth: 1, borderTopColor: theme.border }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: theme.inputBg, borderWidth: 1, borderColor: sending ? theme.primarySubtleBorder : theme.borderMid, borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8, opacity: sending ? 0.75 : 1 }}>
+        <TextInput
+          style={{ flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text1, maxHeight: 100, lineHeight: 19 }}
+          placeholder={sending ? "Enviando..." : "Escreva para seu personal..."}
+          placeholderTextColor={sending ? theme.primary : theme.text3}
+          value={text}
+          onChangeText={setText}
+          editable={!sending}
+          multiline
+          maxLength={1000}
+          selectionColor={theme.primary}
+        />
+        <TouchableOpacity
+          onPress={() => void handlePress()}
+          disabled={!text.trim() || sending}
+          accessibilityRole="button"
+          accessibilityLabel="Enviar mensagem"
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: text.trim() && !sending ? theme.primary : "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+        >
+          {sending
+            ? <ActivityIndicator color={theme.primary} size="small" />
+            : <Ionicons name="send" size={16} color={text.trim() ? theme.textOnPrimary : theme.text3} />}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+});
+
 export function ClientChatListScreen({ navigation, route }: Props) {
   const { runWithAuth, user, showToast } = useAppState();
   const { theme } = useMvTheme();
@@ -171,8 +229,6 @@ export function ClientChatListScreen({ navigation, route }: Props) {
   const [isOpen, setIsOpen] = useState(true);
   const [panelLoading, setPanelLoading] = useState(false);
   const [panelError, setPanelError] = useState(false);
-  const [inputText, setInputText] = useState("");
-  const [sending, setSending] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -332,7 +388,6 @@ export function ClientChatListScreen({ navigation, route }: Props) {
       if (pollRef.current) clearTimeout(pollRef.current);
       setSelectedId(chat.id);
       setMessages([]);
-      setInputText("");
       setPanelError(false);
       lastMsgCountRef.current = 0;
       setActiveView("chat");
@@ -364,34 +419,38 @@ export function ClientChatListScreen({ navigation, route }: Props) {
     setMessages([]);
   }, []);
 
-  const handleSend = async () => {
-    const text = inputText.trim();
-    if (!text || sending || !selectedChat) return;
-    hapticCta();
-    setSending(true);
-    setInputText("");
-    try {
-      const chat = selectedChat;
-      const msg = await runWithAuth((token) =>
-        chat.kind === "booking"
-          ? chatApi.sendMessage(token, chat.rawId, text)
-          : consultancyChatApi.sendMessage(token, chat.rawId, text)
-      );
-      if (!isMountedRef.current) return;
-      setMessages((prev) => {
-        const updated = [...prev, msg];
-        lastMsgCountRef.current = updated.length;
-        return updated;
-      });
-      refetchAll();
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
-    } catch {
-      setInputText(text);
-      showToast("Não foi possível enviar a mensagem.", "error");
-    } finally {
-      if (isMountedRef.current) setSending(false);
-    }
-  };
+  // Frente 11 (engenharia mobile), Lote 7: recebe o texto como argumento (em
+  // vez de ler inputText do próprio componente) e devolve sucesso/falha —
+  // permite que o composer (ChatComposer, abaixo) seja um componente à parte
+  // com seu próprio estado de texto/envio, sem re-renderizar
+  // ClientChatListScreen (e a lista de mensagens) a cada tecla digitada.
+  const handleSendMessage = useCallback(
+    async (text: string): Promise<boolean> => {
+      if (!text || !selectedChat) return false;
+      hapticCta();
+      try {
+        const chat = selectedChat;
+        const msg = await runWithAuth((token) =>
+          chat.kind === "booking"
+            ? chatApi.sendMessage(token, chat.rawId, text)
+            : consultancyChatApi.sendMessage(token, chat.rawId, text)
+        );
+        if (!isMountedRef.current) return true;
+        setMessages((prev) => {
+          const updated = [...prev, msg];
+          lastMsgCountRef.current = updated.length;
+          return updated;
+        });
+        refetchAll();
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
+        return true;
+      } catch {
+        showToast("Não foi possível enviar a mensagem.", "error");
+        return false;
+      }
+    },
+    [selectedChat, runWithAuth, showToast, refetchAll]
+  );
 
   // Épico de Frentes, Frente 9, Lote 10: chat ganha ação de denunciar
   // mensagem, reaproveitando o mesmo padrão já usado em posts da comunidade.
@@ -424,7 +483,9 @@ export function ClientChatListScreen({ navigation, route }: Props) {
   );
 
   // ── Lista: item de conversa V2 ────────────────────────────────────────────
-  const renderChatItem = ({ item }: { item: UnifiedChat }) => {
+  // Frente 11 (engenharia mobile), Lote 7: useCallback — referência estável
+  // do renderItem entre re-renders do FlatList não ligados aos dados da lista.
+  const renderChatItem = useCallback(({ item }: { item: UnifiedChat }) => {
     const hasUnread = item.unreadCount > 0;
     const tone = hasUnread ? "green" as const : "green" as const;
     return (
@@ -503,10 +564,13 @@ export function ClientChatListScreen({ navigation, route }: Props) {
         </View>
       </TouchableOpacity>
     );
-  };
+  }, [theme, openChat]);
 
   // ── Chat: mensagem individual V2 ─────────────────────────────────────────
-  const renderMessage = ({ item }: { item: ChatMessage }) => {
+  // Frente 11 (engenharia mobile), Lote 7: useCallback — combinado com o
+  // composer isolado (ChatComposer, abaixo), digitar uma mensagem não recria
+  // mais esta função nem re-renderiza a lista de bolhas visíveis.
+  const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
     if (item.isSystem) {
       return (
         <View style={{
@@ -558,7 +622,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       </View>
     );
-  };
+  }, [theme, myUserId, handleReportMessage, isOpen]);
 
   // ── Render principal V2 ──────────────────────────────────────────────────
   return (
@@ -711,32 +775,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
 
           {/* Input V2 — pill container */}
           {selectedChat?.isOpen ? (
-            <View style={{ paddingHorizontal: 10, paddingVertical: 10, paddingBottom: Math.max(16, insets.bottom + 8), backgroundColor: theme.bg, borderTopWidth: 1, borderTopColor: theme.border }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: theme.inputBg, borderWidth: 1, borderColor: sending ? theme.primarySubtleBorder : theme.borderMid, borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8, opacity: sending ? 0.75 : 1 }}>
-                <TextInput
-                  style={{ flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text1, maxHeight: 100, lineHeight: 19 }}
-                  placeholder={sending ? "Enviando..." : "Escreva para seu personal..."}
-                  placeholderTextColor={sending ? theme.primary : theme.text3}
-                  value={inputText}
-                  onChangeText={setInputText}
-                  editable={!sending}
-                  multiline
-                  maxLength={1000}
-                  selectionColor={theme.primary}
-                />
-                <TouchableOpacity
-                  onPress={() => void handleSend()}
-                  disabled={!inputText.trim() || sending}
-                  accessibilityRole="button"
-                  accessibilityLabel="Enviar mensagem"
-                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: inputText.trim() && !sending ? theme.primary : "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-                >
-                  {sending
-                    ? <ActivityIndicator color={theme.primary} size="small" />
-                    : <Ionicons name="send" size={16} color={inputText.trim() ? theme.textOnPrimary : theme.text3} />}
-                </TouchableOpacity>
-              </View>
-            </View>
+            <ChatComposer onSend={handleSendMessage} theme={theme} />
           ) : (
             <View style={{ paddingHorizontal: 16, paddingVertical: 12, paddingBottom: Math.max(16, insets.bottom + 8), backgroundColor: theme.bg, borderTopWidth: 1, borderTopColor: theme.border, flexDirection: "row", alignItems: "center", gap: 10 }}>
               <Ionicons name="lock-closed-outline" size={16} color={theme.text3} />

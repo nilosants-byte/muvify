@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ScrollView, StatusBar, TouchableOpacity, View,
@@ -164,7 +164,7 @@ export function FinancialGoalsScreen({ navigation }: Props) {
   // Épico de Frentes, Frente 7, Lote 10: tela de Metas não recarregava ao
   // voltar de outra tela (ex: registrar um pagamento em Alunos Financeiros)
   // - só dashboard e Home tinham esse padrão de useFocusEffect.
-  useFocusEffect(useCallback(() => {
+  useFocusEffectSkippingFirst(useCallback(() => {
     void goalsQuery.refetch();
     void studentsQuery.refetch();
   }, [goalsQuery.refetch, studentsQuery.refetch]));
