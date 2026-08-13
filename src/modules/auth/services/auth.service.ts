@@ -1,4 +1,5 @@
 import { Prisma, UserRole } from "@prisma/client";
+import * as Sentry from "@sentry/node";
 import { StatusCodes } from "http-status-codes";
 import { env } from "../../../config/env";
 import { CURRENT_TERMS_VERSION } from "../../../config/legal";
@@ -753,6 +754,15 @@ export class AuthService {
         // best effort: never expose SMTP failures to forgot-password callers
         const reason = error instanceof Error ? error.message : "unknown";
         console.warn(`[AUTH_FORGOT_PASSWORD_EMAIL_FAILED] userId=${user.id} channel=${channel} reason=${reason}`);
+        // Frente 13 (segunda camada), Lote 4: best-effort pro CHAMADOR (a
+        // resposta HTTP continua genérica, sem enumeração de conta) não
+        // precisa dizer "best-effort" pro Sentry também — sem isso, não
+        // existia nenhuma trilha pra um ticket de suporte do tipo "não
+        // recebi o e-mail de redefinição de senha".
+        Sentry.captureException(error, {
+          tags: { area: "auth-forgot-password-email" },
+          extra: { userId: user.id, channel }
+        });
       }
     }
 

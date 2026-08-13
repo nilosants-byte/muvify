@@ -15,6 +15,7 @@ import { Customer, CustomerCard, CardToken, Payment, PaymentRefund } from "merca
 import { mp } from "../../../config/mercadopago";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
+import { paymentOperationTotal } from "../../../observability/metrics";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { encryptSensitiveText, decryptSensitiveText } from "../../../shared/utils/encryption";
@@ -821,6 +822,19 @@ export class PaymentService {
                 data: { type: "MP_TOKEN_INVALIDATED" }
               });
             }
+          } else {
+            // Frente 13 (segunda camada), Lote 4: 400/401 (acima) é o único
+            // caso já tratado (token revogado pelo profissional) — qualquer
+            // outro status (5xx da própria MP, client_id/client_secret
+            // errado, etc.) só caía num console.error. Uma falha
+            // sistemática aqui significa profissional deixando de receber
+            // repasse sem ninguém do time saber, já que o comentário logo
+            // acima já reconhece a gravidade disso.
+            Sentry.captureMessage(
+              `[mp-token-refresh] provider ${provider.id}: HTTP ${response.status} inesperado ao renovar token`,
+              "error"
+            );
+            paymentOperationTotal.inc({ operation: "mp_token_refresh", result: "failure" });
           }
           continue;
         }
@@ -844,8 +858,14 @@ export class PaymentService {
             mpTokenInvalidatedAt: null,
           },
         });
+        paymentOperationTotal.inc({ operation: "mp_token_refresh", result: "success" });
       } catch (err) {
         console.error(`[mp-token-refresh] provider ${provider.id}:`, err);
+        Sentry.captureException(err, {
+          tags: { area: "mp-token-refresh" },
+          extra: { providerId: provider.id }
+        });
+        paymentOperationTotal.inc({ operation: "mp_token_refresh", result: "failure" });
       }
     }
   }
@@ -1007,9 +1027,25 @@ export class PaymentService {
     for (let i = 0; i < payments.length; i += CONCURRENCY) {
       await Promise.allSettled(
         payments.slice(i, i + CONCURRENCY).map((p) =>
-          this.authorizePayment(p.id).catch((err) =>
-            console.error("Failed to authorize payment", { paymentId: p.id, error: err })
-          )
+          this.authorizePayment(p.id)
+            .then(() => {
+              paymentOperationTotal.inc({ operation: "authorize_due", result: "success" });
+            })
+            .catch((err) => {
+              console.error("Failed to authorize payment", { paymentId: p.id, error: err });
+              // Frente 13 (segunda camada), Lote 4: authorizePayment relança
+              // a exceção de propósito (pra quem chama via rota HTTP saber
+              // que falhou), mas esse job em lote engolia o erro ANTES do
+              // wrapper de payment-jobs.ts (que só tem Sentry pra falha do
+              // job inteiro, nunca chega a rodar aqui). Falha em massa de
+              // pré-autorização = sessão acontecendo sem garantia de
+              // pagamento, sem ninguém saber.
+              Sentry.captureException(err, {
+                tags: { area: "payment-authorize-due" },
+                extra: { paymentId: p.id }
+              });
+              paymentOperationTotal.inc({ operation: "authorize_due", result: "failure" });
+            })
         )
       );
     }
@@ -1499,10 +1535,23 @@ export class PaymentService {
       );
       results.forEach((result, idx) => {
         if (result.status === "rejected") {
+          const bookingId = bookings[i + idx]?.id;
           console.error(
             "autoCaptureSingleConfirmation: falha ao capturar/concluir agendamento:",
-            { bookingId: bookings[i + idx]?.id, error: result.reason }
+            { bookingId, error: result.reason }
           );
+          // Frente 13 (segunda camada), Lote 4: dinheiro já autorizado
+          // (AUTHORIZED) que falha ao ser capturado fica retentando
+          // silenciosamente a cada ciclo do job — se a falha for
+          // persistente (não só uma instabilidade passageira da MP),
+          // ninguém percebia sem abrir manualmente o log do processo.
+          Sentry.captureException(result.reason, {
+            tags: { area: "payment-auto-capture" },
+            extra: { bookingId }
+          });
+          paymentOperationTotal.inc({ operation: "auto_capture", result: "failure" });
+        } else {
+          paymentOperationTotal.inc({ operation: "auto_capture", result: "success" });
         }
       });
     }

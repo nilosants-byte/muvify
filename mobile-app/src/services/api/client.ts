@@ -2087,7 +2087,9 @@ export type AdminLegalHoldResult = {
 export type AdminDataRetentionRun = {
   id: string;
   dryRun: boolean;
-  status: "SUCCESS" | "FAILED";
+  // Frente 13 (segunda camada), Lote 5: "PARTIAL_FAILURE" — uma ou mais
+  // regras individuais falharam sem travar a execução inteira.
+  status: "SUCCESS" | "PARTIAL_FAILURE" | "FAILED";
   triggeredBy: string;
   startedAt: string;
   finishedAt: string | null;

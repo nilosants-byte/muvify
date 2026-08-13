@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
+import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { DataRetentionService } from "../services/data-retention.service";
 
@@ -56,6 +57,11 @@ export function startDataRetentionJob() {
       console.log(
         `[DATA_RETENTION] success dryRun=${String(result.dryRun)} matched=${result.totals.matchedCount} affected=${result.totals.affectedCount}`
       );
+      if (result.status === "PARTIAL_FAILURE") {
+        recordJobFailure("data-retention-job");
+      } else {
+        recordJobSuccess("data-retention-job");
+      }
 
       consecutiveDatabaseFailures = 0;
       nextAllowedRunAt = 0;
@@ -72,6 +78,7 @@ export function startDataRetentionJob() {
         // reminder.job.ts/payment-jobs.ts (Frente 9, Lote 14).
         console.error("[DATA_RETENTION] failed:", error);
         Sentry.captureException(error, { tags: { area: "data-retention-job" } });
+        recordJobFailure("data-retention-job");
       }
     } finally {
       if (lockAcquired) {

@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
+import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { AuthService } from "../../auth/services/auth.service";
 import { BookingService } from "../../bookings/services/booking.service";
@@ -36,11 +37,14 @@ function calculateBackoffMs(baseIntervalMs: number, failures: number) {
 // reporta ao Sentry com a tag indicando qual sub-job falhou. Exportado
 // (em vez de inline) pra ficar testável sem depender do setInterval real.
 export function isolateReminderSubJob(fn: () => Promise<void>, name: string) {
-  return fn().catch((err) => {
-    if (isPrismaDatabaseUnavailableError(err)) throw err;
-    console.error(`[reminder-job] ${name} failed:`, err);
-    Sentry.captureException(err, { tags: { area: "reminder-job", subJob: name } });
-  });
+  return fn()
+    .then(() => recordJobSuccess(name))
+    .catch((err) => {
+      if (isPrismaDatabaseUnavailableError(err)) throw err;
+      console.error(`[reminder-job] ${name} failed:`, err);
+      Sentry.captureException(err, { tags: { area: "reminder-job", subJob: name } });
+      recordJobFailure(name);
+    });
 }
 
 export function startReminderJob() {
@@ -137,6 +141,7 @@ export function startReminderJob() {
       } else {
         console.error("Reminder job failed:", error);
         Sentry.captureException(error, { tags: { area: "reminder-job" } });
+        recordJobFailure("reminder-job");
       }
     } finally {
       if (lockAcquired) {

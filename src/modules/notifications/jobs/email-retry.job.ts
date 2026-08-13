@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
+import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
 import { EmailQueueService } from "../../../shared/services/email-queue.service";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 
@@ -44,6 +45,7 @@ export function startEmailRetryJob() {
       } catch {
         // non-critical — purge failure does not affect retry processing
       }
+      recordJobSuccess("email-retry-job");
       consecutiveDatabaseFailures = 0;
       nextAllowedRunAt = 0;
     } catch (error) {
@@ -62,6 +64,7 @@ export function startEmailRetryJob() {
         // com console.error.
         console.error("Email retry job failed:", error);
         Sentry.captureException(error, { tags: { area: "email-retry-job" } });
+        recordJobFailure("email-retry-job");
       }
     } finally {
       if (lockAcquired) {

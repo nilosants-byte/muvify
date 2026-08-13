@@ -41,6 +41,7 @@ import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonChatItem } from "../../components/polish/SkeletonCard";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { formatBRTime } from "../../utils/formatters";
+import { captureException } from "../../observability/sentry";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalChatList">;
 type Tab = "active" | "inactive";
@@ -311,7 +312,10 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
         lastMsgCountRef.current = incoming.length;
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: !initial }), 80);
       }
-    } catch {
+    } catch (error) {
+      // Frente 13 (segunda camada), Lote 11: mesmo achado do lado cliente
+      // — falha silenciosa completa no polling (nem toast, nem Sentry).
+      captureException(error, { screen: "ProfessionalChatListScreen", initial });
       if (initial && isMountedRef.current) setPanelError(true);
     } finally {
       if (initial && isMountedRef.current) setPanelLoading(false);
@@ -414,7 +418,10 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
         );
         await fetchMessages(chat, false);
         return true;
-      } catch {
+      } catch (error) {
+        // Frente 13 (segunda camada), Lote 11: mesmo achado do lado
+        // cliente — envio de mensagem nunca capturava falha.
+        captureException(error, { screen: "ProfessionalChatListScreen", action: "sendMessage" });
         showToast("Não foi possível enviar a mensagem.", "error");
         return false;
       }

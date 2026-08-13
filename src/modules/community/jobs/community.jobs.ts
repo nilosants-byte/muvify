@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/node";
 import { prisma } from "../../../config/prisma";
 import { env } from "../../../config/env";
+import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { awardXp, getWeekKey, getMonthKey } from "../../gamification/services/xp.service";
 import { checkAndUnlock } from "../../gamification/services/achievement.service";
@@ -298,6 +299,7 @@ export function startCommunityJobs() {
       if (!lockAcquired) return;
 
       await runCommunityJobs();
+      recordJobSuccess("community-jobs");
       consecutiveDatabaseFailures = 0;
       nextAllowedRunAt = 0;
     } catch (error) {
@@ -313,6 +315,7 @@ export function startCommunityJobs() {
         // reminder.job.ts/payment-jobs.ts (Frente 9, Lote 14).
         console.error("Community jobs failed:", error);
         Sentry.captureException(error, { tags: { area: "community-jobs" } });
+        recordJobFailure("community-jobs");
       }
     } finally {
       if (lockAcquired) {

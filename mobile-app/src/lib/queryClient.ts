@@ -1,4 +1,5 @@
-import { QueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
+import { captureException } from "../observability/sentry";
 
 /**
  * QueryClient singleton compartilhado pelo app inteiro.
@@ -15,7 +16,32 @@ import { QueryClient } from "@tanstack/react-query";
  * retry: 1 → uma tentativa extra em caso de falha de rede antes de retornar erro.
  * refetchOnWindowFocus: false → não aplicável em mobile.
  */
+// Frente 13 (segunda camada), Lote 12: a captura de erro de query/mutation
+// dependia de cada tela adicionar manualmente um useEffect observando
+// query.error — presente nalgumas telas, ausente nas de maior tráfego do
+// app (Home do cliente, Favoritos). Protegendo aqui, na raiz do
+// QueryClient (mesmo princípio já usado no backend pra sendToUsers, Frente
+// 2), toda tela nasce coberta automaticamente, sem depender de lembrar de
+// adicionar o useEffect em cada uma.
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      captureException(error, {
+        source: "react-query",
+        type: "query",
+        queryKey: JSON.stringify(query.queryKey)
+      });
+    }
+  }),
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) => {
+      captureException(error, {
+        source: "react-query",
+        type: "mutation",
+        mutationKey: mutation.options.mutationKey ? JSON.stringify(mutation.options.mutationKey) : undefined
+      });
+    }
+  }),
   defaultOptions: {
     queries: {
       staleTime: 0,

@@ -17,6 +17,7 @@ import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatBRDate } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
+import { captureException } from "../../observability/sentry";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 
@@ -238,7 +239,8 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
       if (!asset) return;
       if (isFileTooLarge(asset.size)) { showToast("O arquivo deve ter no máximo 5MB.", "error"); return; }
       applyPickedDoc(side, { name: asset.name, uri: asset.uri, mimeType: asset.mimeType ?? "application/octet-stream", fileSizeBytes: asset.size ?? undefined });
-    } catch {
+    } catch (error) {
+      captureException(error, { screen: "ProfessionalCredentialsScreen", action: "pickFromFile" });
       showToast("Falha ao selecionar o arquivo.", "error");
     }
   }
@@ -258,7 +260,8 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
       if (isFileTooLarge(asset.fileSize)) { showToast("A imagem deve ter no máximo 5MB.", "error"); return; }
       const fallbackName = side === "front" ? "cref-frente.jpg" : "cref-verso.jpg";
       applyPickedDoc(side, { name: asset.fileName ?? fallbackName, uri: asset.uri, mimeType: asset.mimeType ?? "image/jpeg", fileSizeBytes: asset.fileSize });
-    } catch {
+    } catch (error) {
+      captureException(error, { screen: "ProfessionalCredentialsScreen", action: "pickFromGallery" });
       showToast("Falha ao selecionar o documento.", "error");
     }
   }

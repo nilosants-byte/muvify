@@ -1,5 +1,6 @@
 import { io, Socket } from "socket.io-client";
 import { API_BASE_URL } from "../api/client";
+import { captureException } from "../../observability/sentry";
 
 // O socket conecta direto na raiz do servidor (sem o prefixo /api das rotas REST).
 const SOCKET_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, "");
@@ -15,6 +16,29 @@ export type NewBookingMessageEvent = {
 
 let socket: Socket | null = null;
 
+// Frente 13 (segunda camada), Lote 11: o socket de chat em tempo real nunca
+// tinha handler nenhum de erro/desconexão — falha de conexão (auth
+// rejeitada, servidor fora) era um blind spot total (nem log, nem toast,
+// nem Sentry). Reporta só o PRIMEIRO connect_error de cada sequência de
+// reconexão (reconnection:true tenta pra sempre por padrão) — evita
+// inundar o Sentry a cada blip normal de rede móvel (troca de wifi pra
+// dados, elevador, etc.), mas ainda avisa quando a conexão realmente cai.
+let hasReportedConnectError = false;
+
+function attachConnectionErrorHandlers(target: Socket) {
+  target.on("connect", () => {
+    hasReportedConnectError = false;
+  });
+  target.on("connect_error", (error) => {
+    if (hasReportedConnectError) return;
+    hasReportedConnectError = true;
+    captureException(error, { area: "realtime-socket-connect-error" });
+  });
+  target.on("error", (error) => {
+    captureException(error, { area: "realtime-socket-error" });
+  });
+}
+
 export function connectSocket(accessToken: string) {
   if (socket?.connected && socket.auth && (socket.auth as { token?: string }).token === accessToken) {
     return socket;
@@ -27,6 +51,8 @@ export function connectSocket(accessToken: string) {
     reconnectionDelay: 1000,
     reconnectionDelayMax: 10000,
   });
+  hasReportedConnectError = false;
+  attachConnectionErrorHandlers(socket);
   return socket;
 }
 

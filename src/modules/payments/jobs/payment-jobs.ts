@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
+import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { BookingService } from "../../bookings/services/booking.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
@@ -50,16 +51,25 @@ export function startPaymentJobs() {
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error(`${name} timeout after 5min`)), JOB_TIMEOUT_MS)
           ),
-        ]).catch((err) => {
-          // Erros de DB indisponível são re-lançados para incrementar consecutiveDatabaseFailures
-          if (isPrismaDatabaseUnavailableError(err)) throw err;
-          console.error(`[payment-jobs] ${name} failed:`, err);
-          // Épico de Frentes, Frente 9, Lote 14: catches deste job só
-          // usavam console.error, sem Sentry.captureException - diferente
-          // de pontos críticos de pagamento (payment.service.ts) que já
-          // usam Sentry deliberadamente.
-          Sentry.captureException(err, { tags: { area: "payment-jobs", subJob: name } });
-        });
+        ])
+          .then(() => {
+            // Frente 13 (segunda camada), Lote 6: sem isso, nenhum
+            // Prometheus/Alertmanager conseguia distinguir "job atrasado
+            // silenciosamente" de "job rodando normal" - só apareceria se
+            // alguém abrisse o Sentry manualmente E soubesse o que procurar.
+            recordJobSuccess(name);
+          })
+          .catch((err) => {
+            // Erros de DB indisponível são re-lançados para incrementar consecutiveDatabaseFailures
+            if (isPrismaDatabaseUnavailableError(err)) throw err;
+            console.error(`[payment-jobs] ${name} failed:`, err);
+            // Épico de Frentes, Frente 9, Lote 14: catches deste job só
+            // usavam console.error, sem Sentry.captureException - diferente
+            // de pontos críticos de pagamento (payment.service.ts) que já
+            // usam Sentry deliberadamente.
+            Sentry.captureException(err, { tags: { area: "payment-jobs", subJob: name } });
+            recordJobFailure(name);
+          });
 
       // Cada job é isolado — falha de um não impede os demais
       await runWithTimeout(() => bookingService.releaseDueAttendanceCodes(), "releaseDueAttendanceCodes");
@@ -96,6 +106,7 @@ export function startPaymentJobs() {
       } else {
         console.error("Payment job failed:", error);
         Sentry.captureException(error, { tags: { area: "payment-jobs" } });
+        recordJobFailure("payment-jobs");
       }
     } finally {
       if (lockAcquired) {

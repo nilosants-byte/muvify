@@ -125,14 +125,24 @@ export function AdminDataRetentionScreen({ navigation }: Props) {
         ) : null}
 
         {runs.map((run) => {
-          const summary = run.summary as { totals?: { matchedCount?: number; affectedCount?: number; rules?: number } } | null;
+          // Frente 13 (segunda camada), Lote 5: status ganhou um terceiro
+          // valor ("PARTIAL_FAILURE" — uma ou mais regras individuais
+          // falharam, mas a execução como um todo não travou) além de
+          // "SUCCESS"/"FAILED" — sem isso, uma regra falhando ficava
+          // mascarada como sucesso completo aqui.
+          const summary = run.summary as {
+            totals?: { matchedCount?: number; affectedCount?: number; rules?: number; failedRules?: number };
+            failedRuleIds?: string[];
+          } | null;
+          const statusLabel =
+            run.status === "SUCCESS" ? "Sucesso" : run.status === "PARTIAL_FAILURE" ? "Parcial" : "Falhou";
           return (
             <MvCard key={run.id}>
               <View style={{ gap: 4 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                   <MvText variant="semi3">{run.dryRun ? "Simulação (dry run)" : "Execução real"}</MvText>
                   <MvText variant="caption" color={run.status === "SUCCESS" ? "secondary" : "danger"}>
-                    {run.status === "SUCCESS" ? "Sucesso" : "Falhou"}
+                    {statusLabel}
                   </MvText>
                 </View>
                 <MvText variant="body4" color="secondary">Disparado por: {run.triggeredBy}</MvText>
@@ -141,6 +151,11 @@ export function AdminDataRetentionScreen({ navigation }: Props) {
                 {summary?.totals ? (
                   <MvText variant="body4">
                     {summary.totals.matchedCount ?? 0} encontrados · {summary.totals.affectedCount ?? 0} afetados · {summary.totals.rules ?? 0} regras
+                  </MvText>
+                ) : null}
+                {summary?.failedRuleIds && summary.failedRuleIds.length > 0 ? (
+                  <MvText variant="body4" style={{ color: theme.danger }}>
+                    Regras que falharam: {summary.failedRuleIds.join(", ")}
                   </MvText>
                 ) : null}
                 {run.errorMessage ? (

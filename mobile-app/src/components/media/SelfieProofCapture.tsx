@@ -7,6 +7,7 @@ import { MvCard } from "../mv/MvCard";
 import { MvText } from "../mv/MvText";
 import { C, S } from "../../theme/v2tokens";
 import { useMvTheme } from "../../theme/MvThemeContext";
+import { captureException } from "../../observability/sentry";
 
 const SELFIE_ASPECT_RATIO = 3 / 4;
 const PREVIEW_MAX_WIDTH = 320;
@@ -97,6 +98,10 @@ export function SelfieProofCapture({
         cameraFacing,
       });
     } catch (error) {
+      // Frente 13 (segunda camada), Lote 13: captura da selfie de
+      // comprovação (gate de liberação de pagamento da sessão) nunca
+      // capturava falha — só toast.
+      captureException(error, { component: "SelfieProofCapture", action: "captureProof" });
       const message = error instanceof Error ? error.message : "Falha ao abrir a câmera.";
       showToast(message, "error");
     } finally {
@@ -115,7 +120,8 @@ export function SelfieProofCapture({
       setDraftProof(null);
       setPreviewUri(null);
       showToast("Selfie salva como evidência.", "success");
-    } catch {
+    } catch (error) {
+      captureException(error, { component: "SelfieProofCapture", action: "saveDraft" });
       showToast("Erro ao salvar a selfie. Tente novamente.", "error");
     } finally {
       setSaving(false);

@@ -369,8 +369,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     clearToast();
     try {
       await stopProviderBackgroundLocation({ preservePreference: true });
-    } catch {
-      // best effort
+    } catch (error) {
+      // Frente 13 (segunda camada), Lote 15: "best effort" pro fluxo
+      // principal (logout não deve travar por causa disso) não precisa
+      // dizer "best effort" pro Sentry também — se isso falhar
+      // sistematicamente, o app pode continuar rastreando localização em
+      // segundo plano depois do logout sem que ninguém saiba.
+      captureException(error, { area: "app-state-stop-background-location" });
     }
     await Promise.all([
       clearTokens(),
@@ -591,16 +596,19 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         if (storedPushToken) {
           await notificationsApi.unregisterDevice(currentAccessToken, storedPushToken);
         }
-      } catch {
-        // best effort; session will still be removed locally
+      } catch (error) {
+        // Frente 13 (segunda camada), Lote 15: sessão pode ficar
+        // "pendurada" no backend (device continua registrado pra push, ou
+        // sessão continua válida no servidor) sem que ninguém saiba.
+        captureException(error, { area: "app-state-signout-unregister-push" });
       }
     }
 
     if (currentRefreshToken) {
       try {
         await authApi.logout(currentRefreshToken);
-      } catch {
-        // best effort; session will still be removed locally
+      } catch (error) {
+        captureException(error, { area: "app-state-signout-logout-backend" });
       }
     }
 

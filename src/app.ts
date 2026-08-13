@@ -2,6 +2,7 @@ import "express-async-errors";
 import compression from "compression";
 import cors from "cors";
 import { randomUUID, timingSafeEqual } from "crypto";
+import * as Sentry from "@sentry/node";
 import express from "express";
 import fs from "fs";
 import helmet from "helmet";
@@ -14,7 +15,7 @@ import { redis } from "./config/redis";
 import { swaggerSpec } from "./docs/swagger";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { apiRateLimiter } from "./middlewares/rate-limit.middleware";
-import { sentryErrorHandler, sentryRequestHandler } from "./config/sentry";
+import { attachSentryErrorHandler } from "./config/sentry";
 import { mpConnectRoutes } from "./modules/payments/routes/mercadopago-connect.routes";
 import { metricsHandler, metricsMiddleware } from "./observability/metrics";
 import { router } from "./routes";
@@ -37,7 +38,6 @@ function resolveTrustProxy(value: string) {
 export const app = express();
 app.set("trust proxy", resolveTrustProxy(env.TRUST_PROXY));
 app.disable("x-powered-by");
-app.use(sentryRequestHandler);
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -80,6 +80,20 @@ app.use(
       return id;
     },
     // Redact sensitive fields so PII never appears in log files.
+    // Frente 13 (segunda camada), Lote 9: "req.body.*" abaixo é uma lista
+    // extensa (achado M5 da investigação de observabilidade) mas hoje é
+    // configuração INERTE — o serializer padrão do pino-http só loga
+    // {id, method, url, query, params, headers, remoteAddress, remotePort}
+    // do request (confirmado em node_modules/pino-std-serializers), nunca
+    // "body", a menos que um `serializers`/`customProps` customizado seja
+    // passado ao pinoHttp(...), o que este projeto não faz. Não é um
+    // vazamento ativo, mas também não é uma proteção ativa hoje — se no
+    // futuro alguém adicionar log de corpo de requisição (cenário
+    // plausível durante um incidente), NÃO presuma que essa lista já
+    // cobre isso; ela precisa ser conectada a um serializer de verdade
+    // primeiro. Mantida (não removida) porque documenta a intenção e já
+    // cobre os campos certos se/quando isso acontecer - só não ativa
+    // sozinha.
     redact: {
       paths: [
         "req.headers.authorization",
@@ -121,6 +135,19 @@ app.use(
           }
   })
 );
+// Frente 13 (segunda camada), Lote 2: sem isso, um evento no painel do
+// Sentry não tinha como ser cruzado com a linha de log correspondente nem
+// com o requestId que o cliente (app mobile, suporte) já recebe no corpo
+// de toda resposta de erro (ver error.middleware.ts). Roda pra toda
+// requisição (autenticada ou não), não só as que passam por
+// ensureAuthenticated.
+app.use((request, _response, next) => {
+  const requestId = (request as unknown as { id?: string }).id;
+  if (requestId) {
+    Sentry.setTag("request_id", requestId);
+  }
+  next();
+});
 app.use(metricsMiddleware);
 app.get("/health", async (_request, response) => {
   const checks: Record<string, "ok" | "error"> = {};
@@ -205,5 +232,5 @@ app.get("*", (_req, res) => {
   res.sendFile(webIndexPath);
 });
 
-app.use(sentryErrorHandler);
+attachSentryErrorHandler(app);
 app.use(errorMiddleware);

@@ -168,6 +168,11 @@ export async function initSocketServer(httpServer: HttpServer) {
       io.adapter(createAdapter(pubClient, subClient));
     } catch (error) {
       console.error("[realtime] Falha ao configurar adaptador Redis. Seguindo sem ele (modo single-instance):", error);
+      // Frente 13 (segunda camada), Lote 8: hoje "modo single-instance" é
+      // inofensivo (só uma instância roda mesmo), mas se o app algum dia
+      // escalar horizontalmente, uma falha persistente aqui quebraria a
+      // sincronização de chat em tempo real entre instâncias em silêncio.
+      Sentry.captureException(error, { tags: { area: "realtime-redis-adapter" } });
     }
   } else {
     console.warn("[realtime] Redis indisponivel no boot do socket. Seguindo sem adaptador (modo single-instance).");
@@ -221,6 +226,12 @@ export function emitNewBookingMessage(bookingId: string, message: NewBookingMess
     io.to(bookingRoom(bookingId)).emit("message:new", message);
   } catch (error) {
     console.error("[realtime] Falha ao emitir message:new:", error);
+    // Frente 13 (segunda camada), Lote 8: a mensagem já está persistida no
+    // banco (o usuário a vê ao atualizar a tela), mas uma falha sistemática
+    // de emissão (ex: erro de serialização introduzido por uma mudança de
+    // schema) reduziria a experiência de chat "ao vivo" pra todo mundo sem
+    // qualquer alerta.
+    Sentry.captureException(error, { tags: { area: "realtime-emit" }, extra: { bookingId } });
   }
 }
 
@@ -233,6 +244,7 @@ export function emitNewConsultancyMessage(contractId: string, message: NewConsul
     io.to(consultancyRoom(contractId)).emit("message:new", message);
   } catch (error) {
     console.error("[realtime] Falha ao emitir message:new (consultoria):", error);
+    Sentry.captureException(error, { tags: { area: "realtime-emit" }, extra: { contractId } });
   }
 }
 

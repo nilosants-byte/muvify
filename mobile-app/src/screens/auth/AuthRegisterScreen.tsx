@@ -22,6 +22,7 @@ import { MvLogoText } from "../../components/mv";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { extractApiMessage } from "../shared/api-helpers";
+import { captureException } from "../../observability/sentry";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "Register">;
 
@@ -157,6 +158,11 @@ export function AuthRegisterScreen({ navigation }: Props) {
         consentAccepted: true,
       });
     } catch (error) {
+      // Frente 13 (segunda camada), Lote 10: cadastro nunca capturava
+      // falha (só toast). captureException já filtra sozinho os status
+      // esperados (ex: 409 de e-mail duplicado), então chamar sempre aqui
+      // não gera ruído pros casos comuns — só os bugs reais aparecem.
+      captureException(error, { screen: "AuthRegisterScreen" });
       const extracted = extractApiMessage(error, "Falha ao criar conta.");
       const raw = extracted.toLowerCase();
       const message = raw.includes("email") && (raw.includes("already") || raw.includes("exists") || raw.includes("duplicate") || raw.includes("exist") || raw.includes("em uso") || raw.includes("cadastrado"))

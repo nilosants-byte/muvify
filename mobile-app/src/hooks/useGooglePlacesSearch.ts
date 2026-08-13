@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { captureException } from "../observability/sentry";
+import { captureException, captureMessage } from "../observability/sentry";
 
 export type GooglePlaceSuggestion = {
   name: string;
@@ -54,6 +54,13 @@ export async function fetchGooglePlaceCoords(
     const json = (await resp.json()) as PlaceDetailsResponse;
     if (json.status !== "OK" || !json.result?.geometry?.location) {
       if (__DEV__) console.warn("[GooglePlaces] details error:", json.status);
+      // Frente 13 (segunda camada), Lote 17: status de erro da API (chave
+      // revogada, billing cortado, etc.) só era logado em __DEV__ — em
+      // produção, se a chave quebrar, a busca de endereço some pra todos
+      // os usuários sem nenhum sinal.
+      if (json.status !== "ZERO_RESULTS") {
+        captureMessage(`[GooglePlaces] details error: ${json.status}`, "warning");
+      }
       return null;
     }
     const loc = json.result.geometry.location;
@@ -63,7 +70,8 @@ export async function fetchGooglePlaceCoords(
       lon: loc.lng as number,
       address: json.result.formatted_address ?? "",
     };
-  } catch {
+  } catch (error) {
+    captureException(error, { stage: "google_places_details" });
     return null;
   }
 }
@@ -136,6 +144,9 @@ export function useGooglePlacesSearch(
         if (controller.signal.aborted) return;
         if (json.status !== "OK" && json.status !== "ZERO_RESULTS") {
           if (__DEV__) console.warn("[GooglePlaces] autocomplete error:", json.status);
+          // Frente 13 (segunda camada), Lote 17: mesmo achado do
+          // details acima — status de erro só aparecia em dev.
+          captureMessage(`[GooglePlaces] autocomplete error: ${json.status}`, "warning");
           setSuggestions([]);
           if (json.status === "REQUEST_DENIED" || json.status === "INVALID_REQUEST") {
             setHasError(true);

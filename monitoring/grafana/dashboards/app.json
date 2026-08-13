@@ -1,4 +1,4 @@
-﻿{
+{
   "title": "Marketplace API",
   "schemaVersion": 38,
   "version": 1,
@@ -29,6 +29,64 @@
           "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"app\"}[5m])))",
           "legendFormat": "p95",
           "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Jobs periodicos — minutos desde o ultimo sucesso",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "(time() - job_last_success_timestamp_seconds) / 60",
+          "legendFormat": "{{job}}",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Fila de e-mail (pendente vs. falhou/aguardando expurgo)",
+      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "email_queue_pending",
+          "legendFormat": "pendente",
+          "refId": "D"
+        },
+        {
+          "expr": "email_queue_failed_pending_purge",
+          "legendFormat": "falhou (aguardando expurgo)",
+          "refId": "E"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Operacoes financeiras automatizadas (taxa por resultado, 15m)",
+      "gridPos": { "x": 0, "y": 32, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (operation, result) (rate(payment_operation_total[15m]))",
+          "legendFormat": "{{operation}} - {{result}}",
+          "refId": "F"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Postgres/Redis disponiveis (1 = ok, 0 = fora)",
+      "gridPos": { "x": 0, "y": 40, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "app_database_up",
+          "legendFormat": "postgres",
+          "refId": "G"
+        },
+        {
+          "expr": "app_redis_up",
+          "legendFormat": "redis",
+          "refId": "H"
         }
       ]
     }

@@ -1,4 +1,5 @@
 ﻿import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
+import * as Sentry from "@sentry/node";
 import {
   BookingStatus,
   CrefValidationStatus,
@@ -1039,11 +1040,23 @@ export class BookingService {
             data: { status: BookingStatus.CANCELLED }
           });
           if (updated.count === 0) return;
+          // Frente 13 (segunda camada), Lote 4: envolvem dinheiro
+          // (cancelar cobrança/restaurar crédito de pacote) — antes só
+          // console.error, sem nenhum sinal no Sentry se a falha for
+          // persistente.
           await paymentService.cancelPaymentForBooking(booking.id).catch((err) => {
             console.error("autoExpire confirmation deadline: cancel payment failed for booking", booking.id, err);
+            Sentry.captureException(err, {
+              tags: { area: "booking-auto-expire-cancel-payment" },
+              extra: { bookingId: booking.id }
+            });
           });
           await restoreFlexibleCreditForBooking(prisma, booking.id).catch((err) => {
             console.error("autoExpire confirmation deadline: restore credit failed for booking", booking.id, err);
+            Sentry.captureException(err, {
+              tags: { area: "booking-auto-expire-restore-credit" },
+              extra: { bookingId: booking.id }
+            });
           });
           void notificationService
             .sendToUsers([booking.clientId, booking.provider.userId], {
@@ -1081,9 +1094,17 @@ export class BookingService {
           if (updatedPending.count === 0) return;
           await paymentService.cancelPaymentForBooking(booking.id).catch((err) => {
             console.error("autoExpire pending: cancel payment failed for booking", booking.id, err);
+            Sentry.captureException(err, {
+              tags: { area: "booking-auto-expire-cancel-payment" },
+              extra: { bookingId: booking.id }
+            });
           });
           await restoreFlexibleCreditForBooking(prisma, booking.id).catch((err) => {
             console.error("autoExpire pending: restore credit failed for booking", booking.id, err);
+            Sentry.captureException(err, {
+              tags: { area: "booking-auto-expire-restore-credit" },
+              extra: { bookingId: booking.id }
+            });
           });
           void notificationService
             .sendToUsers([booking.clientId, booking.provider.userId], {
@@ -1199,9 +1220,17 @@ export class BookingService {
 
           await paymentService.cancelPaymentForBooking(booking.id).catch((err) => {
             console.error("autoExpire: cancel payment failed for booking", booking.id, err);
+            Sentry.captureException(err, {
+              tags: { area: "booking-auto-expire-cancel-payment" },
+              extra: { bookingId: booking.id }
+            });
           });
           await restoreFlexibleCreditForBooking(prisma, booking.id).catch((err) => {
             console.error("autoExpire: restore credit failed for booking", booking.id, err);
+            Sentry.captureException(err, {
+              tags: { area: "booking-auto-expire-restore-credit" },
+              extra: { bookingId: booking.id }
+            });
           });
           void notificationService
             .sendToUsers([booking.clientId, booking.provider.userId], {

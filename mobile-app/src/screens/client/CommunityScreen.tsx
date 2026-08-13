@@ -42,6 +42,7 @@ import type { MvTheme } from "../../theme/MvColors";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { hapticAchievement, hapticLike, hapticComment } from "../../utils/haptics";
 import { PressableScale } from "../../components/polish/PressableScale";
+import { captureException } from "../../observability/sentry";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { ClientBottomNavV2 } from "../../components/navigation/ClientBottomNavV2";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
@@ -492,7 +493,8 @@ const FeedPostCard = React.memo(function FeedPostCard({
           setLikesCount((c) => wasLiked ? c + 1 : Math.max(0, c - 1));
         }
       }
-    } catch {
+    } catch (error) {
+      captureException(error, { screen: "CommunityScreen", action: "likePost" });
       setLiked(wasLiked);
       setLikesCount((c) => wasLiked ? c + 1 : Math.max(0, c - 1));
       showToast("Não foi possível curtir. Tente novamente.", "error");
@@ -542,7 +544,9 @@ const FeedPostCard = React.memo(function FeedPostCard({
       setComments((prev) => page === 1 ? res.items : [...prev, ...res.items]);
       setCommentsPage(page);
       setCommentsHasMore(page < res.totalPages);
-    } catch { /* best effort */ }
+    } catch (error) {
+      captureException(error, { screen: "CommunityScreen", action: "loadComments" });
+    }
     finally { setCommentsLoading(false); }
   }
 
@@ -562,7 +566,8 @@ const FeedPostCard = React.memo(function FeedPostCard({
       setCommentsCount((c) => c + 1);
       setCommentText("");
       hapticComment();
-    } catch {
+    } catch (error) {
+      captureException(error, { screen: "CommunityScreen", action: "addComment" });
       showToast("Não foi possível enviar o comentário. Tente novamente.", "error");
     } finally { setCommentSubmitting(false); }
   }
@@ -589,7 +594,8 @@ const FeedPostCard = React.memo(function FeedPostCard({
       setComments(prev => prev.map(c => c.id === commentId ? updated : c));
       setActiveComment(null);
       setEditText("");
-    } catch {
+    } catch (error) {
+      captureException(error, { screen: "CommunityScreen", action: "editComment" });
       showToast("Não foi possível editar o comentário.", "error");
     }
   }
@@ -601,6 +607,7 @@ const FeedPostCard = React.memo(function FeedPostCard({
       setCommentsCount(n => Math.max(0, n - 1));
       setActiveComment(null);
     } catch (err: unknown) {
+      captureException(err, { screen: "CommunityScreen", action: "deleteComment" });
       const status = (err as any)?.statusCode;
       showToast(`Não foi possível excluir o comentário${status ? ` (${status})` : ""}. Tente novamente.`, "error");
     }
@@ -909,7 +916,8 @@ const FeedPostCard = React.memo(function FeedPostCard({
                     await runWithAuth((token) => communityApi.reportPost(token, post.id));
                     onDeletePost(post.id);
                     showToast("Denúncia recebida. Obrigado por nos avisar.", "info");
-                  } catch {
+                  } catch (error) {
+                    captureException(error, { screen: "CommunityScreen", action: "reportPost" });
                     showToast("Não foi possível enviar a denúncia. Tente novamente.", "error");
                   }
                 }}
@@ -927,7 +935,8 @@ const FeedPostCard = React.memo(function FeedPostCard({
                   try {
                     await runWithAuth((token) => communityApi.deletePost(token, post.id));
                     onDeletePost(post.id);
-                  } catch {
+                  } catch (error) {
+                    captureException(error, { screen: "CommunityScreen", action: "deletePost" });
                     showToast("Não foi possível excluir o post.", "error");
                   }
                 }}
@@ -1069,7 +1078,9 @@ export function CommunityScreen({ navigation }: Props) {
           unfollowedInResults.forEach((id) => next.delete(id));
           return next;
         });
-      } catch { /* best effort */ }
+      } catch (error) {
+        captureException(error, { screen: "CommunityScreen", action: "searchUsers" });
+      }
       finally { setSearchLoading(false); }
     }, 300);
     return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
@@ -1086,7 +1097,9 @@ export function CommunityScreen({ navigation }: Props) {
         await runWithAuth((token) => communityApi.follow(token, targetId));
         setFollowingIds((prev) => new Set([...prev, targetId]));
       }
-    } catch { /* best effort */ }
+    } catch (error) {
+      captureException(error, { screen: "CommunityScreen", action: "followUnfollow" });
+    }
     finally { followInFlightRef.current.delete(targetId); }
   }
 
@@ -1101,7 +1114,9 @@ export function CommunityScreen({ navigation }: Props) {
     try {
       const profile = await runWithAuth((token) => communityApi.getUserPublicProfile(token, userId));
       setProfileData(profile);
-    } catch { /* best effort */ }
+    } catch (error) {
+      captureException(error, { screen: "CommunityScreen", action: "getUserPublicProfile" });
+    }
     finally { setProfileLoading(false); }
   }, [runWithAuth]);
 
@@ -1135,7 +1150,9 @@ export function CommunityScreen({ navigation }: Props) {
       });
       setFeedPage(nextPage);
       setFeedHasMore(res.items.length === 20);
-    } catch { /* best effort */ }
+    } catch (error) {
+      captureException(error, { screen: "CommunityScreen", action: "loadMoreFeed" });
+    }
     finally { setFeedLoadingMore(false); }
   }, [feedHasMore, feedLoadingMore, feedPage, runWithAuth]);
 
@@ -1249,14 +1266,19 @@ export function CommunityScreen({ navigation }: Props) {
     setFeedLoading(true);
     try {
       const feedRes = await runWithAuth((token) =>
-        communityApi.getFeed(token, 1, 20).catch(() => ({ items: [] as FeedPost[], total: 0 }))
+        communityApi.getFeed(token, 1, 20).catch((error) => {
+          captureException(error, { screen: "CommunityScreen", action: "getFeed" });
+          return { items: [] as FeedPost[], total: 0 };
+        })
       );
       setFeedItems(feedRes.items);
       setFeedPage(1);
       setFeedHasMore(feedRes.items.length === 20);
       lastFocusRefreshRef.current = Date.now();
       initialLoadDoneRef.current = true;
-    } catch { /* best effort */ }
+    } catch (error) {
+      captureException(error, { screen: "CommunityScreen", action: "loadFeed" });
+    }
     finally { setFeedLoading(false); }
   }, [runWithAuth]);
 
@@ -1275,7 +1297,9 @@ export function CommunityScreen({ navigation }: Props) {
       setFeedItems(feedRes.items);
       setFeedPage(1);
       setFeedHasMore(feedRes.items.length === 20);
-    } catch { /* best effort */ }
+    } catch (error) {
+      captureException(error, { screen: "CommunityScreen", action: "handleRefresh" });
+    }
     finally { setRefreshing(false); }
   }, [runWithAuth, communityQuery.refetch]);
 
@@ -1356,12 +1380,16 @@ export function CommunityScreen({ navigation }: Props) {
       setCreatePhotoData(null);
       setShowCreatePost(false);
       // Recarrega o feed para mostrar o novo post
-      const feedRes = await runWithAuth((token) => communityApi.getFeed(token, 1, 20)).catch(() => ({ items: [] as FeedPost[], total: 0 }));
+      const feedRes = await runWithAuth((token) => communityApi.getFeed(token, 1, 20)).catch((error) => {
+        captureException(error, { screen: "CommunityScreen", action: "getFeed-after-createPost" });
+        return { items: [] as FeedPost[], total: 0 };
+      });
       setFeedItems(feedRes.items);
       setFeedPage(1);
       setFeedHasMore(feedRes.items.length === 20);
       showToast("Post publicado!", "success");
-    } catch {
+    } catch (error) {
+      captureException(error, { screen: "CommunityScreen", action: "createPost" });
       Keyboard.dismiss();
       showToast("Não foi possível publicar. Tente novamente.", "error");
     } finally {

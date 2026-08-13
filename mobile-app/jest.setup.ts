@@ -119,6 +119,11 @@ jest.mock("@sentry/react-native", () => ({
     callback({ setContext: jest.fn() })
   ),
   setUser: jest.fn(),
+  // Frente 13 (segunda camada), Lote 14: addBreadcrumb (usado pelo novo
+  // addNavigationBreadcrumb) faltava aqui — qualquer teste que montasse
+  // root-stack.tsx (NavigationContainer.onStateChange chama isso a cada
+  // troca de tela) quebraria com "Sentry.addBreadcrumb is not a function".
+  addBreadcrumb: jest.fn(),
   wrap: jest.fn((component: unknown) => component)
 }));
 

@@ -14,6 +14,7 @@ import { MvInput } from "../../components/mv/MvInput";
 import { MvText } from "../../components/mv/MvText";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { extractApiMessage } from "../shared/api-helpers";
+import { captureException } from "../../observability/sentry";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "TwoFactor">;
 
@@ -37,6 +38,10 @@ export function AuthTwoFactorScreen({ route, navigation }: Props) {
       setLoading(true);
       await completeTwoFactorLogin(challengeToken, trimmed);
     } catch (error) {
+      // Frente 13 (segunda camada), Lote 10: verificação de 2FA nunca
+      // capturava falha — um erro real (500/bug), não só "código errado",
+      // nunca chegava ao Sentry.
+      captureException(error, { screen: "AuthTwoFactorScreen" });
       showToast(extractApiMessage(error, "Código inválido ou expirado."), "error");
     } finally {
       setLoading(false);

@@ -27,7 +27,19 @@ export function initSentry() {
   if (initialized) return;
 
   const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
-  if (!dsn) return;
+  if (!dsn) {
+    // Frente 13 (segunda camada), Lote 18: initSentry() virava um no-op
+    // 100% silencioso sem a DSN — se o secret ficasse ausente ou digitado
+    // errado no ambiente de build de produção (EAS), 100% da observabilidade
+    // do app some sem deixar rastro nenhum no código, mesmo achado já
+    // corrigido do lado backend (Frente 2/Lote 8, server.ts).
+    if (process.env.EXPO_PUBLIC_APP_ENV === "production") {
+      console.warn(
+        "[Sentry] EXPO_PUBLIC_SENTRY_DSN nao configurado em producao - nenhum erro sera reportado ao Sentry."
+      );
+    }
+    return;
+  }
 
   Sentry.init({
     dsn,
@@ -72,7 +84,26 @@ export function setSentryUser(user: AuthUser | null) {
     Sentry.setUser(null);
     return;
   }
-  Sentry.setUser({ id: user.id });
+  // Frente 13 (segunda camada), Lote 14: só o id chegava ao Sentry — role
+  // ajuda a filtrar "erro só de PROVIDER" vs "de qualquer usuário" direto
+  // no painel, sem precisar cruzar com outra fonte. Sem e-mail/PII, mesmo
+  // espírito do backend (Frente 13, Lote 2).
+  Sentry.setUser({ id: user.id, role: user.role });
+}
+
+// Frente 13 (segunda camada), Lote 14: breadcrumb básico de navegação —
+// sem integração completa do React Navigation (Sentry.reactNavigationIntegration,
+// que exigiria plugar uma ref no NavigationContainer e mais configuração),
+// mas já reconstrói minimamente a trilha de telas visitadas antes de um
+// crash, que hoje não existe nenhuma (só breadcrumbs genéricos automáticos
+// do SDK: toque, console, http).
+export function addNavigationBreadcrumb(screenName: string) {
+  if (!initialized) return;
+  Sentry.addBreadcrumb({
+    category: "navigation",
+    message: screenName,
+    level: "info"
+  });
 }
 
 export { Sentry };

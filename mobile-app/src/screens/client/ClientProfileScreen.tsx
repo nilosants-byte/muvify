@@ -24,6 +24,7 @@ import { hapticAchievement } from "../../utils/haptics";
 import type { Achievement, UserProgress } from "../../types/gamification";
 import { AchievementBadgeSvg } from "../../components/community/AchievementBadgeSvg";
 import { AchievementsModal } from "../../components/community/AchievementsModal";
+import { captureException } from "../../observability/sentry";
 
 const SEEN_ACHIEVEMENTS_KEY = "@muvify/seenAchievements";
 const PTS_PER_LEVEL = 500;
@@ -123,13 +124,35 @@ export function ClientProfileScreen({ navigation }: Props) {
   const profileQuery = useAuthQuery(
     queryKeys.user.profilePage(),
     async (token) => {
+      // Frente 13 (segunda camada), Lote 16: cada uma dessas 6 chamadas
+      // engolia a própria falha em silêncio total (nem toast, nem Sentry)
+      // — uma seção do perfil sumia (ficava com dado vazio) sem ninguém
+      // saber se foi "usuário não tem histórico" ou "API quebrada".
       const [bookingData, trainingData, anamnesisData, gamProfile, backendAchievements, followingRes] = await Promise.all([
-        bookingsApi.me(token).catch(() => []),
-        consultancyApi.myTraining(token).catch(() => null),
-        userApi.myAnamnesis(token).catch(() => null),
-        gamificationApi.getMyProfile(token).catch(() => null),
-        gamificationApi.getAchievements(token).catch(() => [] as BackendAchievement[]),
-        communityApi.getFollowing(token, 1, 50).catch(() => ({ items: [], total: 0 })),
+        bookingsApi.me(token).catch((error) => {
+          captureException(error, { screen: "ClientProfileScreen", action: "bookingsApi.me" });
+          return [];
+        }),
+        consultancyApi.myTraining(token).catch((error) => {
+          captureException(error, { screen: "ClientProfileScreen", action: "consultancyApi.myTraining" });
+          return null;
+        }),
+        userApi.myAnamnesis(token).catch((error) => {
+          captureException(error, { screen: "ClientProfileScreen", action: "userApi.myAnamnesis" });
+          return null;
+        }),
+        gamificationApi.getMyProfile(token).catch((error) => {
+          captureException(error, { screen: "ClientProfileScreen", action: "gamificationApi.getMyProfile" });
+          return null;
+        }),
+        gamificationApi.getAchievements(token).catch((error) => {
+          captureException(error, { screen: "ClientProfileScreen", action: "gamificationApi.getAchievements" });
+          return [] as BackendAchievement[];
+        }),
+        communityApi.getFollowing(token, 1, 50).catch((error) => {
+          captureException(error, { screen: "ClientProfileScreen", action: "communityApi.getFollowing" });
+          return { items: [], total: 0 };
+        }),
       ]);
       const anamnesisNeedsAttention = anamnesisData
         ? anamnesisData.status !== "COMPLETED" || (anamnesisData.completedAt
@@ -193,7 +216,10 @@ export function ClientProfileScreen({ navigation }: Props) {
       const updated = await runWithAuth((token) => userApi.updateMe(token, { name: trimmed }));
       setCurrentUser(updated);
       showToast("Nome atualizado.", "success");
-    } catch { showToast("Falha ao atualizar nome. Tente novamente.", "error"); }
+    } catch (error) {
+      captureException(error, { screen: "ClientProfileScreen", action: "saveName" });
+      showToast("Falha ao atualizar nome. Tente novamente.", "error");
+    }
     finally { setNameSaving(false); }
   }, [displayName, runWithAuth, setCurrentUser, showToast, user?.name]);
 
@@ -207,7 +233,10 @@ export function ClientProfileScreen({ navigation }: Props) {
       const updated = await runWithAuth((token) => userApi.updateMe(token, { phone: digits || undefined }));
       setCurrentUser(updated);
       showToast("Telefone atualizado.", "success");
-    } catch { showToast("Falha ao atualizar telefone. Tente novamente.", "error"); }
+    } catch (error) {
+      captureException(error, { screen: "ClientProfileScreen", action: "savePhone" });
+      showToast("Falha ao atualizar telefone. Tente novamente.", "error");
+    }
     finally { setPhoneSaving(false); }
   }, [displayPhone, runWithAuth, setCurrentUser, showToast, user?.phone]);
 
@@ -237,7 +266,10 @@ export function ClientProfileScreen({ navigation }: Props) {
       });
       setCurrentUser(updated);
       showToast("Foto atualizada.", "success");
-    } catch { showToast("Falha ao selecionar foto.", "error"); }
+    } catch (error) {
+      captureException(error, { screen: "ClientProfileScreen", action: "pickPhoto" });
+      showToast("Falha ao selecionar foto.", "error");
+    }
   }, [runWithAuth, setCurrentUser, showToast]);
 
   const openPhotoSheet = useCallback(() => {

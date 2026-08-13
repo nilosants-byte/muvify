@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/node";
 import { prisma } from "../../../config/prisma";
+import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { NotificationService } from "../services/notification.service";
 
@@ -43,6 +44,7 @@ export function startNotificationRetryJob() {
           setTimeout(() => reject(new Error("Notification retry job timeout after 120s")), JOB_TIMEOUT_MS)
         ),
       ]);
+      recordJobSuccess("notification-retry-job");
       consecutiveDatabaseFailures = 0;
       nextAllowedRunAt = 0;
     } catch (error) {
@@ -58,6 +60,7 @@ export function startNotificationRetryJob() {
         // reminder.job.ts/payment-jobs.ts (Frente 9, Lote 14).
         console.error("Notification retry job failed:", error);
         Sentry.captureException(error, { tags: { area: "notification-retry-job" } });
+        recordJobFailure("notification-retry-job");
       }
     } finally {
       if (lockAcquired) {

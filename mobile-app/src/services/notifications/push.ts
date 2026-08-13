@@ -3,6 +3,7 @@ import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { Alert, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { captureException } from "../../observability/sentry";
 
 const PUSH_PRE_PROMPT_KEY = "@muvify/pushPrePromptShown";
 
@@ -115,10 +116,15 @@ export async function getPushRegistrationPayload(): Promise<PushRegistrationPayl
       appVersion: Constants.expoConfig?.version,
       deviceName: Device.deviceName ?? undefined
     };
-  } catch {
+  } catch (error) {
     // Push token is unavailable in this environment (e.g. Expo Go without EAS project ID,
     // or Expo push service temporarily unavailable). This is a graceful degradation —
     // the app works without push notifications.
+    //
+    // Frente 13 (segunda camada), Lote 13: essa falha era 100% silenciosa
+    // (nem log, nem Sentry) — impossível distinguir "dispositivo sem
+    // suporte" de "serviço do Expo fora do ar" em produção sem isso.
+    captureException(error, { area: "push-token-registration" });
     return null;
   }
 }

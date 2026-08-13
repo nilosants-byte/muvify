@@ -6,6 +6,7 @@ import {
   Prisma,
   SupportTicketStatus
 } from "@prisma/client";
+import * as Sentry from "@sentry/node";
 import { prisma } from "../../../config/prisma";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -57,7 +58,13 @@ type DataRetentionRunInput = {
 };
 
 type DataRetentionRunResult = {
-  status: "SUCCESS";
+  // Frente 13 (segunda camada), Lote 5: "SUCCESS" era hardcoded mesmo
+  // quando uma ou mais regras falhavam (ver safeRun abaixo) — o log de
+  // execução (DataRetentionExecutionLog) nunca refletia isso, e não havia
+  // contagem esperada de regras pra alguém perceber que uma sumiu do
+  // array `rules`. Risco de compliance real: se cleanupAnamnesis (dado de
+  // saúde, retenção de 365 dias) falhasse toda vez, ninguém saberia.
+  status: "SUCCESS" | "PARTIAL_FAILURE";
   dryRun: boolean;
   triggeredBy: string;
   startedAt: string;
@@ -67,8 +74,10 @@ type DataRetentionRunResult = {
     matchedCount: number;
     affectedCount: number;
     rules: number;
+    failedRules: number;
   };
   rules: RetentionRuleExecution[];
+  failedRuleIds: string[];
 };
 
 export class DataRetentionService {
@@ -94,43 +103,56 @@ export class DataRetentionService {
       .map((value) => value.trim())
       .filter(Boolean);
 
+    const failedRuleIds: string[] = [];
     // Cada rule é isolada — falha de uma não impede as demais
-    const safeRun = async (fn: () => Promise<RetentionRuleExecution>): Promise<RetentionRuleExecution | null> => {
-      try { return await fn(); }
-      catch (err) { console.error("[data-retention] Rule failed:", err); return null; }
+    const safeRun = async (
+      ruleId: string,
+      fn: () => Promise<RetentionRuleExecution>
+    ): Promise<RetentionRuleExecution | null> => {
+      try {
+        return await fn();
+      } catch (err) {
+        console.error(`[data-retention] Rule failed: ${ruleId}`, err);
+        failedRuleIds.push(ruleId);
+        Sentry.captureException(err, {
+          tags: { area: "data-retention", ruleId },
+          extra: { ruleId, triggeredBy: input.triggeredBy, dryRun: input.dryRun }
+        });
+        return null;
+      }
     };
 
     const rules: RetentionRuleExecution[] = [];
     try {
       const results = await Promise.all([
-        safeRun(() => this.cleanupSessions(now, input.dryRun)),
-        safeRun(() => this.cleanupPasswordResetTokens(now, input.dryRun)),
-        safeRun(() => this.cleanupEmailVerificationTokens(now, input.dryRun)),
-        safeRun(() => this.cleanupPushDevices(now, input.dryRun)),
-        safeRun(() => this.cleanupUserNotifications(now, input.dryRun)),
-        safeRun(() => this.cleanupPushQueue(now, input.dryRun)),
-        safeRun(() => this.cleanupCompletionEvidence(now, input.dryRun)),
-        safeRun(() => this.cleanupAnamnesis(now, input.dryRun)),
-        safeRun(() => this.cleanupBookingMessages(now, input.dryRun)),
-        safeRun(() => this.cleanupConsultancyMessages(now, input.dryRun)),
-        safeRun(() => this.cleanupSupportTickets(now, input.dryRun)),
-        safeRun(() => this.cleanupBookingNotes(now, input.dryRun)),
-        safeRun(() => this.cleanupManualBlocks(now, input.dryRun)),
-        safeRun(() => this.cleanupFinancialStudentNotes(now, input.dryRun)),
-        safeRun(() => this.cleanupContentReportReasons(now, input.dryRun)),
-        safeRun(() => this.cleanupConsultancyHealthData(now, input.dryRun)),
-        safeRun(() => this.cleanupBiometricAssessments(now, input.dryRun)),
-        safeRun(() => this.cleanupEmailDeliveryQueue(now, input.dryRun)),
-        safeRun(() => this.cleanupReviewComments(now, input.dryRun)),
-        safeRun(() => this.cleanupDisputeCaseNarratives(now, input.dryRun)),
-        safeRun(() => this.cleanupNoShowReportNarratives(now, input.dryRun)),
+        safeRun("sessions_expired_or_revoked", () => this.cleanupSessions(now, input.dryRun)),
+        safeRun("password_reset_tokens_obsolete", () => this.cleanupPasswordResetTokens(now, input.dryRun)),
+        safeRun("email_verification_tokens_obsolete", () => this.cleanupEmailVerificationTokens(now, input.dryRun)),
+        safeRun("push_devices_inactive", () => this.cleanupPushDevices(now, input.dryRun)),
+        safeRun("user_notifications_old", () => this.cleanupUserNotifications(now, input.dryRun)),
+        safeRun("push_queue_failures_old", () => this.cleanupPushQueue(now, input.dryRun)),
+        safeRun("completion_evidence_old", () => this.cleanupCompletionEvidence(now, input.dryRun)),
+        safeRun("anamnesis_redaction", () => this.cleanupAnamnesis(now, input.dryRun)),
+        safeRun("booking_messages_redaction", () => this.cleanupBookingMessages(now, input.dryRun)),
+        safeRun("consultancy_messages_redaction", () => this.cleanupConsultancyMessages(now, input.dryRun)),
+        safeRun("support_tickets_redaction", () => this.cleanupSupportTickets(now, input.dryRun)),
+        safeRun("booking_notes_redaction", () => this.cleanupBookingNotes(now, input.dryRun)),
+        safeRun("manual_blocks_redaction", () => this.cleanupManualBlocks(now, input.dryRun)),
+        safeRun("financial_student_notes_redaction", () => this.cleanupFinancialStudentNotes(now, input.dryRun)),
+        safeRun("content_report_reasons_redaction", () => this.cleanupContentReportReasons(now, input.dryRun)),
+        safeRun("consultancy_health_data_redaction", () => this.cleanupConsultancyHealthData(now, input.dryRun)),
+        safeRun("biometric_assessments_deletion", () => this.cleanupBiometricAssessments(now, input.dryRun)),
+        safeRun("email_delivery_queue_cleanup", () => this.cleanupEmailDeliveryQueue(now, input.dryRun)),
+        safeRun("review_comments_redaction", () => this.cleanupReviewComments(now, input.dryRun)),
+        safeRun("dispute_case_narratives_redaction", () => this.cleanupDisputeCaseNarratives(now, input.dryRun)),
+        safeRun("no_show_report_narratives_redaction", () => this.cleanupNoShowReportNarratives(now, input.dryRun)),
       ]);
       rules.push(...(results.filter(Boolean) as RetentionRuleExecution[]));
 
       const finishedAt = new Date();
       const durationMs = finishedAt.getTime() - startedAt.getTime();
       const result: DataRetentionRunResult = {
-        status: "SUCCESS",
+        status: failedRuleIds.length > 0 ? "PARTIAL_FAILURE" : "SUCCESS",
         dryRun: input.dryRun,
         triggeredBy: input.triggeredBy,
         startedAt: startedAt.toISOString(),
@@ -139,9 +161,11 @@ export class DataRetentionService {
         totals: {
           matchedCount: rules.reduce((sum, rule) => sum + rule.matchedCount, 0),
           affectedCount: rules.reduce((sum, rule) => sum + rule.affectedCount, 0),
-          rules: rules.length
+          rules: rules.length,
+          failedRules: failedRuleIds.length
         },
-        rules
+        rules,
+        failedRuleIds
       };
 
       await prisma.dataRetentionExecutionLog.create({

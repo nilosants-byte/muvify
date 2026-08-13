@@ -34,3 +34,61 @@
         annotations:
           summary: "Latencia P95 elevada"
           description: "P95 acima de 1.5s por 10 minutos."
+
+      # Frente 13 (segunda camada), Lote 6: até aqui, nenhum alerta cobria
+      # job periódico parado, fila de e-mail acumulando ou taxa de erro de
+      # pagamento — só os 3 cenários genéricos de HTTP acima, mesmo com
+      # comentários no código já reconhecendo esses cenários como críticos
+      # (ex: email-queue.service.ts).
+      - alert: JobStalled
+        expr: time() - job_last_success_timestamp_seconds > 7200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Job periodico sem sucesso ha mais de 2h"
+          description: "{{ $labels.job }} nao termina sem erro ha mais de 2 horas — pode estar travado ou falhando toda vez."
+
+      - alert: EmailQueueBacklogGrowing
+        expr: email_queue_pending > 50
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Fila de e-mail acumulando"
+          description: "Mais de 50 e-mails pendentes ha 15 minutos — verificacao/redefinicao de senha/avisos podem estar atrasados."
+
+      - alert: PaymentOperationHighFailureRate
+        expr: |
+          sum(rate(payment_operation_total{result="failure"}[15m]))
+          /
+          sum(rate(payment_operation_total[15m]))
+          > 0.2
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alta taxa de falha em operacao financeira automatizada"
+          description: "Mais de 20% das operacoes de autorizacao/captura/renovacao de token MP falhando nos ultimos 15 minutos."
+
+      # Frente 13 (segunda camada), Lote 7: /health já checava Postgres/Redis
+      # de verdade, mas nada na stack de monitoramento consultava esse
+      # endpoint — uma queda de banco/Redis só derrubava o healthcheck local
+      # do Docker, sem alerta via Alertmanager/Slack.
+      - alert: DatabaseDown
+        expr: app_database_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Postgres inacessivel pela aplicacao"
+          description: "SELECT 1 falhou no ultimo scrape — checar conexao com o banco."
+
+      - alert: RedisDown
+        expr: app_redis_up == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis inacessivel pela aplicacao"
+          description: "PING falhou (ou conexao nao esta pronta) por mais de 2 minutos — app pode estar rodando em modo degradado (fallback local)."

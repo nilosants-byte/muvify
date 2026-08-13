@@ -40,6 +40,7 @@ import type { MvTheme } from "../../theme/MvColors";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { SkeletonChatItem } from "../../components/polish/SkeletonCard";
 import { hapticCta } from "../../utils/haptics";
+import { captureException } from "../../observability/sentry";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ClientChatList">;
 type Tab = "active" | "inactive";
@@ -314,7 +315,12 @@ export function ClientChatListScreen({ navigation, route }: Props) {
           lastMsgCountRef.current = incoming.length;
           setTimeout(() => flatListRef.current?.scrollToEnd({ animated: !initial }), 80);
         }
-      } catch {
+      } catch (error) {
+        // Frente 13 (segunda camada), Lote 11: falha silenciosa completa
+        // no polling (nem toast, nem Sentry) — só o carregamento inicial
+        // mostrava algo (setPanelError). Captura sempre, sem mudar o
+        // comportamento visual do polling.
+        captureException(error, { screen: "ClientChatListScreen", initial });
         if (initial && isMountedRef.current) setPanelError(true);
       } finally {
         if (initial && isMountedRef.current) setPanelLoading(false);
@@ -444,7 +450,12 @@ export function ClientChatListScreen({ navigation, route }: Props) {
         refetchAll();
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
         return true;
-      } catch {
+      } catch (error) {
+        // Frente 13 (segunda camada), Lote 11: envio de mensagem nunca
+        // capturava falha — chat é um fluxo crítico, e uma falha
+        // sistemática de envio (não só "sem internet" pontual) ficava
+        // invisível além do toast individual de cada usuário.
+        captureException(error, { screen: "ClientChatListScreen", action: "sendMessage" });
         showToast("Não foi possível enviar a mensagem.", "error");
         return false;
       }

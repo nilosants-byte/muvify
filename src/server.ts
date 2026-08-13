@@ -1,3 +1,7 @@
+// Frente 13 (segunda camada), Lote 1: precisa ser o primeiro import do
+// arquivo (ver comentário em src/instrument.ts) — o Sentry precisa
+// inicializar antes de "./app" carregar o Express.
+import "./instrument";
 import http from "node:http";
 import { app } from "./app";
 import { env } from "./config/env";
@@ -11,11 +15,7 @@ import { startCommunityJobs, stopCommunityJobs } from "./modules/community/jobs/
 import { startReminderJob, stopReminderJob } from "./modules/notifications/jobs/reminder.job";
 import { initSocketServer, stopSocketServer } from "./realtime/socket";
 import * as Sentry from "@sentry/node";
-import { initSentry } from "./config/sentry";
 import { EmailService } from "./shared/services/email.service";
-
-// Inicializa Sentry antes de tudo (só ativa se SENTRY_DSN estiver no .env)
-initSentry();
 
 let server: http.Server | null = null;
 let isShuttingDown = false;
@@ -80,6 +80,17 @@ const uncaughtHandler = (error: Error) =>
 const rejectionHandler = (error: unknown) =>
   void shutdown("Unhandled rejection. Shutting down.", error);
 
+// Frente 13 (segunda camada), Lote 9: esses dois listeners fazem o shutdown
+// gracioso, não reportam ao Sentry por conta própria — dependem das
+// integrações padrão do SDK (OnUncaughtException/OnUnhandledRejection,
+// habilitadas por padrão em @sentry/node v10 — confirmado via
+// Sentry.getDefaultIntegrations()) capturarem ANTES deste handler chamar
+// shutdown()/process.exit(). Node permite múltiplos listeners pro mesmo
+// evento, então os dois convivem sem conflito. Isso só funciona de verdade
+// porque "./instrument" (Lote 1) agora roda antes de qualquer outro import
+// deste arquivo — antes, com a ordem de import errada, o registro dessas
+// integrações podia nem ter acontecido a tempo de um erro real disparado
+// cedo no boot.
 process.on("SIGINT", sigintHandler);
 process.on("SIGTERM", sigtermHandler);
 process.on("uncaughtException", uncaughtHandler);
@@ -94,9 +105,15 @@ async function bootstrap() {
     );
   }
   if (!env.AUTH_REQUIRE_REDIS_FOR_BLACKLIST && redis.status !== "ready") {
-    console.warn(
-      "Redis indisponivel no bootstrap. Seguindo em modo degradado (fallback local por instancia)."
-    );
+    const message =
+      "Redis indisponivel no bootstrap. Seguindo em modo degradado (fallback local por instancia).";
+    console.warn(message);
+    // Frente 13 (segunda camada), Lote 9: só console.warn - dava pra saber
+    // que o processo tinha subido em modo degradado olhando o log do
+    // processo na hora, mas não sobrava nenhum histórico de "quantas vezes
+    // isso já aconteceu" pra quem só olha o Sentry (mesmo padrão já usado
+    // logo abaixo, no achado do SMTP ausente em produção).
+    Sentry.captureMessage(message, "warning");
   }
 
   // Frente 2 (segunda camada), Lote 8: SENTRY_DSN ausente em produção fazia

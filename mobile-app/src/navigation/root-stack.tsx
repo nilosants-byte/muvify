@@ -7,6 +7,7 @@ import {
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as Notifications from "expo-notifications";
 import { MvOfflineBanner, MvToastHost } from "../components/mv";
+import { addNavigationBreadcrumb } from "../observability/sentry";
 import {
   resolveNotificationRoute,
   isBookingNotificationType,
@@ -824,7 +825,18 @@ export function RootNavigator() {
 
   return (
     <ErrorBoundary>
-      <NavigationContainer ref={navigationRef} theme={appTheme} linking={linking}>
+      <NavigationContainer
+        ref={navigationRef}
+        theme={appTheme}
+        linking={linking}
+        // Frente 13 (segunda camada), Lote 14: breadcrumb básico de tela —
+        // não existia nenhuma reconstituição da navegação antes de um
+        // crash (só os breadcrumbs genéricos automáticos do SDK).
+        onStateChange={() => {
+          const currentRouteName = navigationRef.getCurrentRoute()?.name;
+          if (currentRouteName) addNavigationBreadcrumb(currentRouteName);
+        }}
+      >
         {!isAuthenticated ? (
           <AuthNavigator />
         ) : role === "ADMIN" ? (

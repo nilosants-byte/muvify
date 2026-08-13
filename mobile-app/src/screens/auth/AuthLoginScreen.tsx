@@ -19,6 +19,7 @@ import { MvText } from "../../components/mv/MvText";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { MvLogoText } from "../../components/mv";
 import { extractApiMessage } from "../shared/api-helpers";
+import { captureException } from "../../observability/sentry";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { useMvTheme } from "../../theme/MvThemeContext";
 
@@ -79,6 +80,10 @@ export function AuthLoginScreen({ navigation }: Props) {
       clearToast();
     } catch (error) {
       if (isAuthenticatedRef.current) return;
+      // Frente 13 (segunda camada), Lote 10: login nunca capturava falha —
+      // se o backend quebrasse login pra todo mundo, ninguém veria no
+      // Sentry (só o usuário, via toast, um de cada vez).
+      captureException(error, { screen: "AuthLoginScreen" });
       showToast(extractApiMessage(error, "Falha ao fazer login."), "error");
     } finally {
       setLoading(false);

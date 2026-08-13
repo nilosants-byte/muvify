@@ -3,12 +3,15 @@ services:
     image: prom/prometheus:v2.52.0
     container_name: marketplace_prometheus
     restart: unless-stopped
+    env_file:
+      - .env
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus-entrypoint.sh:/etc/prometheus/entrypoint.sh:ro
       - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     ports:
       - "127.0.0.1:9090:9090"
+    entrypoint: ["/bin/sh", "/etc/prometheus/entrypoint.sh"]
   alertmanager:
     image: prom/alertmanager:v0.27.0
     container_name: marketplace_alertmanager

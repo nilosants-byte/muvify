@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { NextFunction, Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { env } from "../config/env";
@@ -38,6 +39,13 @@ export async function ensureAuthenticated(request: Request, _response: Response,
     }
 
     request.user = { id: payload.sub, role: payload.role, sessionId: payload.sessionId };
+    // Frente 13 (segunda camada), Lote 2: sem isso, todo evento capturado
+    // pelo Sentry chegava sem a conta afetada — a infra de scrubbing
+    // (sentryBeforeSend) já removia email/ip de event.user desde a Frente
+    // 11, mas nunca havia ninguém preenchendo event.user.id pra começo de
+    // conversa. Só id + role (sem email/PII) — role ajuda a filtrar erro
+    // "só de admin" vs "de qualquer usuário" direto no painel do Sentry.
+    Sentry.setUser({ id: payload.sub, role: payload.role });
     next();
   } catch (error) {
     next(error);
