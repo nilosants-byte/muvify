@@ -109,7 +109,13 @@ describe("DisputeCase — fila de disputas (Fase 6)", () => {
   });
 
   afterAll(async () => {
-    await prisma.adminAuditLog.deleteMany({ where: { adminId } });
+    // Frente 12 (segunda camada), Lote 4: NÃO apaga AdminAuditLog daqui —
+    // adminId é a conta fixa compartilhada com dezenas de outros arquivos
+    // rodando em paralelo; apagar aqui podia derrubar a asserção de outro
+    // arquivo concorrente que ainda não tinha lido o próprio registro
+    // (mesma classe de risco já reconhecida pra não apagar a conta admin
+    // em si). AdminAuditLog é trilha de auditoria — crescimento no banco
+    // de teste é aceitável, mesmo raciocínio já usado pra produção.
     await prisma.disputeCase.deleteMany({ where: { clientId } });
     await prisma.noShowReport.deleteMany({ where: { reportedByUserId: clientId } });
     await prisma.payment.deleteMany({ where: { booking: { clientId } } });

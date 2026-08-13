@@ -841,7 +841,7 @@ export class ProviderService {
         });
     }
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId: adminUserId,
       action: approved ? "CREF_APPROVED" : "CREF_REJECTED",
       targetType: "PROVIDER",
@@ -960,8 +960,13 @@ export class ProviderService {
     return Boolean(ongoingBooking || recentCompletedBooking || ongoingContract || recentContract || ongoingPackage || recentPackage);
   }
 
-  private logHealthDataAccess(providerId: string, clientId: string, action: string) {
-    void prisma.healthDataAccessLog
+  // Frente 12 (segunda camada), Lote 1: era fire-and-forget (método nem
+  // devolvia a Promise, então nenhum chamador conseguia esperar mesmo
+  // querendo) — testes que liam HealthDataAccessLog logo depois de uma
+  // requisição HTTP corriam contra a escrita ainda em andamento, causando
+  // falso-negativo intermitente sensível a quão devagar a máquina está.
+  private async logHealthDataAccess(providerId: string, clientId: string, action: string) {
+    await prisma.healthDataAccessLog
       .create({ data: { providerId, clientId, action } })
       .catch((err) => console.error("[provider.service] falha ao gravar HealthDataAccessLog:", (err as Error).message));
   }
@@ -2553,7 +2558,7 @@ export class ProviderService {
         };
 
     if (recentHealthAccess && (anamnesisRaw || physicalAssessmentRaw)) {
-      this.logHealthDataAccess(provider.id, clientId, "STUDENT_DETAIL_HEALTH_VIEW");
+      await this.logHealthDataAccess(provider.id, clientId, "STUDENT_DETAIL_HEALTH_VIEW");
     }
 
     return {
@@ -2797,7 +2802,7 @@ export class ProviderService {
       return { status: "NONE", answers: null, client: null };
     }
 
-    this.logHealthDataAccess(provider.id, clientId, "ANAMNESIS_VIEW");
+    await this.logHealthDataAccess(provider.id, clientId, "ANAMNESIS_VIEW");
     return { ...anamnesis, answers: decryptJson(anamnesis.answers) };
   }
 

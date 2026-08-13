@@ -24,6 +24,12 @@ function uid(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
+// Frente 12 (segunda camada), Lote 13: ids de pagamento mockados abaixo eram
+// literais fixos (5001, 5002) que colidiam com consultancy-offer-
+// flexibility.test.ts — ConsultancyContract.mpPaymentId é @unique. Offset
+// por arquivo evita a colisão.
+const MOCK_MP_ID_BASE = Date.now() + Math.floor(Math.random() * 1_000_000);
+
 let clientId = "";
 let providerUserId = "";
 let providerId = "";
@@ -111,7 +117,7 @@ describe("Rodada 5, Lote 4 — integridade de conclusão e reincidência", () =>
 
   it("confirmCompletion rejeita quando chamado antes do horário marcado (conluio de 2 contas)", async () => {
     vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_l5l4" } as any);
-    vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: 5001, status: "authorized" } as any);
+    vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: MOCK_MP_ID_BASE + 1, status: "authorized" } as any);
 
     const scheduledAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
     const booking = await bookingService.create(
@@ -243,7 +249,7 @@ describe("Rodada 5, Lote 4 — integridade de conclusão e reincidência", () =>
 
   it("sessão que expira 48h depois sem o código de presença validado abre um caso de revisão, sem reembolsar sozinha", async () => {
     vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_l5l4b" } as any);
-    vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: 5002, status: "authorized" } as any);
+    vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: MOCK_MP_ID_BASE + 2, status: "authorized" } as any);
 
     const scheduledAt = new Date(Date.now() - 60 * 60 * 60 * 1000); // 60h atrás
     // +11 dias (não +10, como o primeiro teste do arquivo): o booking do

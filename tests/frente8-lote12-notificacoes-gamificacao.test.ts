@@ -54,7 +54,17 @@ describe("Frente 8, Lote 12 — notificações de gamificação respeitam a pref
   afterAll(async () => {
     await prisma.userNotification.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.notificationPreference.deleteMany({ where: { userId: { in: userIds } } });
-    await prisma.userAchievement.deleteMany({ where: { userId: { in: userIds } } });
+    // Frente 12 (segunda camada), Lote 13: a condição desta conquista
+    // (TOTAL_FOLLOWING >= 1) é genérica o bastante pra qualquer usuário de
+    // OUTRO arquivo de teste rodando em paralelo (que também siga alguém)
+    // desbloqueá-la de verdade via checkAndUnlock — o motor de conquistas é
+    // global, não sabe que essa é "só desta suíte". Filtrar a limpeza por
+    // userIds (só os usuários criados aqui) deixava UserAchievement de
+    // terceiros pra trás, e o deleteMany da Achievement abaixo batia em
+    // "Foreign key constraint violated". Escopo por achievementId (só essa
+    // conquista, criada com key única por este arquivo) resolve sem
+    // arriscar apagar dado de outro teste.
+    await prisma.userAchievement.deleteMany({ where: { achievementId } });
     await prisma.achievement.deleteMany({ where: { id: achievementId } });
     await prisma.follow.deleteMany({ where: { followerId: { in: userIds } } });
     await prisma.userXpTransaction.deleteMany({ where: { userId: { in: userIds } } });

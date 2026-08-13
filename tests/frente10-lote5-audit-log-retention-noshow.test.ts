@@ -97,7 +97,13 @@ describe("Frente 10, Lote 5 — auditoria e integridade de dados administrativos
     await prisma.noShowReport.deleteMany({ where: { id: { in: createdNoShowReportIds } } });
     await prisma.booking.deleteMany({ where: { id: { in: createdBookingIds } } });
     await prisma.supportTicket.deleteMany({ where: { id: { in: createdTicketIds } } });
-    await prisma.adminAuditLog.deleteMany({ where: { adminId } });
+    // Frente 12 (segunda camada), Lote 4: NÃO apaga AdminAuditLog daqui —
+    // adminId é a conta fixa compartilhada com dezenas de outros arquivos
+    // rodando em paralelo; apagar aqui podia derrubar a asserção de outro
+    // arquivo concorrente que ainda não tinha lido o próprio registro
+    // (mesma classe de risco já reconhecida pra não apagar a conta admin
+    // em si). AdminAuditLog é trilha de auditoria — crescimento no banco
+    // de teste é aceitável, mesmo raciocínio já usado pra produção.
     await prisma.providerProfile.deleteMany({ where: { id: providerId } });
     await prisma.session.deleteMany({ where: { userId: { in: [...createdUserIds, adminId] } } });
     await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
@@ -120,16 +126,21 @@ describe("Frente 10, Lote 5 — auditoria e integridade de dados administrativos
     await adminService.suspendUser(adminId, target.id, "Fraude confirmada no pagamento");
     await adminService.reactivateUser(adminId, target.id, "Recurso aceito, engano identificado");
 
-    // writeAdminAuditLog é fire-and-forget (void ...catch(...)) dentro do
-    // service - precisa de uma folga pra concluir antes de consultar.
-    await sleep(150);
-
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: target.id } });
     expect(stored.suspensionReason).toBeNull();
 
-    const auditLog = await prisma.adminAuditLog.findFirst({
-      where: { targetId: target.id, action: "USER_REACTIVATED" }
-    });
+    // Frente 12 (segunda camada), Lote 1: writeAdminAuditLog agora é
+    // aguardado (await) dentro do service antes de retornar — não é mais
+    // fire-and-forget. Poll com retry curto mantido como defesa em
+    // profundidade (mesmo padrão já usado em admin-legal-hold-and-export.test.ts),
+    // não porque a escrita ainda seja assíncrona sem espera.
+    let auditLog = null;
+    for (let attempt = 0; attempt < 5 && !auditLog; attempt++) {
+      auditLog = await prisma.adminAuditLog.findFirst({
+        where: { targetId: target.id, action: "USER_REACTIVATED" }
+      });
+      if (!auditLog) await sleep(150);
+    }
     expect(auditLog).not.toBeNull();
     expect((auditLog!.metadata as any).previousSuspensionReason).toBe("Fraude confirmada no pagamento");
     expect((auditLog!.metadata as any).reactivationReason).toBe("Recurso aceito, engano identificado");
@@ -149,9 +160,12 @@ describe("Frente 10, Lote 5 — auditoria e integridade de dados administrativos
 
     await adminService.suspendUser(adminId, target.id, "Motivo de teste");
     await adminService.reactivateUser(adminId, target.id);
-    await sleep(150);
 
-    const auditLogs = await adminService.getAuditLogs(adminId, { targetId: target.id });
+    let auditLogs = await adminService.getAuditLogs(adminId, { targetId: target.id });
+    for (let attempt = 0; attempt < 5 && auditLogs.total < 2; attempt++) {
+      await sleep(150);
+      auditLogs = await adminService.getAuditLogs(adminId, { targetId: target.id });
+    }
     expect(auditLogs.total).toBeGreaterThanOrEqual(2);
     expect(auditLogs.items.every((i) => i.targetId === target.id)).toBe(true);
 

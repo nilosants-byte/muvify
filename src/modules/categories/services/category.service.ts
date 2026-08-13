@@ -39,7 +39,7 @@ export class CategoryService {
     try {
       const category = await prisma.serviceCategory.create({ data: { name, description } });
       await deleteByPattern("categories:*");
-      void writeAdminAuditLog({
+      await writeAdminAuditLog({
         adminId,
         action: "CATEGORY_CREATED",
         targetType: "CATEGORY",
@@ -83,7 +83,7 @@ export class CategoryService {
       data: { active: false }
     });
     await deleteByPattern("categories:*");
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId,
       action: "CATEGORY_DEACTIVATED",
       targetType: "CATEGORY",
@@ -105,7 +105,7 @@ export class CategoryService {
       data: { active: true }
     });
     await deleteByPattern("categories:*");
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId,
       action: "CATEGORY_REACTIVATED",
       targetType: "CATEGORY",

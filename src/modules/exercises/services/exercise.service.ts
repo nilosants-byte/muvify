@@ -159,7 +159,7 @@ export class ExerciseService {
 
     // Raio-X de pagamentos, Rodada 3, Lote 6: unica acao admin sensivel
     // (afeta o catalogo visto por todos os profissionais) sem audit log.
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId,
       action: "EXERCISE_PREBUILT_CREATED",
       targetType: "EXERCISE",
@@ -198,7 +198,7 @@ export class ExerciseService {
       },
     });
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId,
       action: "EXERCISE_PREBUILT_UPDATED",
       targetType: "EXERCISE",
@@ -241,7 +241,7 @@ export class ExerciseService {
 
     await prisma.exercise.delete({ where: { id: exerciseId } });
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId,
       action: "EXERCISE_PREBUILT_DELETED",
       targetType: "EXERCISE",

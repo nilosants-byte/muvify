@@ -26,6 +26,22 @@ function AppStateConsumerProbe() {
   return bootstrapping ? null : null;
 }
 
+// Frente 12 (segunda camada), Lote 10: antes esperava um número fixo de
+// `await Promise.resolve()` pra deixar o bootstrap "assentar" — frágil,
+// já que um hop a mais na cadeia de promises do bootstrap (ex: mais um
+// await na checagem de AsyncStorage/SecureStore) faria esse teste contar
+// um render de startup como se fosse causado pelo showToast, e falhar por
+// motivo errado. Espera até renderCount parar de mudar por um período,
+// baseado em estado observável em vez de profundidade exata de microtask.
+async function waitForRenderCountToStabilize() {
+  let lastSeen = -1;
+  await waitFor(() => {
+    if (renderCount === lastSeen) return;
+    lastSeen = renderCount;
+    throw new Error("renderCount ainda mudando");
+  });
+}
+
 describe("Frente 11, Lote 4 — toast isolado do AppStateContext", () => {
   beforeEach(() => {
     renderCount = 0;
@@ -51,18 +67,13 @@ describe("Frente 11, Lote 4 — toast isolado do AppStateContext", () => {
     // Deixa a bootstrapping (checagem de AsyncStorage/SecureStore) assentar
     // de vez antes de medir a linha de base — senão o próprio startup conta
     // como "re-render", mascarando o que queremos medir.
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await waitForRenderCountToStabilize();
     const countAfterMount = renderCount;
 
     act(() => {
       lastShowToast?.("qualquer mensagem");
     });
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await waitForRenderCountToStabilize();
 
     expect(renderCount).toBe(countAfterMount);
   });

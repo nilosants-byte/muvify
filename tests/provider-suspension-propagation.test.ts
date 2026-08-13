@@ -105,7 +105,13 @@ describe("Suspensão de conta propaga pra busca e novo negócio (Rodada 4, Lote 
     await prisma.providerCategory.deleteMany({ where: { providerId } });
     await prisma.providerProfile.deleteMany({ where: { id: providerId } });
     await prisma.session.deleteMany({ where: { userId: { in: [clientId, providerUserId] } } });
-    await prisma.adminAuditLog.deleteMany({ where: { adminId } });
+    // Frente 12 (segunda camada), Lote 4: NÃO apaga AdminAuditLog daqui —
+    // adminId é a conta fixa compartilhada com dezenas de outros arquivos
+    // rodando em paralelo; apagar aqui podia derrubar a asserção de outro
+    // arquivo concorrente que ainda não tinha lido o próprio registro
+    // (mesma classe de risco já reconhecida pra não apagar a conta admin
+    // em si). AdminAuditLog é trilha de auditoria — crescimento no banco
+    // de teste é aceitável, mesmo raciocínio já usado pra produção.
     await prisma.user.deleteMany({ where: { id: { in: [clientId, providerUserId] } } });
     await prisma.serviceCategory.deleteMany({ where: { id: categoryId } });
     await prisma.$disconnect();

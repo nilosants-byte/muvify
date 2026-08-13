@@ -50,7 +50,7 @@ describe("Fluxo modular cliente - auth/perfil", () => {
 
     // A tela de perfil renderiza os dados corretamente
     // Botão de Configurações pode ter texto diferente dependendo da versão do componente
-  }, 10000);
+  });
 
   it("forgot password usa endpoint real e valida e-mail", async () => {
     const showToast = jest.fn();

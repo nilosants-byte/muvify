@@ -544,7 +544,7 @@ export class DisputeCaseService {
       return resolvedCase;
     });
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId: admin.id,
       action: "DISPUTE_CASE_RESOLVED",
       targetType: "DISPUTE_CASE",

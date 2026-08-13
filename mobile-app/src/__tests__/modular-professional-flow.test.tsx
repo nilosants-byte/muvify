@@ -49,21 +49,6 @@ jest.mock("../components/media/SelfieProofCapture", () => {
   };
 });
 
-const originalConsoleError = console.error;
-
-beforeAll(() => {
-  jest.spyOn(console, "error").mockImplementation((message?: unknown, ...args: unknown[]) => {
-    if (typeof message === "string" && message.includes("not wrapped in act")) {
-      return;
-    }
-    originalConsoleError(message as any, ...args);
-  });
-});
-
-afterAll(() => {
-  (console.error as jest.Mock).mockRestore();
-});
-
 // Frente 11 (engenharia mobile), Lote 6: este arquivo monta várias telas
 // reais em sequência (várias com useAuthQuery + múltiplas interações) — em
 // máquina lenta sob carga (suíte completa rodando junto), o timeout padrão

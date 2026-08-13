@@ -76,7 +76,13 @@ describe("Frente 10, Lote 7 — revalidação, documentação, limite de caracte
     await prisma.exercise.deleteMany({ where: { id: { in: createdExerciseIds } } });
     await prisma.serviceCategory.deleteMany({ where: { id: { in: createdCategoryIds } } });
     await prisma.supportTicket.deleteMany({ where: { id: { in: createdTicketIds } } });
-    await prisma.adminAuditLog.deleteMany({ where: { adminId } });
+    // Frente 12 (segunda camada), Lote 4: NÃO apaga AdminAuditLog daqui —
+    // adminId é a conta fixa compartilhada com dezenas de outros arquivos
+    // rodando em paralelo; apagar aqui podia derrubar a asserção de outro
+    // arquivo concorrente que ainda não tinha lido o próprio registro
+    // (mesma classe de risco já reconhecida pra não apagar a conta admin
+    // em si). AdminAuditLog é trilha de auditoria — crescimento no banco
+    // de teste é aceitável, mesmo raciocínio já usado pra produção.
     await prisma.session.deleteMany({ where: { userId: { in: [...createdUserIds, adminId] } } });
     await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     await prisma.$disconnect();
@@ -110,18 +116,31 @@ describe("Frente 10, Lote 7 — revalidação, documentação, limite de caracte
 
     await categoryService.deactivate(adminId, real.id);
     await categoryService.reactivate(adminId, real.id);
-    // writeAdminAuditLog é fire-and-forget (void ...) dentro do service -
-    // precisa de uma folga pra concluir antes de consultar.
-    await sleep(150);
 
-    const auditLog = await prisma.adminAuditLog.findFirst({
-      where: { targetId: real.id, action: "CATEGORY_DEACTIVATED" }
-    });
+    // Frente 12 (segunda camada), Lote 1: writeAdminAuditLog agora é
+    // aguardado (await) dentro do service antes de deactivate/reactivate
+    // retornarem — não é mais fire-and-forget. Poll com retry curto mantido
+    // como defesa em profundidade, não porque a escrita ainda seja
+    // assíncrona sem espera. (Esta era a causa raiz real do que tinha sido
+    // documentado antes como "bug pré-existente de auditoria de categoria"
+    // — não era determinístico, era a mesma race de escrita fire-and-forget
+    // de todo o resto desta frente.)
+    let auditLog = null;
+    for (let attempt = 0; attempt < 5 && !auditLog; attempt++) {
+      auditLog = await prisma.adminAuditLog.findFirst({
+        where: { targetId: real.id, action: "CATEGORY_DEACTIVATED" }
+      });
+      if (!auditLog) await sleep(150);
+    }
     expect(auditLog).not.toBeNull();
 
-    const reactivateLog = await prisma.adminAuditLog.findFirst({
-      where: { targetId: real.id, action: "CATEGORY_REACTIVATED" }
-    });
+    let reactivateLog = null;
+    for (let attempt = 0; attempt < 5 && !reactivateLog; attempt++) {
+      reactivateLog = await prisma.adminAuditLog.findFirst({
+        where: { targetId: real.id, action: "CATEGORY_REACTIVATED" }
+      });
+      if (!reactivateLog) await sleep(150);
+    }
     expect(reactivateLog).not.toBeNull();
 
     const createLog = await prisma.adminAuditLog.findFirst({

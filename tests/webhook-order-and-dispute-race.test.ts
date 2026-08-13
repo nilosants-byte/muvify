@@ -111,10 +111,13 @@ describe("Webhook fora de ordem e corrida em resolveCase (Rodada 3, Lote 1)", ()
     await prisma.booking.deleteMany({ where: { id: { in: bookingIds } } });
     await prisma.providerProfile.deleteMany({ where: { id: providerId } });
     await prisma.session.deleteMany({ where: { userId: { in: [clientId, providerUserId] } } });
-    // writeAdminAuditLog é fire-and-forget (void) em resolveCase — a escrita
-    // pode ainda estar em andamento quando os testes terminam, então limpa
-    // por último (não no início) e ignora se ainda não houver nada a apagar.
-    await prisma.adminAuditLog.deleteMany({ where: { adminId } });
+    // Frente 12 (segunda camada), Lote 4: NÃO apaga AdminAuditLog daqui —
+    // adminId é a conta fixa compartilhada com dezenas de outros arquivos
+    // rodando em paralelo; apagar aqui podia derrubar a asserção de outro
+    // arquivo concorrente que ainda não tinha lido o próprio registro
+    // (mesma classe de risco já reconhecida pra não apagar a conta admin
+    // em si). AdminAuditLog é trilha de auditoria — crescimento no banco
+    // de teste é aceitável, mesmo raciocínio já usado pra produção.
     // Não apaga a conta admin: o e-mail é compartilhado com outros arquivos
     // de teste rodando em paralelo — apagar aqui pode derrubar outro arquivo
     // no meio do próprio teste.

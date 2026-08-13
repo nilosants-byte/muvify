@@ -93,29 +93,34 @@ describe("Frente 8 (segunda camada), Lote 3 — verificar e-mail não revoga ses
   });
 
   it("e-mail da allowlist de admin ainda revoga sessão ao verificar (a role efetiva muda de verdade)", async () => {
-    const adminEmail = env.ADMIN_ALLOWED_EMAILS[0];
-    const adminReg = await registerUser("l3_admin", "Lote Tres Admin", adminEmail).catch(() => null);
-    const adminId = adminReg?.userId ?? (await prisma.user.findUniqueOrThrow({ where: { email: adminEmail } })).id;
-    if (adminReg) createdUserIds.push(adminId);
+    // Frente 12 (segunda camada), Lote 12: este teste precisa de um e-mail
+    // na allowlist de admin com emailVerifiedAt nulo (pra exercitar o
+    // caminho de verificação de verdade), mas mutar isso na conta admin
+    // COMPARTILHADA (env.ADMIN_ALLOWED_EMAILS[0], usada por ~35 outros
+    // arquivos) causava uma corrida: qualquer teste concorrente que chamasse
+    // assertAdminAccess nesse meio-tempo recebia "Acesso negado." por engano
+    // (emailVerifiedAt momentaneamente nulo). Mesmo padrão de e-mail
+    // descartável, só pro escopo deste teste, já usado em
+    // tests/frente7-admin.test.ts (Lote 1).
+    const adminEmail = `${uid("l3_admin")}@test.com`;
+    const adminReg = await registerUser("l3_admin", "Lote Tres Admin", adminEmail);
+    const adminId = adminReg.userId;
+    createdUserIds.push(adminId);
+    env.ADMIN_ALLOWED_EMAILS.push(adminEmail.toLowerCase());
 
-    // Reaproveitar a conta admin compartilhada entre arquivos de teste
-    // significa que ela já pode estar com e-mail verificado — reseta pra
-    // garantir que este teste exercita o caminho de verificação de verdade.
-    await prisma.user.update({ where: { id: adminId }, data: { emailVerifiedAt: null } });
-    await prisma.session.updateMany({ where: { userId: adminId, revokedAt: null }, data: { revokedAt: new Date() } });
-    const login = await request(app).post("/api/auth/login").send({ email: adminEmail, password: PASSWORD });
-    if (login.status !== 200) return; // conta admin com senha diferente noutro arquivo — não é o foco deste teste
+    try {
+      const activeBefore = await prisma.session.count({ where: { userId: adminId, revokedAt: null } });
+      expect(activeBefore).toBeGreaterThan(0);
 
-    const activeBefore = await prisma.session.count({ where: { userId: adminId, revokedAt: null } });
-    expect(activeBefore).toBeGreaterThan(0);
+      const rawToken = await createVerificationToken(adminId);
+      await authService.verifyEmail(rawToken);
 
-    const rawToken = await createVerificationToken(adminId);
-    await authService.verifyEmail(rawToken);
-
-    const activeAfter = await prisma.session.count({ where: { userId: adminId, revokedAt: null } });
-    expect(activeAfter).toBe(0);
-
-    await prisma.user.update({ where: { id: adminId }, data: { emailVerifiedAt: new Date() } });
+      const activeAfter = await prisma.session.count({ where: { userId: adminId, revokedAt: null } });
+      expect(activeAfter).toBe(0);
+    } finally {
+      const idx = env.ADMIN_ALLOWED_EMAILS.indexOf(adminEmail.toLowerCase());
+      if (idx >= 0) env.ADMIN_ALLOWED_EMAILS.splice(idx, 1);
+    }
   });
 });
 

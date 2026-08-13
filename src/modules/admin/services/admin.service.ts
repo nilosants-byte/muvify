@@ -789,7 +789,7 @@ export class AdminService {
       legalHoldUserIds,
     });
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId: admin.id,
       action: "DATA_RETENTION_RUN",
       metadata: {
@@ -1214,7 +1214,7 @@ export class AdminService {
       `[SUPPORT_AUDIT] ticketResponded ticketId=${ticket.id} adminId=${admin.id} at=${respondedAt.toISOString()}`
     );
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId: admin.id,
       action: "SUPPORT_TICKET_REPLIED",
       targetType: "TICKET",
@@ -1583,7 +1583,7 @@ export class AdminService {
         );
     }
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId: admin.id,
       action: "USER_SUSPENDED",
       targetType: "USER",
@@ -1631,7 +1631,7 @@ export class AdminService {
       select: { id: true, name: true, email: true, suspendedAt: true, suspensionReason: true }
     });
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId: admin.id,
       action: "USER_REACTIVATED",
       targetType: "USER",
@@ -1726,7 +1726,7 @@ export class AdminService {
         console.error("Falha ao notificar troca de tipo de conta:", error);
       });
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId: admin.id,
       action: "USER_ROLE_CHANGED",
       targetType: "USER",
@@ -1765,7 +1765,7 @@ export class AdminService {
       select: { id: true, name: true, email: true, legalHoldUntil: true, legalHoldReason: true }
     });
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId: admin.id,
       action: "USER_LEGAL_HOLD_SET",
       targetType: "USER",
@@ -1796,7 +1796,7 @@ export class AdminService {
       select: { id: true, name: true, email: true, legalHoldUntil: true, legalHoldReason: true }
     });
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId: admin.id,
       action: "USER_LEGAL_HOLD_CLEARED",
       targetType: "USER",
@@ -1820,7 +1820,7 @@ export class AdminService {
 
     const data = await this.userService.exportMyData(targetUserId);
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId: admin.id,
       action: "ADMIN_USER_DATA_EXPORTED",
       targetType: "USER",

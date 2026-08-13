@@ -16,6 +16,15 @@ import { encryptSensitiveText } from "../src/shared/utils/encryption";
 
 const consultancyService = new ConsultancyService();
 
+// Frente 12 (segunda camada), Lote 13: ids de pagamento mockados abaixo eram
+// literais fixos (5001, 5002, 8001) que colidiam com outros arquivos
+// (rodada5-lote4-adversarial-integrity.test.ts, combo-cycle-consistency-
+// and-renewal-revenue.test.ts) — ConsultancyContract.mpPaymentId é @unique,
+// e dois arquivos usando o mesmo id concorrentes na suíte completa batiam
+// em "Unique constraint failed on the fields: (mpPaymentId)". Offset por
+// arquivo evita a colisão.
+const MOCK_MP_ID_BASE = Date.now() + Math.floor(Math.random() * 1_000_000);
+
 function uid(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
@@ -302,7 +311,7 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
     vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_test" } as any);
     const paymentCreateSpy = vi
       .spyOn(Payment.prototype, "create")
-      .mockResolvedValue({ id: 5001, status: "approved" } as any);
+      .mockResolvedValue({ id: MOCK_MP_ID_BASE + 1, status: "approved" } as any);
 
     const req = await makeRespondedRequest();
     const { contract } = await consultancyService.decideRequest(clientId, req.id, {
@@ -318,7 +327,7 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
     expect(afterFirst.status).toBe("DELIVERED");
 
     paymentCreateSpy.mockClear();
-    paymentCreateSpy.mockResolvedValue({ id: 5002, status: "approved" } as any);
+    paymentCreateSpy.mockResolvedValue({ id: MOCK_MP_ID_BASE + 2, status: "approved" } as any);
 
     const { plan: plan2 } = await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
       title: "Ficha 2 - progressão",
@@ -403,7 +412,7 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
   it("aluno pode encerrar a consultoria depois de já ter recebido fichas, sem nenhum reembolso", async () => {
     vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_test" } as any);
     const refundSpy = vi.spyOn(Payment.prototype, "cancel");
-    vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: 8001, status: "approved" } as any);
+    vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: MOCK_MP_ID_BASE + 3, status: "approved" } as any);
 
     const req = await makeRespondedRequest();
     const { contract } = await consultancyService.decideRequest(clientId, req.id, {

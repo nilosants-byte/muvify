@@ -106,7 +106,7 @@ export class DebtService {
     }
     const updated = await prisma.debtRecord.findUniqueOrThrow({ where: { id: debtId } });
 
-    void writeAdminAuditLog({
+    await writeAdminAuditLog({
       adminId: admin.id,
       action: "DEBT_WRITTEN_OFF",
       targetType: "DEBT_RECORD",

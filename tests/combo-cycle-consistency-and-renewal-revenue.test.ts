@@ -16,6 +16,15 @@ import { ConsultancyService } from "../src/modules/consultancy/services/consulta
 import { FinancialService } from "../src/modules/financial/services/financial.service";
 import { encryptSensitiveText } from "../src/shared/utils/encryption";
 
+// Frente 12 (segunda camada), Lote 13: os ids de pagamento mockados abaixo
+// (8001, 8002...) são literais fixos — ConsultancyContract.mpPaymentId e
+// PresentialPackage.mpPaymentId são @unique no schema, e outro arquivo de
+// teste (consultancy-offer-flexibility.test.ts) usava o mesmo "8001",
+// causando "Unique constraint failed on the fields: (mpPaymentId)" quando os
+// dois rodavam concorrentes na suíte completa. Offset por arquivo garante
+// que a faixa nunca colide com a de outro arquivo.
+const MOCK_MP_ID_BASE = Date.now() + Math.floor(Math.random() * 1_000_000);
+
 // Raio-X de pagamentos, Rodada 2, Lote 4: combo em cartão não pode trocar de
 // motor de cobrança sozinho a partir do 2º ciclo (chargeDueCycles vs.
 // generateDueCardFixedPeriods tinham filtros desalinhados); booking de
@@ -146,8 +155,8 @@ describe("Consistência de combo e visibilidade financeira de renovação (Rodad
     offerIds.push(offer.id);
 
     vi.spyOn(Payment.prototype, "create")
-      .mockResolvedValueOnce({ id: 8001, status: "approved" } as any) // consultoria do combo
-      .mockResolvedValueOnce({ id: 8002, status: "approved" } as any); // 1o ciclo presencial
+      .mockResolvedValueOnce({ id: MOCK_MP_ID_BASE + 1, status: "approved" } as any) // consultoria do combo
+      .mockResolvedValueOnce({ id: MOCK_MP_ID_BASE + 2, status: "approved" } as any); // 1o ciclo presencial
 
     const result = await packageService.purchaseCombo(clientId, {
       offerId: offer.id,
@@ -172,7 +181,7 @@ describe("Consistência de combo e visibilidade financeira de renovação (Rodad
       data: { nextBillingAt: new Date(Date.now() - 60_000) }
     });
 
-    const createSpy = vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: 8003, status: "approved" } as any);
+    const createSpy = vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: MOCK_MP_ID_BASE + 3, status: "approved" } as any);
     await packageService.chargeDueCycles();
     expect(createSpy).toHaveBeenCalledTimes(1);
 
@@ -184,7 +193,7 @@ describe("Consistência de combo e visibilidade financeira de renovação (Rodad
       where: { id: pkg.id },
       data: { nextBillingAt: new Date(Date.now() - 60_000) }
     });
-    const createSpy2 = vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: 8004, status: "approved" } as any);
+    const createSpy2 = vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: MOCK_MP_ID_BASE + 4, status: "approved" } as any);
     await packageService.chargeDueCycles();
     expect(createSpy2).toHaveBeenCalledTimes(1);
   });
@@ -209,8 +218,8 @@ describe("Consistência de combo e visibilidade financeira de renovação (Rodad
     offerIds.push(offer.id);
 
     vi.spyOn(Payment.prototype, "create")
-      .mockResolvedValueOnce({ id: 8101, status: "approved" } as any)
-      .mockResolvedValueOnce({ id: 8102, status: "approved" } as any);
+      .mockResolvedValueOnce({ id: MOCK_MP_ID_BASE + 101, status: "approved" } as any)
+      .mockResolvedValueOnce({ id: MOCK_MP_ID_BASE + 102, status: "approved" } as any);
 
     const result = await packageService.purchaseCombo(clientId, {
       offerId: offer.id,
@@ -335,7 +344,7 @@ describe("Consistência de combo e visibilidade financeira de renovação (Rodad
 
     await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 1", exercises: [] });
 
-    vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: 8201, status: "approved" } as any);
+    vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: MOCK_MP_ID_BASE + 201, status: "approved" } as any);
     await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 2 (renovação)", exercises: [] });
 
     const payouts = await financialService.getPayouts(providerUserId);

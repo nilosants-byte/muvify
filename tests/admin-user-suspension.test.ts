@@ -111,9 +111,13 @@ describe("Suspensao de conta pelo admin (Rodada 3, Lote 3)", () => {
     await prisma.booking.deleteMany({ where: { id: { in: bookingIds } } });
     await prisma.providerProfile.deleteMany({ where: { id: providerId } });
     await prisma.session.deleteMany({ where: { userId: { in: [clientId, providerUserId] } } });
-    // writeAdminAuditLog e fire-and-forget (void) — apaga por ultimo pra nao
-    // disputar com uma escrita ainda em andamento (mesmo cuidado do Lote 1).
-    await prisma.adminAuditLog.deleteMany({ where: { adminId } });
+    // Frente 12 (segunda camada), Lote 4: NÃO apaga AdminAuditLog daqui —
+    // adminId é a conta fixa compartilhada com dezenas de outros arquivos
+    // rodando em paralelo; apagar aqui podia derrubar a asserção de outro
+    // arquivo concorrente que ainda não tinha lido o próprio registro
+    // (mesma classe de risco já reconhecida pra não apagar a conta admin
+    // em si). AdminAuditLog é trilha de auditoria — crescimento no banco
+    // de teste é aceitável, mesmo raciocínio já usado pra produção.
     // Nao apaga a conta admin: o e-mail e compartilhado com outros arquivos
     // de teste rodando em paralelo (dispute-cases.test.ts,
     // webhook-order-and-dispute-race.test.ts, debt-records.test.ts) — apagar

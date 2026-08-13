@@ -4,6 +4,12 @@ module.exports = {
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
   testMatch: ["**/?(*.)+(spec|test).[tj]s?(x)"],
   testPathIgnorePatterns: ["/node_modules/", "/android/", "/ios/"],
+  // Frente 12 (segunda camada), Lote 7: o default do Jest (5000ms) já
+  // estourou várias vezes sob a suíte inteira rodando com --runInBand +
+  // --coverage (o que o CI roda em toda PR — cenário mais lento que uma
+  // rodada local sem coverage). Em vez de remendar arquivo por arquivo
+  // depois que cada um "ganha a loteria" de timing, o teto sobe pra todos.
+  testTimeout: 20000,
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",
     "!src/**/*.d.ts",

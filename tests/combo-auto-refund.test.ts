@@ -32,13 +32,19 @@ function uid(prefix: string) {
 }
 
 async function waitForNotification(userId: string, since: Date) {
-  for (let attempt = 0; attempt < 20; attempt++) {
+  // Frente 12 (segunda camada), Lote 13: sendToUsers é chamada fire-and-
+  // forget (void, decisão deliberada da Frente 2/Lote 2 — notificação é
+  // best-effort) em todos os call sites da aplicação, então este teste
+  // sempre dependeu de poll. Sob a suíte completa (161 arquivos, pool de
+  // conexões compartilhado), a janela antiga de 20×50ms (1s) não era
+  // suficiente pra esperar o UserNotification.create commitar.
+  for (let attempt = 0; attempt < 60; attempt++) {
     const found = await prisma.userNotification.findFirst({
       where: { userId, createdAt: { gt: since } },
       orderBy: { createdAt: "desc" }
     });
     if (found) return found;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
   return null;
 }

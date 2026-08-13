@@ -252,9 +252,17 @@ describe("Frente 11, Lote 3 — janela de acesso e trilha de auditoria da anamne
     function sleep(ms: number) {
       return new Promise((r) => setTimeout(r, ms));
     }
-    await sleep(150);
 
-    const logs = await prisma.healthDataAccessLog.findMany({ where: { providerId, clientId } });
+    // Frente 12 (segunda camada), Lote 1: logHealthDataAccess agora é
+    // aguardado (await) dentro do service antes de getStudentAnamnesis
+    // retornar — não é mais fire-and-forget. Poll com retry curto mantido
+    // como defesa em profundidade, não porque a escrita ainda seja
+    // assíncrona sem espera.
+    let logs = await prisma.healthDataAccessLog.findMany({ where: { providerId, clientId } });
+    for (let attempt = 0; attempt < 5 && logs.length === 0; attempt++) {
+      await sleep(150);
+      logs = await prisma.healthDataAccessLog.findMany({ where: { providerId, clientId } });
+    }
     expect(logs.length).toBeGreaterThanOrEqual(1);
     expect(logs[0]!.action).toBe("ANAMNESIS_VIEW");
   });
