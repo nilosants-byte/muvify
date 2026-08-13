@@ -20,6 +20,14 @@ function buildDatabaseUrl(): string {
       // 96, ainda com folga confortável sob max_connections=100, mas sem
       // reintroduzir aquele gargalo. Produção continua com 20 (processo
       // único).
+      // Frente 14 (segunda camada, carga real), Lote 6: 20 é POR PROCESSO,
+      // não um teto compartilhado — se a operação um dia decidir escalar o
+      // backend pra N réplicas (ver docker-compose.prod.yml/Dockerfile,
+      // hoje instância única), cada uma abre até 20 conexões próprias e o
+      // total pedido ao Postgres vira até 20×N, sem nenhuma validação
+      // automática de que o plano de hosting real suporta esse total. Ao
+      // introduzir múltiplas réplicas, revisar este número (e o
+      // max_connections do Postgres) antes, não depois.
       const fallback = process.env.NODE_ENV === "test" ? "12" : "20";
       url.searchParams.set("connection_limit", fallback);
     }

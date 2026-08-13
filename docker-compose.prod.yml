@@ -11,6 +11,19 @@ services:
       NODE_ENV: production
     ports:
       - "3000:3000"
+    # Frente 14 (segunda camada, carga real), Lote 7: app/postgres/redis
+    # rodam na mesma VM sem nenhum isolamento de recurso entre eles — um
+    # pico de tráfego na API sem limite podia consumir CPU/memória do host
+    # a ponto de sufocar o próprio Postgres/Redis, compondo a degradação em
+    # vez de isolar o problema. Não substitui escalar pra múltiplas
+    # réplicas (decisão de custo em aberto, documentada em
+    # docs/CARGA-REAL-GAPS-CONHECIDOS.md), mas evita que um processo
+    # sozinho derrube o host inteiro — sem custo adicional de hosting.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1G
     healthcheck:
       test:
         [
@@ -46,6 +59,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
   redis:
     image: redis:7-alpine
     container_name: marketplace_redis
@@ -59,6 +77,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 volumes:
   postgres_data:
   redis_data:

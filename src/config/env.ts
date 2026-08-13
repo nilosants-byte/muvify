@@ -58,7 +58,6 @@ const envSchema = z.object({
   SWAGGER_BASIC_AUTH_PASSWORD: z.string().optional(),
   TRUST_PROXY: z.string().default("1"),
   API_JSON_LIMIT: z.string().default("10mb"),
-  PROVIDER_PROFILE_JSON_LIMIT: z.string().default("60mb"),
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),

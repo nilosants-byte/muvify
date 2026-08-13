@@ -896,15 +896,26 @@ export class BookingService {
         where: { id: { in: due60.map((b) => b.id) }, reminder60SentAt: null },
         data: { reminder60SentAt: referenceDate },
       });
-      for (const booking of due60) {
-        void notificationService
-          .sendToUsers([booking.clientId, booking.provider.userId], {
-            preferenceType: "BOOKINGS",
-            title: "Sessão em 1 hora",
-            body: "Você tem uma sessão confirmada em 1 hora.",
-            data: { type: "SESSION_REMINDER", bookingId: booking.id },
-          })
-          .catch((e) => console.error("Session reminder 60 failed:", e));
+      // Frente 14 (segunda camada, carga real), Lote 2: disparar todos os
+      // sendToUsers de uma vez (sem await entre eles) permitia N chamadas
+      // simultâneas — cada uma com queries próprias — saturando o mesmo
+      // pool de conexões usado pelo resto da API num pico de sessões
+      // vencendo o lembrete ao mesmo tempo. Mesmo padrão de lote (5 por
+      // vez) já usado em outros pontos deste arquivo (ex: autoExpireStaleBookings).
+      const SESSION_REMINDER_CONCURRENCY = 5;
+      for (let i = 0; i < due60.length; i += SESSION_REMINDER_CONCURRENCY) {
+        await Promise.allSettled(
+          due60.slice(i, i + SESSION_REMINDER_CONCURRENCY).map((booking) =>
+            notificationService
+              .sendToUsers([booking.clientId, booking.provider.userId], {
+                preferenceType: "BOOKINGS",
+                title: "Sessão em 1 hora",
+                body: "Você tem uma sessão confirmada em 1 hora.",
+                data: { type: "SESSION_REMINDER", bookingId: booking.id },
+              })
+              .catch((e) => console.error("Session reminder 60 failed:", e))
+          )
+        );
       }
     }
 
@@ -925,15 +936,20 @@ export class BookingService {
         where: { id: { in: due30.map((b) => b.id) }, reminder30SentAt: null },
         data: { reminder30SentAt: referenceDate },
       });
-      for (const booking of due30) {
-        void notificationService
-          .sendToUsers([booking.clientId, booking.provider.userId], {
-            preferenceType: "BOOKINGS",
-            title: "Sessão em 30 minutos",
-            body: "Sua sessão começa em 30 minutos. Prepare-se!",
-            data: { type: "SESSION_REMINDER", bookingId: booking.id },
-          })
-          .catch((e) => console.error("Session reminder 30 failed:", e));
+      const SESSION_REMINDER_CONCURRENCY = 5;
+      for (let i = 0; i < due30.length; i += SESSION_REMINDER_CONCURRENCY) {
+        await Promise.allSettled(
+          due30.slice(i, i + SESSION_REMINDER_CONCURRENCY).map((booking) =>
+            notificationService
+              .sendToUsers([booking.clientId, booking.provider.userId], {
+                preferenceType: "BOOKINGS",
+                title: "Sessão em 30 minutos",
+                body: "Sua sessão começa em 30 minutos. Prepare-se!",
+                data: { type: "SESSION_REMINDER", bookingId: booking.id },
+              })
+              .catch((e) => console.error("Session reminder 30 failed:", e))
+          )
+        );
       }
     }
   }
@@ -964,15 +980,22 @@ export class BookingService {
       where: { id: { in: dueSoon.map((b) => b.id) }, confirmationReminderSentAt: null },
       data: { confirmationReminderSentAt: referenceDate }
     });
-    for (const booking of dueSoon) {
-      void notificationService
-        .sendToUsers([booking.provider.userId], {
-          preferenceType: "BOOKINGS",
-          title: "Confirme o agendamento",
-          body: "Você tem um agendamento pendente de confirmação — o prazo está acabando.",
-          data: { type: "BOOKING_CONFIRMATION_DUE_SOON", bookingId: booking.id }
-        })
-        .catch((e) => console.error("Booking confirmation reminder failed:", e));
+    // Frente 14 (segunda camada, carga real), Lote 2: ver comentário em
+    // sendSessionReminders — mesmo padrão de lote (5 por vez).
+    const CONFIRMATION_REMINDER_CONCURRENCY = 5;
+    for (let i = 0; i < dueSoon.length; i += CONFIRMATION_REMINDER_CONCURRENCY) {
+      await Promise.allSettled(
+        dueSoon.slice(i, i + CONFIRMATION_REMINDER_CONCURRENCY).map((booking) =>
+          notificationService
+            .sendToUsers([booking.provider.userId], {
+              preferenceType: "BOOKINGS",
+              title: "Confirme o agendamento",
+              body: "Você tem um agendamento pendente de confirmação — o prazo está acabando.",
+              data: { type: "BOOKING_CONFIRMATION_DUE_SOON", bookingId: booking.id }
+            })
+            .catch((e) => console.error("Booking confirmation reminder failed:", e))
+        )
+      );
     }
   }
 
@@ -1001,15 +1024,22 @@ export class BookingService {
       where: { id: { in: dueBookings.map((b) => b.id) }, reviewReminderSentAt: null },
       data: { reviewReminderSentAt: referenceDate }
     });
-    for (const booking of dueBookings) {
-      void notificationService
-        .sendToUsers([booking.clientId], {
-          preferenceType: "BOOKINGS",
-          title: "Como foi sua sessão?",
-          body: `Conte pra gente como foi o atendimento com ${booking.provider.displayName} — sua avaliação ajuda outros alunos a escolher.`,
-          data: { type: "REVIEW_REMINDER", bookingId: booking.id }
-        })
-        .catch((e) => console.error("Review reminder failed:", e));
+    // Frente 14 (segunda camada, carga real), Lote 2: ver comentário em
+    // sendSessionReminders — mesmo padrão de lote (5 por vez).
+    const REVIEW_REMINDER_CONCURRENCY = 5;
+    for (let i = 0; i < dueBookings.length; i += REVIEW_REMINDER_CONCURRENCY) {
+      await Promise.allSettled(
+        dueBookings.slice(i, i + REVIEW_REMINDER_CONCURRENCY).map((booking) =>
+          notificationService
+            .sendToUsers([booking.clientId], {
+              preferenceType: "BOOKINGS",
+              title: "Como foi sua sessão?",
+              body: `Conte pra gente como foi o atendimento com ${booking.provider.displayName} — sua avaliação ajuda outros alunos a escolher.`,
+              data: { type: "REVIEW_REMINDER", bookingId: booking.id }
+            })
+            .catch((e) => console.error("Review reminder failed:", e))
+        )
+      );
     }
   }
 

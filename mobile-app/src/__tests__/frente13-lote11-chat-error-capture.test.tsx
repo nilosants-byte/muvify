@@ -34,7 +34,16 @@ function chatSummary(bookingId: string): ChatSummary {
     bookingStatus: "CONFIRMED",
     isOpen: true,
     providerId: "provider-1",
-    otherUser: { name: "Fulano", photoUrl: null },
+    // Frente 14 (segunda camada, carga real), Lote 12: photoUrl null fazia
+    // ClientChatListScreen/ProfessionalChatListScreen chamarem
+    // chatApi.getOtherUser (não mockado neste arquivo) pra "completar" a
+    // foto que falta — essa chamada real batia num fetch sem mock nenhum
+    // configurado. Antes do retry automático de GET (apiRequest), isso
+    // falhava rápido o bastante pra não estourar o waitFor padrão de 1s;
+    // com retry (até 3 tentativas com backoff), passou a estourar. Um
+    // photoUrl não-nulo aqui pula esse enriquecimento por completo — o que
+    // este teste quer exercitar é getMessages/sendMessage, não getOtherUser.
+    otherUser: { name: "Fulano", photoUrl: "https://example.com/photo.jpg" },
     clientId: "client-1",
     unreadCount: 0,
     lastMessage: { content: "Oi", createdAt: "2026-08-01T10:00:00.000Z", isMine: false, isSystem: false }

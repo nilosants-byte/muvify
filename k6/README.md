@@ -74,6 +74,22 @@ k6 run k6/soak.js -e BASE_URL=https://api-staging.muvify.com.br
 
 ---
 
+## Rodando via GitHub Actions (sem instalar k6 localmente)
+
+Existe um workflow manual — `.github/workflows/load-test.yml` — que roda
+qualquer um dos 4 cenários acima contra a URL que você indicar. Disparo
+manual de propósito (`workflow_dispatch`): `stress`/`soak` tentam
+ativamente empurrar o servidor até o limite, e não existe ambiente de
+staging automático nem gatilho automático seguro pra isso (ver
+`docs/CARGA-REAL-GUIA-E-GAPS.md`).
+
+Pra usar: aba **Actions** → **Load Test (k6)** → **Run workflow** →
+escolha o cenário e informe a URL alvo. **Nunca aponte `stress`/`soak` pra
+produção com usuários reais** — use um ambiente de staging, ou `smoke`/
+`load` com moderação se staging não existir.
+
+---
+
 ## Variáveis de ambiente
 
 | Variável            | Padrão                         | Descrição                    |

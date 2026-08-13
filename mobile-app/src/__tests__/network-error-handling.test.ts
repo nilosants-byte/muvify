@@ -37,7 +37,11 @@ describe("Timeout de rede (AbortError)", () => {
   it("gera mensagem de conexão lenta quando fetch é abortado", async () => {
     const abortError = new Error("signal timed out");
     abortError.name = "AbortError";
-    mockFetch.mockRejectedValueOnce(abortError);
+    // Frente 14 (segunda camada, carga real), Lote 12: apiRequest agora
+    // retenta GET até 2x extra em falha de rede — mockRejectedValueOnce
+    // deixava as tentativas seguintes sem mock configurado (retornando
+    // undefined em vez de rejeitar), mascarando o erro esperado.
+    mockFetch.mockRejectedValue(abortError);
 
     try {
       await bookingsApi.me("any-token");
@@ -55,7 +59,7 @@ describe("Timeout de rede (AbortError)", () => {
   it("gera mensagem de timeout também quando a mensagem contém 'aborted'", async () => {
     const abortedErr = new Error("The operation was aborted");
     abortedErr.name = "Error";
-    mockFetch.mockRejectedValueOnce(abortedErr);
+    mockFetch.mockRejectedValue(abortedErr);
 
     try {
       await paymentsApi.bookingPayment("any-token", "booking-abc");
@@ -71,7 +75,7 @@ describe("Timeout de rede (AbortError)", () => {
 
 describe("Sem conexão com a internet (falha de rede)", () => {
   it("gera mensagem de sem conexão quando fetch lança TypeError", async () => {
-    mockFetch.mockRejectedValueOnce(new TypeError("Network request failed"));
+    mockFetch.mockRejectedValue(new TypeError("Network request failed"));
 
     try {
       await bookingsApi.me("any-token");
@@ -87,7 +91,7 @@ describe("Sem conexão com a internet (falha de rede)", () => {
   });
 
   it("status 0 distingue erro de rede de erro HTTP", async () => {
-    mockFetch.mockRejectedValueOnce(new TypeError("fetch failed"));
+    mockFetch.mockRejectedValue(new TypeError("fetch failed"));
 
     try {
       await userApi.me("any-token");

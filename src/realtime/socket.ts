@@ -40,6 +40,16 @@ function consultancyRoom(contractId: string) {
   return `consultancy:${contractId}`;
 }
 
+// Frente 14 (segunda camada, carga real), Lote 13: sala pessoal do usuário,
+// unida automaticamente ao conectar — permite avisar "sua contagem de não
+// lidos mudou" sem exigir que o cliente esteja com uma conversa específica
+// aberta (booking/consultancy room), que é o que a Home do profissional
+// precisava pra parar de reconsultar a lista completa de chats a cada 15s
+// só pra manter um badge.
+function userRoom(userId: string) {
+  return `user:${userId}`;
+}
+
 async function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
   try {
     const token = socket.handshake.auth?.token as string | undefined;
@@ -181,6 +191,7 @@ export async function initSocketServer(httpServer: HttpServer) {
   io.use((socket, next) => void authenticateSocket(socket, next));
 
   io.on("connection", (socket) => {
+    void socket.join(userRoom((socket.data as SocketData).userId));
     socket.on("join:booking", safeSocketHandler("join:booking", socket, handleJoinBooking));
     socket.on("leave:booking", safeSocketHandler("leave:booking", socket, handleLeaveBooking));
     socket.on("join:consultancy", safeSocketHandler("join:consultancy", socket, handleJoinConsultancy));
@@ -218,12 +229,24 @@ export function isUserInConsultancyRoom(contractId: string, userId: string): boo
 }
 
 /** Emite uma mensagem nova para quem estiver na sala do agendamento. Best-effort: nunca lança erro. */
-export function emitNewBookingMessage(bookingId: string, message: NewBookingMessagePayload) {
+export function emitNewBookingMessage(
+  bookingId: string,
+  message: NewBookingMessagePayload,
+  participantUserIds: string[]
+) {
   if (!io || !ENABLE_REALTIME_CHAT) {
     return;
   }
   try {
     io.to(bookingRoom(bookingId)).emit("message:new", message);
+    // Frente 14 (segunda camada, carga real), Lote 13: evento leve (sem o
+    // conteúdo da mensagem) pra quem NÃO está com esta conversa aberta —
+    // permite telas como a Home do profissional atualizarem o badge de não
+    // lidos reagindo a um evento de verdade, em vez de reconsultar a lista
+    // completa de chats a cada 15s independente de ter mensagem nova ou não.
+    for (const userId of participantUserIds) {
+      io.to(userRoom(userId)).emit("chat:unread-changed");
+    }
   } catch (error) {
     console.error("[realtime] Falha ao emitir message:new:", error);
     // Frente 13 (segunda camada), Lote 8: a mensagem já está persistida no
@@ -236,12 +259,19 @@ export function emitNewBookingMessage(bookingId: string, message: NewBookingMess
 }
 
 /** Emite uma mensagem nova para quem estiver na sala do contrato de consultoria. Best-effort: nunca lança erro. */
-export function emitNewConsultancyMessage(contractId: string, message: NewConsultancyMessagePayload) {
+export function emitNewConsultancyMessage(
+  contractId: string,
+  message: NewConsultancyMessagePayload,
+  participantUserIds: string[]
+) {
   if (!io || !ENABLE_REALTIME_CHAT) {
     return;
   }
   try {
     io.to(consultancyRoom(contractId)).emit("message:new", message);
+    for (const userId of participantUserIds) {
+      io.to(userRoom(userId)).emit("chat:unread-changed");
+    }
   } catch (error) {
     console.error("[realtime] Falha ao emitir message:new (consultoria):", error);
     Sentry.captureException(error, { tags: { area: "realtime-emit" }, extra: { contractId } });

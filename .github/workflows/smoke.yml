@@ -19,6 +19,15 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Frente 14 (segunda camada, carga real), Lote 10: sem SMOKE_BASE_URL
+      # configurado, o step abaixo era silenciosamente pulado (`if`) e o job
+      # ainda assim aparecia verde no Actions — indistinguível de "smoke
+      # passou" pra quem só olha o resumo, quando na verdade nada foi
+      # testado. Este step torna esse estado visível no log.
+      - name: Avisar se SMOKE_BASE_URL não está configurado
+        if: ${{ env.SMOKE_BASE_URL == '' }}
+        run: |
+          echo "::warning::SMOKE_BASE_URL não configurado — o smoke test pós-deploy foi PULADO, não passou. Configure o secret SMOKE_BASE_URL para ativar este gate de verdade."
       - name: Run smoke flow script
         if: ${{ env.SMOKE_BASE_URL != '' }}
         env:

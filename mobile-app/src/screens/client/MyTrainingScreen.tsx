@@ -40,6 +40,7 @@ import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { MvMediaPreviewButton, MvMediaViewer } from "../../components/mv";
 import { formatDateLabel, formatCurrencyBRL } from "../../utils/formatters";
+import { nextPixPollDelayMs } from "../../utils/pixPolling";
 import { extractApiMessage, handleScreenError } from "../shared/api-helpers";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
@@ -694,15 +695,33 @@ export function MyTrainingScreen({ navigation, route }: Props) {
   const waitingDelivery = data?.waitingDelivery ?? [];
 
   // Frente 9 (segunda camada), Lote 3: enquanto existir um contrato com Pix
-  // pendente aqui, poll a cada 5s (mesmo padrão de BookingConfirmationScreen)
-  // - assim que o webhook confirmar o pagamento em segundo plano, o card
-  // sai sozinho de "aguardando pagamento" sem o cliente precisar puxar pra
+  // pendente aqui, poll (mesmo padrão de BookingConfirmationScreen) - assim
+  // que o webhook confirmar o pagamento em segundo plano, o card sai
+  // sozinho de "aguardando pagamento" sem o cliente precisar puxar pra
   // atualizar manualmente.
+  // Frente 14 (segunda camada, carga real), Lote 14: intervalo fixo de 5s
+  // virou backoff crescente (nextPixPollDelayMs) — mesmo motivo do Lote 14
+  // em BookingConfirmationScreen.
   const hasPendingPix = waitingDelivery.some((item) => item.pix !== null);
+  const pixPollCountRef = useRef(0);
   useEffect(() => {
     if (!hasPendingPix || !isFocused) return;
-    const interval = setInterval(() => { void trainingQuery.refetch(); }, 5000);
-    return () => clearInterval(interval);
+    pixPollCountRef.current = 0;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+    const schedule = () => {
+      timeoutId = setTimeout(async () => {
+        if (cancelled) return;
+        pixPollCountRef.current += 1;
+        await trainingQuery.refetch();
+        if (!cancelled) schedule();
+      }, nextPixPollDelayMs(pixPollCountRef.current));
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, [hasPendingPix, isFocused, trainingQuery.refetch]);
 
   // Planos por tab — separados pela vigencia de CADA treino, nao pelo status do

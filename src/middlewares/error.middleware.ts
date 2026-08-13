@@ -107,6 +107,20 @@ export function errorMiddleware(
     });
   }
 
+  // Erros HTTP genéricos com status/statusCode próprio (ex: body-parser
+  // rejeitando corpo maior que o limite configurado, "PayloadTooLargeError")
+  // chegam aqui sem cair em nenhum dos ramos acima — sem este cheque, viravam
+  // 500 genérico em vez do código correto (Frente 14, segunda camada,
+  // Lote 1, achado durante a validação do teste de limite de corpo).
+  const httpStatus =
+    (error as { status?: unknown }).status ?? (error as { statusCode?: unknown }).statusCode;
+  if (typeof httpStatus === "number" && httpStatus >= 400 && httpStatus < 500) {
+    return response.status(httpStatus).json({
+      message: error.message || "Requisição inválida.",
+      requestId
+    });
+  }
+
   if (log) {
     log.error(error);
   } else {

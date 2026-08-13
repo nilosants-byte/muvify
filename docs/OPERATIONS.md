@@ -42,7 +42,13 @@ Para agendar backups no servidor, rode o scheduler em segundo plano:
 - Mantenha ambientes `staging` e `production` separados no GitHub Environments.
 - Atualize `.env` do servidor antes de cada deploy.
 - Use `docker compose -f docker-compose.prod.yml up -d` para atualizacoes locais.
-- Configure `SMOKE_BASE_URL` e, se necessario, `SMOKE_ADMIN_EMAIL`/`SMOKE_ADMIN_PASSWORD` para o smoke test pos-deploy.
+- Configure `SMOKE_BASE_URL` e, se necessario, `SMOKE_ADMIN_EMAIL`/`SMOKE_ADMIN_PASSWORD` para o smoke test pos-deploy
+  (`.github/workflows/smoke.yml`) — sem essa secret configurada, o job de smoke roda mas pula o teste real sem falhar
+  (o step avisa isso explicitamente no log).
+- Antes de aplicar uma migration em tabela com volume real de producao, ou de escalar para multiplas replicas,
+  revise `docs/CARGA-REAL-GUIA-E-GAPS.md`.
+- Para validar capacidade antes de um release grande, dispare `.github/workflows/load-test.yml` manualmente
+  (`workflow_dispatch`) com o cenario k6 desejado (`smoke`/`load`/`stress`/`soak`) contra o ambiente indicado.
 ## Alertas
 - Para Slack, configure `ALERT_SLACK_WEBHOOK` e `ALERT_SLACK_CHANNEL`.
 - Para webhook generico, configure `ALERT_WEBHOOK_URL`.

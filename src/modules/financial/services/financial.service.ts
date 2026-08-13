@@ -993,7 +993,13 @@ export class FinancialService {
           // estornada via disputa.
           payment: { select: { status: true, refundedAmountCents: true } }
         },
-        orderBy: { scheduledAt: "desc" }
+        orderBy: { scheduledAt: "desc" },
+        // Frente 14 (segunda camada, carga real), Lote 5: única query deste
+        // arquivo sem teto — mesmo padrão (take: 2000) já usado no resto de
+        // financial.service.ts pra evitar resposta/tempo de request
+        // crescendo sem limite com o volume real de um profissional de alto
+        // tráfego.
+        take: 2000
       }),
       // Épico de Frentes, Frente 12, Lote 1: PARTIALLY_REFUNDED entra também -
       // effectiveConsultancyRevenueCents desconta só a fração devolvida.
@@ -1006,14 +1012,16 @@ export class FinancialService {
         include: {
           client: { select: { id: true, name: true } }
         },
-        orderBy: { paymentCapturedAt: "desc" }
+        orderBy: { paymentCapturedAt: "desc" },
+        take: 2000
       }),
       // ciclos de pacote presencial capturados no mes - receita real, nao o
       // valor total do pacote (ver comentario no schema de PresentialPackageCycle)
       prisma.presentialPackageCycle.findMany({
         where: { package: { providerId: provider.id }, capturedAt: { gte: from, lte: to } },
         include: { package: { select: { clientId: true, client: { select: { name: true } } } } },
-        orderBy: { capturedAt: "desc" }
+        orderBy: { capturedAt: "desc" },
+        take: 2000
       }),
       // Frente 3 (segunda camada), Lote 5: renovação de ficha (2ª ficha em
       // diante) nunca entrava aqui — só a 1ª cobrança do contrato (via
@@ -1026,7 +1034,8 @@ export class FinancialService {
           refundedAmountCents: true,
           contract: { select: { paymentAmountCents: true, clientId: true, client: { select: { name: true } } } }
         },
-        orderBy: { createdAt: "desc" }
+        orderBy: { createdAt: "desc" },
+        take: 2000
       })
     ]);
 

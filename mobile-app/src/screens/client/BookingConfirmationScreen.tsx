@@ -20,6 +20,7 @@ import { handleScreenError } from "../shared/api-helpers";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { hapticPaymentSuccess, hapticCta } from "../../utils/haptics";
+import { nextPixPollDelayMs } from "../../utils/pixPolling";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "BookingConfirmation">;
 
@@ -66,6 +67,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
   const [pixPollError, setPixPollError] = useState(false);
   const hasShownChatModalRef = useRef(false);
   const pixFailCountRef = useRef(0);
+  const pixPollCountRef = useRef(0);
 
   const confirmationQuery = useAuthQuery(
     queryKeys.bookings.detail(bookingId),
@@ -111,11 +113,28 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
     }
   }, [booking?.status]);
 
-  // Auto-poll PIX payment status every 5 seconds until confirmed or 3 consecutive failures
+  // Auto-poll PIX payment status until confirmed or 3 consecutive failures.
+  // Frente 14 (segunda camada, carga real), Lote 14: intervalo fixo de 5s
+  // virou backoff crescente (nextPixPollDelayMs) — um pico de vendas Pix
+  // simultâneas não sustenta mais N/5 req/s indefinidamente por venda.
   useEffect(() => {
     if (payment?.method !== "PIX" || payment?.status === "CAPTURED" || pixPollError) return;
-    const interval = setInterval(() => { void checkPaymentOnly(); }, 5000);
-    return () => clearInterval(interval);
+    pixPollCountRef.current = 0;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+    const schedule = () => {
+      timeoutId = setTimeout(async () => {
+        if (cancelled) return;
+        pixPollCountRef.current += 1;
+        await checkPaymentOnly();
+        if (!cancelled) schedule();
+      }, nextPixPollDelayMs(pixPollCountRef.current));
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, [payment?.method, payment?.status, checkPaymentOnly, pixPollError]);
 
   const providerDisplayName = booking?.provider?.displayName ?? "o profissional";

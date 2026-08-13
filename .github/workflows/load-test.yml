@@ -1,0 +1,48 @@
+name: Load Test (k6)
+
+# Frente 14 (segunda camada, carga real), Lote 11: k6/load.js, stress.js e
+# soak.js já existiam mas nunca rodavam — só serviriam se alguém lembrasse
+# de rodar manualmente na própria máquina. Disparo manual (workflow_dispatch)
+# em vez de automático: stress.js e soak.js tentam ativamente empurrar o
+# alvo até o limite (stress.js inclusive avisa no próprio arquivo pra não
+# rodar contra produção com usuários reais) e não existe ambiente de
+# staging dedicado no projeto — rodar isso sem supervisão, automaticamente
+# a cada push, arriscaria degradar produção de verdade ou exigiria manter
+# um segundo ambiente pago só pra este fim.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Cenário k6 a rodar"
+        required: true
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - load
+          - stress
+          - soak
+      target_url:
+        description: "URL do ambiente alvo (ex: https://api-staging.muvify.com.br). NUNCA aponte stress/soak pra produção com usuários reais."
+        required: true
+
+jobs:
+  k6:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar k6 (repositório oficial apt.k6.io)
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+      - name: Rodar cenário ${{ inputs.scenario }}
+        env:
+          CLIENT_EMAIL: ${{ secrets.K6_CLIENT_EMAIL }}
+          CLIENT_PASSWORD: ${{ secrets.K6_CLIENT_PASSWORD }}
+          PROFESSIONAL_EMAIL: ${{ secrets.K6_PROFESSIONAL_EMAIL }}
+          PROFESSIONAL_PASSWORD: ${{ secrets.K6_PROFESSIONAL_PASSWORD }}
+        run: k6 run "k6/${{ inputs.scenario }}.js" -e BASE_URL="${{ inputs.target_url }}"

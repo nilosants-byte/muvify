@@ -52,6 +52,7 @@ import { resolveMediaUrl } from "../../utils/media";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
+import { onChatUnreadChanged } from "../../services/realtime/socket";
 import { computeFreeSlotsForDay } from "../../utils/agendaFreeSlots";
 import { UrgencyCard } from "../../components/professional/UXReformComponents";
 import { ProfessionalNotificationsDrawer } from "./components/ProfessionalNotificationsDrawer";
@@ -343,8 +344,14 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
     useCallback(() => {
       void refreshUnreadNotificationCount();
       void refreshUnreadChatCount();
-      const timer = setInterval(() => void refreshUnreadChatCount(), 15000);
-      return () => clearInterval(timer);
+      // Frente 14 (segunda camada, carga real), Lote 13: era um
+      // setInterval de 15s reconsultando a lista COMPLETA de chats só pra
+      // manter o badge — com milhares de profissionais de Home aberta ao
+      // mesmo tempo, isso virava carga constante no backend mesmo sem
+      // nenhuma mensagem nova de verdade. Agora só refaz a consulta quando
+      // o servidor avisa que algo mudou de fato (evento "chat:unread-changed").
+      const unsubscribe = onChatUnreadChanged(() => void refreshUnreadChatCount());
+      return unsubscribe;
     }, [refreshUnreadNotificationCount, refreshUnreadChatCount])
   );
 

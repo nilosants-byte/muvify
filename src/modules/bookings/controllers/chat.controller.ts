@@ -330,7 +330,7 @@ export class ChatController {
     });
 
     // Avisa em tempo real quem estiver com a conversa aberta (best-effort, nunca bloqueia a resposta)
-    emitNewBookingMessage(bookingId, message);
+    emitNewBookingMessage(bookingId, message, [booking.clientId, booking.provider.userId]);
 
     // Notify the other participant — pula o push se ele já estiver com a
     // sala aberta (vendo a mensagem chegar ao vivo pelo socket).

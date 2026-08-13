@@ -1274,49 +1274,72 @@ async function parseResponse(response: Response) {
   return response.text();
 }
 
+// Frente 14 (segunda camada, carga real), Lote 12: uma única tentativa de
+// fetch — qualquer soluço transitório de rede (troca wifi→4G, elevador,
+// sinal fraco) ia direto pra tela sem nenhuma chance de recuperação
+// automática. Só GET é retentado: é naturalmente idempotente. Retentar
+// POST/PUT/PATCH/DELETE arriscaria duplicar uma operação que na verdade JÁ
+// chegou e foi processada pelo servidor, e só a resposta se perdeu no
+// caminho de volta.
+const NETWORK_RETRY_ATTEMPTS_GET = 2; // + 1 tentativa inicial = 3 no total
+const NETWORK_RETRY_BASE_DELAY_MS = 400;
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
 export async function apiRequest<T = unknown>(
   path: string,
   { method = "GET", token, body }: RequestConfig = {}
 ) {
   const requestUrl = `${API_BASE_URL}${path}`;
-  let response: Response;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
+  const maxAttempts = method === "GET" ? NETWORK_RETRY_ATTEMPTS_GET + 1 : 1;
+  let response: Response | undefined;
 
-  try {
-    response = await fetch(requestUrl, {
-      method,
-      headers: {
-        ...(body ? { "Content-Type": "application/json" } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        // Tela "Meus aparelhos conectados": um nome de aparelho legível
-        // (mesma fonte já usada pro registro de push, push.ts) em vez de
-        // depender só do User-Agent técnico do fetch nativo (curto e
-        // pouco informativo tipo "okhttp/4.x"). Inofensivo em endpoints
-        // que não criam sessão - só login/registro/refresh o leem.
-        ...(Device.deviceName ? { "X-Device-Label": Device.deviceName } : {}),
-        // Header de tunelamento do ngrok — só faz sentido em dev local (npm run start:ngrok).
-        // Nunca deve ir para builds de produção.
-        ...(__DEV__ ? { "ngrok-skip-browser-warning": "true" } : {})
-      },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal
-    });
-  } catch (error) {
-    const timedOut =
-      error instanceof Error &&
-      (error.name === "AbortError" || /aborted|timeout/i.test(error.message));
-    const cause = error instanceof Error ? error.message : "Network request failed";
-    throw new ApiError(0, timedOut ? buildTimeoutErrorMessage() : buildNetworkErrorMessage(), {
-      cause,
-      requestUrl,
-      method
-    });
-  } finally {
-    clearTimeout(timeoutId);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
+
+    try {
+      response = await fetch(requestUrl, {
+        method,
+        headers: {
+          ...(body ? { "Content-Type": "application/json" } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          // Tela "Meus aparelhos conectados": um nome de aparelho legível
+          // (mesma fonte já usada pro registro de push, push.ts) em vez de
+          // depender só do User-Agent técnico do fetch nativo (curto e
+          // pouco informativo tipo "okhttp/4.x"). Inofensivo em endpoints
+          // que não criam sessão - só login/registro/refresh o leem.
+          ...(Device.deviceName ? { "X-Device-Label": Device.deviceName } : {}),
+          // Header de tunelamento do ngrok — só faz sentido em dev local (npm run start:ngrok).
+          // Nunca deve ir para builds de produção.
+          ...(__DEV__ ? { "ngrok-skip-browser-warning": "true" } : {})
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      break;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (attempt < maxAttempts) {
+        await sleep(NETWORK_RETRY_BASE_DELAY_MS * attempt);
+        continue;
+      }
+      const timedOut =
+        error instanceof Error &&
+        (error.name === "AbortError" || /aborted|timeout/i.test(error.message));
+      const cause = error instanceof Error ? error.message : "Network request failed";
+      throw new ApiError(0, timedOut ? buildTimeoutErrorMessage() : buildNetworkErrorMessage(), {
+        cause,
+        requestUrl,
+        method
+      });
+    }
   }
 
-  return finalizeResponse<T>(response);
+  return finalizeResponse<T>(response as Response);
 }
 
 // Frente 10 (segunda camada), Lote 3: quando o backend não manda nenhum

@@ -130,7 +130,18 @@ function getTransporter() {
       },
       tls: {
         rejectUnauthorized: env.SMTP_TLS_REJECT_UNAUTHORIZED
-      }
+      },
+      // Frente 14 (segunda camada, carga real), Lote 3: sem estes três, o
+      // Nodemailer usa os defaults do driver SMTP subjacente — na prática
+      // sem timeout de socket nenhum (fica esperando indefinidamente um
+      // servidor de destino lento/travado responder). Como
+      // email-queue.service.ts entrega os itens da fila em série (um de
+      // cada vez), um único destinatário problemático travava a fila
+      // inteira por tempo indeterminado, atrasando verificação de e-mail e
+      // redefinição de senha de todo mundo atrás dele na fila.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000
     });
   }
 

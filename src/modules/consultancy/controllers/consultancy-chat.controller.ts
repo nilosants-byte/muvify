@@ -293,7 +293,7 @@ export class ConsultancyChatController {
     });
 
     // Avisa em tempo real quem estiver com a conversa aberta (best-effort, nunca bloqueia a resposta)
-    emitNewConsultancyMessage(contractId, message);
+    emitNewConsultancyMessage(contractId, message, [contract.clientId, contract.provider.userId]);
 
     // Épico de Frentes, Frente 9, Lote 9: mesmo achado do chat de
     // agendamento - pula o push se o destinatário já estiver com a sala

@@ -62,13 +62,6 @@ app.use(
     origin: env.CORS_ORIGIN.split(",").map((item) => item.trim()).filter(Boolean)
   })
 );
-// Provider profile may include base64 video payloads. Keep this limit scoped to the
-// specific route so the rest of the API remains on a stricter payload budget.
-app.use(
-  "/api/providers/profile",
-  express.json({ limit: env.PROVIDER_PROFILE_JSON_LIMIT }),
-  express.urlencoded({ extended: true, limit: env.PROVIDER_PROFILE_JSON_LIMIT })
-);
 app.use("/api/payments/webhook", express.raw({ type: "application/json" }));
 app.use(express.json({ limit: env.API_JSON_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: env.API_JSON_LIMIT }));

@@ -69,14 +69,18 @@ describe("Frente 13, Lote 8 — Sentry na infraestrutura de tempo real", () => {
     });
 
     expect(() =>
-      emitNewBookingMessage("booking-id-teste", {
-        id: "msg-1",
-        senderId: "user-1",
-        isSystem: false,
-        content: "oi",
-        readAt: null,
-        createdAt: new Date()
-      })
+      emitNewBookingMessage(
+        "booking-id-teste",
+        {
+          id: "msg-1",
+          senderId: "user-1",
+          isSystem: false,
+          content: "oi",
+          readAt: null,
+          createdAt: new Date()
+        },
+        ["user-1", "user-2"]
+      )
     ).not.toThrow();
 
     expect(captureExceptionMock).toHaveBeenCalledWith(
@@ -96,14 +100,18 @@ describe("Frente 13, Lote 8 — Sentry na infraestrutura de tempo real", () => {
     });
 
     expect(() =>
-      emitNewConsultancyMessage("contract-id-teste", {
-        id: "msg-2",
-        senderId: "user-2",
-        isSystem: false,
-        content: "oi",
-        readAt: null,
-        createdAt: new Date()
-      })
+      emitNewConsultancyMessage(
+        "contract-id-teste",
+        {
+          id: "msg-2",
+          senderId: "user-2",
+          isSystem: false,
+          content: "oi",
+          readAt: null,
+          createdAt: new Date()
+        },
+        ["user-1", "user-2"]
+      )
     ).not.toThrow();
 
     expect(captureExceptionMock).toHaveBeenCalledWith(

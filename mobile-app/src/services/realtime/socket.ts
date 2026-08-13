@@ -46,7 +46,14 @@ export function connectSocket(accessToken: string) {
   disconnectSocket();
   socket = io(SOCKET_BASE_URL, {
     auth: { token: accessToken },
-    transports: ["websocket"],
+    // Frente 14 (segunda camada, carga real), Lote 15: só "websocket" (sem
+    // fallback) fazia a conexão falhar de vez em redes de operadora com
+    // proxy que bloqueia ou não faz upgrade de WebSocket corretamente — o
+    // app ficava preso em reconexão automática indefinida tentando só
+    // websocket de novo. "websocket" continua primeiro na lista (latência
+    // menor pro caso comum, que já funciona hoje), "polling" entra como
+    // fallback real quando o primeiro não emplaca.
+    transports: ["websocket", "polling"],
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 10000,
@@ -94,4 +101,15 @@ export function leaveConsultancyRoom(contractId: string) {
 export function onNewBookingMessage(handler: (message: NewBookingMessageEvent) => void) {
   socket?.on("message:new", handler);
   return () => socket?.off("message:new", handler);
+}
+
+// Frente 14 (segunda camada, carga real), Lote 13: evento leve (sem
+// conteúdo de mensagem) emitido pra sala pessoal do usuário sempre que
+// alguma conversa dele recebe mensagem nova — mesmo sem estar com aquela
+// conversa específica aberta. Substitui o polling de 15s que a Home do
+// profissional fazia contra a lista completa de chats só pra manter o
+// badge de não lidos.
+export function onChatUnreadChanged(handler: () => void) {
+  socket?.on("chat:unread-changed", handler);
+  return () => socket?.off("chat:unread-changed", handler);
 }

@@ -211,7 +211,9 @@ async function processMonthlyReset(monthKey: string) {
   }
 }
 
-async function processDailyPositionTracker(now: Date) {
+// Exportada só pra permitir teste direto do lote de concorrência (Frente 14,
+// Lote 2) sem depender do timer de startCommunityJobs.
+export async function processDailyPositionTracker(now: Date) {
   const weekKey = getWeekKey(now);
 
   const snapshots = await prisma.rankingSnapshot.findMany({
@@ -220,25 +222,22 @@ async function processDailyPositionTracker(now: Date) {
     take: 10000,
   });
 
-  // Compute global positions for this week
-  const updates: Array<Promise<void>> = [];
-
-  for (let i = 0; i < snapshots.length; i++) {
-    const currentPosition = i + 1;
-    const snap = snapshots[i];
+  // Frente 14 (segunda camada, carga real), Lote 2: o `for` original disparava
+  // até `snapshots.length` updates (e outras queries de post/conquista) sem
+  // nenhum limite de concorrência — com uma base de usuários ranqueados
+  // grande, isso saturava sozinho o pool de conexões compartilhado com o
+  // resto da API a cada execução horária do job. Mesmo padrão de lote (5
+  // por vez) já usado em outros pontos do código (ex: booking.service.ts).
+  async function processSnapshot(snap: (typeof snapshots)[number], index: number) {
+    const currentPosition = index + 1;
     const prevPosition = snap.lastKnownPosition;
 
-    // Update stored position
-    updates.push(
-      prisma.rankingSnapshot
-        .update({
-          where: { id: snap.id },
-          data: { lastKnownPosition: currentPosition },
-        })
-        .then(() => undefined)
-    );
+    await prisma.rankingSnapshot.update({
+      where: { id: snap.id },
+      data: { lastKnownPosition: currentPosition },
+    });
 
-    if (prevPosition === null || prevPosition === undefined) continue;
+    if (prevPosition === null || prevPosition === undefined) return;
 
     // Position improved
     if (currentPosition < prevPosition) {
@@ -278,7 +277,14 @@ async function processDailyPositionTracker(now: Date) {
     }
   }
 
-  await Promise.all(updates);
+  const POSITION_UPDATE_CONCURRENCY = 5;
+  for (let i = 0; i < snapshots.length; i += POSITION_UPDATE_CONCURRENCY) {
+    await Promise.allSettled(
+      snapshots
+        .slice(i, i + POSITION_UPDATE_CONCURRENCY)
+        .map((snap, offset) => processSnapshot(snap, i + offset))
+    );
+  }
 }
 
 export function startCommunityJobs() {
