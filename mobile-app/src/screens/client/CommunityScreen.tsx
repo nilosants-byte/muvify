@@ -806,7 +806,7 @@ const FeedPostCard = React.memo(function FeedPostCard({
                             <Ionicons name="create-outline" size={16} color={theme.primary} />
                           </TouchableOpacity>
                           <TouchableOpacity onPress={() => handleDeleteComment(c)} hitSlop={10}>
-                            <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                            <Ionicons name="trash-outline" size={16} color={theme.danger} />
                           </TouchableOpacity>
                         </View>
                       )}
@@ -952,8 +952,8 @@ const FeedPostCard = React.memo(function FeedPostCard({
                 }}
                 style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 24, paddingVertical: 16 }}
               >
-                <Ionicons name="trash-outline" size={22} color="#ef4444" />
-                <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 15, color: "#ef4444" }}>Excluir post</Text>
+                <Ionicons name="trash-outline" size={22} color={theme.danger} />
+                <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 15, color: theme.danger }}>Excluir post</Text>
               </TouchableOpacity>
             )}
             {/* Cancelar */}

@@ -10,6 +10,7 @@ import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
@@ -66,6 +67,12 @@ export function ProfessionalReviewsScreen({ navigation }: Props) {
   const total = reviewsQuery.data?.total ?? 0;
   const hasMore = (page + 1) * PAGE_SIZE < total;
   const favoritedByCount = favoritedByQuery.data?.count ?? 0;
+  // Frente 18 (segunda camada, polimento visual): sem isso, a tela "piscava"
+  // por um instante "Nenhum aluno te favoritou" e "Você ainda não recebeu
+  // avaliações" antes dos dados reais chegarem — as telas irmãs do mesmo
+  // padrão (ex.: ProviderDebtsScreen, FinancialHistoryScreen) já guardam o
+  // estado vazio atrás de isLoading.
+  const isLoading = reviewsQuery.isLoading || favoritedByQuery.isLoading;
 
   async function submitResponse(reviewId: string) {
     const text = responseText.trim();
@@ -90,6 +97,13 @@ export function ProfessionalReviewsScreen({ navigation }: Props) {
       <ProfessionalScreenHeader title="Minhas avaliações" onBack={() => navigation.goBack()} />
       <ScreenEntrance>
         <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+          {isLoading ? (
+            <>
+              <SkeletonCard />
+              <SkeletonCard />
+            </>
+          ) : (
+            <>
           <MvCard>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <Ionicons name="heart" size={18} color={theme.danger} />
@@ -165,6 +179,8 @@ export function ProfessionalReviewsScreen({ navigation }: Props) {
               />
             </View>
           ) : null}
+            </>
+          )}
         </ScrollView>
       </ScreenEntrance>
     </View>

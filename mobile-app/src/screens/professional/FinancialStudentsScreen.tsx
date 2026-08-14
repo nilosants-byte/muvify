@@ -123,7 +123,6 @@ export function FinancialStudentsScreen({ navigation }: Props) {
   const isDark = theme.mode === "dark";
   const green = isDark ? theme.primary : "#16A34A";
   const blue  = isDark ? "#38BDF8" : "#0284C7";
-  const RED   = isDark ? "#F87171" : "#E53935";
   const warnColor  = isDark ? "#FCD34D" : "#B45309";
   const warnBg     = isDark ? "rgba(252,211,77,0.08)" : "rgba(180,83,9,0.07)";
   const warnBorder = isDark ? "rgba(252,211,77,0.18)" : "rgba(180,83,9,0.15)";
@@ -362,7 +361,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <MvText variant="semi3" style={{ flex: 1 }}>{s.name}</MvText>
+              <MvText variant="semi3" numberOfLines={1} style={{ flex: 1 }}>{s.name}</MvText>
               <MvText variant="badge" style={{ color: blue }}>{fmtCents(s.monthlyValueCents)}</MvText>
             </View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
@@ -381,13 +380,13 @@ export function FinancialStudentsScreen({ navigation }: Props) {
             <Ionicons name="pencil-outline" size={15} color={theme.text3} />
           </PressableScale>
           <PressableScale scale={0.88} onPress={() => void handleDeleteStudent(s.id, s.name)}>
-            <Ionicons name="trash-outline" size={16} color={RED} />
+            <Ionicons name="trash-outline" size={16} color={theme.danger} />
           </PressableScale>
         </View>
         {s.isActive && !dim && s.billableThisMonth ? (
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: theme.border }}>
             {!isPaid && (daysOverdue > 0 || s.paymentDueDay) ? (
-              <MvText variant="badge" style={{ fontSize: 10, color: daysOverdue > 0 ? RED : warnColor }}>
+              <MvText variant="badge" style={{ fontSize: 10, color: daysOverdue > 0 ? theme.danger : warnColor }}>
                 {daysOverdue > 0 ? `Atrasado ${daysOverdue}d` : `Vence dia ${s.paymentDueDay}`}
               </MvText>
             ) : <View />}
@@ -486,7 +485,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
                       </View>
                       <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: "row", alignItems: "center" }}>
-                          <MvText variant="semi3" style={{ flex: 1, fontSize: 13 }}>{c.name}</MvText>
+                          <MvText variant="semi3" numberOfLines={1} style={{ flex: 1, fontSize: 13 }}>{c.name}</MvText>
                           <MvText variant="semi2" style={{ color: green, fontSize: 14, letterSpacing: -0.5 }}>{fmtCents(c.completedCents)}</MvText>
                         </View>
                         <MvText variant="body4" color="secondary" style={{ fontSize: 10 }}>

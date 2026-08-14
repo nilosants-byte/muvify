@@ -11,9 +11,10 @@ import { PresentialPackage, presentialPackagesApi } from "../../services/api/cli
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import type { MvTheme } from "../../theme/MvColors";
-import { MvAvatar } from "../../components/mv";
+import { MvAvatar, MvEmptyState } from "../../components/mv";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { PressableScale } from "../../components/polish/PressableScale";
+import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { handleScreenError } from "../shared/api-helpers";
 import { formatCurrencyBRL, formatBRDate, getInitials } from "../../utils/formatters";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
@@ -73,14 +74,17 @@ export function MyPresentialPackagesScreen({ navigation }: Props) {
 
       <ScreenEntrance>
         <ScrollView contentContainerStyle={{ padding: S.px, gap: 12, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-          {packages.length === 0 && !packagesQuery.isLoading ? (
-            <View style={{ alignItems: "center", padding: 24, gap: 10 }}>
-              <Ionicons name="repeat-outline" size={36} color={theme.text3} />
-              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Nenhum pacote ainda</Text>
-              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, textAlign: "center" }}>
-                Pacotes presenciais aparecem aqui assim que você contratar um com algum profissional.
-              </Text>
+          {packagesQuery.isLoading ? (
+            <View style={{ gap: 12 }}>
+              {[0, 1, 2].map((i) => <SkeletonCard key={i} />)}
             </View>
+          ) : packages.length === 0 ? (
+            <MvEmptyState
+              icon="repeat-outline"
+              title="Nenhum pacote ainda"
+              description="Pacotes presenciais aparecem aqui assim que você contratar um com algum profissional."
+              style={{ paddingTop: 40 }}
+            />
           ) : null}
 
           {packages.map((pkg) => {

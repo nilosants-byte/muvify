@@ -10,6 +10,7 @@ import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { FinancialDashboard, FinancialGoal, financialApi, providersApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
+import { C } from "../../theme/v2tokens";
 import { MvButton, MvCard, MvInput, MvModalSheet, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { SkeletonGoalsTab } from "../../components/polish/SkeletonCard";
@@ -232,10 +233,10 @@ export function FinancialGoalsScreen({ navigation }: Props) {
               <GoalBar label="Faturamento" current={effectiveRevenue} target={goal.targetRevenueCents} formatFn={fmtCents} color={green} isDark={isDark} />
             ) : null}
             {goal?.targetStudents && d ? (
-              <GoalBar label="Alunos ativos" current={activeStudentsCount} target={goal.targetStudents} formatFn={v => `${v} aluno${v !== 1 ? "s" : ""}`} color="#42A5F5" isDark={isDark} />
+              <GoalBar label="Alunos ativos" current={activeStudentsCount} target={goal.targetStudents} formatFn={v => `${v} aluno${v !== 1 ? "s" : ""}`} color={C.sky} isDark={isDark} />
             ) : null}
             {goal?.targetWeeklyClasses && d ? (
-              <GoalBar label="Aulas por semana" current={d.weeklyClasses} target={goal.targetWeeklyClasses} formatFn={v => `${v} aula${v !== 1 ? "s" : ""}`} color="#FF9800" isDark={isDark} />
+              <GoalBar label="Aulas por semana" current={d.weeklyClasses} target={goal.targetWeeklyClasses} formatFn={v => `${v} aula${v !== 1 ? "s" : ""}`} color={C.amber} isDark={isDark} />
             ) : null}
           </MvCard>
         </ScrollView>

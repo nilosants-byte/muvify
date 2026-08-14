@@ -762,7 +762,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
       ) : (
       <ScreenEntrance>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 14 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120, gap: 14 }}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <MvRefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />

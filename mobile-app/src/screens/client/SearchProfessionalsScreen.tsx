@@ -267,7 +267,7 @@ export function SearchProfessionalsScreen({ route, navigation }: Props) {
               onPress={() => navigation.navigate("ProfessionalDetail", { professionalId: item.id })}
               style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 4 }}
             >
-              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{item.displayName}</Text>
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }} numberOfLines={1}>{item.displayName}</Text>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }} numberOfLines={1}>{item.bio}</Text>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 2 }}>
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.primary }}>★ {averageToFive(item.avgRating ?? item.averageRating).toFixed(1)}</Text>

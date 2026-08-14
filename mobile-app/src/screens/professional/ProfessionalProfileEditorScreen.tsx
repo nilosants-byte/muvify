@@ -19,6 +19,7 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { maskPriceInput } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
@@ -305,6 +306,29 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
     if (parent) parent.navigate(screen);
   };
 
+  // Frente 18 (segunda camada, polimento visual): sem cache (primeiríssima
+  // abertura da tela, sem `user.providerProfile` ainda) os campos nasciam
+  // vazios e só preenchiam quando a query resolvia — mesmo padrão de
+  // skeleton-só-no-frio já usado em ClientProfileScreen.
+  if (loading && !cachedProfile) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.backBtn, borderWidth: 1, borderColor: theme.border }} />
+          <View style={{ flex: 1 }}>
+            <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, letterSpacing: -0.3 }}>Meu perfil</MvText>
+          </View>
+        </View>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }} showsVerticalScrollIndicator={false}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
@@ -316,9 +340,9 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
           scale={0.92}
           onPress={goBack}
           accessibilityLabel="Voltar"
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.backBtn, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
         >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
+          <Ionicons name="chevron-back" size={20} color={theme.text1} />
         </PressableScale>
         <View style={{ flex: 1 }}>
           <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, letterSpacing: -0.3 }}>Meu perfil</MvText>
@@ -329,7 +353,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       </View>
 
       <ScreenEntrance>
-      <ScrollView automaticallyAdjustKeyboardInsets={true} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40, gap: 14 }} showsVerticalScrollIndicator={false}>
+      <ScrollView automaticallyAdjustKeyboardInsets={true} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120, gap: 14 }} showsVerticalScrollIndicator={false}>
 
         {/* Foto circular */}
         <MvCard>
@@ -395,7 +419,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                     alignItems: "center", justifyContent: "center",
                   }}
                 >
-                  <Ionicons name="trash-outline" size={18} color="#f44336" />
+                  <Ionicons name="trash-outline" size={18} color={theme.danger} />
                 </PressableScale>
               </View>
             </View>
@@ -422,7 +446,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                     alignItems: "center", justifyContent: "center",
                   }}
                 >
-                  <Ionicons name="trash-outline" size={18} color="#f44336" />
+                  <Ionicons name="trash-outline" size={18} color={theme.danger} />
                 </PressableScale>
               </View>
             </View>

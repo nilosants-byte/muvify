@@ -209,7 +209,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
         <ScrollView
           style={{ flex: 1 }}
           automaticallyAdjustKeyboardInsets={true}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 12 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120, gap: 12 }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <MvRefreshControl refreshing={centerQuery.isRefetching} onRefresh={() => void onRefresh()} />

@@ -13,6 +13,8 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { formatCurrencyBRL, formatBRDate } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
 import { S, DISPLAY, C } from "../../theme/v2tokens";
+import { MvEmptyState } from "../../components/mv";
+import { SkeletonCard } from "../../components/polish/SkeletonCard";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "MyDisputes">;
 
@@ -83,14 +85,17 @@ export function MyDisputesScreen({ navigation }: Props) {
         contentContainerStyle={{ padding: S.px, gap: 12, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        {disputes.length === 0 && !disputesQuery.isLoading ? (
-          <View style={{ alignItems: "center", padding: 24, gap: 10 }}>
-            <Ionicons name="checkmark-circle-outline" size={36} color={theme.text3} />
-            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Nenhuma disputa</Text>
-            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3, textAlign: "center" }}>
-              Você não tem nenhuma disputa em andamento ou no histórico.
-            </Text>
+        {disputesQuery.isLoading ? (
+          <View style={{ gap: 12 }}>
+            {[0, 1, 2].map((i) => <SkeletonCard key={i} />)}
           </View>
+        ) : disputes.length === 0 ? (
+          <MvEmptyState
+            icon="checkmark-circle-outline"
+            title="Nenhuma disputa"
+            description="Você não tem nenhuma disputa em andamento ou no histórico."
+            style={{ paddingTop: 40 }}
+          />
         ) : null}
 
         {disputes.map((dispute) => {

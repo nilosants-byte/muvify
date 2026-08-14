@@ -602,9 +602,9 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
             onPress={() => navigation.navigate("ProfessionalHome")}
             accessibilityRole="button"
             accessibilityLabel="Voltar"
-            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.backBtn, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
           >
-            <Ionicons name="chevron-back" size={20} color={theme.text2} />
+            <Ionicons name="chevron-back" size={20} color={theme.text1} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Minha Agenda</MvText>
@@ -630,7 +630,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
         <SectionList
           contentContainerStyle={{
             paddingHorizontal: 16,
-            paddingBottom: 90,
+            paddingBottom: 120,
             gap: 8,
           }}
           sections={activeTab === "day" ? [] : monthSections}
@@ -977,7 +977,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                             </View>
                             <MvBadge label="Bloqueado" variant="orange" />
                             <TouchableOpacity onPress={() => void removeManualBlock(item.block.id)} hitSlop={8}>
-                              <Ionicons name="trash-outline" size={16} color="#f44336" />
+                              <Ionicons name="trash-outline" size={16} color={theme.danger} />
                             </TouchableOpacity>
                           </View>
                         );
@@ -1037,7 +1037,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                               disabled={deletingAvailId === containingRange.id}
                               hitSlop={8}
                             >
-                              <Ionicons name="trash-outline" size={16} color={deletingAvailId === containingRange.id ? theme.text3 : "#f44336"} />
+                              <Ionicons name="trash-outline" size={16} color={deletingAvailId === containingRange.id ? theme.text3 : theme.danger} />
                             </TouchableOpacity>
                           ) : null}
                         </View>

@@ -169,9 +169,9 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
           scale={0.92}
           onPress={() => navigation.goBack()}
           accessibilityLabel="Voltar"
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.backBtn, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
         >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
+          <Ionicons name="chevron-back" size={20} color={theme.text1} />
         </PressableScale>
         <View style={{ flex: 1 }}>
           <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Gestão de Alunos</MvText>
@@ -243,9 +243,9 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
           scale={0.92}
           onPress={() => navigation.goBack()}
           accessibilityLabel="Voltar"
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.backBtn, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
         >
-          <Ionicons name="chevron-back" size={20} color={theme.text2} />
+          <Ionicons name="chevron-back" size={20} color={theme.text1} />
         </PressableScale>
         <View style={{ flex: 1 }}>
           <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Gestão de Alunos</MvText>

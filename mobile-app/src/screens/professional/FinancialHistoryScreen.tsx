@@ -223,7 +223,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
   const { theme } = useMvTheme();
   const isDark = theme.mode === "dark";
   const green = isDark ? theme.primary : "#16A34A";
-  const RED   = isDark ? "#F87171" : "#E53935";
+  const RED   = theme.danger;
   const queryClient = useQueryClient();
 
   const now = currentMonthStr();

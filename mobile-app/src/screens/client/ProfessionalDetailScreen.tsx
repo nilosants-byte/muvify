@@ -350,7 +350,7 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
               size="lg"
             />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.02 * 22 }}>{provider.displayName}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.02 * 22 }}>{provider.displayName}</Text>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 4 }}>{categoryLabel}</Text>
               <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                 {consultancyCatalog?.onlineConsultancyEnabled && (

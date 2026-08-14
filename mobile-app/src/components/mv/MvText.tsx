@@ -29,8 +29,12 @@ export function MvText({ variant = "body1", color, style, children, ...rest }: M
       case "secondary": return theme.text2;
       case "tertiary": return theme.text3;
       case "green": return theme.textGreen;
-      case "danger": return theme.mode === "dark" ? "#EF5350" : "#c62828";
-      case "warning": return theme.mode === "dark" ? "#FF9800" : "#9a4e00";
+      // Frente 18 (segunda camada, polimento visual): eram tons de vermelho/
+      // âmbar próprios, diferentes de theme.danger/theme.warning — duas
+      // paletas de "perigo"/"aviso" coexistindo sem motivo (mesmo padrão já
+      // corrigido pontualmente em telas espalhadas na mesma frente).
+      case "danger": return theme.danger;
+      case "warning": return theme.warning;
       default: return color;
     }
   })();

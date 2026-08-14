@@ -1284,7 +1284,7 @@ export function ClientHomeScreen({ navigation }: Props) {
         </View>
       ) : (
       <ScrollView automaticallyAdjustKeyboardInsets={true}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={
           <RefreshControl
             refreshing={bookingsQuery.isRefetching}
@@ -1446,7 +1446,7 @@ export function ClientHomeScreen({ navigation }: Props) {
           </View>
           {nextBooking ? (
             <>
-              <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: theme.text1, letterSpacing: -0.02 * 20 }}>{nextBooking.provider?.displayName ?? "Seu personal"}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: theme.text1, letterSpacing: -0.02 * 20 }}>{nextBooking.provider?.displayName ?? "Seu personal"}</Text>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, marginTop: 4 }}>
                 {formatBookingDate(nextBooking.scheduledAt)}
               </Text>

@@ -953,15 +953,17 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
           accessibilityRole="button"
           accessibilityLabel="Voltar"
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 15,
+            width: 40,
+            height: 40,
+            borderRadius: 20,
             backgroundColor: theme.backBtn,
+            borderWidth: 1,
+            borderColor: theme.border,
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <Ionicons name="chevron-back" size={18} color={theme.text2} />
+          <Ionicons name="chevron-back" size={20} color={theme.text1} />
         </TouchableOpacity>
 
         <View style={{ flex: 1 }}>
@@ -996,7 +998,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
           <Ionicons
             name={showCreateExerciseForm ? "close" : "add"}
             size={20}
-            color={showCreateExerciseForm ? "#f44336" : theme.primary}
+            color={showCreateExerciseForm ? theme.danger : theme.primary}
           />
         </TouchableOpacity>
       </View>
@@ -1467,7 +1469,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                               accessibilityRole="button"
                               accessibilityLabel={`Excluir exercício ${exercise.name}`}
                             >
-                              <Ionicons name="trash-outline" size={12} color={deletingExerciseId === exercise.id ? theme.text3 : "#f44336"} />
+                              <Ionicons name="trash-outline" size={12} color={deletingExerciseId === exercise.id ? theme.text3 : theme.danger} />
                             </TouchableOpacity>
                           </>
                         ) : null}
@@ -1524,7 +1526,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                           accessibilityRole="button"
                           accessibilityLabel={`Excluir exercício ${exercise.name}`}
                         >
-                          <Ionicons name="trash-outline" size={16} color="#f44336" />
+                          <Ionicons name="trash-outline" size={16} color={theme.danger} />
                         </TouchableOpacity>
                       </View>
                       <MvInput
@@ -1711,7 +1713,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                                       accessibilityRole="button"
                                       accessibilityLabel={`Excluir exercício ${exercise.name}`}
                                     >
-                                      <Ionicons name="trash-outline" size={16} color="#f44336" />
+                                      <Ionicons name="trash-outline" size={16} color={theme.danger} />
                                     </TouchableOpacity>
                                   </View>
                                   <MvInput
