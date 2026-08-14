@@ -308,6 +308,7 @@ export function AuthRegisterScreen({ navigation }: Props) {
           // TalkBack não tinha como saber se já tinha marcado ou não.
           accessibilityState={{ checked: acceptedTerms }}
           style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, marginTop: 18, minHeight: 44 }}
+          testID="button.auth.register.accept-terms"
         >
           <View style={{
             width: 20, height: 20, borderRadius: 6,

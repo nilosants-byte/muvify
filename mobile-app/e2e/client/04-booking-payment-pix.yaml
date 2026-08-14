@@ -1,0 +1,64 @@
+# Client: cria um agendamento de verdade (categoria > profissional > data >
+# horário) e gera uma cobrança PIX — cobertura que faltava por completo
+# antes da Frente 16 (o antigo "critical-booking-flow" só abria um
+# agendamento já existente via fixture, sem criar nada).
+#
+# Pré-requisito: QA Personal precisa ter disponibilidade cadastrada
+# (create-qa-users.ts semeia 08:00-20:00 todo dia da semana — rode
+# `npm run e2e:seed` antes).
+#
+# Limitação conhecida: não valida a captura real do PIX (exige webhook do
+# Mercado Pago) — o flow para depois de gerar a cobrança e confirmar que o
+# código/QR aparece na tela. Captura real segue em validação manual
+# (docs/QA-E2E-CHECKLIST.md).
+#
+# Executa: maestro test client/04-booking-payment-pix.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- runFlow: ../helpers/_login-client.yaml
+
+- tapOn: "Personal Trainer"
+
+- assertVisible:
+    id: "screen.client.professionals-list"
+
+- tapOn: "Agendar"
+
+- assertVisible:
+    id: "screen.client.create-booking"
+
+# Seleciona o primeiro dia disponível no calendário (Maestro tapa o
+# primeiro elemento habilitado quando o id casa por regex).
+- tapOn:
+    id: "button\\.booking\\.calendar-day\\..*"
+
+# Seleciona o primeiro horário livre daquele dia
+- tapOn:
+    id: "button\\.booking\\.slot\\..*"
+
+- tapOn:
+    id: "button.booking.payment.pix"
+
+# Se a data escolhida cair em menos de 7 dias, o app exige esse aceite
+# extra (regra do CDC) antes de liberar o botão de confirmar — opcional
+# porque só aparece dependendo de qual dia do calendário foi selecionado.
+- tapOn:
+    id: "button.booking.acknowledge-near-term"
+    optional: true
+
+- tapOn:
+    id: "button.booking.submit"
+
+- assertVisible:
+    id: "screen.client.booking-confirmation"
+- takeScreenshot: "booking-confirmation-created"
+
+- tapOn:
+    id: "button.booking-confirmation.generate-pix"
+
+- assertVisible: "Código PIX"
+- takeScreenshot: "booking-pix-charge-generated"

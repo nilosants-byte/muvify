@@ -9,7 +9,7 @@ appId: com.personalapp.mobile
 - runFlow: ../helpers/_login-client.yaml
 
 - tapOn:
-    text: "Perfil"
+    id: "nav.client.v2.profile"
 
 - assertVisible:
     id: "screen.client.profile"

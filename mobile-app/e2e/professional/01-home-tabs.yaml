@@ -1,0 +1,48 @@
+# Professional: navegação pelas 5 abas da bottom nav (ProfessionalBottomNav)
+# Executa: maestro test professional/01-home-tabs.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- runFlow: ../helpers/_login-professional.yaml
+
+# Verifica tab Início (ativa por padrão)
+- assertVisible:
+    id: "screen.professional.home"
+- takeScreenshot: "professional-tab-inicio"
+
+# Navega para Agenda
+- tapOn:
+    id: "nav.bottom.agenda"
+- assertVisible:
+    id: "screen.professional.agenda"
+- takeScreenshot: "professional-tab-agenda"
+
+# Navega para Consultoria
+- tapOn:
+    id: "nav.bottom.consultoria"
+- assertVisible:
+    id: "screen.professional.consultancy"
+- takeScreenshot: "professional-tab-consultoria"
+
+# Navega para Alunos
+- tapOn:
+    id: "nav.bottom.alunos"
+- assertVisible:
+    id: "screen.professional.students"
+- takeScreenshot: "professional-tab-alunos"
+
+# Navega para Financeiro
+- tapOn:
+    id: "nav.bottom.financeiro"
+- assertVisible:
+    id: "screen.professional.finance"
+- takeScreenshot: "professional-tab-financeiro"
+
+# Volta para Início
+- tapOn:
+    id: "nav.bottom.home"
+- assertVisible:
+    id: "screen.professional.home"

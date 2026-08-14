@@ -1,0 +1,60 @@
+# Auth: exclusão de conta (LGPD) — fluxo destrutivo e irreversível que,
+# até a Frente 16, não tinha nenhuma automação nem constava no catálogo de
+# cenários E2E.
+#
+# Usa a MESMA conta criada por auth/04-register-success.yaml
+# (e2e.novo@muvify.local) — os dois arquivos formam um ciclo de vida
+# completo dentro da pasta auth/ (roda em ordem alfabética: 04 cria, 07
+# apaga), sem tocar nos usuários fixos de QA (qa.aluno@/qa.personal@)
+# usados por todo o resto da suíte.
+#
+# Executa: maestro test auth/07-delete-account.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- assertVisible:
+    id: "screen.auth.login"
+
+- tapOn:
+    id: "input.auth.login.email"
+- inputText: "e2e.novo@muvify.local"
+
+- tapOn:
+    id: "input.auth.login.password"
+- inputText: "Teste123456"
+
+- tapOn:
+    id: "button.auth.login.submit"
+
+- assertVisible: "Início"
+
+- tapOn:
+    id: "nav.client.v2.profile"
+- assertVisible:
+    id: "screen.client.profile"
+
+- tapOn:
+    id: "button.client.profile.open-settings"
+- assertVisible:
+    id: "screen.client.settings"
+
+- tapOn:
+    id: "button.settings.delete-account"
+
+# Confirma o alerta nativo de aviso ("Esta ação é permanente e irreversível...")
+- tapOn: "Continuar"
+
+- tapOn:
+    id: "input.password-confirm-modal.password"
+- inputText: "Teste123456"
+
+- tapOn:
+    id: "button.password-confirm-modal.confirm"
+
+# Conta excluída → sessão encerrada → volta pro login
+- assertVisible:
+    id: "screen.auth.login"
+- takeScreenshot: "account-deleted"

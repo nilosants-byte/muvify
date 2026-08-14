@@ -607,7 +607,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 10 }}>
         {/* Row 1: Avatar | Logo centralizada | Bell */}
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <PressableScale onPress={openDrawer} scale={0.92} accessibilityLabel="Abrir menu" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <PressableScale onPress={openDrawer} scale={0.92} accessibilityLabel="Abrir menu" testID="button.professional.open-drawer" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <MvAvatar
               initials={initials}
               size={40}
@@ -1248,12 +1248,13 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                   CONTA
                 </MvText>
                 {([
-                  { icon: "person-outline" as const, label: "Meu perfil", onPress: () => { closeDrawer(); (navigation as any).navigate("ProfessionalTabs", { screen: "ProfessionalProfileEditor" }); } },
-                  { icon: "lock-closed-outline" as const, label: "Segurança", onPress: () => { closeDrawer(); goToStack("Security"); } },
-                  { icon: "card-outline" as const, label: "Conta de recebimento", onPress: () => { closeDrawer(); goToStack("ConnectPayoutAccount"); } },
+                  { key: "my-profile", icon: "person-outline" as const, label: "Meu perfil", onPress: () => { closeDrawer(); (navigation as any).navigate("ProfessionalTabs", { screen: "ProfessionalProfileEditor" }); } },
+                  { key: "security", icon: "lock-closed-outline" as const, label: "Segurança", onPress: () => { closeDrawer(); goToStack("Security"); } },
+                  { key: "payout-account", icon: "card-outline" as const, label: "Conta de recebimento", onPress: () => { closeDrawer(); goToStack("ConnectPayoutAccount"); } },
                 ] as const).map((item) => (
                   <TouchableOpacity
                     key={item.label}
+                    testID={`button.professional.drawer.${item.key}`}
                     onPress={item.onPress}
                     activeOpacity={0.75}
                     style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: drawerDivider }}

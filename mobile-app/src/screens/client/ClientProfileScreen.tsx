@@ -295,6 +295,7 @@ export function ClientProfileScreen({ navigation }: Props) {
           <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>sua conta e evolução</Text>
         </View>
         <TouchableOpacity
+          testID="button.client.profile.open-settings"
           onPress={() => goToStack("ClientSettings")}
           style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
         >

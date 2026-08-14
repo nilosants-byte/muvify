@@ -45,15 +45,23 @@ npm run release:preflight:strict
 ## Checklist obrigatorio (mobile)
 1. `npm --prefix mobile-app run validate:release` verde.
 2. Build EAS de homologacao concluido.
-3. Rodada manual final em dispositivo fisico Android e iOS:
+3. E2E Maestro (Frente 16, segunda camada) contra a build de homologacao — sem CI ainda (nao ha
+   infra de device/emulador na pipeline), roda sob demanda antes do release:
+   - `npm run e2e:seed` (semeia usuarios/agendamento de QA no banco alvo)
+   - `npm run e2e:mobile:all` (ou `e2e:mobile:auth`/`e2e:mobile:client`/`e2e:mobile:professional`/`e2e:mobile:admin` por modulo)
+   - cobre hoje: login/cadastro (feliz e negativo), navegacao principal (cliente e profissional),
+     agendamento + pagamento Pix ate a geracao da cobranca, validacao presencial (codigo/QR) entre
+     cliente e profissional, exclusao de conta (LGPD)
+   - ver `mobile-app/e2e/SCENARIO_CATALOG.md` pro mapeamento completo (automatizado vs pendente)
+4. Rodada manual final em dispositivo fisico Android e iOS:
    - login/cadastro
    - 2FA
    - recuperacao de senha
    - agendamento
    - pagamento
    - notificacoes push
-4. Politica de privacidade e declaracoes de loja revisadas.
-5. Acessibilidade — rodada manual com leitor de tela ligado (TalkBack no Android, VoiceOver no iOS),
+5. Politica de privacidade e declaracoes de loja revisadas.
+6. Acessibilidade — rodada manual com leitor de tela ligado (TalkBack no Android, VoiceOver no iOS),
    pelo menos no fluxo de login/cadastro e num formulario critico (ex: anamnese ou criacao de ficha):
    - todo botao so-icone anuncia sua funcao (nao so "botao");
    - todo campo de formulario anuncia o rotulo correto ao ganhar foco;

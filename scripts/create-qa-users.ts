@@ -1,5 +1,6 @@
 ﻿import { PrismaClient, UserRole } from "@prisma/client";
 import { hashValue } from "../src/shared/utils/hash";
+import { encryptJson } from "../src/shared/utils/encryption";
 
 const prisma = new PrismaClient();
 
@@ -47,9 +48,69 @@ async function upsertUser(user: QaUser) {
   });
 }
 
+async function ensureAnamnesisCompleted(clientId: string) {
+  // Sem isso, o fluxo E2E de agendamento fica travado no botão "Confirmar
+  // agendamento" (desabilitado até a ficha de saúde estar completa) — o
+  // seed precisa deixar o cliente QA já elegível pra contratar.
+  await prisma.clientAnamnesis.upsert({
+    where: { clientId },
+    update: { status: "COMPLETED", completedAt: new Date() },
+    create: {
+      clientId,
+      status: "COMPLETED",
+      completedAt: new Date(),
+      answers: encryptJson({ seededForE2E: true })
+    }
+  });
+}
+
+const ATTENDANCE_BOOKING_MARKER = "QA_E2E_ATTENDANCE_BOOKING";
+
+async function ensureAttendanceBooking(
+  clientId: string,
+  providerId: string,
+  categoryId: string,
+  priceCents: number
+) {
+  // O código/QR de presença só fica disponível a partir de N minutos antes
+  // do horário marcado (BOOKING_ATTENDANCE_CODE_RELEASE_MINUTES) — sem um
+  // agendamento CONFIRMED marcado pra "daqui a pouco", o flow E2E de
+  // validação presencial não tem como existir sem depender de relógio real
+  // no dia-a-dia. Reseta os campos de código a cada rodada do seed pra
+  // sempre gerar um código novo.
+  const scheduledAt = new Date(Date.now() + 3 * 60 * 1000);
+  const existing = await prisma.booking.findFirst({
+    where: { clientId, providerId, notes: ATTENDANCE_BOOKING_MARKER }
+  });
+  const data = {
+    scheduledAt,
+    status: "CONFIRMED" as const,
+    attendanceCode: null,
+    attendanceCodeGeneratedAt: null,
+    attendanceCodeExpiresAt: null,
+    attendanceCodeValidatedAt: null,
+    completedAt: null
+  };
+  if (existing) {
+    await prisma.booking.update({ where: { id: existing.id }, data });
+  } else {
+    await prisma.booking.create({
+      data: {
+        clientId,
+        providerId,
+        categoryId,
+        priceCents,
+        notes: ATTENDANCE_BOOKING_MARKER,
+        ...data
+      }
+    });
+  }
+}
+
 async function main() {
   const client = await upsertUser(qaClient);
   const providerUser = await upsertUser(qaProvider);
+  await ensureAnamnesisCompleted(client.id);
 
   let category = await prisma.serviceCategory.findUnique({
     where: { name: "Personal Trainer" }
@@ -92,6 +153,26 @@ async function main() {
       categoryId: category.id
     }
   });
+
+  // Sem isso, o fluxo E2E de agendamento não encontra nenhum horário livre
+  // no calendário (Availability vazia == nenhum slot), travando o flow
+  // logo na tela de criação de agendamento.
+  const existingAvailability = await prisma.availability.count({
+    where: { providerId: providerProfile.id }
+  });
+  if (existingAvailability === 0) {
+    await prisma.availability.createMany({
+      data: Array.from({ length: 7 }, (_, weekday) => ({
+        providerId: providerProfile.id,
+        weekday,
+        startTime: "08:00",
+        endTime: "20:00",
+        isActive: true
+      }))
+    });
+  }
+
+  await ensureAttendanceBooking(client.id, providerProfile.id, category.id, providerProfile.priceCents);
 
   console.log("QA users ready:");
   console.log({

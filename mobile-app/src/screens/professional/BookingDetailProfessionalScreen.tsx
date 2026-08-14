@@ -369,7 +369,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
 
   return (
     <>
-      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.booking-detail">
         <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
         <ProfessionalScreenHeader title="Detalhe do atendimento" onBack={() => navigation.goBack()} />
 
@@ -469,6 +469,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
                       variant="outline"
                       label="Escanear QR pela câmera"
                       onPress={() => void openQrScanner()}
+                      testID="button.attendance.scan-qr"
                     />
                   )}
 
@@ -478,6 +479,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
                     maxLength={6}
                     value={attendanceCode}
                     onChangeText={(value) => setAttendanceCode(value.replace(/\D/g, "").slice(0, 6))}
+                    testID="input.attendance.code"
                   />
                   <MvButton
                     variant="outline"
@@ -485,6 +487,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
                     loading={validatingAttendance}
                     disabled={attendanceCode.replace(/\D/g, "").length < 6}
                     onPress={() => void validateAttendanceCode()}
+                    testID="button.attendance.validate-code"
                   />
                 </>
               )}

@@ -233,7 +233,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.booking-confirmation">
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
       {/* Header V2 */}
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
@@ -335,7 +335,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
               const bg = v === "green" ? theme.primarySubtle : v === "red" ? theme.dangerSubtle : C.amberDim;
               const border = v === "green" ? theme.primarySubtleBorder : v === "red" ? theme.dangerSubtleBorder : C.amberBorder;
               return (
-                <View style={{ backgroundColor: bg, borderWidth: 1, borderColor: border, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3 }}>
+                <View testID="text.booking-confirmation.payment-status" style={{ backgroundColor: bg, borderWidth: 1, borderColor: border, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3 }}>
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: col }}>{paymentLabel(payment?.status)}</Text>
                 </View>
               );
@@ -386,6 +386,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
                   </View>
                 ) : null}
                 <TouchableOpacity
+                  testID="button.booking-confirmation.generate-pix"
                   disabled={pixPaid || pixCharging}
                   onPress={() => void startPixCharge()}
                   style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: pixPaid ? "rgba(255,255,255,0.06)" : theme.primary, alignItems: "center", justifyContent: "center" }}
@@ -406,7 +407,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
                   </TouchableOpacity>
                 ) : null}
                 {!pixPaid && !pixExpired ? (
-                  <TouchableOpacity disabled={checkingPix} onPress={() => void checkPixStatus()} style={{ height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center" }}>
+                  <TouchableOpacity testID="button.booking-confirmation.check-pix" disabled={checkingPix} onPress={() => void checkPixStatus()} style={{ height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center" }}>
                     <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>{checkingPix ? "Verificando..." : "Verificar se PIX foi pago"}</Text>
                   </TouchableOpacity>
                 ) : null}
@@ -455,6 +456,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
           ) : (
             <>
               <TouchableOpacity
+                testID="button.booking-confirmation.view-bookings"
                 disabled={!canConfirm || confirming}
                 onPress={() => void confirmBooking()}
                 accessibilityRole="button"

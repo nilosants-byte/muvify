@@ -1,0 +1,23 @@
+# Helper: faz logout do usuário CLIENT atual
+# Pré-condição: cliente autenticado em qualquer tela principal
+# Uso: runFlow: helpers/_logout.yaml
+# (o profissional sai pelo drawer — button.professional.open-drawer + botão "Sair" do menu —
+# não por este helper)
+
+appId: com.personalapp.mobile
+---
+- tapOn:
+    id: "nav.client.v2.profile"
+
+- tapOn:
+    id: "button.client.profile.open-settings"
+
+- tapOn:
+    id: "button.settings.sign-out"
+
+# Confirma no alerta nativo "Sair da conta"
+- tapOn: "Sair"
+
+- assertVisible:
+    id: "screen.auth.login"
+- takeScreenshot: "logout-success"

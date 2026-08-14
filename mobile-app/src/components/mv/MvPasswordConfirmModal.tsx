@@ -72,10 +72,11 @@ export function MvPasswordConfirmModal({
                 secureTextEntry
                 autoFocus
                 autoCapitalize="none"
+                testID="input.password-confirm-modal.password"
               />
 
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <MvButton variant="ghost" label="Cancelar" onPress={handleCancel} style={{ flex: 1 }} />
+                <MvButton variant="ghost" label="Cancelar" onPress={handleCancel} style={{ flex: 1 }} testID="button.password-confirm-modal.cancel" />
                 <MvButton
                   variant="danger"
                   label={confirmLabel}
@@ -83,6 +84,7 @@ export function MvPasswordConfirmModal({
                   loading={loading}
                   disabled={!password}
                   style={{ flex: 1 }}
+                  testID="button.password-confirm-modal.confirm"
                 />
               </View>
             </View>

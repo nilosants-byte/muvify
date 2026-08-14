@@ -111,6 +111,7 @@ function PaymentInput({
   autoCapitalize,
   maxLength,
   style,
+  testID,
 }: {
   value: string;
   onChangeText: (t: string) => void;
@@ -120,10 +121,12 @@ function PaymentInput({
   autoCapitalize?: React.ComponentProps<typeof TextInput>["autoCapitalize"];
   maxLength?: number;
   style?: object;
+  testID?: string;
 }) {
   const { theme } = useMvTheme();
   return (
     <TextInput
+      testID={testID}
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
@@ -220,7 +223,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.payment-method">
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
       {/* Header V2 */}
@@ -283,6 +286,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
           </Text>
 
           <PaymentInput
+            testID="input.payment.card-number"
             value={form.number}
             onChangeText={(t) => setForm((p) => ({ ...p, number: formatCardNumber(t) }))}
             placeholder="Número do cartão"
@@ -292,6 +296,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
 
           <View style={{ flexDirection: "row", gap: 10 }}>
             <PaymentInput
+              testID="input.payment.expiry"
               value={form.expiry}
               onChangeText={(t) => setForm((p) => ({ ...p, expiry: formatExpiry(t) }))}
               placeholder="MM/AA"
@@ -300,6 +305,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
               style={{ flex: 1 }}
             />
             <PaymentInput
+              testID="input.payment.cvv"
               value={form.cvv}
               onChangeText={(t) => setForm((p) => ({ ...p, cvv: t.replace(/\D/g, "").slice(0, 4) }))}
               placeholder="CVV"
@@ -311,6 +317,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
           </View>
 
           <PaymentInput
+            testID="input.payment.holder-name"
             value={form.holderName}
             onChangeText={(t) => setForm((p) => ({ ...p, holderName: t }))}
             placeholder="Nome do titular (como no cartão)"
@@ -318,6 +325,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
           />
 
           <PaymentInput
+            testID="input.payment.cpf"
             value={form.cpf}
             onChangeText={(t) => setForm((p) => ({ ...p, cpf: t.replace(/\D/g, "").slice(0, 11) }))}
             placeholder="CPF do titular"
@@ -359,6 +367,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
         backgroundColor: `${theme.bg}f0`, borderTopWidth: 1, borderTopColor: theme.border,
       }}>
         <TouchableOpacity
+          testID="button.payment.save-card"
           disabled={loadingStatus || saving}
           onPress={() => void saveCard()}
           style={{

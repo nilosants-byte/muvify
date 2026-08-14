@@ -97,7 +97,11 @@ artifacts/
 public/
 
 # ── Credenciais locais de testes E2E (nunca commitar) ─────────
-mobile-app/e2e/maestro/fixtures/users.local.json
+mobile-app/e2e/fixtures/users.local.json
+
+# ── Evidencias/relatorios de execucao E2E (gerados localmente) ─
+mobile-app/e2e/reports/*
+!mobile-app/e2e/reports/.gitkeep
 
 # ── Metro bundler ─────────────────────────────────────────────
 .metro-health-check*

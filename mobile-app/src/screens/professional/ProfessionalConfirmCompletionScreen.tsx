@@ -187,7 +187,7 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.confirm-completion">
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
       <ProfessionalScreenHeader title="Conclusão do atendimento" onBack={handleBack} />
 
@@ -291,18 +291,21 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
                       maxLength={6}
                       value={attendanceCode}
                       onChangeText={(value) => setAttendanceCode(value.replace(/\D/g, "").slice(0, 6))}
+                      testID="input.completion.attendance-code"
                     />
                     <MvButton
                       variant="outline"
                       label="Validar código"
                       loading={validatingAttendance}
                       onPress={() => void validateAttendanceCode()}
+                      testID="button.completion.validate-code"
                     />
                   </View>
                 ) : null}
 
                 {/* Toggle câmera / código */}
                 <TouchableOpacity
+                  testID="button.completion.toggle-code-fallback"
                   onPress={() => {
                     if (showCodeFallback) {
                       setShowCodeFallback(false);
@@ -340,6 +343,7 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
             loading={submitting}
             disabled={!completionProof || !attendanceValidated || !booking || booking.status === "CANCELLED" || booking.status === "COMPLETED"}
             onPress={() => void handleConfirm()}
+            testID="button.completion.confirm"
           />
           <MvButton variant="outline" label="Voltar" onPress={handleBack} />
         </View>

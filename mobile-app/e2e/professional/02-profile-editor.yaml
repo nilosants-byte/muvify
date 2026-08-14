@@ -1,4 +1,4 @@
-# Professional: abre o editor de perfil e verifica campos
+# Professional: abre o editor de perfil (via drawer > Meu perfil) e verifica campos
 # Executa: maestro test professional/02-profile-editor.yaml
 
 appId: com.personalapp.mobile
@@ -8,9 +8,11 @@ appId: com.personalapp.mobile
 
 - runFlow: ../helpers/_login-professional.yaml
 
-# Vai para tab de Perfil
 - tapOn:
-    text: "Perfil"
+    id: "button.professional.open-drawer"
+
+- tapOn:
+    id: "button.professional.drawer.my-profile"
 
 - takeScreenshot: "professional-profile-screen"
 

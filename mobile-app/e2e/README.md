@@ -1,6 +1,7 @@
 # E2E Mobile (Maestro)
 
 ## Ferramenta escolhida
+
 `Maestro` foi escolhida como base E2E mobile para este projeto porque:
 
 - funciona de forma nativa para Android e iOS;
@@ -10,6 +11,7 @@
 - permite gerar evidencias de execucao (debug output + screenshots + JUnit em modo report).
 
 ## Por que nao Playwright como base principal aqui
+
 Playwright e excelente para web. Neste projeto, o alvo principal e app mobile nativo (Android/iOS), entao:
 
 - Playwright nao cobre de forma nativa os componentes/gestos do app mobile instalado;
@@ -22,128 +24,98 @@ Playwright pode continuar como complemento para web/capturas, mas nao como pilar
 
 ```txt
 e2e/
-  smoke/
-  auth/
-  onboarding/
-  profile/
-  scheduling/
-  professional/
-  payments/
-  uploads/
-  regression/
-  batches/
-  helpers/
-  fixtures/
-  reports/
+  smoke/         # app abre e chega no login
+  auth/          # login, cadastro, recuperar senha
+  client/        # navegacao/telas do cliente
+  professional/  # navegacao/telas do profissional
+  admin/         # validacao de CREF, etc.
+  fixtures/      # usuarios de teste (users.json)
+  helpers/       # flows reutilizaveis (_login-*, _logout)
+  reports/       # saida de execucao com --report (gitignored)
 ```
+
+Frente 16 (segunda camada) consolidou duas arvores paralelas de E2E que existiam desde a
+criacao do projeto (uma solta no topo com sistema de lotes por prioridade, outra dentro de
+`maestro/`) numa unica arvore, porque as duas estavam quebradas contra o app atual e nenhuma
+das duas rodava em nenhum processo real. Ver `project_segunda_camada_epic.md` (memoria) para o
+raio-x completo.
 
 ## Pre-requisitos
 
 - Maestro CLI instalado e no `PATH`.
 - Emulador Android/iOS ou device fisico conectado.
 - App instalado com `appId` `com.personalapp.mobile` (dev/preview build recomendado para estabilidade).
-- Backend acessivel pela app.
+- Backend acessivel pela app, com os usuarios de QA seedados (ver "Dados de teste" abaixo).
 
-## Execucao rapida (ambiente mockado)
+## Dados de teste
 
-1. Subir API mock (terminal em `mobile-app`):
-
-```bash
-npm run mock:api
-```
-
-2. Subir app em LAN para testes (terminal em `mobile-app`):
+Os flows autenticam com os usuarios definidos em `e2e/fixtures/users.json`. Cliente e
+profissional sao criados/atualizados por um script dedicado (roda a partir da raiz do
+backend, precisa de acesso ao Postgres):
 
 ```bash
-npm run start:e2e:lan
+npm run e2e:seed
 ```
 
-3. Rodar testes (terminal em `mobile-app`):
+O usuario admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`, usados por `helpers/_login-admin.yaml`) e o
+mesmo criado pelo seed principal do backend (`npm run seed`, ver `prisma/seed.ts`) —
+`muvifyadm@gmail.com`. A senha em texto plano nao fica no repo (o seed grava só o hash); passe
+por variavel de ambiente na hora de rodar:
 
 ```bash
-npm run e2e:mobile:smoke
+ADMIN_EMAIL=muvifyadm@gmail.com ADMIN_PASSWORD=<senha real> npm run e2e:admin --prefix mobile-app
 ```
 
-## Comandos principais
+## Execucao
 
-- Todos os modulos E2E:
+- Todos os modulos:
 
 ```bash
-npm run e2e:mobile:all
+npm run e2e:all
 ```
 
-- Apenas smoke:
+- Por modulo:
 
 ```bash
-npm run e2e:mobile:smoke
+npm run e2e:smoke
+npm run e2e:auth
+npm run e2e:client
+npm run e2e:professional
+npm run e2e:admin
 ```
 
-- Modulo especifico (`auth`, `profile`, `scheduling`, `regression`):
+- Com relatorio/evidencias (JUnit em `e2e/reports/report.xml`):
 
 ```bash
-npm run e2e:mobile:module -- auth
+npm run e2e:report
 ```
 
-- Modulo professional:
-
-```bash
-npm run e2e:mobile:professional
-```
-
-- Lotes por criticidade:
-
-```bash
-npm run e2e:mobile:batch:high
-npm run e2e:mobile:batch:medium
-npm run e2e:mobile:batch:low
-```
-
-- Lotes com relatorio/evidencias:
-
-```bash
-npm run e2e:mobile:batch:high:report
-npm run e2e:mobile:batch:medium:report
-npm run e2e:mobile:batch:low:report
-```
-
-- Execucao com relatorio/evidencias:
-
-```bash
-npm run e2e:mobile:report
-```
-
-Saidas de report ficam em `e2e/reports/run-<timestamp>/...`.
-
-## Mapeamento completo de cenarios
-
-- Catalogo completo (deslogado + logado por perfil + sistema):
-  - `e2e/SCENARIO_CATALOG.md`
-- Configuracao de lotes executaveis hoje:
-  - `e2e/batches/implemented-flows-by-priority.json`
+Os mesmos comandos existem prefixados com `e2e:mobile:` na raiz do backend (ex.:
+`npm run e2e:mobile:all`), que so delegam para `mobile-app` via `npm --prefix`.
 
 ## Como adicionar novos testes
 
-1. Crie um `.yaml` no modulo correto (ex.: `e2e/payments/`).
-2. Use seletores estaveis via `testID` sempre que possivel.
+1. Crie um `.yaml` no modulo correto (ex.: `e2e/client/`).
+2. Use seletores estaveis via `testID` sempre que possivel — convencao em `e2e/helpers/README.md`.
 3. Inclua cenarios positivos e negativos.
 4. Adicione `takeScreenshot` nos pontos-chave do fluxo.
-5. Execute via `npm run e2e:mobile:module -- <modulo>`.
-
-## Ajustes de testabilidade aplicados
-
-- `testID` nos campos/botoes de login e cadastro.
-- `testID` padronizado na bottom nav (`nav.bottom.<key>`).
-- `testID` de telas principais do cliente (home, promotions, training, profile, bookings).
-- `testID` em card de agendamento e tela de detalhe do agendamento.
+5. Antes de commitar, confira que todo `id:` referenciado no flow existe de fato no codigo
+   (`grep -rn "testID=\"<id>\"" ../src`) — testID drift foi a causa raiz de as duas arvores
+   antigas terem apodrecido em silencio (a bottom nav do cliente e do profissional mudou de
+   componente/rotulo sem os flows serem atualizados).
 
 ## Limitacoes atuais
 
-- Fluxos de `scheduling/regression` com detalhe de agendamento assumem fixture da API mock (`booking-client-1`).
-- Integracoes externas (pagamento real, upload real, camera nativa real) ainda estao planejadas para proxima fase.
-- Para alta estabilidade em CI, recomenda-se build dedicada de teste com dados seedados.
+- Ainda nao ha CI rodando esses flows automaticamente — nenhum workflow do repo (nao ha
+  `.github/workflows`) invoca Maestro. `RELEASE-READINESS-CHECKLIST.md` documenta o comando
+  como passo recomendado antes de release, mas a execucao continua manual/sob demanda.
+- Sem cobertura de pagamento real (Mercado Pago), upload real de midia ou camera nativa real —
+  essas partes seguem em validacao manual (ver `docs/QA-E2E-CHECKLIST.md`).
+- `e2e/client/01-home-tabs.yaml` e fluxos de booking assumem fixture da API mock ou dados
+  seedados pelo `e2e:seed`.
 
 ## Proximos passos recomendados
 
-- Seed de dados E2E dedicado para backend real (usuarios e agendamentos fixos).
-- Cobertura de pagamentos, upload e permissoes nativas.
-- Pipeline CI para executar `smoke` por commit e `regression` por merge/release.
+- CI dedicado (mesmo que so `smoke` por commit, dado o custo de infra de device/emulador).
+- Cobertura de disputa e chat (adiado nesta frente por serem fluxos MEDIUM/administrativos
+  frente ao ROI de instrumentar testID nas telas que ainda nao tem).

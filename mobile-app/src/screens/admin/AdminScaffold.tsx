@@ -272,6 +272,7 @@ export function AdminScaffold({
               return (
                 <TouchableOpacity
                   key={item.key}
+                  testID={`button.admin.menu.${item.key}`}
                   onPress={() => {
                     setMenuOpen(false);
                     item.action();

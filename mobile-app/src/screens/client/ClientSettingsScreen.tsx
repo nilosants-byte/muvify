@@ -19,7 +19,7 @@ type Props = NativeStackScreenProps<ClientStackParamList, "ClientSettings">;
 
 // Componente de linha de configuração V2
 function ConfigRow({
-  icon, title, subtitle, value, toggle, onToggle, onPress, badge, danger = false,
+  icon, title, subtitle, value, toggle, onToggle, onPress, badge, danger = false, testID,
 }: {
   icon: React.ComponentProps<typeof Ionicons>["name"];
   title: string;
@@ -30,6 +30,7 @@ function ConfigRow({
   onPress?: () => void;
   badge?: string;
   danger?: boolean;
+  testID?: string;
 }) {
   const { theme } = useMvTheme();
   const iconColor = danger ? theme.danger : theme.primary;
@@ -38,6 +39,7 @@ function ConfigRow({
   const isToggle = typeof toggle === "boolean";
   return (
     <TouchableOpacity
+      testID={testID}
       onPress={isToggle ? () => onToggle?.(!toggle) : onPress}
       activeOpacity={isToggle || onPress ? 0.75 : 1}
       style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: theme.border, minHeight: S.touchMin }}
@@ -158,7 +160,7 @@ export function ClientSettingsScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.settings">
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
       {/* Header V2 */}
@@ -227,6 +229,7 @@ export function ClientSettingsScreen({ navigation }: Props) {
             onPress={() => void handleExportData()}
           />
           <ConfigRow
+            testID="button.settings.delete-account"
             icon="trash-outline"
             title="Excluir minha conta"
             subtitle="Remover permanentemente todos os dados"
@@ -299,6 +302,7 @@ export function ClientSettingsScreen({ navigation }: Props) {
         {/* Sair */}
         <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.dangerSubtleBorder, backgroundColor: theme.cardBg, paddingHorizontal: 14 }}>
           <ConfigRow
+            testID="button.settings.sign-out"
             icon="log-out-outline"
             title="Sair da conta"
             onPress={handleSignOut}

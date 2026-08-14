@@ -1,4 +1,4 @@
-# Client: navegação pelas tabs principais do cliente
+# Client: navegação pelas 5 abas da bottom nav (ClientBottomNavV2)
 # Executa: maestro test client/01-home-tabs.yaml
 
 appId: com.personalapp.mobile
@@ -13,43 +13,36 @@ appId: com.personalapp.mobile
     id: "screen.client.home"
 - takeScreenshot: "client-tab-inicio"
 
-# Navega para Categorias
-- tapOn:
-    text: "Categorias"
-- assertVisible:
-    id: "screen.client.categories"
-- takeScreenshot: "client-tab-categorias"
-
-# Navega para Promoções
-- tapOn:
-    text: "Promoções"
-- assertVisible:
-    id: "screen.client.promotions"
-- takeScreenshot: "client-tab-promocoes"
-
-# Navega para Seu Treino
-- tapOn:
-    text: "Seu Treino"
-- assertVisible:
-    id: "screen.client.training"
-- takeScreenshot: "client-tab-treino"
-
 # Navega para Agenda
 - tapOn:
-    text: "Agenda"
+    id: "nav.client.v2.agenda"
 - assertVisible:
     id: "screen.client.bookings"
 - takeScreenshot: "client-tab-agenda"
 
+# Navega para Treino
+- tapOn:
+    id: "nav.client.v2.trainings"
+- assertVisible:
+    id: "screen.client.training"
+- takeScreenshot: "client-tab-treino"
+
+# Navega para Comunidade
+- tapOn:
+    id: "nav.client.v2.community"
+- assertVisible:
+    id: "screen.client.community"
+- takeScreenshot: "client-tab-comunidade"
+
 # Navega para Perfil
 - tapOn:
-    text: "Perfil"
+    id: "nav.client.v2.profile"
 - assertVisible:
     id: "screen.client.profile"
 - takeScreenshot: "client-tab-perfil"
 
 # Volta para Início
 - tapOn:
-    text: "Início"
+    id: "nav.client.v2.home"
 - assertVisible:
     id: "screen.client.home"

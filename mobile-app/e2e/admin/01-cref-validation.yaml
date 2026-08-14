@@ -17,11 +17,12 @@ appId: com.personalapp.mobile
 - tapOn:
     id: "button.admin.menu-toggle"
 
-- assertVisible: "Validacao de CREF"
+- assertVisible: "Validação de CREF"
 - takeScreenshot: "admin-menu-open"
 
 # Navega para validação de CREF
 - tapOn:
-    text: "Validacao de CREF"
+    id: "button.admin.menu.AdminCrefValidation"
 
+- assertVisible: "Validação de CREF"
 - takeScreenshot: "admin-cref-screen"

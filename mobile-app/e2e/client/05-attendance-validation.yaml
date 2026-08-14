@@ -1,0 +1,69 @@
+# Cliente + Profissional: validação presencial de verdade (código gerado
+# no app do cliente, digitado no app do profissional) — a regra de negócio
+# mais nova do app (evita conclusão de atendimento sem presença real) e,
+# até a Frente 16, com cobertura E2E zero.
+#
+# Um único device alterna entre os dois papéis (login/logout sequencial) —
+# não há como simular dois devices num só flow Maestro. O código é lido da
+# tela do cliente via copyTextFrom e colado na tela do profissional via
+# ${maestro.copiedText}.
+#
+# Pré-requisito: `npm run e2e:seed` — cria um agendamento CONFIRMED entre
+# QA Personal e QA Aluno com scheduledAt ~3 minutos no futuro (dentro da
+# janela de liberação do código de presença).
+#
+# Executa: maestro test client/05-attendance-validation.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- runFlow: ../helpers/_login-client.yaml
+
+- tapOn:
+    id: "nav.client.v2.agenda"
+- assertVisible:
+    id: "screen.client.bookings"
+
+# Abre o agendamento mais próximo (o seedado pelo e2e:seed é sempre o
+# mais iminente — 3 minutos no futuro)
+- tapOn:
+    id: "booking\\.card\\.[^.]+$"
+
+- assertVisible:
+    id: "screen.client.booking-detail"
+
+- assertVisible:
+    id: "text.booking-detail.attendance-code"
+- takeScreenshot: "attendance-code-visible-client"
+
+- copyTextFrom:
+    id: "text.booking-detail.attendance-code"
+
+# Volta pra Agenda e faz logout do cliente
+- tapOn:
+    id: "nav.client.v2.agenda"
+- runFlow: ../helpers/_logout.yaml
+
+- runFlow: ../helpers/_login-professional.yaml
+
+- tapOn:
+    id: "nav.bottom.agenda"
+- assertVisible:
+    id: "screen.professional.agenda"
+
+- tapOn: "QA Aluno"
+
+- assertVisible:
+    id: "screen.professional.booking-detail"
+
+- tapOn:
+    id: "input.attendance.code"
+- inputText: "${maestro.copiedText}"
+
+- tapOn:
+    id: "button.attendance.validate-code"
+
+- assertVisible: "Presença confirmada"
+- takeScreenshot: "attendance-validated-professional"

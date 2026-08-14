@@ -1480,6 +1480,7 @@ export function ClientHomeScreen({ navigation }: Props) {
           {categories.slice(0, 8).map((cat) => (
             <View key={cat.id} style={{ width: "25%", paddingHorizontal: 4, marginBottom: 8 }}>
               <TouchableOpacity
+                testID={`button.home.category.${cat.id}`}
                 activeOpacity={0.85}
                 onPress={() => goToStack("ProfessionalsList", { query: cat.name })}
                 style={{

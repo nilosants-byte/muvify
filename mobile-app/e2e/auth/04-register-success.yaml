@@ -38,6 +38,14 @@ appId: com.personalapp.mobile
 - inputText: "Teste123456"
 
 - tapOn:
+    id: "input.auth.register.confirm-password"
+- clearText
+- inputText: "Teste123456"
+
+- tapOn:
+    id: "button.auth.register.accept-terms"
+
+- tapOn:
     id: "button.auth.register.submit"
 
 # Após cadastro deve aparecer a seleção de perfil ou tela principal

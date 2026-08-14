@@ -796,7 +796,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
               <>
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Código da aula</Text>
                 {/* Código alfanumérico em destaque */}
-                <View style={{ width: "100%", paddingVertical: 14, backgroundColor: "rgba(0,0,0,0.3)", borderRadius: 18, alignItems: "center" }}>
+                <View testID="text.booking-detail.attendance-code" style={{ width: "100%", paddingVertical: 14, backgroundColor: "rgba(0,0,0,0.3)", borderRadius: 18, alignItems: "center" }}>
                   <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 30, color: theme.primary, letterSpacing: 0.18 * 30 }}>
                     {attendance.code ?? "------"}
                   </Text>

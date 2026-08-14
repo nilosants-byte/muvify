@@ -119,17 +119,20 @@ function Chip({
   selected,
   disabled = false,
   onPress,
+  testID,
 }: {
   label: string;
   selected: boolean;
   disabled?: boolean;
   onPress: () => void;
+  testID?: string;
 }) {
   const { theme } = useMvTheme();
   return (
     <TouchableOpacity
       disabled={disabled}
       onPress={onPress}
+      testID={testID}
       style={{
         paddingHorizontal: 14,
         height: 40,
@@ -552,7 +555,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.create-booking">
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
       {/* Header V2 */}
@@ -680,7 +683,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
           {categories.length > 0 ? (
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
               {categories.map((item) => (
-                <Chip key={item.id} label={item.name} selected={selectedCategoryId === item.id} onPress={() => setSelectedCategoryId(item.id)} />
+                <Chip key={item.id} testID={`button.booking.category.${item.id}`} label={item.name} selected={selectedCategoryId === item.id} onPress={() => setSelectedCategoryId(item.id)} />
               ))}
             </View>
           ) : (
@@ -721,6 +724,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
               return (
                 <TouchableOpacity
                   key={`calendar-day-${isoDate}`}
+                  testID={`button.booking.calendar-day.${isoDate}`}
                   disabled={!selectable}
                   onPress={() => toggleDate(cell)}
                   accessibilityRole="button"
@@ -789,6 +793,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
                         return (
                           <TouchableOpacity
                             key={`${item.dateKey}-${slot}`}
+                            testID={`button.booking.slot.${item.dateKey}.${slot}`}
                             onPress={() => selectSlotForDate(item.dateKey, slot)}
                             style={{
                               width: "47%",
@@ -833,8 +838,8 @@ export function CreateBookingScreen({ navigation, route }: Props) {
             })()}
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <Chip label="Cartão" selected={selectedPaymentMethod === "CARD"} onPress={() => setSelectedPaymentMethod("CARD")} />
-            <Chip label="PIX" selected={selectedPaymentMethod === "PIX"} onPress={() => setSelectedPaymentMethod("PIX")} />
+            <Chip testID="button.booking.payment.card" label="Cartão" selected={selectedPaymentMethod === "CARD"} onPress={() => setSelectedPaymentMethod("CARD")} />
+            <Chip testID="button.booking.payment.pix" label="PIX" selected={selectedPaymentMethod === "PIX"} onPress={() => setSelectedPaymentMethod("PIX")} />
           </View>
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3, lineHeight: 18 }}>
             {selectedPaymentMethod === "CARD"
@@ -922,6 +927,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
 
         {hasNearTermDate ? (
           <TouchableOpacity
+            testID="button.booking.acknowledge-near-term"
             onPress={() => setImmediateExecutionAcknowledged((current) => !current)}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: immediateExecutionAcknowledged }}
@@ -941,6 +947,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
         {/* Botão CTA V2 com safe area */}
         <View style={{ paddingBottom: Math.max(16, insets.bottom) }}>
           <TouchableOpacity
+            testID="button.booking.submit"
             disabled={
               creating ||
               !anamnesisCompleted ||
