@@ -25,7 +25,16 @@ export function MvModalSheet({ visible, title, onClose, children }: MvModalSheet
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top + 16, paddingHorizontal: 16 }}>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 10 }}>
-            <PressableScale scale={0.92} onPress={onClose} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}>
+            {/* Frente 15 (segunda camada, acessibilidade), Lote 3: sem label,
+                um usuário de leitor de tela que abre este modal (reaproveitado
+                em Controle Financeiro, Alunos, Histórico e Metas) não tinha
+                como saber como sair dele. */}
+            <PressableScale
+              scale={0.92}
+              onPress={onClose}
+              accessibilityLabel="Fechar"
+              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
+            >
               <Ionicons name="close" size={18} color={theme.text1} />
             </PressableScale>
             <MvText variant="semi2">{title}</MvText>

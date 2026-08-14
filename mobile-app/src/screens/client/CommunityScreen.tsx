@@ -282,9 +282,13 @@ function clampFeedRatio(width: number, height: number) {
   return Math.max(FEED_MIN_RATIO, Math.min(FEED_MAX_RATIO, width / height));
 }
 
-function FeedImage({ uri, fallback }: {
+function FeedImage({ uri, fallback, accessibilityLabel }: {
   uri: string;
   fallback: ReturnType<typeof postThematicCard>;
+  // Frente 15 (segunda camada, acessibilidade), Lote 4: sem isso, o leitor
+  // de tela anunciava toda foto do feed só como "imagem" — indistinguível
+  // de post pra post.
+  accessibilityLabel?: string;
 }) {
   const [errored, setErrored] = useState(false);
   const [ratio, setRatio] = useState(() => feedImageRatioCache.get(uri) ?? 4 / 3);
@@ -327,6 +331,8 @@ function FeedImage({ uri, fallback }: {
       style={{ width: "100%", aspectRatio: ratio, borderRadius: 12 }}
       contentFit="cover"
       cachePolicy="memory-disk"
+      accessible={Boolean(accessibilityLabel)}
+      accessibilityLabel={accessibilityLabel}
       onLoad={(e) => {
         const { width, height } = e.source;
         if (width && height && !feedImageRatioCache.has(uri)) {
@@ -657,7 +663,11 @@ const FeedPostCard = React.memo(function FeedPostCard({
         <TouchableOpacity activeOpacity={0.97} onPress={handleTap}>
           {post.imageUrl ? (
             <View>
-              <FeedImage uri={post.imageUrl} fallback={thematic} />
+              <FeedImage
+                uri={post.imageUrl}
+                fallback={thematic}
+                accessibilityLabel={post.user?.name ? `Foto do post de ${post.user.name}` : "Foto do post"}
+              />
               <Animated.View
                 pointerEvents="none"
                 style={{
@@ -2114,6 +2124,9 @@ export function CommunityScreen({ navigation }: Props) {
                     <Image source={{ uri: createPhotoUri }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
                     <TouchableOpacity
                       onPress={() => { setCreatePhotoUri(null); setCreatePhotoData(null); }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Remover foto selecionada"
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: 99, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" }}
                     >
                       <Ionicons name="close" size={16} color="#fff" />
@@ -2478,7 +2491,7 @@ export function CommunityScreen({ navigation }: Props) {
         >
           <Pressable onPress={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 360, backgroundColor: theme.cardBg, borderRadius: S.cardR, padding: 20, gap: 14, borderWidth: 1, borderColor: theme.border, maxHeight: "80%" as any }}>
             {/* Botão fechar */}
-            <TouchableOpacity onPress={() => setProfileUserId(null)} style={{ position: "absolute", top: 14, right: 14, width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+            <TouchableOpacity onPress={() => setProfileUserId(null)} accessibilityRole="button" accessibilityLabel="Fechar" style={{ position: "absolute", top: 14, right: 14, width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center", zIndex: 1 }}>
               <Ionicons name="close" size={15} color={theme.text1} />
             </TouchableOpacity>
 
@@ -2560,6 +2573,8 @@ export function CommunityScreen({ navigation }: Props) {
                 <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: theme.text1, letterSpacing: -0.3 }}>Metas de treino</Text>
                 <TouchableOpacity
                   onPress={() => setShowGoalModal(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Fechar"
                   style={{ width: 32, height: 32, borderRadius: 99, backgroundColor: "rgba(255,255,255,0.07)", alignItems: "center", justifyContent: "center" }}
                 >
                   <Ionicons name="close" size={18} color={theme.text2} />
@@ -2625,6 +2640,8 @@ export function CommunityScreen({ navigation }: Props) {
               <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: theme.text1, letterSpacing: -0.3 }}>Sua sequência</Text>
               <TouchableOpacity
                 onPress={() => setStreakDetailVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Fechar"
                 style={{ width: 32, height: 32, borderRadius: 99, backgroundColor: "rgba(255,255,255,0.07)", alignItems: "center", justifyContent: "center" }}
               >
                 <Ionicons name="close" size={18} color={theme.text2} />

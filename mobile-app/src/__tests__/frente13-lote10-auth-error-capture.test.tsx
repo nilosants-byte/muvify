@@ -125,4 +125,45 @@ describe("Frente 13, Lote 10 — captura de erro em login/registro/2FA", () => {
       expect.objectContaining({ screen: "AuthRegisterScreen" })
     ));
   });
+
+  // Frente 15 (segunda camada, acessibilidade), Lote 12: o checkbox de
+  // termos tinha role e label, mas não accessibilityState — como "Criar
+  // conta" fica desabilitado até aceitar, um usuário de TalkBack não tinha
+  // como saber se já tinha marcado ou não.
+  it("AuthRegisterScreen: checkbox de termos anuncia o estado marcado/desmarcado", () => {
+    (useAppState as jest.Mock).mockReturnValue({
+      register: jest.fn(),
+      showToast: jest.fn()
+    });
+
+    const { getByLabelText } = render(
+      <AuthRegisterScreen navigation={makeNavigation()} route={{ key: "Register", name: "Register", params: undefined } as any} />
+    );
+
+    const checkbox = getByLabelText("Aceitar termos de uso e política de privacidade");
+    expect(checkbox.props.accessibilityState).toEqual(expect.objectContaining({ checked: false }));
+
+    fireEvent.press(checkbox);
+    expect(checkbox.props.accessibilityState).toEqual(expect.objectContaining({ checked: true }));
+  });
+
+  // Frente 15 (segunda camada, acessibilidade), Lote 13: o erro de apelido
+  // inválido só aparecia visualmente (texto vermelho) — sem
+  // accessibilityLiveRegion, o leitor de tela nunca anunciava a mudança.
+  it("AuthRegisterScreen: erro de apelido inválido tem accessibilityLiveRegion", () => {
+    (useAppState as jest.Mock).mockReturnValue({
+      register: jest.fn(),
+      showToast: jest.fn()
+    });
+
+    const { getByTestId, getByText } = render(
+      <AuthRegisterScreen navigation={makeNavigation()} route={{ key: "Register", name: "Register", params: undefined } as any} />
+    );
+
+    fireEvent.changeText(getByTestId("input.auth.register.apelido"), "ab");
+
+    const errorText = getByText("Apenas letras minúsculas, números e _ · mínimo 3 caracteres");
+    expect(errorText.props.accessibilityLiveRegion).toBe("polite");
+    expect(errorText.props.accessibilityRole).toBe("alert");
+  });
 });

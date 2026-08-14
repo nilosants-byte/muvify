@@ -152,17 +152,25 @@ export function ProfessionalAnnualReportScreen({ navigation }: Props) {
 
           {/* Seletor de ano */}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 16, paddingVertical: 4 }}>
-            <PressableScale scale={0.88} onPress={() => {
-              const idx = availableYears.indexOf(selectedYear);
-              if (idx < availableYears.length - 1) setSelectedYear(availableYears[idx + 1]);
-            }}>
+            <PressableScale
+              scale={0.88}
+              accessibilityLabel="Ano anterior"
+              onPress={() => {
+                const idx = availableYears.indexOf(selectedYear);
+                if (idx < availableYears.length - 1) setSelectedYear(availableYears[idx + 1]);
+              }}
+            >
               <Ionicons name="chevron-back" size={20} color={theme.text3} />
             </PressableScale>
             <MvText variant="semi2" style={{ fontSize: 20, letterSpacing: -0.5 }}>{selectedYear}</MvText>
-            <PressableScale scale={0.88} onPress={() => {
-              const idx = availableYears.indexOf(selectedYear);
-              if (idx > 0) setSelectedYear(availableYears[idx - 1]);
-            }}>
+            <PressableScale
+              scale={0.88}
+              accessibilityLabel="Próximo ano"
+              onPress={() => {
+                const idx = availableYears.indexOf(selectedYear);
+                if (idx > 0) setSelectedYear(availableYears[idx - 1]);
+              }}
+            >
               <Ionicons name="chevron-forward" size={20} color={theme.text3} />
             </PressableScale>
           </View>

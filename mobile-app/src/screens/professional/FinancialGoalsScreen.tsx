@@ -205,11 +205,11 @@ export function FinancialGoalsScreen({ navigation }: Props) {
       />
 
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingVertical: 6 }}>
-        <TouchableOpacity onPress={prevMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={prevMonth} accessibilityRole="button" accessibilityLabel="Mês anterior" hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="chevron-back" size={20} color={theme.text3} />
         </TouchableOpacity>
         <MvText variant="semi2" style={{ fontSize: 14, letterSpacing: -0.3 }}>{monthLabel(month)}</MvText>
-        <TouchableOpacity onPress={nextMonth} disabled={month >= currentMonthStr()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ opacity: month >= currentMonthStr() ? 0.3 : 1 }}>
+        <TouchableOpacity onPress={nextMonth} disabled={month >= currentMonthStr()} accessibilityRole="button" accessibilityLabel="Próximo mês" hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ opacity: month >= currentMonthStr() ? 0.3 : 1 }}>
           <Ionicons name="chevron-forward" size={20} color={theme.text3} />
         </TouchableOpacity>
       </View>

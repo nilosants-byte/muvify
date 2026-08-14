@@ -78,6 +78,9 @@ O script `qa:full` executa, nessa ordem:
 3. Notificacoes push fim-a-fim com token real de dispositivo
 4. Mercado Pago real (ambiente de teste/homologacao) com webhooks externos e callbacks completos
 5. Comportamento offline/reconexao com alternancia de rede real (Wi-Fi/dados)
+6. Acessibilidade com leitor de tela real (TalkBack/VoiceOver) — sem ferramenta de lint madura pra
+   React Native, esta e a unica forma de validar de verdade (ver checklist obrigatorio de release,
+   `docs/RELEASE-READINESS-CHECKLIST.md`)
 
 ## Go/No-Go tecnico para avancar ao teste manual
 

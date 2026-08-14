@@ -168,6 +168,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
         <PressableScale
           scale={0.92}
           onPress={() => navigation.goBack()}
+          accessibilityLabel="Voltar"
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="chevron-back" size={20} color={theme.text2} />
@@ -241,6 +242,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
         <PressableScale
           scale={0.92}
           onPress={() => navigation.goBack()}
+          accessibilityLabel="Voltar"
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="chevron-back" size={20} color={theme.text2} />
@@ -251,6 +253,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
         <PressableScale
           scale={0.92}
           onPress={() => navigation.navigate("ProfessionalConsultancyCenter" as never)}
+          accessibilityLabel="Central de consultoria"
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="person-add-outline" size={18} color={theme.textGreen} />
@@ -524,6 +527,7 @@ const StudentRow = React.memo(function StudentRow({
                 onPress={handlePressAnamnesis}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 testID={`student-row-anamnesis-${student.clientId}`}
+                accessibilityLabel={`Anamnese pendente de ${student.name}`}
                 style={{
                   width: 22, height: 22, borderRadius: 6,
                   backgroundColor: "rgba(245,158,11,0.14)",
@@ -543,6 +547,7 @@ const StudentRow = React.memo(function StudentRow({
                 scale={0.85}
                 onPress={handlePress}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel={`Ficha de treino pendente de ${student.name}`}
                 style={{
                   width: 22, height: 22, borderRadius: 6,
                   backgroundColor: "rgba(245,158,11,0.14)",
@@ -557,6 +562,7 @@ const StudentRow = React.memo(function StudentRow({
                 scale={0.85}
                 onPress={handlePress}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel={`Renovação de ficha pendente de ${student.name}`}
                 style={{
                   width: 22, height: 22, borderRadius: 6,
                   backgroundColor: theme.dangerSubtle,

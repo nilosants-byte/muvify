@@ -131,6 +131,7 @@ export function AuthLoginScreen({ navigation }: Props) {
             returnKeyType="next"
             onSubmitEditing={() => passwordRef.current?.focus()}
             testID="input.auth.login.email"
+            accessibilityLabel="E-mail"
           />
           <MvInput
             ref={passwordRef}
@@ -143,6 +144,7 @@ export function AuthLoginScreen({ navigation }: Props) {
             returnKeyType="done"
             onSubmitEditing={() => void handleLogin()}
             testID="input.auth.login.password"
+            accessibilityLabel="Senha"
           />
         </View>
 

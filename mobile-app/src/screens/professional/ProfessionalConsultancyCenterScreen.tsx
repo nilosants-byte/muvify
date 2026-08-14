@@ -388,7 +388,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
                     {settingsEnabled ? "Entrega em até 48h após a compra" : "Desligada — você não recebe novas solicitações"}
                   </MvText>
                 </View>
-                <MvToggle value={settingsEnabled} onValueChange={(v) => void toggleOnlineSetting(v)} disabled={savingSettings} />
+                <MvToggle value={settingsEnabled} onValueChange={(v) => void toggleOnlineSetting(v)} disabled={savingSettings} accessibilityLabel="Consultoria online" />
               </View>
             </View>
 

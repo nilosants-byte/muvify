@@ -985,7 +985,7 @@ export function ClientHomeScreen({ navigation }: Props) {
       label: "Aparência",
       subtitle: lightModeEnabled ? "Modo light" : "Modo dark",
       icon: lightModeEnabled ? "sunny-outline" : "moon-outline",
-      right: <MvToggle value={lightModeEnabled} onValueChange={handleLightModeToggle} />,
+      right: <MvToggle value={lightModeEnabled} onValueChange={handleLightModeToggle} accessibilityLabel="Aparência" />,
       sectionHeader: "AJUSTES",
     },
     {
@@ -993,7 +993,7 @@ export function ClientHomeScreen({ navigation }: Props) {
       label: "Notificações",
       subtitle: pushNotificationsEnabled ? "Push ativado" : "Push desativado",
       icon: "notifications-outline",
-      right: <MvToggle value={pushNotificationsEnabled} onValueChange={(v) => void setPushNotificationsPreference(v)} />,
+      right: <MvToggle value={pushNotificationsEnabled} onValueChange={(v) => void setPushNotificationsPreference(v)} accessibilityLabel="Notificações" />,
     },
     {
       key: "security",
@@ -1240,6 +1240,11 @@ export function ClientHomeScreen({ navigation }: Props) {
                             setNewFollowers((prev) => prev.filter((f) => f.id !== follower.id));
                           } catch { /* best effort */ }
                         }}
+                        // Frente 15 (segunda camada, acessibilidade), Lote
+                        // 18: 32pt de altura fica abaixo do mínimo
+                        // recomendado (44x44pt, iOS HIG/Material) — hitSlop
+                        // compensa sem precisar redesenhar o chip.
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                         style={{ height: 32, paddingHorizontal: 12, borderRadius: S.chipR, backgroundColor: C.sky, alignItems: "center", justifyContent: "center" }}
                       >
                         <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: theme.textOnPrimary }}>Seguir de volta</Text>

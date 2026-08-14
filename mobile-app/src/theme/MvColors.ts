@@ -49,9 +49,15 @@ export const darkTheme: MvTheme = {
   primaryDark: "#16A34A",
   text1: "#FFFFFF",
   text2: "#A1A1AA",
-  text3: "#71717A",
+  // Frente 15 (segunda camada, acessibilidade), Lote 14: #71717A dava
+  // ~4.17:1 contra o fundo (theme.bg) e ~3.5:1 contra o fundo de campo de
+  // formulário (theme.inputBg, onde esta cor é usada como
+  // placeholderTextColor em MvInput) — abaixo do mínimo WCAG AA (4.5:1)
+  // pra texto normal. #86868F mantém o mesmo tom (cinza neutro) só um
+  // pouco mais claro: ~5.59:1 contra bg, ~4.76:1 contra inputBg.
+  text3: "#86868F",
   textGreen: "#24E66D",
-  labelColor: "#71717A",
+  labelColor: "#86868F",
   inputBg: "#0D1F14",
   inputBorder: "rgba(255,255,255,0.10)",
   inputText: "#FFFFFF",
@@ -84,9 +90,14 @@ export const lightTheme: MvTheme = {
   primaryDark: "#15803D",
   text1: "#0A0F0A",
   text2: "#3D4D3D",
-  text3: "#6B7C6B",
+  // Frente 15 (segunda camada, acessibilidade), Lote 14: #6B7C6B dava
+  // ~4.41:1 contra o fundo (theme.bg) e menos ainda contra o fundo de
+  // campo de formulário (theme.inputBg) — abaixo do mínimo WCAG AA
+  // (4.5:1). #526152 mantém o mesmo tom, só um pouco mais escuro: ~6.5:1
+  // contra bg, ~5.9:1 contra inputBg.
+  text3: "#526152",
   textGreen: "#16A34A",
-  labelColor: "#6B7C6B",
+  labelColor: "#526152",
   inputBg: "#E6F7ED",
   inputBorder: "rgba(0,0,0,0.11)",
   inputText: "#0A0F0A",

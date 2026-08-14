@@ -797,7 +797,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     />
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                       <MvText variant="body4">Vigência com prazo determinado</MvText>
-                      <MvToggle value={presentialHasFixedTerm} onValueChange={setPresentialHasFixedTerm} />
+                      <MvToggle value={presentialHasFixedTerm} onValueChange={setPresentialHasFixedTerm} accessibilityLabel="Vigência com prazo determinado" />
                     </View>
                     {presentialHasFixedTerm ? (
                       <MvInput keyboardType="numeric" label="Total de ciclos" placeholder="Ex: 3" value={presentialTotalCycles} onChangeText={setPresentialTotalCycles} />
@@ -973,7 +973,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                         />
                         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                           <MvText variant="body4">Vigência com prazo determinado</MvText>
-                          <MvToggle value={presentialHasFixedTerm} onValueChange={setPresentialHasFixedTerm} />
+                          <MvToggle value={presentialHasFixedTerm} onValueChange={setPresentialHasFixedTerm} accessibilityLabel="Vigência com prazo determinado" />
                         </View>
                         {presentialHasFixedTerm ? (
                           <MvInput keyboardType="numeric" label="Total de ciclos" placeholder="Ex: 3" value={presentialTotalCycles} onChangeText={setPresentialTotalCycles} />

@@ -600,6 +600,8 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
         <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 12 }}>
           <TouchableOpacity
             onPress={() => navigation.navigate("ProfessionalHome")}
+            accessibilityRole="button"
+            accessibilityLabel="Voltar"
             style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
           >
             <Ionicons name="chevron-back" size={20} color={theme.text2} />

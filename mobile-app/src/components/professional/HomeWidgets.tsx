@@ -10,6 +10,7 @@ import ReAnimated, {
 import { Ionicons } from "@expo/vector-icons";
 import { MvText } from "../mv";
 import { PressableScale } from "../polish/PressableScale";
+import { formatCurrencyBRL } from "../../utils/formatters";
 
 // ─── Mini bar chart ───────────────────────────────────────────────────────────
 
@@ -71,7 +72,18 @@ export function WeeklyBarChart({
       {data.map((d, i) => {
         const barH = Math.max(4, Math.round((d.revenue / maxRevenue) * chartH));
         return (
-          <View key={i} style={{ alignItems: "center", gap: 4 }}>
+          <View
+            key={i}
+            style={{ alignItems: "center", gap: 4 }}
+            // Frente 15 (segunda camada, acessibilidade), Lote 15: as
+            // barras eram Views puramente visuais, sem nenhuma leitura por
+            // voz da receita de cada dia — só o rótulo do dia (texto) tinha
+            // leitura. Agrupa a barra + rótulo num único nó acessível com
+            // valor resumido, em vez de deixar o leitor de tela ler cada
+            // pedaço solto (ou nada, no caso da barra).
+            accessible
+            accessibilityLabel={`${d.label}${d.isToday ? " (hoje)" : ""}: ${formatCurrencyBRL(d.revenue)}`}
+          >
             <AnimatedBar
               barH={barH}
               chartH={chartH}

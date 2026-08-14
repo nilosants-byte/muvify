@@ -185,6 +185,7 @@ export function FriendsListScreen({ navigation }: Props) {
                   photoUri={friend.photoUrl ?? null}
                   tone="green"
                   size="sm"
+                  accessibilityLabel={friend.name ? `Foto de ${friend.name}` : undefined}
                 />
 
                 {/* Nome + apelido + tag */}

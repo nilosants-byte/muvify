@@ -56,7 +56,7 @@ function ConfigRow({
       )}
       {value && !isToggle && !badge && <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.primary }}>{value}</Text>}
       {isToggle ? (
-        <MvToggle value={toggle!} onValueChange={onToggle ?? (() => {})} />
+        <MvToggle value={toggle!} onValueChange={onToggle ?? (() => {})} accessibilityLabel={title} />
       ) : !badge && onPress ? (
         <Ionicons name={danger ? "log-out-outline" : "chevron-forward"} size={14} color={theme.labelColor} />
       ) : null}

@@ -534,7 +534,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
         {/* Header */}
         <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-          <TouchableOpacity onPress={() => setStage("scheduled")} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
+          <TouchableOpacity onPress={() => setStage("scheduled")} accessibilityRole="button" accessibilityLabel="Voltar" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
             <Ionicons name="chevron-back" size={18} color={theme.text1} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
@@ -597,6 +597,8 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                 setStage("started");
               }
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Voltar"
             style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
           >
             <Ionicons name="chevron-back" size={18} color={theme.text1} />
@@ -703,7 +705,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
 
       {/* Header */}
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
+        <TouchableOpacity onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Voltar" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
           <Ionicons name="chevron-back" size={18} color={theme.text1} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

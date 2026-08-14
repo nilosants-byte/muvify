@@ -53,6 +53,14 @@ npm run release:preflight:strict
    - pagamento
    - notificacoes push
 4. Politica de privacidade e declaracoes de loja revisadas.
+5. Acessibilidade — rodada manual com leitor de tela ligado (TalkBack no Android, VoiceOver no iOS),
+   pelo menos no fluxo de login/cadastro e num formulario critico (ex: anamnese ou criacao de ficha):
+   - todo botao so-icone anuncia sua funcao (nao so "botao");
+   - todo campo de formulario anuncia o rotulo correto ao ganhar foco;
+   - erro de validacao e anunciado, nao so mostrado visualmente;
+   - texto aumenta de tamanho quando a fonte do sistema e aumentada, sem cortar conteudo.
+   (Nao existe ferramenta de lint de acessibilidade madura para React Native hoje — esta rodada manual
+   e o unico gate real.)
 
 ## Go / No-Go
 1. Go: todos os itens obrigatorios ok.

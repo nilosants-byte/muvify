@@ -235,19 +235,19 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
           <MenuItem
             icon="notifications-outline"
             label="Notificações"
-            right={<MvToggle value={pushNotificationsEnabled} onValueChange={(v) => void setPushNotificationsPreference(v)} />}
+            right={<MvToggle value={pushNotificationsEnabled} onValueChange={(v) => void setPushNotificationsPreference(v)} accessibilityLabel="Notificações" />}
           />
           <MenuItem
             icon={lightModeEnabled ? "sunny-outline" : "moon-outline"}
             label="Aparência"
             sub={lightModeEnabled ? "Modo claro ativo" : "Modo escuro ativo"}
-            right={<MvToggle value={lightModeEnabled} onValueChange={handleLightModeToggle} />}
+            right={<MvToggle value={lightModeEnabled} onValueChange={handleLightModeToggle} accessibilityLabel="Aparência" />}
           />
           <MenuItem
             icon="analytics-outline"
             label="Compartilhar dados de uso"
             sub={analyticsEnabled ? "Ativado" : "Desativado"}
-            right={<MvToggle value={analyticsEnabled} onValueChange={handleAnalyticsToggle} />}
+            right={<MvToggle value={analyticsEnabled} onValueChange={handleAnalyticsToggle} accessibilityLabel="Compartilhar dados de uso" />}
           />
         </View>
 

@@ -222,7 +222,17 @@ export function AuthRegisterScreen({ navigation }: Props) {
               testID="input.auth.register.apelido"
             />
             {apelidoError ? (
-              <MvText variant="body4" color="danger" style={{ paddingLeft: 4 }}>
+              // Frente 15 (segunda camada, acessibilidade), Lote 13: erro
+              // inline aparecia só visualmente (texto vermelho) — sem
+              // accessibilityLiveRegion, o leitor de tela nunca anunciava a
+              // mudança, diferente do toast (MvToastHost), que já faz certo.
+              <MvText
+                variant="body4"
+                color="danger"
+                style={{ paddingLeft: 4 }}
+                accessibilityLiveRegion="polite"
+                accessibilityRole="alert"
+              >
                 Apenas letras minúsculas, números e _ · mínimo 3 caracteres
               </MvText>
             ) : apelido.length === 0 ? (
@@ -292,6 +302,11 @@ export function AuthRegisterScreen({ navigation }: Props) {
           onPress={() => setAcceptedTerms((c) => !c)}
           accessibilityRole="checkbox"
           accessibilityLabel="Aceitar termos de uso e política de privacidade"
+          // Frente 15 (segunda camada, acessibilidade), Lote 12: sem isso, o
+          // leitor de tela anunciava sempre a mesma coisa ao tocar — como o
+          // botão "Criar conta" fica desabilitado até aceitar, um usuário de
+          // TalkBack não tinha como saber se já tinha marcado ou não.
+          accessibilityState={{ checked: acceptedTerms }}
           style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, marginTop: 18, minHeight: 44 }}
         >
           <View style={{

@@ -950,6 +950,8 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
       >
         <TouchableOpacity
           onPress={() => navigation.goBack()}
+          accessibilityRole="button"
+          accessibilityLabel="Voltar"
           style={{
             width: 30,
             height: 30,
@@ -1450,13 +1452,20 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                         <Ionicons name="add-circle" size={14} color={theme.textGreen} />
                         {!exercise.isPrebuilt ? (
                           <>
-                            <TouchableOpacity onPress={() => startEditExercise(exercise)} hitSlop={4}>
+                            <TouchableOpacity
+                              onPress={() => startEditExercise(exercise)}
+                              hitSlop={4}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Editar exercício ${exercise.name}`}
+                            >
                               <Ionicons name="create-outline" size={12} color={theme.text3} />
                             </TouchableOpacity>
                             <TouchableOpacity
                               onPress={() => removeExercise(exercise.id)}
                               disabled={deletingExerciseId === exercise.id}
                               hitSlop={4}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Excluir exercício ${exercise.name}`}
                             >
                               <Ionicons name="trash-outline" size={12} color={deletingExerciseId === exercise.id ? theme.text3 : "#f44336"} />
                             </TouchableOpacity>
@@ -1510,7 +1519,11 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                             <MvText variant="body4" color="secondary">{exercise.category}</MvText>
                           ) : null}
                         </View>
-                        <TouchableOpacity onPress={() => removeDraftExercise(setNewPlanExercises, exercise.uid)}>
+                        <TouchableOpacity
+                          onPress={() => removeDraftExercise(setNewPlanExercises, exercise.uid)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Excluir exercício ${exercise.name}`}
+                        >
                           <Ionicons name="trash-outline" size={16} color="#f44336" />
                         </TouchableOpacity>
                       </View>
@@ -1612,6 +1625,8 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                       {!isEditing ? (
                         <TouchableOpacity
                           onPress={() => handleStartInlinePlanEdit(plan)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Editar treino ${plan.title}`}
                           style={{
                             width: 34,
                             height: 34,
@@ -1693,6 +1708,8 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                                       onPress={() =>
                                         removeDraftExercise(setEditingPlanExercises, exercise.uid)
                                       }
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`Excluir exercício ${exercise.name}`}
                                     >
                                       <Ionicons name="trash-outline" size={16} color="#f44336" />
                                     </TouchableOpacity>

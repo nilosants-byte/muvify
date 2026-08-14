@@ -24,6 +24,16 @@ interface MvAvatarProps {
   photoUri?: string | null;
   /** Capa verde ao redor da miniatura (liga por padrão — ver protótipo aprovado). */
   aura?: boolean;
+  /**
+   * Frente 15 (segunda camada, acessibilidade), Lote 4: sem isso, o leitor
+   * de tela anunciava cada avatar só como "imagem" — numa lista (chat,
+   * seguidores), várias entradas ficavam indistinguíveis. Quando não
+   * passado, o avatar vira decorativo (accessible={false}) em vez de
+   * "imagem" mudo — correto pro caso comum onde o nome já aparece como
+   * texto ao lado (duplicar seria ruído), mas quem for o único
+   * identificador visível numa tela deve passar o nome aqui.
+   */
+  accessibilityLabel?: string;
 }
 
 const SIZE_MAP: Record<string, number> = { sm: 36, md: 46, lg: 56 };
@@ -73,6 +83,7 @@ export function MvAvatar({
   borderRadius,
   photoUri,
   aura = true,
+  accessibilityLabel,
 }: MvAvatarProps) {
   const { theme } = useMvTheme();
   const resolvedTone: AvatarTone = tone ?? color ?? "green";
@@ -97,6 +108,8 @@ export function MvAvatar({
         contentFit="cover"
         cachePolicy="memory-disk"
         onError={() => setPhotoError(true)}
+        accessible={Boolean(accessibilityLabel)}
+        accessibilityLabel={accessibilityLabel}
       />
     );
   } else {
@@ -106,6 +119,8 @@ export function MvAvatar({
         colors={[from, to]}
         start={{ x: 0.35, y: 0.2 }}
         end={{ x: 1, y: 1 }}
+        accessible={Boolean(accessibilityLabel)}
+        accessibilityLabel={accessibilityLabel}
         style={[
           styles.base,
           {

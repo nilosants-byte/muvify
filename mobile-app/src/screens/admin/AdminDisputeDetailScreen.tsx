@@ -482,7 +482,7 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
                     <MvText variant="caption" color="secondary" style={{ flex: 1, marginRight: 8 }}>
                       Este aluno já recebeu um reembolso indevido antes desta disputa e precisa devolver o valor
                     </MvText>
-                    <MvToggle value={chargeClientDebt} onValueChange={setChargeClientDebt} />
+                    <MvToggle value={chargeClientDebt} onValueChange={setChargeClientDebt} accessibilityLabel="Cobrar valor do reembolso indevido do aluno" />
                   </View>
                   {chargeClientDebt ? (
                     <View style={{ gap: 4 }}>

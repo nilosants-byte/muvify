@@ -1025,6 +1025,8 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                     <MvBadge label={bookingStatusBadge(b.status).label} variant={bookingStatusBadge(b.status).variant} />
                     <TouchableOpacity
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Ver anamnese de ${b.client?.name ?? "aluno"}`}
                       onPress={(e) => {
                         e.stopPropagation();
                         goToStack("ProfessionalStudentAnamnesis", {
@@ -1276,7 +1278,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                     <Ionicons name={isLight ? "sunny-outline" : "moon-outline"} size={16} color={theme.textGreen} />
                   </View>
                   <MvText variant="semi2" style={{ flex: 1, color: drawerText }}>Modo light</MvText>
-                  <MvToggle value={isLight} onValueChange={() => toggleTheme()} />
+                  <MvToggle value={isLight} onValueChange={() => toggleTheme()} accessibilityLabel="Modo light" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   activeOpacity={1}
@@ -1286,7 +1288,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                     <Ionicons name="notifications-outline" size={16} color={theme.textGreen} />
                   </View>
                   <MvText variant="semi2" style={{ flex: 1, color: drawerText }}>Notificações</MvText>
-                  <MvToggle value={pushNotificationsEnabled} onValueChange={(v) => void setPushNotificationsPreference(v)} />
+                  <MvToggle value={pushNotificationsEnabled} onValueChange={(v) => void setPushNotificationsPreference(v)} accessibilityLabel="Notificações" />
                 </TouchableOpacity>
 
                 {/* ─ Grupo: Mais ─ */}

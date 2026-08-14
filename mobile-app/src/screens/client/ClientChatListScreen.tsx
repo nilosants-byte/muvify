@@ -519,6 +519,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
             photoUri={item.otherUser.photoUrl ?? null}
             tone={tone}
             size="md"
+            accessibilityLabel={`Foto de ${item.otherUser.name}`}
           />
           {item.isOpen && (
             <View style={{ position: "absolute", bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.cardBg }} />
@@ -645,7 +646,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
         <>
           {/* Header V2 */}
           <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
+            <TouchableOpacity onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Voltar" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name="chevron-back" size={18} color={theme.text1} />
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
@@ -719,7 +720,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
           {/* Header do chat V2 */}
           <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-            <TouchableOpacity onPress={goBackToList} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
+            <TouchableOpacity onPress={goBackToList} accessibilityRole="button" accessibilityLabel="Voltar para a lista de conversas" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name="chevron-back" size={18} color={theme.text1} />
             </TouchableOpacity>
             {selectedChat ? (

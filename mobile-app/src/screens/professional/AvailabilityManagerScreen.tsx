@@ -394,6 +394,8 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
                     onPress={() => void deleteSlot(item.id)}
                     disabled={deletingId === item.id}
                     hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Excluir horário ${item.startTime} às ${item.endTime}`}
                     style={{ padding: 4 }}
                   >
                     <Ionicons
@@ -492,7 +494,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
             <MvText variant="body4" style={{ color: theme.text1 }}>
               Aplicar também em outros dias
             </MvText>
-            <MvToggle value={applyToMoreDays} onValueChange={(v) => { setApplyToMoreDays(v); setExtraDays(new Set()); }} />
+            <MvToggle value={applyToMoreDays} onValueChange={(v) => { setApplyToMoreDays(v); setExtraDays(new Set()); }} accessibilityLabel="Aplicar também em outros dias" />
           </TouchableOpacity>
 
           {/* Seleção de dias extras */}

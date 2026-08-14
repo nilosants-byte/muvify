@@ -24,6 +24,11 @@ export function MvBottomNav({ items, activeKey, onPress }: MvBottomNavProps) {
   return (
     <View
       testID="nav.bottom"
+      // Frente 15 (segunda camada, acessibilidade), Lote 5: os itens já
+      // tinham accessibilityLabel + accessibilityState corretos, mas o
+      // role de "button" não dava ao leitor de tela o contexto de
+      // navegação por abas (ex: "aba 2 de 5") que "tab"/"tablist" dão.
+      accessibilityRole="tablist"
       style={{
         position: "absolute",
         bottom: 0,
@@ -50,7 +55,7 @@ export function MvBottomNav({ items, activeKey, onPress }: MvBottomNavProps) {
             activeOpacity={0.8}
             onPress={() => onPress?.(item.key)}
             testID={`nav.bottom.${item.key}`}
-            accessibilityRole="button"
+            accessibilityRole="tab"
             accessibilityLabel={item.label}
             accessibilityState={isActive ? { selected: true } : undefined}
             style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 3, paddingVertical: 2 }}

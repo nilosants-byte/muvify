@@ -70,7 +70,9 @@ export function ProfessionalBottomNav({ activeKey, onPress }: ProfessionalBottom
 
 function NavContent({ activeKey, onPress, theme }: ProfessionalBottomNavProps & { theme: ReturnType<typeof useMvTheme>["theme"] }) {
   return (
-    <View style={styles.row}>
+    // Frente 15 (segunda camada, acessibilidade), Lote 5: role "button" nos
+    // itens não dava ao leitor de tela contexto de navegação por abas.
+    <View style={styles.row} accessibilityRole="tablist">
       {ITEMS.map((item) => {
         const isActive = item.key === activeKey;
 
@@ -78,7 +80,7 @@ function NavContent({ activeKey, onPress, theme }: ProfessionalBottomNavProps & 
           <TouchableOpacity
             key={item.key}
             testID={`nav.bottom.${item.key}`}
-            accessibilityRole="button"
+            accessibilityRole="tab"
             accessibilityLabel={item.label}
             accessibilityState={isActive ? { selected: true } : undefined}
             activeOpacity={0.75}

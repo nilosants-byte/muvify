@@ -126,6 +126,9 @@ export const ClientProviderCard = React.memo(function ClientProviderCard({
                 </View>
                 <TouchableOpacity
                   onPress={onClose}
+                  accessibilityRole="button"
+                  accessibilityLabel="Fechar"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)", borderWidth: 1, borderColor: theme.border }}
                 >
                   <Ionicons name="close" size={16} color={theme.text2} />
@@ -162,6 +165,9 @@ export const ClientProviderCard = React.memo(function ClientProviderCard({
                       <TouchableOpacity
                         key={day.date}
                         onPress={() => onSelectDay(active ? null : day.date)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        accessibilityLabel={`${day.label}, ${hasSlots ? "com horário disponível" : "sem horário disponível"}`}
                         style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: active ? theme.primarySubtleBorder : theme.border, backgroundColor: active ? theme.primarySubtle : "transparent", alignItems: "center", gap: 3 }}
                       >
                         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: hasSlots ? theme.primary : theme.text3 }} />

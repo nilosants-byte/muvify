@@ -93,4 +93,23 @@ describe("AuthLoginScreen", () => {
     await waitFor(() => expect(login).toHaveBeenCalledTimes(1));
     expect(showToast).not.toHaveBeenCalledWith("Credenciais invalidas.", "error");
   });
+
+  // Frente 15 (segunda camada, acessibilidade), Lote 1: nenhum dos dois
+  // campos tem `label` visual (só placeholder, "seu@email.com"/"••••••••")
+  // — sem accessibilityLabel explícito, o leitor de tela anunciava só o
+  // placeholder quando vazio e nada quando preenchido. Pior caso: a senha
+  // só seria anunciada como uma sequência de bullets.
+  it("campos de e-mail e senha têm accessibilityLabel explícito pro leitor de tela", () => {
+    (useAppState as jest.Mock).mockReturnValue({
+      login: jest.fn(),
+      showToast: jest.fn(),
+      clearToast: jest.fn(),
+      isAuthenticated: false
+    });
+
+    const screen = render(<AuthLoginScreen navigation={navigation} route={route} />);
+
+    expect(screen.getByLabelText("E-mail")).toBeTruthy();
+    expect(screen.getByLabelText("Senha")).toBeTruthy();
+  });
 });

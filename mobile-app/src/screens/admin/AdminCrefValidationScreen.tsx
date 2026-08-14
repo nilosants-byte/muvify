@@ -84,10 +84,10 @@ function DocViewerModal({
         }}>
           <MvText variant="semi2" style={{ color: "#fff" }}>{label}</MvText>
           <View style={{ flexDirection: "row", gap: 12 }}>
-            <TouchableOpacity onPress={openExternal} style={{ padding: 4 }}>
+            <TouchableOpacity onPress={openExternal} accessibilityRole="button" accessibilityLabel="Abrir documento em outro app" hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 4 }}>
               <Ionicons name="open-outline" size={22} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
+            <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Fechar" hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 4 }}>
               <Ionicons name="close" size={24} color="#fff" />
             </TouchableOpacity>
           </View>

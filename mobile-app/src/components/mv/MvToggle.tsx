@@ -6,9 +6,14 @@ interface MvToggleProps {
   value: boolean;
   onValueChange?: (value: boolean) => void;
   disabled?: boolean;
+  // Frente 15 (segunda camada, acessibilidade), Lote 2: sem isso, o leitor
+  // de tela anunciava só "switch, ligado/desligado" sem dizer do quê —
+  // grave quando várias linhas de toggle aparecem seguidas na mesma tela
+  // (ex: "Mais" do profissional, 3 toggles em sequência).
+  accessibilityLabel?: string;
 }
 
-export function MvToggle({ value, onValueChange, disabled = false }: MvToggleProps) {
+export function MvToggle({ value, onValueChange, disabled = false, accessibilityLabel }: MvToggleProps) {
   const { theme } = useMvTheme();
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
@@ -37,6 +42,7 @@ export function MvToggle({ value, onValueChange, disabled = false }: MvTogglePro
       onPress={() => { if (!disabled) onValueChange?.(!value); }}
       disabled={disabled}
       accessibilityRole="switch"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled, checked: value }}
       style={{ width: 38, height: 22, opacity: disabled ? 0.5 : 1 }}
     >

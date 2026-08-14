@@ -315,6 +315,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
         <PressableScale
           scale={0.92}
           onPress={goBack}
+          accessibilityLabel="Voltar"
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="chevron-back" size={20} color={theme.text2} />

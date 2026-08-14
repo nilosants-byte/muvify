@@ -144,4 +144,29 @@ describe("Frente 11, Lote 5 — ProfessionalStudentsScreen", () => {
       clientName: "Ana Silva"
     });
   });
+
+  // Frente 15 (segunda camada, acessibilidade), Lote 9: os 3 selos de
+  // pendência (anamnese/ficha/renovação) comunicavam status crítico só por
+  // ícone+cor, sem accessibilityLabel — um usuário de leitor de tela não
+  // sabia que aquele aluno tinha pendência nem conseguia agir sobre ela.
+  it("selos de pendência (anamnese, ficha, renovação) têm accessibilityLabel identificando o aluno", async () => {
+    const student = buildStudent({
+      clientId: "client-ana",
+      name: "Ana Silva",
+      anamnesisPending: true,
+      trainingPlanPending: true,
+      fichaRenewalPending: true
+    });
+    jest.spyOn(providersApi, "dashboardStudents").mockResolvedValue(buildResponse([student]));
+
+    const ui = renderWithQueryClient(
+      <ProfessionalStudentsScreen navigation={{ navigate: jest.fn() } as any} route={{} as any} />
+    );
+
+    await waitFor(() => expect(ui.getByText("Ana Silva")).toBeTruthy());
+
+    expect(ui.getByLabelText("Anamnese pendente de Ana Silva")).toBeTruthy();
+    expect(ui.getByLabelText("Ficha de treino pendente de Ana Silva")).toBeTruthy();
+    expect(ui.getByLabelText("Renovação de ficha pendente de Ana Silva")).toBeTruthy();
+  });
 });

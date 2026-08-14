@@ -496,6 +496,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
             <PressableScale
               scale={0.92}
               onPress={closeChat}
+              accessibilityLabel="Voltar"
               style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
             >
               <Ionicons name="chevron-back" size={20} color={text2} />
@@ -657,6 +658,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
         <PressableScale
           scale={0.92}
           onPress={() => navigation.goBack()}
+          accessibilityLabel="Voltar"
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backBtn, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="chevron-back" size={20} color={text2} />
@@ -766,6 +768,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
                     size={52}
                     borderRadius={26}
                     color="green"
+                    accessibilityLabel={`Foto de ${item.otherUser.name}`}
                   />
                   {item.isOpen ? (
                     <View style={{ position: "absolute", bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: green, borderWidth: 2, borderColor: cardBg }} />

@@ -40,7 +40,7 @@ describe("Frente 14, Lote 15 — connectSocket permite fallback de transporte", 
 
   it("passa transports com websocket E polling (fallback real, não só websocket)", () => {
     const fakeSocket = new FakeSocket();
-    const ioMock = jest.fn(() => fakeSocket);
+    const ioMock = jest.fn((_url?: string, _options?: { transports?: string[] }) => fakeSocket);
     jest.doMock("socket.io-client", () => ({ io: ioMock }));
     const { connectSocket } = require("../services/realtime/socket");
 

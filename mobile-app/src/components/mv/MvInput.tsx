@@ -53,6 +53,12 @@ export const MvInput = forwardRef<TextInput, MvInputProps>(
             secureTextEntry={isSecure}
             onFocus={(e) => { setFocused(true); rest.onFocus?.(e); }}
             onBlur={(e) => { setFocused(false); rest.onBlur?.(e); }}
+            // Frente 15 (segunda camada, acessibilidade), Lote 1: o `label`
+            // visual nunca chegava ao leitor de tela - só o `placeholder`
+            // (quando o campo está vazio) era anunciado. Cai pro `label` só
+            // quando o chamador não passou accessibilityLabel explícito, sem
+            // quebrar quem já customiza.
+            accessibilityLabel={rest.accessibilityLabel ?? label}
             placeholderTextColor={theme.text3}
             selectionColor={theme.primary}
             style={[
