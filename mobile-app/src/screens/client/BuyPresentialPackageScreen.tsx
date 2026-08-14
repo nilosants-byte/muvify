@@ -653,7 +653,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
                 borderRadius: S.btnR,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: !canSubmit || purchasing ? "rgba(36,230,109,0.4)" : theme.primary,
+                backgroundColor: !canSubmit || purchasing ? theme.primaryDisabled : theme.primary,
               }}
             >
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.textOnPrimary }}>

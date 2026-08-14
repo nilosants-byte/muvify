@@ -80,7 +80,7 @@ nao a intencao original.
 | CL-029 | ClientBookingDetail confirma conclusao e navega para confirmacao | HIGH | MAPEADO | - |
 | CL-030 | ClientConfirmCompletion fluxo de confirmacao final | HIGH | MAPEADO | - |
 | CL-031 | ReviewProfessional envio de avaliacao | MEDIUM | MAPEADO | - |
-| CL-032 | BookingChat envio/recebimento de mensagens | MEDIUM | MAPEADO | - |
+| CL-032 | BookingChat envio/recebimento de mensagens | MEDIUM | AUTOMATIZADO | `e2e/client/06-chat-send-message.yaml` (envio; recebimento/tempo real não coberto) |
 | CL-033 | ClientPaymentMethod setup inicial de cliente de pagamento | HIGH | MAPEADO | - |
 | CL-034 | ClientPaymentMethod adicionar cartao | HIGH | MAPEADO | - |
 | CL-035 | ClientPaymentMethod definir cartao padrao | MEDIUM | MAPEADO | - |
@@ -106,6 +106,7 @@ nao a intencao original.
 | CL-055 | Offline cliente bloqueio e recuperacao | HIGH | MAPEADO | - |
 | CL-056 | Navegacao principal cliente (Home/Agenda/Treino/Comunidade/Perfil) | HIGH | AUTOMATIZADO | `e2e/client/01-home-tabs.yaml` |
 | CL-057 | Exclusao de conta (LGPD) | HIGH | AUTOMATIZADO | `e2e/auth/07-delete-account.yaml` |
+| CL-058 | Minhas disputas (navegacao + estado vazio) | MEDIUM | AUTOMATIZADO | `e2e/client/07-my-disputes.yaml` (so estado vazio; card de disputa populado nao coberto) |
 
 ## 3) Fluxos Logado - Personal Trainer (PR-*)
 

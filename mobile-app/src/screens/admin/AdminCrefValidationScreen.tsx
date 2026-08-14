@@ -3,11 +3,11 @@ import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingF
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import {
+  FlatList,
   Image,
   Linking,
   Modal,
   RefreshControl,
-  ScrollView,
   StatusBar,
   TouchableOpacity,
   View,
@@ -247,15 +247,14 @@ const PAGE_SIZE = 100;
 
 // Frente 7 (segunda camada), Lote 14: esta tela (e AdminSupportScreen,
 // AdminModerationScreen, AdminDisputesScreen, AdminDebtsScreen,
-// AdminNoShowReportsScreen) renderiza a fila inteira dentro de uma
-// ScrollView + .map, sem virtualização (FlatList), diferente de
-// AdminChatAuditScreen/AdminExercisesScreen. Decisão do usuário: documentar
-// como gap aceito por ora em vez de refatorar — cada item destas telas tem
-// formulário embutido (motivo de baixa/suspensão/resposta), então trocar
-// pra FlatList exige reestruturar RefreshControl/paginação/header em torno
-// de ListHeaderComponent/ListFooterComponent nas 6 telas, sem forma de
-// validar visualmente o resultado nesta sessão — risco desproporcional ao
-// volume real de fila hoje.
+// AdminNoShowReportsScreen) renderizava a fila inteira dentro de uma
+// ScrollView + .map, sem virtualização (FlatList) — gap aceito por ora
+// naquela frente, risco desproporcional sem forma de validar visualmente.
+// Cleanup pós-épico segunda camada: as 6 telas migradas pra FlatList
+// (RefreshControl/paginação/header viraram ListHeaderComponent/
+// ListFooterComponent/ListEmptyComponent) — ainda sem validação visual
+// real neste ambiente (sem device/emulador), só typecheck + revisão
+// cuidadosa de paridade item a item.
 export function AdminCrefValidationScreen({ navigation }: Props) {
   const { theme } = useMvTheme();
   const { runWithAuth, showToast } = useAppState();
@@ -368,13 +367,120 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
     }
   }
 
+  function renderItem({ item }: { item: AdminCrefQueueItem }) {
+    const docCount = item.credentials?.length ?? 0;
+    const isRejectingThis = rejectingId === item.providerId;
+    const isSubmittingThis = submittingId === item.providerId;
+
+    return (
+      <MvCard style={{ marginBottom: 10 }}>
+        <View style={{ gap: 8 }}>
+          <MvText variant="semi2">{item.user.name ?? "Profissional desconhecido"}</MvText>
+          <MvText variant="body4" color="secondary">{item.user.email ?? "—"}</MvText>
+          {item.user.email ? (
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.user.email! })}
+            >
+              <MvText variant="caption" color="green">Ver cadastro deste profissional →</MvText>
+            </TouchableOpacity>
+          ) : null}
+          <MvText variant="body4">CREF: {item.crefNumber ?? "—"}</MvText>
+          <MvText variant="body4">
+            Documentos enviados: {docCount}{docCount > 0 ? " (frente e verso abaixo)" : ""}
+          </MvText>
+          <MvText variant="body4">
+            Status:{" "}
+            {item.crefValidationStatus === "APPROVED"
+              ? "Aprovado"
+              : item.crefValidationStatus === "REJECTED"
+                ? "Reprovado"
+                : item.crefValidationStatus === "IN_REVIEW"
+                  ? "Em análise"
+                  : "Pendente"}
+          </MvText>
+          {item.crefRejectionReason ? (
+            <MvText variant="body4" color="secondary">
+              Último motivo: {item.crefRejectionReason}
+            </MvText>
+          ) : null}
+          {(item.crefRejectionCount ?? 0) > 0 ? (
+            <MvText variant="caption" color="secondary">
+              Já reprovado {item.crefRejectionCount}x antes
+            </MvText>
+          ) : null}
+
+          {/* Document viewer buttons */}
+          <DocButtons item={item} />
+
+          {status === "IN_REVIEW" ? (
+            <View style={{ gap: 8, marginTop: 6 }}>
+              <MvButton
+                label="Aprovar CREF"
+                loading={isSubmittingThis}
+                disabled={docCount === 0}
+                onPress={() => void approve(item.providerId)}
+              />
+              {docCount === 0 && (
+                <MvText variant="caption" color="secondary" style={{ textAlign: "center" }}>
+                  Nenhum documento enviado — aguarde envio antes de aprovar.
+                </MvText>
+              )}
+              {isRejectingThis ? (
+                <View style={{ gap: 8 }}>
+                  <MvInput
+                    multiline
+                    numberOfLines={4}
+                    maxLength={300}
+                    placeholder="Escreva o motivo da reprovação (máximo 300 caracteres)"
+                    value={justification}
+                    onChangeText={setJustification}
+                    style={{ textAlignVertical: "top" } as any}
+                  />
+                  <MvText variant="caption" color="secondary">
+                    {justification.length}/300
+                  </MvText>
+                  <MvButton
+                    variant="danger"
+                    label="Confirmar reprovação"
+                    loading={isSubmittingThis}
+                    onPress={() => void reject(item.providerId)}
+                  />
+                  <MvButton
+                    variant="ghost"
+                    label="Cancelar"
+                    onPress={() => {
+                      setRejectingId(null);
+                      setJustification("");
+                    }}
+                  />
+                </View>
+              ) : (
+                <MvButton
+                  variant="outline"
+                  label="Reprovar CREF"
+                  onPress={() => {
+                    setRejectingId(item.providerId);
+                    setJustification("");
+                  }}
+                />
+              )}
+            </View>
+          ) : null}
+        </View>
+      </MvCard>
+    );
+  }
+
   return (
     <AdminScaffold
       title="Validação de CREF"
       navigation={navigation}
       currentScreen="AdminCrefValidation"
     >
-      <ScrollView
+      <FlatList
+        data={items}
+        keyExtractor={(item) => item.providerId}
+        renderItem={renderItem}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -384,165 +490,66 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
             colors={[theme.primary]}
           />
         }
-        contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 10 }}
-      >
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {(["IN_REVIEW", "PENDING", "APPROVED", "REJECTED"] as const).map((option) => (
-            <TouchableOpacity
-              key={option}
-              onPress={() => {
-                setStatus(option);
-                setRejectingId(null);
-                setJustification("");
-                setOffset(0);
-                setAccumulatedItems([]);
-              }}
-              style={{
-                borderWidth: 1,
-                borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
-                borderRadius: 20,
-                paddingHorizontal: 12,
-                paddingVertical: 8
-              }}
-            >
-              <MvText variant="caption">
-                {option === "IN_REVIEW"
-                  ? "Em análise"
-                  : option === "PENDING"
-                    ? "Pendentes"
-                    : option === "APPROVED"
-                      ? "Aprovados"
-                      : "Reprovados"}
+        contentContainerStyle={{ padding: 16, paddingBottom: 90 }}
+        ListHeaderComponent={
+          <View style={{ gap: 10, marginBottom: 10 }}>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {(["IN_REVIEW", "PENDING", "APPROVED", "REJECTED"] as const).map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  onPress={() => {
+                    setStatus(option);
+                    setRejectingId(null);
+                    setJustification("");
+                    setOffset(0);
+                    setAccumulatedItems([]);
+                  }}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
+                    borderRadius: 20,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8
+                  }}
+                >
+                  <MvText variant="caption">
+                    {option === "IN_REVIEW"
+                      ? "Em análise"
+                      : option === "PENDING"
+                        ? "Pendentes"
+                        : option === "APPROVED"
+                          ? "Aprovados"
+                          : "Reprovados"}
+                  </MvText>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {items.length > 0 ? (
+              <MvText variant="caption" color="secondary">
+                Mostrando {items.length} de {total}
               </MvText>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {items.length === 0 && !loading ? (
-          <MvCard>
-            <MvText variant="body3">Nenhum CREF encontrado nessa fila.</MvText>
-          </MvCard>
-        ) : null}
-
-        {items.length > 0 ? (
-          <MvText variant="caption" color="secondary">
-            Mostrando {items.length} de {total}
-          </MvText>
-        ) : null}
-
-        {items.map((item) => {
-          const docCount = item.credentials?.length ?? 0;
-          const isRejectingThis = rejectingId === item.providerId;
-          const isSubmittingThis = submittingId === item.providerId;
-
-          return (
-            <MvCard key={item.providerId}>
-              <View style={{ gap: 8 }}>
-                <MvText variant="semi2">{item.user.name ?? "Profissional desconhecido"}</MvText>
-                <MvText variant="body4" color="secondary">{item.user.email ?? "—"}</MvText>
-                {item.user.email ? (
-                  <TouchableOpacity
-                    onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.user.email! })}
-                  >
-                    <MvText variant="caption" color="green">Ver cadastro deste profissional →</MvText>
-                  </TouchableOpacity>
-                ) : null}
-                <MvText variant="body4">CREF: {item.crefNumber ?? "—"}</MvText>
-                <MvText variant="body4">
-                  Documentos enviados: {docCount}{docCount > 0 ? " (frente e verso abaixo)" : ""}
-                </MvText>
-                <MvText variant="body4">
-                  Status:{" "}
-                  {item.crefValidationStatus === "APPROVED"
-                    ? "Aprovado"
-                    : item.crefValidationStatus === "REJECTED"
-                      ? "Reprovado"
-                      : item.crefValidationStatus === "IN_REVIEW"
-                        ? "Em análise"
-                        : "Pendente"}
-                </MvText>
-                {item.crefRejectionReason ? (
-                  <MvText variant="body4" color="secondary">
-                    Último motivo: {item.crefRejectionReason}
-                  </MvText>
-                ) : null}
-                {(item.crefRejectionCount ?? 0) > 0 ? (
-                  <MvText variant="caption" color="secondary">
-                    Já reprovado {item.crefRejectionCount}x antes
-                  </MvText>
-                ) : null}
-
-                {/* Document viewer buttons */}
-                <DocButtons item={item} />
-
-                {status === "IN_REVIEW" ? (
-                  <View style={{ gap: 8, marginTop: 6 }}>
-                    <MvButton
-                      label="Aprovar CREF"
-                      loading={isSubmittingThis}
-                      disabled={docCount === 0}
-                      onPress={() => void approve(item.providerId)}
-                    />
-                    {docCount === 0 && (
-                      <MvText variant="caption" color="secondary" style={{ textAlign: "center" }}>
-                        Nenhum documento enviado — aguarde envio antes de aprovar.
-                      </MvText>
-                    )}
-                    {isRejectingThis ? (
-                      <View style={{ gap: 8 }}>
-                        <MvInput
-                          multiline
-                          numberOfLines={4}
-                          maxLength={300}
-                          placeholder="Escreva o motivo da reprovação (máximo 300 caracteres)"
-                          value={justification}
-                          onChangeText={setJustification}
-                          style={{ textAlignVertical: "top" } as any}
-                        />
-                        <MvText variant="caption" color="secondary">
-                          {justification.length}/300
-                        </MvText>
-                        <MvButton
-                          variant="danger"
-                          label="Confirmar reprovação"
-                          loading={isSubmittingThis}
-                          onPress={() => void reject(item.providerId)}
-                        />
-                        <MvButton
-                          variant="ghost"
-                          label="Cancelar"
-                          onPress={() => {
-                            setRejectingId(null);
-                            setJustification("");
-                          }}
-                        />
-                      </View>
-                    ) : (
-                      <MvButton
-                        variant="outline"
-                        label="Reprovar CREF"
-                        onPress={() => {
-                          setRejectingId(item.providerId);
-                          setJustification("");
-                        }}
-                      />
-                    )}
-                  </View>
-                ) : null}
-              </View>
+            ) : null}
+          </View>
+        }
+        ListEmptyComponent={
+          !loading ? (
+            <MvCard>
+              <MvText variant="body3">Nenhum CREF encontrado nessa fila.</MvText>
             </MvCard>
-          );
-        })}
-
-        {hasMore ? (
-          <MvButton
-            variant="outline"
-            label="Carregar mais"
-            loading={loadingMore}
-            onPress={loadMore}
-          />
-        ) : null}
-      </ScrollView>
+          ) : null
+        }
+        ListFooterComponent={
+          hasMore ? (
+            <MvButton
+              variant="outline"
+              label="Carregar mais"
+              loading={loadingMore}
+              onPress={loadMore}
+            />
+          ) : null
+        }
+      />
     </AdminScaffold>
   );
 }

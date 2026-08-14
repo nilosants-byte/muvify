@@ -181,9 +181,22 @@ describe("Consistência de combo e visibilidade financeira de renovação (Rodad
       data: { nextBillingAt: new Date(Date.now() - 60_000) }
     });
 
+    // Cleanup pós-épico segunda camada: chargeDueCycles() varre TODO pacote
+    // com nextBillingAt vencido no banco inteiro, por desenho (é o job real
+    // de produção) — sob a suíte completa em paralelo, outro arquivo
+    // concorrente pode ter deixado um pacote seu também vencido no mesmo
+    // instante, fazendo esse spy global (Payment.prototype.create) contar
+    // 2 chamadas em vez de 1 sem ser bug nenhum. toHaveBeenCalledTimes(1)
+    // dava falso negativo nesse cenário. A idempotencyKey embute
+    // pkg.id+cycleIndex — verificar por ela confirma que ESTE pacote foi
+    // cobrado exatamente uma vez, imune a outro pacote concorrente
+    // legitimamente cobrado na mesma varredura.
     const createSpy = vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: MOCK_MP_ID_BASE + 3, status: "approved" } as any);
     await packageService.chargeDueCycles();
-    expect(createSpy).toHaveBeenCalledTimes(1);
+    const cycle2Calls = createSpy.mock.calls.filter(
+      (call) => (call[0] as any)?.requestOptions?.idempotencyKey?.startsWith(`presential-package:${pkg.id}:cycle:2:`)
+    );
+    expect(cycle2Calls).toHaveLength(1);
 
     const afterCycle2 = await prisma.presentialPackage.findUniqueOrThrow({ where: { id: pkg.id } });
     expect(afterCycle2.nextCycleIndex).toBe(3);
@@ -195,7 +208,10 @@ describe("Consistência de combo e visibilidade financeira de renovação (Rodad
     });
     const createSpy2 = vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: MOCK_MP_ID_BASE + 4, status: "approved" } as any);
     await packageService.chargeDueCycles();
-    expect(createSpy2).toHaveBeenCalledTimes(1);
+    const cycle3Calls = createSpy2.mock.calls.filter(
+      (call) => (call[0] as any)?.requestOptions?.idempotencyKey?.startsWith(`presential-package:${pkg.id}:cycle:3:`)
+    );
+    expect(cycle3Calls).toHaveLength(1);
   });
 
   it("generateDueCardFixedPeriods ignora pacotes de combo (não cobra por sessão o que é combo)", async () => {

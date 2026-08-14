@@ -3,6 +3,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { app } from "../src/app";
 import { prisma } from "../src/config/prisma";
+import { env } from "../src/config/env";
+import { toDateKeyInTimezone } from "../src/shared/utils/timezone";
 
 const PASSWORD = "Test1234";
 let providerToken = "";
@@ -158,8 +160,15 @@ describe("availability, manual-blocks and calendar", () => {
   });
 
   it("POST /manual-blocks rejects past date", async () => {
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const date = yesterday.toISOString().slice(0, 10);
+    // Cleanup pós-épico segunda camada: toISOString() é sempre UTC — entre
+    // ~21h e 23:59 no horário de Brasília, "ontem em UTC" podia ainda ser
+    // "hoje" em São Paulo (mesmo bug já corrigido do lado do produto na
+    // Frente 5/Lote 6; aqui era só o teste que replicava o erro, causando
+    // falha intermitente dependendo da hora em que a suíte rodasse).
+    // 2 dias em vez de 1 dá margem de sobra mesmo depois da conversão de
+    // fuso, calculada com o mesmo helper timezone-safe que o produto usa.
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    const date = toDateKeyInTimezone(twoDaysAgo, env.APP_TIMEZONE);
     const res = await request(app)
       .post("/api/manual-blocks")
       .set("Authorization", `Bearer ${providerToken}`)

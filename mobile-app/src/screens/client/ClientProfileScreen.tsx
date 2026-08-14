@@ -50,7 +50,7 @@ const initialStats: ProfileStats = { totalBookings: 0, upcomingBookings: 0, acti
 
 // Componente de linha de menu V2
 function MenuRow({
-  icon, label, subtitle, badge, onPress, danger = false,
+  icon, label, subtitle, badge, onPress, danger = false, testID,
 }: {
   icon: React.ComponentProps<typeof Ionicons>["name"];
   label: string;
@@ -58,6 +58,7 @@ function MenuRow({
   badge?: string;
   onPress: () => void;
   danger?: boolean;
+  testID?: string;
 }) {
   const { theme } = useMvTheme();
   const iconColor = danger ? theme.danger : theme.primary;
@@ -65,6 +66,7 @@ function MenuRow({
   const iconBorder = danger ? theme.dangerSubtleBorder : theme.primarySubtleBorder;
   return (
     <TouchableOpacity
+      testID={testID}
       onPress={onPress}
       style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: theme.border, minHeight: S.touchMin }}
       activeOpacity={0.75}
@@ -318,7 +320,7 @@ export function ClientProfileScreen({ navigation }: Props) {
 
         {/* Hero card — avatar + nome + badges gamificação */}
         <View style={{ paddingHorizontal: S.px }}>
-          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: "rgba(36,230,109,0.09)", padding: 16 }}>
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primaryHighlight, padding: 16 }}>
             <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>
               {/* Avatar com botão de câmera */}
               <TouchableOpacity onPress={openPhotoSheet} activeOpacity={0.8} style={{ position: "relative" }}>
@@ -503,7 +505,7 @@ export function ClientProfileScreen({ navigation }: Props) {
             <MenuRow icon="calendar-outline" label="Aulas presenciais" subtitle="Meus agendamentos" onPress={() => navigation.navigate("ClientBookings")} />
             <MenuRow icon="repeat-outline" label="Pacotes presenciais" subtitle="Créditos e assinaturas" onPress={() => goToStack("MyPresentialPackages")} />
             <MenuRow icon="alert-circle-outline" label="Minhas pendências" subtitle="Cobranças e valores em aberto" onPress={() => goToStack("MyDebts")} />
-            <MenuRow icon="shield-outline" label="Minhas disputas" subtitle="Casos em análise ou resolvidos" onPress={() => goToStack("MyDisputes")} />
+            <MenuRow testID="button.profile.my-disputes" icon="shield-outline" label="Minhas disputas" subtitle="Casos em análise ou resolvidos" onPress={() => goToStack("MyDisputes")} />
             <MenuRow icon="clipboard-outline" label="Ficha de saúde" subtitle={anamnesisNeedsAttention ? "Requer atenção" : "Anamnese e histórico"} badge={anamnesisNeedsAttention ? "!" : undefined} onPress={() => goToStack("ClientAnamnesis")} />
             <MenuRow icon="heart-outline" label="Profissionais favoritos" subtitle="Personais salvos" onPress={() => navigation.navigate("Favorites")} />
             <MenuRow icon="help-circle-outline" label="Ajuda e suporte" subtitle="Fale com a equipe" onPress={() => goToStack("Support")} />

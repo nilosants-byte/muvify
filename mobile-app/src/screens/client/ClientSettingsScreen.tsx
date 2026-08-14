@@ -181,7 +181,7 @@ export function ClientSettingsScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, gap: 20, paddingTop: 16 }} showsVerticalScrollIndicator={false}>
 
         {/* Hero mini */}
-        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: "rgba(36,230,109,0.09)", padding: 14 }}>
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primaryHighlight, padding: 14 }}>
           <View style={{ flexDirection: "row" }}>
             <Text style={{ fontFamily: "Nunito_800ExtraBold", fontSize: 10, color: theme.text1, letterSpacing: 0.1 * 10, textTransform: "uppercase" }}>muvi</Text>
             <Text style={{ fontFamily: "Nunito_800ExtraBold", fontSize: 10, color: theme.primary, letterSpacing: 0.1 * 10, textTransform: "uppercase" }}>fy</Text>

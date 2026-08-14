@@ -681,7 +681,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             onPress={() => { hapticCta(); void handleConfirmPost(); }}
             style={{
               height: S.btnH, borderRadius: S.btnR,
-              backgroundColor: (!completionProof) ? "rgba(36,230,109,0.4)" : theme.primary,
+              backgroundColor: (!completionProof) ? theme.primaryDisabled : theme.primary,
               alignItems: "center", justifyContent: "center",
               shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
               opacity: submitting ? 0.7 : 1,
@@ -720,7 +720,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
       <ScrollView contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, paddingTop: 16, gap: 14 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
 
         {/* Hero card — profissional + status */}
-        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: "rgba(36,230,109,0.09)", padding: 16 }}>
+        <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primaryHighlight, padding: 16 }}>
           <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
             <MvAvatar
               initials={getInitials(booking.provider?.displayName)}
@@ -879,6 +879,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         {isActive && (
           <View style={{ gap: 10 }}>
             <TouchableOpacity
+              testID="button.booking-detail.open-chat"
               onPress={() => navigation.navigate("ClientChatList")}
               style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }}
             >

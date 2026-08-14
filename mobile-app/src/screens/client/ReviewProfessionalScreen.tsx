@@ -125,7 +125,7 @@ export function ReviewProfessionalScreen({ navigation, route }: Props) {
           disabled={loading || rating === 0}
           onPress={() => void handleSubmit()}
           accessibilityRole="button"
-          style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: loading || rating === 0 ? "rgba(36,230,109,0.4)" : theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+          style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: loading || rating === 0 ? theme.primaryDisabled : theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
         >
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
             {loading ? "Enviando..." : "Enviar avaliação"}

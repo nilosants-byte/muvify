@@ -10,6 +10,17 @@
   headerBg: string;
   primarySubtle: string;
   primarySubtleBorder: string;
+  // Cleanup pós-épico segunda camada (2026-08-14): dois usos recorrentes de
+  // rgba(36,230,109,X) literal (o verde de marca do MODO ESCURO,
+  // #24E66D — Frente 10 já tinha achado esse padrão, item remetido pra
+  // Frente 18 e não pego lá) apareciam copiados em ~25 pontos do app,
+  // sempre com o mesmo par de valores (fundo de card destacado / botão
+  // primário desabilitado) mas escritos como hex fixo — ignorando o tema
+  // claro, que usa #16A34A. Os dois valores mais repetidos viraram token
+  // aqui; o resto (valores mais raros/decorativos) fica como gap
+  // documentado, mesmo critério de risco×frequência já usado na Frente 10.
+  primaryHighlight: string;
+  primaryDisabled: string;
   primary: string;
   primaryDark: string;
   text1: string;
@@ -45,6 +56,8 @@ export const darkTheme: MvTheme = {
   headerBg: "rgba(3,8,6,0.85)",
   primarySubtle: "rgba(36,230,109,0.12)",
   primarySubtleBorder: "rgba(36,230,109,0.20)",
+  primaryHighlight: "rgba(36,230,109,0.09)",
+  primaryDisabled: "rgba(36,230,109,0.4)",
   primary: "#24E66D",
   primaryDark: "#16A34A",
   text1: "#FFFFFF",
@@ -86,6 +99,8 @@ export const lightTheme: MvTheme = {
   headerBg: "rgba(250,255,254,0.85)",
   primarySubtle: "rgba(22,163,74,0.10)",
   primarySubtleBorder: "rgba(22,163,74,0.18)",
+  primaryHighlight: "rgba(22,163,74,0.09)",
+  primaryDisabled: "rgba(22,163,74,0.4)",
   primary: "#16A34A",
   primaryDark: "#15803D",
   text1: "#0A0F0A",

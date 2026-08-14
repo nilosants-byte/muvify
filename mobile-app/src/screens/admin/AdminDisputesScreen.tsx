@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
-import { RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
+import { FlatList, RefreshControl, TouchableOpacity, View } from "react-native";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { MvButton, MvCard, MvText } from "../../components/mv";
-import { adminApi, AdminDisputeCaseType } from "../../services/api/client";
+import { adminApi, AdminDisputeCaseListItem, AdminDisputeCaseType } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { AdminScaffold } from "./AdminScaffold";
@@ -77,9 +77,56 @@ export function AdminDisputesScreen({ navigation }: Props) {
     }, [disputesQuery.refetch])
   );
 
+  function renderItem({ item }: { item: AdminDisputeCaseListItem }) {
+    return (
+      <MvCard style={{ marginBottom: 10 }}>
+        <View style={{ gap: 6 }}>
+          <MvText variant="semi2">{TYPE_LABEL[item.type]}</MvText>
+          <MvText variant="body4" color="secondary">Aberto em {formatDate(item.createdAt)}</MvText>
+          <MvText variant="body4">Cliente: {item.client.name}</MvText>
+          <MvText variant="body4">Profissional: {item.provider.displayName}</MvText>
+          <MvText variant="semi3">Valor em disputa: {formatCents(item.amountCents)}</MvText>
+          <View style={{ flexDirection: "row", gap: 16 }}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.client.email })}
+            >
+              <MvText variant="caption" color="green">Ver cadastro do cliente →</MvText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.provider.user.email })}
+            >
+              <MvText variant="caption" color="green">Ver cadastro do profissional →</MvText>
+            </TouchableOpacity>
+          </View>
+          {item.status === "RESOLVED" ? (
+            <MvText variant="body4" color="secondary">
+              Decisão:{" "}
+              {item.resolution === "REFUNDED"
+                ? "Reembolsado"
+                : item.resolution === "CAPTURED"
+                  ? "Cobrança capturada"
+                  : item.type === "CAPTURE_FAILED"
+                    ? "Mantido sem cobrar"
+                    : "Reembolso negado"}
+              {item.resolvedAmountCents ? ` — ${formatCents(item.resolvedAmountCents)}` : ""}
+            </MvText>
+          ) : null}
+          <MvButton
+            variant="outline"
+            label="Ver detalhes e decidir"
+            onPress={() => navigation.navigate("AdminDisputeDetail", { caseId: item.id })}
+          />
+        </View>
+      </MvCard>
+    );
+  }
+
   return (
     <AdminScaffold title="Casos de disputa" navigation={navigation} currentScreen="AdminDisputes">
-      <ScrollView
+      <FlatList
+        data={items}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
         refreshControl={
           <RefreshControl
             refreshing={disputesQuery.isRefetching}
@@ -88,96 +135,59 @@ export function AdminDisputesScreen({ navigation }: Props) {
             colors={[theme.primary]}
           />
         }
-        contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 10 }}
-      >
-        <MvText variant="body4" color="secondary">
-          Casos que precisam de uma pessoa decidir: falta contestada, contestação de pagamento pelo banco ou
-          reembolso automático que falhou.
-        </MvText>
+        contentContainerStyle={{ padding: 16, paddingBottom: 90 }}
+        ListHeaderComponent={
+          <View style={{ gap: 10, marginBottom: 10 }}>
+            <MvText variant="body4" color="secondary">
+              Casos que precisam de uma pessoa decidir: falta contestada, contestação de pagamento pelo banco ou
+              reembolso automático que falhou.
+            </MvText>
 
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {(["OPEN", "RESOLVED"] as const).map((option) => (
-            <TouchableOpacity
-              key={option}
-              onPress={() => changeStatus(option)}
-              style={{
-                borderWidth: 1,
-                borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
-                borderRadius: 20,
-                paddingHorizontal: 12,
-                paddingVertical: 8
-              }}
-            >
-              <MvText variant="caption">{option === "OPEN" ? "Em aberto" : "Resolvidos"}</MvText>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {items.length === 0 && !loading ? (
-          <MvCard>
-            <MvText variant="body3">Nenhum caso {status === "OPEN" ? "em aberto" : "resolvido"} no momento.</MvText>
-          </MvCard>
-        ) : null}
-
-        {items.map((item) => (
-          <MvCard key={item.id}>
-            <View style={{ gap: 6 }}>
-              <MvText variant="semi2">{TYPE_LABEL[item.type]}</MvText>
-              <MvText variant="body4" color="secondary">Aberto em {formatDate(item.createdAt)}</MvText>
-              <MvText variant="body4">Cliente: {item.client.name}</MvText>
-              <MvText variant="body4">Profissional: {item.provider.displayName}</MvText>
-              <MvText variant="semi3">Valor em disputa: {formatCents(item.amountCents)}</MvText>
-              <View style={{ flexDirection: "row", gap: 16 }}>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {(["OPEN", "RESOLVED"] as const).map((option) => (
                 <TouchableOpacity
-                  onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.client.email })}
+                  key={option}
+                  onPress={() => changeStatus(option)}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
+                    borderRadius: 20,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8
+                  }}
                 >
-                  <MvText variant="caption" color="green">Ver cadastro do cliente →</MvText>
+                  <MvText variant="caption">{option === "OPEN" ? "Em aberto" : "Resolvidos"}</MvText>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.provider.user.email })}
-                >
-                  <MvText variant="caption" color="green">Ver cadastro do profissional →</MvText>
-                </TouchableOpacity>
-              </View>
-              {item.status === "RESOLVED" ? (
-                <MvText variant="body4" color="secondary">
-                  Decisão:{" "}
-                  {item.resolution === "REFUNDED"
-                    ? "Reembolsado"
-                    : item.resolution === "CAPTURED"
-                      ? "Cobrança capturada"
-                      : item.type === "CAPTURE_FAILED"
-                        ? "Mantido sem cobrar"
-                        : "Reembolso negado"}
-                  {item.resolvedAmountCents ? ` — ${formatCents(item.resolvedAmountCents)}` : ""}
-                </MvText>
-              ) : null}
+              ))}
+            </View>
+          </View>
+        }
+        ListEmptyComponent={
+          !loading ? (
+            <MvCard>
+              <MvText variant="body3">Nenhum caso {status === "OPEN" ? "em aberto" : "resolvido"} no momento.</MvText>
+            </MvCard>
+          ) : null
+        }
+        ListFooterComponent={
+          page > 0 || hasMore ? (
+            <View style={{ flexDirection: "row", gap: 8, justifyContent: "center", marginTop: 4 }}>
               <MvButton
                 variant="outline"
-                label="Ver detalhes e decidir"
-                onPress={() => navigation.navigate("AdminDisputeDetail", { caseId: item.id })}
+                label="Anterior"
+                disabled={page === 0}
+                onPress={() => setPage((p) => Math.max(0, p - 1))}
+              />
+              <MvButton
+                variant="outline"
+                label="Próxima"
+                disabled={!hasMore}
+                onPress={() => setPage((p) => p + 1)}
               />
             </View>
-          </MvCard>
-        ))}
-
-        {page > 0 || hasMore ? (
-          <View style={{ flexDirection: "row", gap: 8, justifyContent: "center", marginTop: 4 }}>
-            <MvButton
-              variant="outline"
-              label="Anterior"
-              disabled={page === 0}
-              onPress={() => setPage((p) => Math.max(0, p - 1))}
-            />
-            <MvButton
-              variant="outline"
-              label="Próxima"
-              disabled={!hasMore}
-              onPress={() => setPage((p) => p + 1)}
-            />
-          </View>
-        ) : null}
-      </ScrollView>
+          ) : null
+        }
+      />
     </AdminScaffold>
   );
 }

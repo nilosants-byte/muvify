@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
-import { Alert, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, RefreshControl, TouchableOpacity, View } from "react-native";
 import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
 import { adminApi, AdminSupportTicket } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
@@ -125,9 +125,100 @@ export function AdminSupportScreen({ navigation }: Props) {
     }
   }
 
+  function renderItem({ item: ticket }: { item: AdminSupportTicket }) {
+    const isAnsweringThis = answeringId === ticket.id;
+    const isSubmittingThis = submittingId === ticket.id;
+    return (
+      <MvCard style={{ marginBottom: 10 }}>
+        <View style={{ gap: 8 }}>
+          <MvText variant="semi2">{ticket.subject?.trim() || "Solicitação sem assunto"}</MvText>
+          <MvText variant="body4" color="secondary">{ticket.user.name ?? "Usuário"} - {ticket.user.email ?? "—"}</MvText>
+          {ticket.user.email ? (
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: ticket.user.email! })}
+            >
+              <MvText variant="caption" color="green">Ver cadastro deste usuário →</MvText>
+            </TouchableOpacity>
+          ) : null}
+          {status === "OPEN" && isOverdue(ticket.createdAt) ? (
+            <MvBadge label="Vencido (+48h sem resposta)" variant="red" />
+          ) : null}
+          {ticket.indicators?.isSuspended || ticket.indicators?.hasOpenDebt || ticket.indicators?.hasOpenDispute ? (
+            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+              {ticket.indicators.isSuspended ? (
+                <MvBadge label="Suspenso" variant="red" />
+              ) : null}
+              {ticket.indicators.hasOpenDispute ? (
+                <MvBadge label="Disputa em aberto" variant="orange" />
+              ) : null}
+              {ticket.indicators.hasOpenDebt ? (
+                <MvBadge label="Dívida em aberto" variant="orange" />
+              ) : null}
+            </View>
+          ) : null}
+          <MvText variant="body3" numberOfLines={4}>{ticket.message ?? "Mensagem não disponível"}</MvText>
+          <MvText variant="caption" color="secondary">
+            Aberto em: {formatBRDateTime(ticket.createdAt)}
+          </MvText>
+          {ticket.adminResponse ? (
+            <View style={{ marginTop: 4 }}>
+              <MvText variant="caption" color="secondary">Resposta registrada</MvText>
+              <MvText variant="body4">{ticket.adminResponse}</MvText>
+            </View>
+          ) : null}
+
+          {status === "OPEN" ? (
+            isAnsweringThis ? (
+              <View style={{ gap: 8, marginTop: 4 }}>
+                <MvInput
+                  multiline
+                  numberOfLines={4}
+                  maxLength={2000}
+                  value={responseMessage}
+                  onChangeText={setResponseMessage}
+                  placeholder="Digite a devolutiva para o usuário (máximo 2000 caracteres)"
+                  editable={!isSubmittingThis}
+                  style={{ textAlignVertical: "top", opacity: isSubmittingThis ? 0.6 : 1 } as any}
+                />
+                <MvText variant="caption" color="secondary">
+                  {responseMessage.length}/2000
+                </MvText>
+                <MvButton
+                  label="Enviar resposta"
+                  loading={isSubmittingThis}
+                  onPress={() => void submitReply(ticket.id)}
+                />
+                <MvButton
+                  variant="ghost"
+                  label="Cancelar"
+                  onPress={() => {
+                    setAnsweringId(null);
+                    setResponseMessage("");
+                  }}
+                />
+              </View>
+            ) : (
+              <MvButton
+                variant="outline"
+                label="Responder chamado"
+                onPress={() => {
+                  setAnsweringId(ticket.id);
+                  setResponseMessage("");
+                }}
+              />
+            )
+          ) : null}
+        </View>
+      </MvCard>
+    );
+  }
+
   return (
     <AdminScaffold title="Suporte ao usuário" navigation={navigation} currentScreen="AdminSupport">
-      <ScrollView
+      <FlatList
+        data={tickets}
+        keyExtractor={(ticket) => ticket.id}
+        renderItem={renderItem}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -137,156 +228,73 @@ export function AdminSupportScreen({ navigation }: Props) {
             colors={[theme.primary]}
           />
         }
-        contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 10 }}
-      >
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <MvInput
-            style={{ flex: 1 }}
-            placeholder="Buscar por nome ou e-mail do usuário"
-            value={searchInput}
-            onChangeText={setSearchInput}
-            autoCapitalize="none"
-            onSubmitEditing={submitSearch}
-          />
-          <MvButton label="Buscar" onPress={submitSearch} />
-        </View>
+        contentContainerStyle={{ padding: 16, paddingBottom: 90 }}
+        ListHeaderComponent={
+          <View style={{ gap: 10, marginBottom: 10 }}>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <MvInput
+                style={{ flex: 1 }}
+                placeholder="Buscar por nome ou e-mail do usuário"
+                value={searchInput}
+                onChangeText={setSearchInput}
+                autoCapitalize="none"
+                onSubmitEditing={submitSearch}
+              />
+              <MvButton label="Buscar" onPress={submitSearch} />
+            </View>
 
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {(["OPEN", "ANSWERED"] as const).map((option) => (
-            <TouchableOpacity
-              key={option}
-              onPress={() => {
-                if (responseMessage.trim()) {
-                  Alert.alert(
-                    "Descartar resposta?",
-                    "Você tem uma resposta em andamento. Deseja descartá-la?",
-                    [
-                      { text: "Continuar editando", style: "cancel" },
-                      { text: "Descartar", style: "destructive", onPress: () => { setStatus(option); setAnsweringId(null); setResponseMessage(""); } },
-                    ]
-                  );
-                } else {
-                  setStatus(option);
-                  setAnsweringId(null);
-                  setResponseMessage("");
-                }
-              }}
-              style={{
-                borderWidth: 1,
-                borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
-                borderRadius: 20,
-                paddingHorizontal: 12,
-                paddingVertical: 8
-              }}
-            >
-              <MvText variant="caption">{option === "OPEN" ? "Abertos" : "Respondidos"}</MvText>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {tickets.length === 0 ? (
-          <MvCard>
-            <MvText variant="body3">Nenhum chamado encontrado nessa fila.</MvText>
-          </MvCard>
-        ) : null}
-
-        {tickets.map((ticket) => {
-          const isAnsweringThis = answeringId === ticket.id;
-          const isSubmittingThis = submittingId === ticket.id;
-          return (
-            <MvCard key={ticket.id}>
-              <View style={{ gap: 8 }}>
-                <MvText variant="semi2">{ticket.subject?.trim() || "Solicitação sem assunto"}</MvText>
-                <MvText variant="body4" color="secondary">{ticket.user.name ?? "Usuário"} - {ticket.user.email ?? "—"}</MvText>
-                {ticket.user.email ? (
-                  <TouchableOpacity
-                    onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: ticket.user.email! })}
-                  >
-                    <MvText variant="caption" color="green">Ver cadastro deste usuário →</MvText>
-                  </TouchableOpacity>
-                ) : null}
-                {status === "OPEN" && isOverdue(ticket.createdAt) ? (
-                  <MvBadge label="Vencido (+48h sem resposta)" variant="red" />
-                ) : null}
-                {ticket.indicators?.isSuspended || ticket.indicators?.hasOpenDebt || ticket.indicators?.hasOpenDispute ? (
-                  <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-                    {ticket.indicators.isSuspended ? (
-                      <MvBadge label="Suspenso" variant="red" />
-                    ) : null}
-                    {ticket.indicators.hasOpenDispute ? (
-                      <MvBadge label="Disputa em aberto" variant="orange" />
-                    ) : null}
-                    {ticket.indicators.hasOpenDebt ? (
-                      <MvBadge label="Dívida em aberto" variant="orange" />
-                    ) : null}
-                  </View>
-                ) : null}
-                <MvText variant="body3" numberOfLines={4}>{ticket.message ?? "Mensagem não disponível"}</MvText>
-                <MvText variant="caption" color="secondary">
-                  Aberto em: {formatBRDateTime(ticket.createdAt)}
-                </MvText>
-                {ticket.adminResponse ? (
-                  <View style={{ marginTop: 4 }}>
-                    <MvText variant="caption" color="secondary">Resposta registrada</MvText>
-                    <MvText variant="body4">{ticket.adminResponse}</MvText>
-                  </View>
-                ) : null}
-
-                {status === "OPEN" ? (
-                  isAnsweringThis ? (
-                    <View style={{ gap: 8, marginTop: 4 }}>
-                      <MvInput
-                        multiline
-                        numberOfLines={4}
-                        maxLength={2000}
-                        value={responseMessage}
-                        onChangeText={setResponseMessage}
-                        placeholder="Digite a devolutiva para o usuário (máximo 2000 caracteres)"
-                        editable={!isSubmittingThis}
-                        style={{ textAlignVertical: "top", opacity: isSubmittingThis ? 0.6 : 1 } as any}
-                      />
-                      <MvText variant="caption" color="secondary">
-                        {responseMessage.length}/2000
-                      </MvText>
-                      <MvButton
-                        label="Enviar resposta"
-                        loading={isSubmittingThis}
-                        onPress={() => void submitReply(ticket.id)}
-                      />
-                      <MvButton
-                        variant="ghost"
-                        label="Cancelar"
-                        onPress={() => {
-                          setAnsweringId(null);
-                          setResponseMessage("");
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    <MvButton
-                      variant="outline"
-                      label="Responder chamado"
-                      onPress={() => {
-                        setAnsweringId(ticket.id);
-                        setResponseMessage("");
-                      }}
-                    />
-                  )
-                ) : null}
-              </View>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {(["OPEN", "ANSWERED"] as const).map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  onPress={() => {
+                    if (responseMessage.trim()) {
+                      Alert.alert(
+                        "Descartar resposta?",
+                        "Você tem uma resposta em andamento. Deseja descartá-la?",
+                        [
+                          { text: "Continuar editando", style: "cancel" },
+                          { text: "Descartar", style: "destructive", onPress: () => { setStatus(option); setAnsweringId(null); setResponseMessage(""); } },
+                        ]
+                      );
+                    } else {
+                      setStatus(option);
+                      setAnsweringId(null);
+                      setResponseMessage("");
+                    }
+                  }}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
+                    borderRadius: 20,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8
+                  }}
+                >
+                  <MvText variant="caption">{option === "OPEN" ? "Abertos" : "Respondidos"}</MvText>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        }
+        ListEmptyComponent={
+          tickets.length === 0 ? (
+            <MvCard>
+              <MvText variant="body3">Nenhum chamado encontrado nessa fila.</MvText>
             </MvCard>
-          );
-        })}
-
-        {hasMore ? (
-          <MvButton
-            variant="outline"
-            label={loadingMore ? "Carregando..." : "Carregar mais"}
-            loading={loadingMore}
-            onPress={() => void loadMore()}
-          />
-        ) : null}
-      </ScrollView>
+          ) : null
+        }
+        ListFooterComponent={
+          hasMore ? (
+            <MvButton
+              variant="outline"
+              label={loadingMore ? "Carregando..." : "Carregar mais"}
+              loading={loadingMore}
+              onPress={() => void loadMore()}
+            />
+          ) : null
+        }
+      />
     </AdminScaffold>
   );
 }

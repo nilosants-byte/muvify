@@ -35,14 +35,16 @@ export default defineConfig({
     exclude: ["mobile-app/**", "node_modules/**", "dist/**"],
     // Frente 12 (segunda camada), Lote 6: paridade com o mobile, que já
     // roda test:coverage no CI — backend não tinha nenhuma visibilidade de
-    // cobertura. `npm run test:coverage` roda com "Coverage enabled with
-    // v8" no log, mas o relatório final (tabela/pasta coverage/) não saiu
-    // na tentativa desta frente (possivelmente algo específico do modo
-    // `projects`/workspace do Vitest 3) — não investigado a fundo por ser
-    // item de prioridade mais baixa. Threshold abaixo é um piso
-    // conservador NÃO calibrado com uma medição real (775 testes tornam
-    // plausível que o nível real seja bem mais alto) — ajustar pra um
-    // valor preciso quando o relatório for gerado com sucesso.
+    // cobertura. O relatório final não saiu naquela tentativa — não era
+    // bug de configuração: quando QUALQUER suíte falha (mesmo um erro de
+    // conexão isolado num beforeAll), o coverage-v8 não escreve o
+    // relatório, e aquela rodada tinha 1 arquivo falho por contenção de
+    // recursos. Cleanup pós-épico segunda camada: medido numa rodada
+    // limpa (172/172 arquivos, 804/804 testes, 0 falhas) — threshold
+    // calibrado ~5-10pp abaixo do valor real medido (deixa margem pra
+    // flutuação normal sem virar gate flaky, mas bloqueia regressão real):
+    // Statements/Lines real 50.96% → piso 45%; Branches real 71.59% →
+    // piso 65%; Functions real 65.76% → piso 60%.
     coverage: {
       provider: "v8",
       reporter: ["text-summary", "lcov", "html"],
@@ -57,10 +59,10 @@ export default defineConfig({
         "*.config.mjs"
       ],
       thresholds: {
-        branches: 30,
-        functions: 40,
-        lines: 40,
-        statements: 40
+        branches: 65,
+        functions: 60,
+        lines: 45,
+        statements: 45
       }
     },
     projects: [

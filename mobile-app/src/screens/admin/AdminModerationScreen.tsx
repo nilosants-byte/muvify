@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
-import { Alert, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, RefreshControl, TouchableOpacity, View } from "react-native";
 import { MvBadge, MvButton, MvCard, MvText } from "../../components/mv";
-import { AdminReportType, adminApi } from "../../services/api/client";
+import { AdminReport, AdminReportType, adminApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { AdminScaffold } from "./AdminScaffold";
@@ -134,9 +134,85 @@ export function AdminModerationScreen({ navigation }: Props) {
     }
   }
 
+  function renderItem({ item: report }: { item: AdminReport }) {
+    const dismissKey = `dismiss:${report.type}:${report.reportId}`;
+    const hideKey = `hide:${report.type}:${report.reportId}`;
+    const unhideKey = `unhide:${report.type}:${report.reportId}`;
+    const isProcessing =
+      processingKey === dismissKey || processingKey === hideKey || processingKey === unhideKey;
+    return (
+      <MvCard style={{ marginBottom: 10 }}>
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <MvBadge label={TYPE_LABEL[report.type]} variant="orange" />
+            <MvText variant="caption" color="secondary">{formatBRDateTime(report.createdAt)}</MvText>
+          </View>
+          <MvText variant="body4" color="secondary">
+            Denunciado por {report.reporter.name} ({report.reporter.email})
+          </MvText>
+          {report.reason ? (
+            <MvText variant="body4" color="secondary">Motivo: {report.reason}</MvText>
+          ) : null}
+          <MvText variant="body3" numberOfLines={4} style={{ marginTop: 4 }}>
+            {report.contentPreview || "[sem prévia disponível]"}
+          </MvText>
+          {report.contentAuthor ? (
+            <>
+              <MvText variant="caption" color="secondary">
+                Autor: {report.contentAuthor.name} ({report.contentAuthor.email})
+              </MvText>
+              <TouchableOpacity
+                onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: report.contentAuthor!.email })}
+              >
+                <MvText variant="caption" color="green">Buscar este usuário para investigar →</MvText>
+              </TouchableOpacity>
+            </>
+          ) : null}
+
+          {status === "PENDING" ? (
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+              <View style={{ flex: 1 }}>
+                <MvButton
+                  variant="outline"
+                  label="Descartar"
+                  loading={processingKey === dismissKey}
+                  disabled={isProcessing}
+                  onPress={() => void dismiss(report.type, report.reportId)}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <MvButton
+                  label="Ocultar conteúdo"
+                  loading={processingKey === hideKey}
+                  disabled={isProcessing}
+                  onPress={() => confirmHide(report.type, report.reportId)}
+                />
+              </View>
+            </View>
+          ) : report.contentHidden ? (
+            <View style={{ marginTop: 6 }}>
+              <MvButton
+                variant="outline"
+                label="Desocultar conteúdo"
+                loading={processingKey === unhideKey}
+                disabled={isProcessing}
+                onPress={() => confirmUnhide(report.type, report.reportId)}
+              />
+            </View>
+          ) : (
+            <MvText variant="caption" color="secondary">Descartada — conteúdo não foi ocultado.</MvText>
+          )}
+        </View>
+      </MvCard>
+    );
+  }
+
   return (
     <AdminScaffold title="Moderação de denúncias" navigation={navigation} currentScreen="AdminModeration">
-      <ScrollView
+      <FlatList
+        data={reports}
+        keyExtractor={(report) => `${report.type}:${report.reportId}`}
+        renderItem={renderItem}
         refreshControl={
           <RefreshControl
             refreshing={reportsQuery.isRefetching}
@@ -145,124 +221,54 @@ export function AdminModerationScreen({ navigation }: Props) {
             colors={[theme.primary]}
           />
         }
-        contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 10 }}
-      >
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {(["PENDING", "ACTIONED"] as const).map((option) => (
-            <TouchableOpacity
-              key={option}
-              onPress={() => changeStatus(option)}
-              style={{
-                borderWidth: 1,
-                borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
-                borderRadius: 20,
-                paddingHorizontal: 12,
-                paddingVertical: 8
-              }}
-            >
-              <MvText variant="caption">{option === "PENDING" ? "Pendentes" : "Já tratadas"}</MvText>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {!loading && reports.length === 0 ? (
-          <MvCard>
-            <MvText variant="body3">
-              {status === "PENDING" ? "Nenhuma denúncia pendente." : "Nenhuma denúncia já tratada ainda."}
-            </MvText>
-          </MvCard>
-        ) : null}
-
-        {reports.map((report) => {
-          const dismissKey = `dismiss:${report.type}:${report.reportId}`;
-          const hideKey = `hide:${report.type}:${report.reportId}`;
-          const unhideKey = `unhide:${report.type}:${report.reportId}`;
-          const isProcessing =
-            processingKey === dismissKey || processingKey === hideKey || processingKey === unhideKey;
-          return (
-            <MvCard key={`${report.type}:${report.reportId}`}>
-              <View style={{ gap: 8 }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <MvBadge label={TYPE_LABEL[report.type]} variant="orange" />
-                  <MvText variant="caption" color="secondary">{formatBRDateTime(report.createdAt)}</MvText>
-                </View>
-                <MvText variant="body4" color="secondary">
-                  Denunciado por {report.reporter.name} ({report.reporter.email})
-                </MvText>
-                {report.reason ? (
-                  <MvText variant="body4" color="secondary">Motivo: {report.reason}</MvText>
-                ) : null}
-                <MvText variant="body3" numberOfLines={4} style={{ marginTop: 4 }}>
-                  {report.contentPreview || "[sem prévia disponível]"}
-                </MvText>
-                {report.contentAuthor ? (
-                  <>
-                    <MvText variant="caption" color="secondary">
-                      Autor: {report.contentAuthor.name} ({report.contentAuthor.email})
-                    </MvText>
-                    <TouchableOpacity
-                      onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: report.contentAuthor!.email })}
-                    >
-                      <MvText variant="caption" color="green">Buscar este usuário para investigar →</MvText>
-                    </TouchableOpacity>
-                  </>
-                ) : null}
-
-                {status === "PENDING" ? (
-                  <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-                    <View style={{ flex: 1 }}>
-                      <MvButton
-                        variant="outline"
-                        label="Descartar"
-                        loading={processingKey === dismissKey}
-                        disabled={isProcessing}
-                        onPress={() => void dismiss(report.type, report.reportId)}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <MvButton
-                        label="Ocultar conteúdo"
-                        loading={processingKey === hideKey}
-                        disabled={isProcessing}
-                        onPress={() => confirmHide(report.type, report.reportId)}
-                      />
-                    </View>
-                  </View>
-                ) : report.contentHidden ? (
-                  <View style={{ marginTop: 6 }}>
-                    <MvButton
-                      variant="outline"
-                      label="Desocultar conteúdo"
-                      loading={processingKey === unhideKey}
-                      disabled={isProcessing}
-                      onPress={() => confirmUnhide(report.type, report.reportId)}
-                    />
-                  </View>
-                ) : (
-                  <MvText variant="caption" color="secondary">Descartada — conteúdo não foi ocultado.</MvText>
-                )}
-              </View>
-            </MvCard>
-          );
-        })}
-
-        {page > 0 || hasMore ? (
-          <View style={{ flexDirection: "row", gap: 8, justifyContent: "center", marginTop: 4 }}>
-            <MvButton
-              variant="outline"
-              label="Anterior"
-              disabled={page === 0}
-              onPress={() => setPage((p) => Math.max(0, p - 1))}
-            />
-            <MvButton
-              variant="outline"
-              label="Próxima"
-              disabled={!hasMore}
-              onPress={() => setPage((p) => p + 1)}
-            />
+        contentContainerStyle={{ padding: 16, paddingBottom: 90 }}
+        ListHeaderComponent={
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+            {(["PENDING", "ACTIONED"] as const).map((option) => (
+              <TouchableOpacity
+                key={option}
+                onPress={() => changeStatus(option)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: status === option ? theme.primary : "rgba(127,127,127,0.35)",
+                  borderRadius: 20,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8
+                }}
+              >
+                <MvText variant="caption">{option === "PENDING" ? "Pendentes" : "Já tratadas"}</MvText>
+              </TouchableOpacity>
+            ))}
           </View>
-        ) : null}
-      </ScrollView>
+        }
+        ListEmptyComponent={
+          !loading ? (
+            <MvCard>
+              <MvText variant="body3">
+                {status === "PENDING" ? "Nenhuma denúncia pendente." : "Nenhuma denúncia já tratada ainda."}
+              </MvText>
+            </MvCard>
+          ) : null
+        }
+        ListFooterComponent={
+          page > 0 || hasMore ? (
+            <View style={{ flexDirection: "row", gap: 8, justifyContent: "center", marginTop: 4 }}>
+              <MvButton
+                variant="outline"
+                label="Anterior"
+                disabled={page === 0}
+                onPress={() => setPage((p) => Math.max(0, p - 1))}
+              />
+              <MvButton
+                variant="outline"
+                label="Próxima"
+                disabled={!hasMore}
+                onPress={() => setPage((p) => p + 1)}
+              />
+            </View>
+          ) : null
+        }
+      />
     </AdminScaffold>
   );
 }

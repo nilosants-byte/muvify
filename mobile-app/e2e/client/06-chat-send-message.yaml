@@ -1,0 +1,45 @@
+# Cliente: envia mensagem de chat pro profissional a partir do detalhe de um
+# agendamento real (cobertura zero antes desta rodada — Frente 16 tinha
+# adiado chat por ROI menor frente aos itens de risco financeiro/legal).
+#
+# Pré-requisito: `npm run e2e:seed` (mesmo agendamento CONFIRMED usado pelo
+# flow de validação presencial garante que existe uma conversa elegível
+# entre QA Aluno e QA Personal).
+#
+# Executa: maestro test client/06-chat-send-message.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- runFlow: ../helpers/_login-client.yaml
+
+- tapOn:
+    id: "nav.client.v2.agenda"
+- assertVisible:
+    id: "screen.client.bookings"
+
+- tapOn:
+    id: "booking\\.card\\.[^.]+$"
+- assertVisible:
+    id: "screen.client.booking-detail"
+
+- tapOn:
+    id: "button.booking-detail.open-chat"
+- assertVisible:
+    id: "screen.client.chat"
+
+# Abre a conversa com o profissional (lista tem só essa, dado o seed)
+- tapOn:
+    id: "chat\\.card\\..*"
+
+- tapOn:
+    id: "input.chat.message"
+- inputText: "Oi! Confirmando o horário combinado."
+
+- tapOn:
+    id: "button.chat.send"
+
+- assertVisible: "Confirmando o horário combinado"
+- takeScreenshot: "chat-message-sent"

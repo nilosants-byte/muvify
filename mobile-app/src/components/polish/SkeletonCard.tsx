@@ -40,8 +40,21 @@ function SkeletonLine({
   );
 }
 
-// Card de skeleton completo — mesmo tamanho e forma dos cards reais da CommunityScreen/OffersScreen
-export function SkeletonCard({ style }: { style?: ViewStyle }) {
+// Cleanup pós-épico segunda camada (2026-08-14): SkeletonCard e
+// SkeletonStudentCard compartilhavam o container (borda/fundo/padding) e o
+// avatar 46px, divergindo só no conteúdo à direita (Frente 10, Lote 18,
+// tinha achado isso e deixado como comentário sem ação por ser "baixa
+// prioridade") — extraído pro wrapper comum abaixo. API pública das duas
+// funções não muda, só o corpo interno.
+function SkeletonCardShell({
+  style,
+  headerRight,
+  footer,
+}: {
+  style?: ViewStyle;
+  headerRight: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
   const { theme } = useMvTheme();
   return (
     <View
@@ -66,60 +79,53 @@ export function SkeletonCard({ style }: { style?: ViewStyle }) {
             flexShrink: 0,
           }}
         />
-        <View style={{ flex: 1, gap: 8 }}>
-          <SkeletonLine width="60%" height={14} />
-          <SkeletonLine width="40%" height={11} />
-        </View>
+        {headerRight}
       </View>
-      <View style={{ marginTop: 12, gap: 6 }}>
-        <SkeletonLine width="100%" height={11} />
-        <SkeletonLine width="75%" height={11} />
-      </View>
+      {footer}
     </View>
   );
 }
 
-// Frente 10 (segunda camada), Lote 18 (B4, observado sem ação): SkeletonCard
-// e SkeletonStudentCard são quase idênticos (avatar + 2 linhas), diferindo só
-// no bloco final (2 linhas genéricas vs. badge+valor à direita). Baixa
-// prioridade — não vale o risco de unificar agora só por semelhança.
+// Card de skeleton completo — mesmo tamanho e forma dos cards reais da CommunityScreen/OffersScreen
+export function SkeletonCard({ style }: { style?: ViewStyle }) {
+  return (
+    <SkeletonCardShell
+      style={style}
+      headerRight={
+        <View style={{ flex: 1, gap: 8 }}>
+          <SkeletonLine width="60%" height={14} />
+          <SkeletonLine width="40%" height={11} />
+        </View>
+      }
+      footer={
+        <View style={{ marginTop: 12, gap: 6 }}>
+          <SkeletonLine width="100%" height={11} />
+          <SkeletonLine width="75%" height={11} />
+        </View>
+      }
+    />
+  );
+}
+
 // Variante para cards de alunos (avatar 46px + nome + email + serviço + badge direita)
 export function SkeletonStudentCard({ style }: { style?: ViewStyle }) {
-  const { theme } = useMvTheme();
   return (
-    <View
-      style={[
-        {
-          backgroundColor: theme.cardBg,
-          borderRadius: S.cardR,
-          borderWidth: 1,
-          borderColor: theme.border,
-          padding: S.cardPad,
-        },
-        style,
-      ]}
-    >
-      <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-        <View
-          style={{
-            width: 46,
-            height: 46,
-            borderRadius: 23,
-            backgroundColor: theme.inputBg,
-            flexShrink: 0,
-          }}
-        />
-        <View style={{ flex: 1, gap: 6 }}>
-          <SkeletonLine width="55%" height={14} />
-          <SkeletonLine width="70%" height={11} />
-          <SkeletonLine width="45%" height={11} />
-        </View>
-        <View style={{ alignItems: "flex-end", gap: 6 }}>
-          <SkeletonLine width={48} height={20} style={{ borderRadius: 10 }} />
-          <SkeletonLine width={32} height={11} />
-        </View>
-      </View>
-    </View>
+    <SkeletonCardShell
+      style={style}
+      headerRight={
+        <>
+          <View style={{ flex: 1, gap: 6 }}>
+            <SkeletonLine width="55%" height={14} />
+            <SkeletonLine width="70%" height={11} />
+            <SkeletonLine width="45%" height={11} />
+          </View>
+          <View style={{ alignItems: "flex-end", gap: 6 }}>
+            <SkeletonLine width={48} height={20} style={{ borderRadius: 10 }} />
+            <SkeletonLine width={32} height={11} />
+          </View>
+        </>
+      }
+    />
   );
 }
 

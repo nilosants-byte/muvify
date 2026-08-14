@@ -654,7 +654,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
 
         {/* Card: Oferta selecionada */}
         {offerTitleFromRoute ? (
-          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: "rgba(36,230,109,0.09)", padding: S.cardPad, gap: 6 }}>
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primaryHighlight, padding: S.cardPad, gap: 6 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Oferta selecionada</Text>
               <View style={{ backgroundColor: isPromotionalOffer ? theme.primarySubtle : C.skyDim, borderWidth: 1, borderColor: isPromotionalOffer ? theme.primarySubtleBorder : C.skyBorder, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 3 }}>
@@ -668,7 +668,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
 
         {/* Card: Pacote de sessões */}
         {packageIdFromRoute ? (
-          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: "rgba(36,230,109,0.09)", padding: S.cardPad, gap: 4 }}>
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primaryHighlight, padding: S.cardPad, gap: 4 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Usando seu pacote de sessões</Text>
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>
               {formatCurrencyBRL(unitPriceCents / 100)} por sessão
@@ -958,7 +958,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
             onPress={() => { hapticCta(); void handleContinue(); }}
             style={{
               height: S.btnH, borderRadius: S.btnR,
-              backgroundColor: (!anamnesisCompleted || clientHasDebt || (selectedPaymentMethod === "CARD" && !paymentReady) || (hasNearTermDate && !immediateExecutionAcknowledged)) ? "rgba(36,230,109,0.4)" : theme.primary,
+              backgroundColor: (!anamnesisCompleted || clientHasDebt || (selectedPaymentMethod === "CARD" && !paymentReady) || (hasNearTermDate && !immediateExecutionAcknowledged)) ? theme.primaryDisabled : theme.primary,
               alignItems: "center", justifyContent: "center",
               shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
               opacity: creating ? 0.7 : 1,

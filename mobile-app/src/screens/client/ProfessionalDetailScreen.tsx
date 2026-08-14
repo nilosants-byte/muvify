@@ -340,7 +340,7 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
         {/* Hero card V2 */}
         <View style={{
           borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder,
-          backgroundColor: "rgba(36,230,109,0.09)", padding: 16,
+          backgroundColor: theme.primaryHighlight, padding: 16,
         }}>
           <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>
             <MvAvatar

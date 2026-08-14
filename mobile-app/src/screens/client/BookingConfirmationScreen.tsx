@@ -418,10 +418,11 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
 
         {/* Chat com o personal — sempre visível, não depende do modal */}
         <PressableScale
+          testID="button.booking-confirmation.open-chat"
           onPress={() => navigation.navigate("ClientChatList")}
           style={{
             borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder,
-            backgroundColor: "rgba(36,230,109,0.09)", padding: 14,
+            backgroundColor: theme.primaryHighlight, padding: 14,
             flexDirection: "row", alignItems: "center", gap: 12,
           }}
         >
@@ -460,7 +461,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
                 disabled={!canConfirm || confirming}
                 onPress={() => void confirmBooking()}
                 accessibilityRole="button"
-                style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: (!canConfirm || confirming) ? "rgba(36,230,109,0.4)" : theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: (!canConfirm || confirming) ? 0 : 0.28, shadowRadius: 10, elevation: (!canConfirm || confirming) ? 0 : 4 }}
+                style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: (!canConfirm || confirming) ? theme.primaryDisabled : theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: (!canConfirm || confirming) ? 0 : 0.28, shadowRadius: 10, elevation: (!canConfirm || confirming) ? 0 : 4 }}
               >
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
                   {confirming ? "Abrindo agenda..." : "Ver meus agendamentos"}

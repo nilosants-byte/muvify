@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
-import { RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
+import { FlatList, RefreshControl, TouchableOpacity, View } from "react-native";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { MvCard, MvText } from "../../components/mv";
-import { adminApi } from "../../services/api/client";
+import { adminApi, AdminNoShowReport } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { AdminScaffold } from "./AdminScaffold";
@@ -57,9 +57,44 @@ export function AdminNoShowReportsScreen({ navigation }: Props) {
     }, [reportsQuery.refetch])
   );
 
+  function renderItem({ item }: { item: AdminNoShowReport }) {
+    return (
+      <MvCard style={{ marginBottom: 10 }}>
+        <View style={{ gap: 6 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <MvText variant="semi2">{item.reportedUser.name}</MvText>
+            <View style={{
+              backgroundColor: theme.dangerSubtle,
+              borderRadius: 12,
+              paddingHorizontal: 10,
+              paddingVertical: 3
+            }}>
+              <MvText variant="caption" color="danger">
+                {item.reportedUser.noShowStrikes} falta{item.reportedUser.noShowStrikes === 1 ? "" : "s"}
+              </MvText>
+            </View>
+          </View>
+          <MvText variant="body4" color="secondary">
+            {item.reportedUser.email} · {item.reportedUser.role === "PROVIDER" ? "Profissional" : "Aluno"}
+          </MvText>
+          <MvText variant="body4">Relatado por: {item.reportedByUser.name}</MvText>
+          <MvText variant="body4" color="secondary">Registrado em {formatDate(item.createdAt)}</MvText>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.reportedUser.email })}
+          >
+            <MvText variant="caption" color="green">Buscar este usuário para suspender ou investigar →</MvText>
+          </TouchableOpacity>
+        </View>
+      </MvCard>
+    );
+  }
+
   return (
     <AdminScaffold title="Reincidência de falta" navigation={navigation} currentScreen="AdminNoShowReports">
-      <ScrollView
+      <FlatList
+        data={items}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
         refreshControl={
           <RefreshControl
             refreshing={reportsQuery.isRefetching}
@@ -68,67 +103,41 @@ export function AdminNoShowReportsScreen({ navigation }: Props) {
             colors={[theme.primary]}
           />
         }
-        contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 10 }}
-      >
-        <MvText variant="body4" color="secondary">
-          Relatos de falta (no-show) registrados pelos usuários. Filtre por número mínimo de faltas
-          acumuladas pra achar os casos mais recorrentes e decidir manualmente (ex: suspender a conta).
-        </MvText>
+        contentContainerStyle={{ padding: 16, paddingBottom: 90 }}
+        ListHeaderComponent={
+          <View style={{ gap: 10, marginBottom: 10 }}>
+            <MvText variant="body4" color="secondary">
+              Relatos de falta (no-show) registrados pelos usuários. Filtre por número mínimo de faltas
+              acumuladas pra achar os casos mais recorrentes e decidir manualmente (ex: suspender a conta).
+            </MvText>
 
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-          {STRIKE_OPTIONS.map((option) => (
-            <TouchableOpacity
-              key={option}
-              onPress={() => setMinStrikes(option)}
-              style={{
-                borderWidth: 1,
-                borderColor: minStrikes === option ? theme.primary : "rgba(127,127,127,0.35)",
-                borderRadius: 20,
-                paddingHorizontal: 12,
-                paddingVertical: 8
-              }}
-            >
-              <MvText variant="caption">{option}+ faltas</MvText>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {items.length === 0 && !loading ? (
-          <MvCard>
-            <MvText variant="body3">Nenhum relato encontrado para este filtro.</MvText>
-          </MvCard>
-        ) : null}
-
-        {items.map((item) => (
-          <MvCard key={item.id}>
-            <View style={{ gap: 6 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <MvText variant="semi2">{item.reportedUser.name}</MvText>
-                <View style={{
-                  backgroundColor: theme.dangerSubtle,
-                  borderRadius: 12,
-                  paddingHorizontal: 10,
-                  paddingVertical: 3
-                }}>
-                  <MvText variant="caption" color="danger">
-                    {item.reportedUser.noShowStrikes} falta{item.reportedUser.noShowStrikes === 1 ? "" : "s"}
-                  </MvText>
-                </View>
-              </View>
-              <MvText variant="body4" color="secondary">
-                {item.reportedUser.email} · {item.reportedUser.role === "PROVIDER" ? "Profissional" : "Aluno"}
-              </MvText>
-              <MvText variant="body4">Relatado por: {item.reportedByUser.name}</MvText>
-              <MvText variant="body4" color="secondary">Registrado em {formatDate(item.createdAt)}</MvText>
-              <TouchableOpacity
-                onPress={() => navigation.navigate("AdminUserSearch", { initialQuery: item.reportedUser.email })}
-              >
-                <MvText variant="caption" color="green">Buscar este usuário para suspender ou investigar →</MvText>
-              </TouchableOpacity>
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              {STRIKE_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  onPress={() => setMinStrikes(option)}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: minStrikes === option ? theme.primary : "rgba(127,127,127,0.35)",
+                    borderRadius: 20,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8
+                  }}
+                >
+                  <MvText variant="caption">{option}+ faltas</MvText>
+                </TouchableOpacity>
+              ))}
             </View>
-          </MvCard>
-        ))}
-      </ScrollView>
+          </View>
+        }
+        ListEmptyComponent={
+          !loading ? (
+            <MvCard>
+              <MvText variant="body3">Nenhum relato encontrado para este filtro.</MvText>
+            </MvCard>
+          ) : null
+        }
+      />
     </AdminScaffold>
   );
 }

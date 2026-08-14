@@ -160,7 +160,7 @@ export function ConsultancyRequestScreen({ route, navigation }: Props) {
         ) : (
           <>
             {/* Status da consultoria */}
-            <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: catalog?.onlineConsultancyEnabled ? theme.primarySubtleBorder : C.amberBorder, backgroundColor: catalog?.onlineConsultancyEnabled ? "rgba(36,230,109,0.09)" : "rgba(245,166,35,0.08)", padding: 14, gap: 8 }}>
+            <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: catalog?.onlineConsultancyEnabled ? theme.primarySubtleBorder : C.amberBorder, backgroundColor: catalog?.onlineConsultancyEnabled ? theme.primaryHighlight : "rgba(245,166,35,0.08)", padding: 14, gap: 8 }}>
               <View style={{ backgroundColor: catalog?.onlineConsultancyEnabled ? theme.primarySubtle : C.amberDim, borderWidth: 1, borderColor: catalog?.onlineConsultancyEnabled ? theme.primarySubtleBorder : C.amberBorder, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3, alignSelf: "flex-start" }}>
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: catalog?.onlineConsultancyEnabled ? theme.primary : C.amber }}>
                   {catalog?.onlineConsultancyEnabled ? "Consultoria habilitada" : "Consultoria desabilitada"}
@@ -272,7 +272,7 @@ export function ConsultancyRequestScreen({ route, navigation }: Props) {
           onPress={() => void submitRequest()}
           accessibilityRole="button"
           accessibilityLabel="Enviar solicitação ao profissional"
-          style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: (loading || !catalog?.onlineConsultancyEnabled || !selectedOfferId) ? "rgba(36,230,109,0.4)" : theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+          style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: (loading || !catalog?.onlineConsultancyEnabled || !selectedOfferId) ? theme.primaryDisabled : theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
         >
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
             {saving ? "Enviando..." : "Enviar solicitação ao profissional"}

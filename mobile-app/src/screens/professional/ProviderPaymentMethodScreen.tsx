@@ -254,7 +254,7 @@ export function ProviderPaymentMethodScreen({ navigation }: Props) {
         <View style={{
           borderRadius: S.cardR, borderWidth: 1,
           borderColor: configured ? theme.primarySubtleBorder : C.amberBorder,
-          backgroundColor: configured ? "rgba(36,230,109,0.09)" : "rgba(245,166,35,0.08)",
+          backgroundColor: configured ? theme.primaryHighlight : "rgba(245,166,35,0.08)",
           padding: 16,
         }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -359,7 +359,7 @@ export function ProviderPaymentMethodScreen({ navigation }: Props) {
           onPress={() => void saveCard()}
           style={{
             height: S.btnH, borderRadius: S.btnR,
-            backgroundColor: (loadingStatus || saving) ? "rgba(36,230,109,0.4)" : theme.primary,
+            backgroundColor: (loadingStatus || saving) ? theme.primaryDisabled : theme.primary,
             alignItems: "center", justifyContent: "center",
             shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
           }}

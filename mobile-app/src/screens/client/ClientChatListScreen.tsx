@@ -189,6 +189,7 @@ export const ChatComposer = React.memo(function ChatComposer({
     <View style={{ paddingHorizontal: 10, paddingVertical: 10, paddingBottom: Math.max(16, insets.bottom + 8), backgroundColor: theme.bg, borderTopWidth: 1, borderTopColor: theme.border }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: theme.inputBg, borderWidth: 1, borderColor: sending ? theme.primarySubtleBorder : theme.borderMid, borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8, opacity: sending ? 0.75 : 1 }}>
         <TextInput
+          testID="input.chat.message"
           style={{ flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text1, maxHeight: 100, lineHeight: 19 }}
           placeholder={sending ? "Enviando..." : "Escreva para seu personal..."}
           placeholderTextColor={sending ? theme.primary : theme.text3}
@@ -200,6 +201,7 @@ export const ChatComposer = React.memo(function ChatComposer({
           selectionColor={theme.primary}
         />
         <TouchableOpacity
+          testID="button.chat.send"
           onPress={() => void handlePress()}
           disabled={!text.trim() || sending}
           accessibilityRole="button"
@@ -501,6 +503,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
     const tone = hasUnread ? "green" as const : "green" as const;
     return (
       <TouchableOpacity
+        testID={`chat.card.${item.id}`}
         activeOpacity={0.82}
         onPress={() => openChat(item)}
         style={{
@@ -638,7 +641,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
 
   // ── Render principal V2 ──────────────────────────────────────────────────
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.chat">
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
 
       {activeView === "list" ? (

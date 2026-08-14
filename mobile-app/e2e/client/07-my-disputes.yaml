@@ -1,0 +1,29 @@
+# Cliente: abre "Minhas disputas" a partir do perfil (cobertura zero antes
+# desta rodada — Frente 16 tinha adiado disputa por ROI menor).
+#
+# Limitação conhecida: o usuário QA seedado não tem nenhuma disputa real
+# (criar uma exigiria simular um relato de falta + resolução administrativa
+# via Mercado Pago — fora de escopo pra um seed automatizado). Este flow
+# valida navegação + estado vazio, não o card de disputa populado.
+#
+# Executa: maestro test client/07-my-disputes.yaml
+
+appId: com.personalapp.mobile
+---
+- launchApp:
+    clearState: true
+
+- runFlow: ../helpers/_login-client.yaml
+
+- tapOn:
+    id: "nav.client.v2.profile"
+- assertVisible:
+    id: "screen.client.profile"
+
+- tapOn:
+    id: "button.profile.my-disputes"
+
+- assertVisible:
+    id: "screen.client.my-disputes"
+- assertVisible: "Nenhuma disputa"
+- takeScreenshot: "my-disputes-empty-state"

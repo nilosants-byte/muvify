@@ -1427,7 +1427,7 @@ export function ClientHomeScreen({ navigation }: Props) {
         {/* Banner - próximo treino V2 */}
         <View style={{
           borderRadius: S.cardR, padding: 16, marginBottom: 14, borderWidth: 1,
-          backgroundColor: "rgba(36,230,109,0.09)",
+          backgroundColor: theme.primaryHighlight,
           borderColor: theme.primarySubtleBorder,
         }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -1710,7 +1710,7 @@ export function ClientHomeScreen({ navigation }: Props) {
               <TouchableOpacity
                 disabled={apelidoSaving || apelidoDraft.length < 3}
                 onPress={() => void handleSaveApelido()}
-                style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: apelidoDraft.length < 3 ? "rgba(36,230,109,0.4)" : theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: apelidoDraft.length >= 3 ? 0.28 : 0, shadowRadius: 10, elevation: apelidoDraft.length >= 3 ? 4 : 0 }}
+                style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: apelidoDraft.length < 3 ? theme.primaryDisabled : theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: apelidoDraft.length >= 3 ? 0.28 : 0, shadowRadius: 10, elevation: apelidoDraft.length >= 3 ? 4 : 0 }}
               >
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
                   {apelidoSaving ? "Salvando..." : "Salvar apelido"}

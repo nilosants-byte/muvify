@@ -264,7 +264,7 @@ export function PromotionsScreen({ navigation }: Props) {
         {/* Hero card panorama */}
         <View style={{
           borderRadius: S.cardR, padding: 16, borderWidth: 1,
-          borderColor: theme.primarySubtleBorder, backgroundColor: "rgba(36,230,109,0.09)",
+          borderColor: theme.primarySubtleBorder, backgroundColor: theme.primaryHighlight,
         }}>
           <View style={{ flexDirection: "row", gap: 8 }}>
             {[

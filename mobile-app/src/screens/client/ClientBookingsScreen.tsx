@@ -230,7 +230,7 @@ export function ClientBookingsScreen({ navigation }: Props) {
         ListHeaderComponent={
           <View style={{ gap: 14, marginBottom: 4 }}>
             {/* Hero card panorama V2 */}
-            <View style={{ borderRadius: S.cardR, padding: 16, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: "rgba(36,230,109,0.09)" }}>
+            <View style={{ borderRadius: S.cardR, padding: 16, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primaryHighlight }}>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 10, color: theme.primary, letterSpacing: 0.1 * 10, textTransform: "uppercase", fontWeight: "700" }}>
                 próximo compromisso
               </Text>
