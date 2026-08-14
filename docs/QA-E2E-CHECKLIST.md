@@ -1,10 +1,18 @@
 ﻿# Checklist de Validacao Automatizada E2E (MuviFy)
 
-Data da execucao: 25/03/2026
+Data da execucao: 25/03/2026 — **snapshot historico, nao reflete o estado atual do produto.** Desde
+essa data o projeto passou por 16 frentes de mudanca de produto real (109 das ~123 migrations do
+Prisma foram criadas depois desse snapshot). Os numeros de teste abaixo (20 suites/42 testes mobile)
+sao antigos — hoje sao 51 arquivos/245+ testes (ver `mobile-app/package.json::test`). A "Cobertura
+funcional validada automaticamente" abaixo tambem nao lista features criadas depois (comunidade/feed,
+streak semanal, metas financeiras, pacote presencial, disputas, dispositivos conectados, etc.).
 
-Execucao consolidada final:
+Este documento fica como registro do que foi validado naquela rodada especifica. Pra rodar a
+validacao de verdade hoje: `npm run qa:full` (backend + smoke + docker tests + mobile typecheck/tests)
+e, pra E2E mobile real (Maestro), ver `docs/RELEASE-READINESS-CHECKLIST.md` (item 3 do checklist
+mobile) e `mobile-app/e2e/SCENARIO_CATALOG.md`.
 
-- `npm run qa:full` -> **PASS** (backend + smoke + docker tests + mobile typecheck/tests)
+## Execucao registrada em 25/03/2026 (historico)
 
 ## Sequencia oficial automatizada
 

@@ -3,6 +3,14 @@
 ## Objetivo
 Guia rapido para resposta a incidentes de producao relacionados a disponibilidade de login, banco e entrega de e-mail.
 
+## Kill switches disponíveis
+Env vars (`ENABLE_VIDEO_UPLOAD`, `ENABLE_REALTIME_CHAT`, ambas default `true` — ver `src/config/features.ts`)
+que dá pra desligar sem deploy novo, só trocando a env e reiniciando o processo:
+- `ENABLE_REALTIME_CHAT=false`: para de emitir mensagem em tempo real via WebSocket (útil se o socket.io estiver
+  causando instabilidade) — app mobile cai pro polling REST automaticamente, sem quebrar.
+- `ENABLE_VIDEO_UPLOAD=false`: para de aceitar/servir vídeo (perfil do personal e exercícios) — útil se upload de
+  vídeo estiver sobrecarregando storage/banda.
+
 ## Triagem inicial (5 minutos)
 1. Confirmar impacto real no usuario (login, cadastro, reset de senha, agendamento).
 2. Validar `GET /health`:
@@ -106,6 +114,43 @@ Esse procedimento e manual de proposito (a escolha do instante exato depende de 
 1. Contagem de linhas nas tabelas principais bate com o esperado.
 2. `npx prisma migrate status` mostra "Database schema is up to date!".
 3. `npm test` passa sem regressao.
+
+## Reversao de release/migration sem perda de dados
+
+Cobre o caso que os incidentes acima nao cobrem: nao e um desastre (banco corrompido, dado sumido), e um deploy
+que "funciona" mas tem um bug — descoberto horas ou dias depois do deploy, nao no healthcheck automatico.
+
+### Bug so no código do backend (schema nao mudou)
+1. Identifique o commit anterior conhecido como bom (`git log`, ou a tag/SHA do deploy anterior).
+2. Rode o workflow de deploy manualmente (`workflow_dispatch` em `.github/workflows/deploy.yml`) apontando pra
+   esse commit, ou reconstrua/republique a imagem Docker daquele SHA (`ghcr.io/<repo>:<sha-anterior>`) e suba com
+   `docker compose -f docker-compose.prod.yml up -d app` usando essa tag.
+3. Nao precisa mexer em migration nenhuma se o schema nao mudou entre os dois commits.
+
+### Bug so no código do mobile (JS/TS, sem mudanca de código nativo)
+O app já tem EAS Update configurado (`expo-updates`, `app.json::updates`/`runtimeVersion`, canais `preview`/
+`production` em `eas.json`) — publique um update pro canal certo em vez de esperar nova revisao de loja:
+```bash
+npm --prefix mobile-app run eas:update:production -- "descricao curta do hotfix"
+```
+So funciona pra mudanca de JS puro (sem novo pacote nativo, permissao nova, ou mudanca em `app.json`/`app.config`)
+— essas exigem build+submissao nova como sempre. Antes de publicar pra `production`, valide o mesmo update no
+canal `preview` primeiro (`eas:update:preview`).
+
+### Migration de banco ruim (schema errado, mas dado gravado depois dela precisa ser preservado)
+Prisma nao gera migration de "descer" automaticamente — reverter significa escrever uma NOVA migration que desfaz
+a mudanca, nunca `prisma migrate reset`/`migrate dev` direto em producao (apaga dado — ver Incidente 4).
+
+1. Identifique exatamente o que a migration ruim mudou (`prisma/migrations/<timestamp>_<nome>/migration.sql`).
+2. Localmente, contra um banco de desenvolvimento/shadow (nunca o de producao), rode
+   `npx prisma migrate dev --create-only --name revert_<nome>` depois de ajustar `schema.prisma` de volta pro
+   estado anterior — isso gera o `migration.sql` de reversao pra voce revisar, nao pra aplicar cegamente.
+3. Revise o SQL gerado a mao antes de qualquer coisa — automatico costuma gerar `DROP COLUMN`/`DROP TABLE` sem
+   guarda; se a coluna/tabela recebeu dado real depois da migration ruim, ajuste o SQL pra preservar esse dado
+   (ex.: migrar o valor pra outro lugar antes de derrubar a coluna) em vez de aceitar o diff literal.
+4. Teste a migration de reversao contra uma copia recente do backup de producao (`npm run db:restore` num banco
+   separado) antes de aplicar de verdade.
+5. Aplique em producao do jeito normal: `npx prisma migrate deploy` (nunca `migrate dev`/`migrate reset`).
 
 ## Pos-incidente (obrigatorio)
 1. Registrar causa raiz.

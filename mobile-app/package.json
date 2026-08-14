@@ -21,6 +21,8 @@
     "eas:build:preview:ios": "npx eas build --platform ios --profile preview --non-interactive",
     "eas:build:production:all": "npx eas build --platform all --profile production --non-interactive",
     "eas:submit:production:all": "npx eas submit --platform all --profile production --non-interactive",
+    "eas:update:preview": "npx eas update --branch preview --message",
+    "eas:update:production": "npx eas update --branch production --message",
     "capture:new-consultancy-screens": "node scripts/capture-new-consultancy-screens-local.mjs",
     "capture:new-consultancy-screens:managed": "node scripts/capture-new-consultancy-screens.mjs",
     "capture:official:dark-light": "node scripts/capture-official-34-dark-light.mjs",

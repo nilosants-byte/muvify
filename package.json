@@ -66,6 +66,7 @@
     "http-status-codes": "^2.3.0",
     "ioredis": "^5.5.0",
     "jsonwebtoken": "^9.0.2",
+    "marked": "^18.0.9",
     "mercadopago": "^3.2.1",
     "multer": "^2.2.0",
     "nodemailer": "^9.0.3",

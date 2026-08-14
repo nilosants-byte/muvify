@@ -94,7 +94,11 @@ scripts/mock-mobile-api.js
 
 # ── Artefatos de build ────────────────────────────────────────
 artifacts/
-public/
+# Frente 17 (segunda camada): ancorado na raiz — sem a barra inicial esse
+# padrão também ignorava src/modules/public/ (rotas públicas de
+# privacidade/exclusão de conta), um módulo de código-fonte real, não
+# artefato de build.
+/public/
 
 # ── Credenciais locais de testes E2E (nunca commitar) ─────────
 mobile-app/e2e/fixtures/users.local.json

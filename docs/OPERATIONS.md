@@ -42,6 +42,11 @@ Para agendar backups no servidor, rode o scheduler em segundo plano:
 - Mantenha ambientes `staging` e `production` separados no GitHub Environments.
 - Atualize `.env` do servidor antes de cada deploy.
 - Use `docker compose -f docker-compose.prod.yml up -d` para atualizacoes locais.
+- `.github/workflows/deploy.yml` ja faz rollback automatico de deploy ruim: apos subir a imagem nova, roda
+  `GET /health` contra o container; se falhar, sobe de volta a imagem anterior (`PREV_IMAGE`, capturada antes do
+  deploy) e marca o job como falho. So cobre o deploy que acabou de rodar (healthcheck falhando na hora) — nao
+  cobre "descobri um bug horas/dias depois". Ver `docs/INCIDENT-RUNBOOK.md` ("Reversao de release/migration sem
+  perda de dados") para esse segundo caso.
 - Configure `SMOKE_BASE_URL` e, se necessario, `SMOKE_ADMIN_EMAIL`/`SMOKE_ADMIN_PASSWORD` para o smoke test pos-deploy
   (`.github/workflows/smoke.yml`) — sem essa secret configurada, o job de smoke roda mas pula o teste real sem falhar
   (o step avisa isso explicitamente no log).

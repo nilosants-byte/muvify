@@ -29,6 +29,13 @@ const envSchema = z.object({
     "REDIS_URL deve ser uma URI Redis valida (redis:// ou rediss://)"
   ),
   AUTH_REQUIRE_REDIS_FOR_BLACKLIST: booleanFlag.optional(),
+  // Frente 17 (segunda camada, prontidão de lançamento): eram constante
+  // hardcoded em src/config/features.ts — "desligadora de emergência sem
+  // precisar de novo deploy" só era verdade de fato pra troca de valor,
+  // que ainda exigia editar código/commitar/deployar. Como env var real,
+  // dá pra desligar de verdade sob pressão (troca de env + restart).
+  ENABLE_VIDEO_UPLOAD: booleanFlag.default(true),
+  ENABLE_REALTIME_CHAT: booleanFlag.default(true),
   JWT_SECRET: z.string().min(32),
   APP_ENCRYPTION_KEY: z.string().min(32).optional(),
   JWT_EXPIRES_IN: z.string().optional(),

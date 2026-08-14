@@ -158,6 +158,42 @@ async function main() {
     ok("SMTP_VERIFY_ON_STARTUP", "Disabled for non-production target.");
   }
 
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET.trim().length >= 32) {
+    ok("JWT_SECRET", "Present with minimum length.");
+  } else {
+    error("JWT_SECRET", "Missing or shorter than 32 characters — app.ts boot will fail.");
+  }
+
+  if (process.env.APP_ENCRYPTION_KEY && process.env.APP_ENCRYPTION_KEY.trim().length >= 32) {
+    ok("APP_ENCRYPTION_KEY", "Present with minimum length.");
+  } else {
+    error("APP_ENCRYPTION_KEY", "Missing or shorter than 32 characters — required in every environment, boot will fail.");
+  }
+
+  if (process.env.METRICS_TOKEN && process.env.METRICS_TOKEN.trim()) {
+    ok("METRICS_TOKEN", "Present.");
+  } else if (targetEnv === "production") {
+    error("METRICS_TOKEN", "Missing in production target — boot will fail.");
+  } else {
+    warn("METRICS_TOKEN", "Not set for non-production target.");
+  }
+
+  // Frente 17 (segunda camada, prontidão de lançamento): EXPO_PUBLIC_SENTRY_DSN é
+  // uma variável de build do mobile (EAS secrets), não do processo do backend —
+  // mesmo assim vale checar aqui, porque sem ela o app builda e sobe sem nenhum
+  // report de crash chegando ao Sentry, e isso só é percebido em runtime (o
+  // próprio mobile/src/observability/sentry.ts já loga um warning tarde demais).
+  if (process.env.EXPO_PUBLIC_SENTRY_DSN && process.env.EXPO_PUBLIC_SENTRY_DSN.trim()) {
+    ok("EXPO_PUBLIC_SENTRY_DSN", "Present in this environment.");
+  } else if (targetEnv === "production") {
+    warn(
+      "EXPO_PUBLIC_SENTRY_DSN",
+      "Not set in this environment — confirm it's configured as an EAS secret for the production build profile before submitting (crash reporting depends on it)."
+    );
+  } else {
+    ok("EXPO_PUBLIC_SENTRY_DSN", "Not required for non-production target.");
+  }
+
   const runEmailRetryJob = parseBoolean(process.env.RUN_EMAIL_RETRY_JOB, true);
   if (runEmailRetryJob) {
     ok("RUN_EMAIL_RETRY_JOB", "Enabled.");

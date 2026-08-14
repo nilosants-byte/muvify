@@ -17,6 +17,7 @@ import { errorMiddleware } from "./middlewares/error.middleware";
 import { apiRateLimiter } from "./middlewares/rate-limit.middleware";
 import { attachSentryErrorHandler } from "./config/sentry";
 import { mpConnectRoutes } from "./modules/payments/routes/mercadopago-connect.routes";
+import { publicRoutes } from "./modules/public/public.routes";
 import { metricsHandler, metricsMiddleware } from "./observability/metrics";
 import { router } from "./routes";
 
@@ -184,6 +185,7 @@ app.get("/health", async (_request, response) => {
   return response.status(readinessOk ? 200 : 503).json(body);
 });
 app.get("/metrics", metricsHandler);
+app.use(publicRoutes);
 app.use(mpConnectRoutes);
 app.use(apiRateLimiter);
 if (env.NODE_ENV !== "production") {

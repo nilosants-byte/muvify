@@ -74,6 +74,12 @@
           "microphonePermission": false
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permita acesso às fotos para escolher uma imagem de perfil ou publicar no feed de evolução."
+        }
+      ],
       "expo-notifications",
       "expo-dev-client",
       "expo-updates",

@@ -1,6 +1,8 @@
 ﻿# Manual Mobile QA Checklist (MuviFy)
 
-Date: 2026-03-26
+Date: 2026-03-26 (base) — extended 2026-08-14 (Frente 17, segunda camada) with screens/flows added
+after the base date. NOT re-verified end to end since 2026-03-26 — only the "Extended coverage"
+section below is current. Referenced from `docs/RELEASE-READINESS-CHECKLIST.md` (mobile checklist).
 Mode: dark
 Scope: device manual validation after automated pass
 
@@ -112,6 +114,25 @@ Use credentials from `logs/manual-test-users.txt`.
 - [ ] Keyboard behavior in forms. Expected: fields remain reachable and submit buttons usable.
 - [ ] Camera permission prompt. Expected: handled correctly and recoverable if denied.
 - [ ] Notification permission prompt. Expected: no crash when denied.
+
+## Extended coverage (added Frente 17, segunda camada, 2026-08-14)
+
+Screens/flows built after the base checklist date (2026-03-26) that aren't covered above.
+
+- [ ] Community feed (client). Action: open feed, like/comment a post, follow/unfollow a friend. Expected: state updates without error.
+- [ ] Weekly streak + goal. Action: complete a session, check streak/goal card on home. Expected: reflects real progress.
+- [ ] Connected devices. Action: open "dispositivos conectados" in settings, disconnect a session. Expected: session list updates.
+- [ ] Financial goals (provider). Action: set/edit a monthly goal, check progress card. Expected: persists and reflects real revenue.
+- [ ] Financial students / manual student (provider). Action: add manual student, register manual payment. Expected: reflected in dashboard.
+- [ ] Presential package purchase (client). Action: buy a package, use one session credit on a booking. Expected: remaining sessions decrease correctly.
+- [ ] Combo offer (client). Action: view a combo offer, book it. Expected: price shown matches price charged (known area of past bugs).
+- [ ] Dispute flow (client and provider). Action: open a resolved/open dispute from settings. Expected: correct status and history shown.
+- [ ] Account deletion (client, LGPD). Action: Settings > Excluir minha conta > confirm password. Expected: destructive confirmation, session ends, data actually removed (spot-check via admin or DB if available — do NOT run against a real user's data casually).
+- [ ] Data export (client). Action: Settings > Baixar meus dados. Expected: file generated/shared, not just a raw JSON message.
+- [ ] Admin: CREF validation queue. Action: approve/reject a pending CREF. Expected: status updates, provider notified.
+- [ ] Admin: dispute detail + resolution. Action: resolve a dispute (refund/deny). Expected: real Mercado Pago action reflected, no double-processing on repeated taps.
+- [ ] Admin: support ticket reply. Action: reply to an open ticket. Expected: user receives it (in-app + email).
+- [ ] Accessibility spot-check. Action: enable TalkBack/VoiceOver, go through login + one critical form. Expected: every icon-only button and form field announces correctly (see `docs/RELEASE-READINESS-CHECKLIST.md`, item de acessibilidade).
 
 ## Exit criteria (manual GO)
 
