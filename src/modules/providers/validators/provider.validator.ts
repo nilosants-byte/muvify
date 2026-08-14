@@ -57,10 +57,25 @@ export const updateProviderProfileSchema = z.object({
   }).refine((b) => Object.keys(b).length > 0, { message: "Informe ao menos um campo.", path: ["displayName"] })
 });
 
+// Cleanup pós-épico segunda camada, 14/08/2026: objetivo de treino da
+// anamnese (obrigatório no cadastro do cliente, Frente 8/Lote 12) agora
+// filtra a busca — versão simples aprovada pelo usuário: cruza com as
+// especialidades (texto livre) que o próprio profissional cadastrou, sem
+// "recomendação inteligente" nenhuma.
+export const searchObjectiveSchema = z.enum([
+  "EMAGRECIMENTO",
+  "HIPERTROFIA",
+  "CONDICIONAMENTO_FISICO",
+  "REABILITACAO",
+  "PERFORMANCE_ESPORTIVA",
+  "SAUDE_GERAL"
+]);
+
 export const searchProvidersSchema = z.object({
   query: z.object({
     categoryId: z.string().uuid().optional(),
     q: z.string().trim().min(1).max(200).optional(),
+    objective: searchObjectiveSchema.optional(),
     minRating: z.coerce.number().min(0).max(5).optional(),
     lat: z.coerce.number().min(-90).max(90).optional(),
     lng: z.coerce.number().min(-180).max(180).optional(),

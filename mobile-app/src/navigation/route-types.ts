@@ -38,6 +38,7 @@ export type ClientStackParamList = {
   ProfessionalsList: {
     categoryId?: string;
     query?: string;
+    objective?: import("../services/api/client").TrainingObjective;
     minRating?: number;
     lat?: number;
     lng?: number;

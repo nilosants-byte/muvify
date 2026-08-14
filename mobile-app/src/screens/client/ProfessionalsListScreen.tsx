@@ -43,6 +43,7 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
   const params = route.params ?? {};
   const query = params.query ?? "";
   const categoryId = params.categoryId;
+  const objective = params.objective;
   const minRating = params.minRating;
   const lat = params.lat;
   const lng = params.lng;
@@ -54,6 +55,7 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
     return providersApi.list({
       q: query || undefined,
       categoryId,
+      objective,
       minRating,
       lat,
       lng,
@@ -61,7 +63,7 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
       take: PAGE_SIZE,
       offset: requestedOffset,
     });
-  }, [categoryId, lat, lng, minRating, query, serviceMode]);
+  }, [categoryId, objective, lat, lng, minRating, query, serviceMode]);
 
   useEffect(() => {
     let mounted = true;

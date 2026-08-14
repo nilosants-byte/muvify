@@ -2063,6 +2063,29 @@ export type AdminUserDetailDispute = {
   createdAt: string;
 };
 
+export type AdminUserFinancialTransaction = {
+  id: string;
+  type: "PRESENTIAL" | "CONSULTANCY" | "PRESENTIAL_PACKAGE" | "CONSULTANCY_RENEWAL";
+  bookingId: string | null;
+  amountCents: number;
+  providerAmountCents: number;
+  platformFeeCents: number;
+  refundedAmountCents: number;
+  method: string;
+  status: string;
+  capturedAt: string | null;
+  scheduledAt: string | null;
+};
+
+export type AdminUserFinancialSummary = {
+  pendingCents: number;
+  availableCents: number;
+  grossCents: number;
+  platformFeeCents: number;
+  refundedCents: number;
+  payments: AdminUserFinancialTransaction[];
+};
+
 export type AdminUserDetail = {
   id: string;
   name: string;
@@ -2087,6 +2110,7 @@ export type AdminUserDetail = {
   clientDisputes: AdminUserDetailDispute[];
   providerDebts: AdminUserDetailDebt[];
   providerDisputes: AdminUserDetailDispute[];
+  providerFinancialSummary: AdminUserFinancialSummary | null;
   supportTicketsCount: number;
   reportsFiledCount: number;
   reportsAgainstCount: number;
@@ -2283,10 +2307,19 @@ export type ProviderTimelineResponse = {
   generatedAt: string;
 };
 
+export type TrainingObjective =
+  | "EMAGRECIMENTO"
+  | "HIPERTROFIA"
+  | "CONDICIONAMENTO_FISICO"
+  | "REABILITACAO"
+  | "PERFORMANCE_ESPORTIVA"
+  | "SAUDE_GERAL";
+
 export const providersApi = {
   list(params?: {
     categoryId?: string;
     q?: string;
+    objective?: TrainingObjective;
     minRating?: number;
     lat?: number;
     lng?: number;
@@ -2298,6 +2331,7 @@ export const providersApi = {
     const query = new URLSearchParams();
     if (params?.categoryId) query.set("categoryId", params.categoryId);
     if (params?.q) query.set("q", params.q);
+    if (params?.objective) query.set("objective", params.objective);
     if (typeof params?.minRating === "number") query.set("minRating", String(params.minRating));
     if (typeof params?.lat === "number") query.set("lat", String(params.lat));
     if (typeof params?.lng === "number") query.set("lng", String(params.lng));

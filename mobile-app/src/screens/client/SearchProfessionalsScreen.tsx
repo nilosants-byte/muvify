@@ -11,7 +11,8 @@ import {
   PROFESSIONAL_SPECIALTIES,
   ProviderServiceMode,
   providersApi,
-  ProviderSummary
+  ProviderSummary,
+  TrainingObjective
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { averageToFive, handleScreenError } from "../shared/api-helpers";
@@ -33,6 +34,20 @@ const serviceModeFilters: { key: "all" | ProviderServiceMode; label: string }[] 
   { key: "PRESENTIAL_ONLY", label: "Só academia" },
   { key: "HOME_VISIT_ONLY", label: "Vai ao cliente" },
   { key: "BOTH", label: "Ambas" },
+];
+
+// Cleanup pós-épico segunda camada, 14/08/2026: objetivo de treino da
+// anamnese (obrigatório no cadastro, Frente 8/Lote 12) passa a filtrar a
+// busca — versão simples aprovada pelo usuário, cruza com as
+// especialidades que o profissional cadastrou (sem recomendação "esperta").
+const objectiveFilters: { key: "all" | TrainingObjective; label: string }[] = [
+  { key: "all", label: "Qualquer objetivo" },
+  { key: "EMAGRECIMENTO", label: "Emagrecimento" },
+  { key: "HIPERTROFIA", label: "Hipertrofia" },
+  { key: "CONDICIONAMENTO_FISICO", label: "Condicionamento físico" },
+  { key: "REABILITACAO", label: "Reabilitação" },
+  { key: "PERFORMANCE_ESPORTIVA", label: "Performance esportiva" },
+  { key: "SAUDE_GERAL", label: "Saúde geral" },
 ];
 
 function normalizeLoose(value: string) {
@@ -62,6 +77,7 @@ export function SearchProfessionalsScreen({ route, navigation }: Props) {
   );
   const [ratingKey, setRatingKey] = useState<(typeof ratingFilters)[number]["key"]>("any");
   const [serviceModeKey, setServiceModeKey] = useState<"all" | ProviderServiceMode>("all");
+  const [objectiveKey, setObjectiveKey] = useState<"all" | TrainingObjective>("all");
   const [clientLat, setClientLat] = useState<number | null>(null);
   const [clientLng, setClientLng] = useState<number | null>(null);
   const [locating, setLocating] = useState(false);
@@ -112,6 +128,7 @@ export function SearchProfessionalsScreen({ route, navigation }: Props) {
         const response = await providersApi.list({
           q: normalizedQuery || undefined,
           categoryId: selectedCategoryId,
+          objective: objectiveKey === "all" ? undefined : objectiveKey,
           minRating: selectedRating,
           serviceMode: serviceModeKey === "all" ? undefined : serviceModeKey,
           take: 8,
@@ -133,7 +150,7 @@ export function SearchProfessionalsScreen({ route, navigation }: Props) {
       mounted = false;
       if (timer) clearTimeout(timer);
     };
-  }, [query, selectedCategoryId, selectedRating, serviceModeKey, clientLat, clientLng, showToast]);
+  }, [query, selectedCategoryId, objectiveKey, selectedRating, serviceModeKey, clientLat, clientLng, showToast]);
 
   async function requestGps() {
     try {
@@ -161,6 +178,7 @@ export function SearchProfessionalsScreen({ route, navigation }: Props) {
     navigation.navigate("ProfessionalsList", {
       query: nextQuery,
       categoryId: selectedCategoryId,
+      objective: objectiveKey === "all" ? undefined : objectiveKey,
       minRating: selectedRating,
       lat: clientLat ?? undefined,
       lng: clientLng ?? undefined,
@@ -220,6 +238,7 @@ export function SearchProfessionalsScreen({ route, navigation }: Props) {
         {/* Filtros */}
         {[
           { label: "Especialidade", chips: [{ label: "Todas", selected: !selectedCategoryId, onPress: () => setSelectedCategoryId(undefined) }, ...categories.map((cat) => ({ label: cat.name, selected: selectedCategoryId === cat.id, onPress: () => setSelectedCategoryId(cat.id) }))] },
+          { label: "Objetivo", chips: objectiveFilters.map((f) => ({ label: f.label, selected: f.key === objectiveKey, onPress: () => setObjectiveKey(f.key) })) },
           { label: "Nota mínima", chips: ratingFilters.map((f) => ({ label: f.label, selected: f.key === ratingKey, onPress: () => setRatingKey(f.key) })) },
           { label: "Modalidade", chips: serviceModeFilters.map((f) => ({ label: f.label, selected: f.key === serviceModeKey, onPress: () => setServiceModeKey(f.key) })) },
         ].map(({ label, chips }) => (

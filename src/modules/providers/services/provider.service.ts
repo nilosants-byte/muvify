@@ -72,9 +72,18 @@ type CreateProviderInput = {
 
 type UpdateProviderInput = Partial<Omit<CreateProviderInput, "userId">>;
 
+type TrainingObjective =
+  | "EMAGRECIMENTO"
+  | "HIPERTROFIA"
+  | "CONDICIONAMENTO_FISICO"
+  | "REABILITACAO"
+  | "PERFORMANCE_ESPORTIVA"
+  | "SAUDE_GERAL";
+
 type SearchProvidersInput = {
   categoryId?: string;
   q?: string;
+  objective?: TrainingObjective;
   minRating?: number;
   lat?: number;
   lng?: number;
@@ -82,6 +91,19 @@ type SearchProvidersInput = {
   serviceMode?: ProviderServiceMode;
   take?: number;
   offset?: number;
+};
+
+// Cleanup pós-épico segunda camada, 14/08/2026: cada objetivo de treino
+// mapeia pra palavras-chave buscadas nas especialidades (texto livre) que o
+// profissional cadastrou — mesmo padrão de match parcial/case-insensitive
+// já usado na busca livre por especialidade (ver specialtyMatchIds abaixo).
+const OBJECTIVE_SPECIALTY_KEYWORDS: Record<TrainingObjective, string[]> = {
+  EMAGRECIMENTO: ["emagrec"],
+  HIPERTROFIA: ["hipertrofia", "hipertrofi", "musculação", "musculacao"],
+  CONDICIONAMENTO_FISICO: ["condicionamento", "funcional", "cardio"],
+  REABILITACAO: ["reabilita", "fisioterap"],
+  PERFORMANCE_ESPORTIVA: ["performance", "esportiv"],
+  SAUDE_GERAL: ["saúde", "saude", "qualidade de vida", "bem-estar", "bem estar"]
 };
 
 function paginateProviders<T>(items: T[], offset: number, take?: number) {
@@ -1209,7 +1231,7 @@ export class ProviderService {
       Object.entries(filters).sort(([a], [b]) => a.localeCompare(b))
     );
     const baseCacheKey = geoGridKey
-      ? `providers:geo:${geoGridKey}:${filters.q ?? ""}:${filters.categoryId ?? ""}:${filters.serviceMode ?? ""}:${filters.minRating ?? ""}`
+      ? `providers:geo:${geoGridKey}:${filters.q ?? ""}:${filters.categoryId ?? ""}:${filters.serviceMode ?? ""}:${filters.minRating ?? ""}:${filters.objective ?? ""}`
       : `providers:search:${JSON.stringify(sortedInput)}`;
     const pageCacheKey = `${baseCacheKey}:offset:${pageOffset}:take:${pageTake ?? "all"}`;
 
@@ -1257,6 +1279,25 @@ export class ProviderService {
         ).map((row) => row.id)
       : [];
 
+    // Cleanup pós-épico segunda camada, 14/08/2026: mesma técnica acima
+    // (jsonb_array_elements_text + ILIKE), uma condição por palavra-chave do
+    // objetivo selecionado (Prisma.join, não interpolação de array direta -
+    // ILIKE ANY(array) muda o tipo do parâmetro e não é garantido pelo driver).
+    const objectiveMatchIds = filters.objective
+      ? (
+          await prisma.$queryRaw<Array<{ id: string }>>(
+            Prisma.sql`
+              SELECT DISTINCT p.id
+              FROM "ProviderProfile" p, jsonb_array_elements_text(p.specialties) AS s
+              WHERE ${Prisma.join(
+                OBJECTIVE_SPECIALTY_KEYWORDS[filters.objective].map((k) => Prisma.sql`s ILIKE ${`%${k}%`}`),
+                " OR "
+              )}
+            `
+          )
+        ).map((row) => row.id)
+      : null;
+
     const where: Prisma.ProviderProfileWhereInput = {
       crefValidationStatus: CrefValidationStatus.APPROVED,
       mpAccountId: { not: null },
@@ -1271,6 +1312,10 @@ export class ProviderService {
           { id: { in: specialtyMatchIds } },
         ]
       } : {}),
+      // Cleanup pós-épico segunda camada, 14/08/2026: `AND` em vez de mais
+      // um `id`/`OR` de topo, pra não colidir com o filtro de `q` acima
+      // quando os dois vierem juntos (busca por texto + filtro de objetivo).
+      ...(objectiveMatchIds ? { AND: [{ id: { in: objectiveMatchIds } }] } : {}),
       categoryLinks: filters.categoryId
         ? { some: { categoryId: filters.categoryId } }
         : undefined,

@@ -424,6 +424,53 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
               </MvCard>
             ) : null}
 
+            {/* Cleanup pós-épico segunda camada, 14/08/2026: auditoria
+                financeira cruzada — antes só existia via telas separadas
+                (Pagamentos, Dívidas, Disputas); mesmos totais que o próprio
+                profissional vê no Financeiro (histórico completo, sem
+                filtro de mês). */}
+            {detail.provider && detail.providerFinancialSummary ? (
+              <MvCard>
+                <View style={{ gap: 8 }}>
+                  <MvText variant="semi2">Financeiro (profissional)</MvText>
+                  <MvText variant="body4">
+                    Bruto: {formatCents(detail.providerFinancialSummary.grossCents)}
+                  </MvText>
+                  <MvText variant="body4" color="secondary">
+                    Comissão da plataforma: {formatCents(detail.providerFinancialSummary.platformFeeCents)}
+                  </MvText>
+                  <MvText variant="body4">
+                    Líquido (repassado ao profissional): {formatCents(detail.providerFinancialSummary.availableCents)}
+                  </MvText>
+                  {detail.providerFinancialSummary.pendingCents > 0 ? (
+                    <MvText variant="body4" color="secondary">
+                      Pendente (pré-autorizado, ainda não capturado): {formatCents(detail.providerFinancialSummary.pendingCents)}
+                    </MvText>
+                  ) : null}
+                  {detail.providerFinancialSummary.refundedCents > 0 ? (
+                    <MvText variant="body4" color="secondary">
+                      Estornado ao cliente: {formatCents(detail.providerFinancialSummary.refundedCents)}
+                    </MvText>
+                  ) : null}
+                  {detail.providerFinancialSummary.payments.length > 0 ? (
+                    <View style={{ gap: 4, marginTop: 4 }}>
+                      <MvText variant="caption" color="secondary">Últimos lançamentos</MvText>
+                      {detail.providerFinancialSummary.payments.slice(0, 8).map((p) => (
+                        <View key={p.id} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                          <MvText variant="caption" color="secondary">
+                            {p.capturedAt ? formatDate(p.capturedAt) : "—"} · {p.type}
+                          </MvText>
+                          <MvText variant="caption">{formatCents(p.providerAmountCents)}</MvText>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <MvText variant="caption" color="secondary">Nenhum lançamento registrado ainda.</MvText>
+                  )}
+                </View>
+              </MvCard>
+            ) : null}
+
             {/* Épico de Frentes, Frente 10, Lote 5: AdminAuditLog era write-only -
                 reincidência de um usuário (3ª suspensão em 2 meses, por exemplo)
                 ficava invisível sem consultar o banco na mão. */}

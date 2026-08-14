@@ -20,7 +20,8 @@ import {
   effectiveBookingRevenueCents,
   effectiveConsultancyRevenueCents,
   effectiveCycleRevenueCents,
-  effectiveRenewalRevenueCents
+  effectiveRenewalRevenueCents,
+  FinancialService
 } from "../../financial/services/financial.service";
 
 type DashboardInput = {
@@ -275,6 +276,7 @@ export class AdminService {
   private presentialPackageService = new PresentialPackageService();
   private consultancyService = new ConsultancyService();
   private bookingService = new BookingService();
+  private financialService = new FinancialService();
 
   // Frente 7 (segunda camada), Lote 1: implementação movida pra
   // shared/utils/admin-access.ts::assertAdminAccess — essa checagem já tinha
@@ -2002,6 +2004,16 @@ export class AdminService {
     const reportsAgainstCount =
       reportsAgainstFromPosts + reportsAgainstFromBookingMessages + reportsAgainstFromConsultancyMessages;
 
+    // Cleanup pós-épico segunda camada, 14/08/2026: auditoria financeira
+    // cruzada — informação de receita/comissão/repasse de um profissional
+    // só existia espalhada em telas separadas (Pagamentos, Dívidas,
+    // Disputas), sem visão unificada pro admin conferir um caso concreto.
+    // Reaproveita `getPayouts` (mesmos totais que o próprio profissional vê
+    // no Financeiro, sem filtro de mês — histórico completo).
+    const providerFinancialSummaryPromise = providerId
+      ? this.financialService.getPayouts(user.id)
+      : Promise.resolve(null);
+
     const [clientDebts, clientDisputes, providerDebts, providerDisputes] = await Promise.all([
       prisma.debtRecord.findMany({
         where: { clientId: userId, debtorType: "CLIENT" },
@@ -2059,6 +2071,8 @@ export class AdminService {
       }
     });
 
+    const providerFinancialSummary = await providerFinancialSummaryPromise;
+
     return {
       id: user.id,
       name: user.name,
@@ -2085,6 +2099,7 @@ export class AdminService {
       clientDisputes,
       providerDebts,
       providerDisputes,
+      providerFinancialSummary,
       supportTicketsCount,
       reportsFiledCount,
       reportsAgainstCount,

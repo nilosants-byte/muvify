@@ -29,6 +29,14 @@ export class ProviderController {
     const providers = await providerService.search({
       categoryId: request.query.categoryId as string | undefined,
       q: request.query.q as string | undefined,
+      objective: request.query.objective as
+        | "EMAGRECIMENTO"
+        | "HIPERTROFIA"
+        | "CONDICIONAMENTO_FISICO"
+        | "REABILITACAO"
+        | "PERFORMANCE_ESPORTIVA"
+        | "SAUDE_GERAL"
+        | undefined,
       minRating: request.query.minRating ? Number(request.query.minRating) : undefined,
       lat: request.query.lat ? Number(request.query.lat) : undefined,
       lng: request.query.lng ? Number(request.query.lng) : undefined,
