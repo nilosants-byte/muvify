@@ -115,6 +115,8 @@ const envSchema = z.object({
   DATA_RETENTION_LEGAL_HOLD_USER_IDS: z.string().default(""),
   RUN_REMINDER_JOBS: booleanFlag.default(true),
   REMINDER_JOB_INTERVAL_SECONDS: z.coerce.number().int().min(30).max(3600).default(60),
+  RUN_GOAL_REMINDER_JOBS: booleanFlag.default(true),
+  GOAL_REMINDER_JOB_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(120).default(15),
   PUSH_NOTIFICATIONS_ENABLED: booleanFlag.default(true),
   EXPO_PUSH_API_URL: z
     .string()

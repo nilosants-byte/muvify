@@ -1,16 +1,10 @@
 import { UserRole } from "@prisma/client";
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
-import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { ExerciseController } from "../controllers/exercise.controller";
-import {
-  createExerciseSchema,
-  exerciseIdSchema,
-  listExercisesSchema,
-  updateExerciseSchema
-} from "../validators/exercise.validator";
+import { listExercisesSchema } from "../validators/exercise.validator";
 
 const exerciseController = new ExerciseController();
 export const exerciseRoutes = Router();
@@ -31,38 +25,6 @@ exerciseRoutes.get(
   exerciseController.list.bind(exerciseController)
 );
 
-// Apenas exercícios criados pelo próprio personal
-exerciseRoutes.get(
-  "/mine",
-  ensureAuthenticated,
-  ensureRole(UserRole.PROVIDER),
-  validate(listExercisesSchema),
-  exerciseController.listMine.bind(exerciseController)
-);
-
-exerciseRoutes.post(
-  "/",
-  ensureAuthenticated,
-  ensureRole(UserRole.PROVIDER),
-  uploadRateLimiter,
-  validate(createExerciseSchema),
-  exerciseController.create.bind(exerciseController)
-);
-
-exerciseRoutes.patch(
-  "/:exerciseId",
-  ensureAuthenticated,
-  ensureRole(UserRole.PROVIDER),
-  uploadRateLimiter,
-  validate(updateExerciseSchema),
-  exerciseController.update.bind(exerciseController)
-);
-
-exerciseRoutes.delete(
-  "/:exerciseId",
-  ensureAuthenticated,
-  ensureRole(UserRole.PROVIDER),
-  uploadRateLimiter,
-  validate(exerciseIdSchema),
-  exerciseController.delete.bind(exerciseController)
-);
+// Criação/edição/exclusão de exercício é exclusiva do admin
+// (src/modules/admin/routes/admin.routes.ts) — o profissional só consulta
+// o catálogo acima e monta treinos com o que já existe.

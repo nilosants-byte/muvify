@@ -1119,6 +1119,11 @@ export const EXERCISE_CATEGORIES = [
   "Quadríceps",
   "Panturrilha",
   "Abdômen",
+  // Pra exercícios compostos/generalizados que não isolam um músculo só
+  // (ex: agachamento livre, remada) — em vez de forçar um dos grupos
+  // isolados acima.
+  "Membros Superiores",
+  "Membros Inferiores",
   "Alongamento",
   "Mobilidade",
   "Cardio",
@@ -1134,44 +1139,14 @@ export const exerciseApi = {
     const suffix = query.toString() ? `?${query}` : "";
     return apiRequest<Exercise[]>(`/exercises${suffix}`, { token });
   },
-  listMine(token: string, params?: { category?: string; q?: string }) {
-    const query = new URLSearchParams();
-    if (params?.category) query.set("category", params.category);
-    if (params?.q) query.set("q", params.q);
-    const suffix = query.toString() ? `?${query}` : "";
-    return apiRequest<Exercise[]>(`/exercises/mine${suffix}`, { token });
-  },
+  // Criação/edição/exclusão de exercício é exclusiva do admin
+  // (ver adminExerciseApi abaixo) — o profissional só consulta o catálogo.
   listPrebuilt(params?: { category?: string; q?: string }) {
     const query = new URLSearchParams();
     if (params?.category) query.set("category", params.category);
     if (params?.q) query.set("q", params.q);
     const suffix = query.toString() ? `?${query}` : "";
     return apiRequest<Exercise[]>(`/exercises/prebuilt${suffix}`);
-  },
-  create(token: string, body: {
-    name: string;
-    category: string;
-    description?: string;
-    defaultRepetitionsSets?: string;
-    defaultRestLabel?: string;
-    mediaUrl?: string;
-    mediaType?: ExerciseMediaType;
-  }) {
-    return apiRequest<Exercise>("/exercises", { method: "POST", token, body });
-  },
-  update(token: string, exerciseId: string, body: Partial<{
-    name: string;
-    category: string;
-    description: string;
-    defaultRepetitionsSets: string;
-    defaultRestLabel: string;
-    mediaUrl: string;
-    mediaType: ExerciseMediaType;
-  }>) {
-    return apiRequest<Exercise>(`/exercises/${exerciseId}`, { method: "PATCH", token, body });
-  },
-  delete(token: string, exerciseId: string) {
-    return apiRequest<void>(`/exercises/${exerciseId}`, { method: "DELETE", token });
   },
 };
 

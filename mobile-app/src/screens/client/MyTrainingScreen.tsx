@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -27,6 +28,7 @@ import {
   ConsultancyContract,
   ConsultancyPaymentMethod,
   ConsultancyRequest,
+  ExerciseMediaType,
   gamificationApi,
   MyTrainingResponse,
   paymentsApi,
@@ -38,7 +40,8 @@ import { useAppState, ToastType } from "../../state/AppState";
 import { hapticWorkoutStart, hapticWorkoutFinish, hapticCta } from "../../utils/haptics";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
-import { MvMediaPreviewButton, MvMediaViewer } from "../../components/mv";
+import { MvMediaPreviewModal, MvMuscleSilhouette } from "../../components/mv";
+import { getYouTubeThumbnailFromUrl } from "../../utils/youtube";
 import { formatDateLabel, formatCurrencyBRL } from "../../utils/formatters";
 import { nextPixPollDelayMs } from "../../utils/pixPolling";
 import { extractApiMessage, handleScreenError } from "../shared/api-helpers";
@@ -84,6 +87,80 @@ function planValidityStyle(isVigente: boolean, theme: MvTheme) {
   const isDark = theme.mode === "dark";
   if (isVigente) return { label: "Vigente", color: theme.primary, bg: theme.primarySubtle, border: theme.primarySubtleBorder };
   return { label: "Vencido", color: theme.text3, bg: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)", border: theme.border };
+}
+
+// Miniatura vertical compacta (Fase 3/4 do redesenho) — vídeos reais são
+// Shorts (9:16), por isso a proporção do box já nasce vertical em vez de
+// quadrada. Só estática (Image), não usa MvVideoPlayer aqui — evita manter
+// um WebView escondido atrás de cada card da lista; a reprodução de verdade
+// acontece no MvMediaPreviewModal ao tocar.
+function ExerciseMediaThumb({
+  theme,
+  mediaUrl,
+  mediaType,
+  onPress,
+}: {
+  theme: MvTheme;
+  mediaUrl: string;
+  mediaType: ExerciseMediaType;
+  onPress: () => void;
+}) {
+  const isVideo = mediaType === "YOUTUBE" || mediaType === "VIDEO";
+  const thumbnail =
+    mediaType === "YOUTUBE"
+      ? getYouTubeThumbnailFromUrl(mediaUrl)
+      : mediaType === "IMAGE" || mediaType === "GIF"
+      ? mediaUrl
+      : null;
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      style={{
+        width: 52,
+        height: 78,
+        borderRadius: 12,
+        overflow: "hidden",
+        backgroundColor: theme.chipBg,
+        borderWidth: 1,
+        borderColor: theme.border,
+        flexShrink: 0,
+      }}
+    >
+      {thumbnail ? (
+        <Image source={{ uri: thumbnail }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+      ) : (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="image-outline" size={20} color={theme.text3} />
+        </View>
+      )}
+      {isVideo ? (
+        <View
+          style={{
+            position: "absolute",
+            top: 0, left: 0, right: 0, bottom: 0,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(0,0,0,0.18)",
+          }}
+        >
+          <View
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 13,
+              backgroundColor: mediaType === "YOUTUBE" ? "rgba(255,0,0,0.88)" : theme.primary,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="play" size={13} color="#fff" style={{ marginLeft: 1.5 }} />
+          </View>
+        </View>
+      ) : null}
+    </TouchableOpacity>
+  );
 }
 
 // ── Flat plan list helper ──────────────────────────────────────────────────────
@@ -188,8 +265,8 @@ function WorkoutDetailModal({
   const [restRemaining, setRestRemaining] = useState(0);
   const [restBlink, setRestBlink] = useState(true);
 
-  // Media viewer
-  const [expandedMediaId, setExpandedMediaId] = useState<string | null>(null);
+  // Media viewer — modal centralizado (Fase 3), não mais expansão inline.
+  const [mediaPreview, setMediaPreview] = useState<{ url: string; type: ExerciseMediaType; title: string } | null>(null);
 
   // Main timer — sincroniza com timestamp real para não acumular drift
   useEffect(() => {
@@ -448,7 +525,6 @@ function WorkoutDetailModal({
           const mediaUrl = ex.exercise?.mediaUrl ?? ex.demoVideoUrl ?? null;
           const mediaType = ex.exercise?.mediaType ?? (ex.demoVideoUrl ? "YOUTUBE" : null);
           const hasMedia = Boolean(mediaUrl && mediaType);
-          const isExpanded = expandedMediaId === ex.id;
 
           return (
             <View key={ex.id} style={{
@@ -457,7 +533,7 @@ function WorkoutDetailModal({
               backgroundColor: isDone ? theme.primarySubtle : theme.cardBg,
               overflow: "hidden",
             }}>
-              <View style={{ flexDirection: "row", gap: 12, padding: 14 }}>
+              <View style={{ flexDirection: "row", gap: 10, padding: 14 }}>
                 {/* Check button — mínimo 44×44px */}
                 <TouchableOpacity
                   onPress={() => toggleDone(ex.id)}
@@ -477,13 +553,31 @@ function WorkoutDetailModal({
                   }
                 </TouchableOpacity>
 
+                {/* "Boneco" — feature experimental e isolada (ver
+                    MvMuscleSilhouette.tsx). Pra remover só essa parte
+                    depois, basta apagar este bloco; nada mais depende dele. */}
+                <MvMuscleSilhouette category={ex.exercise?.category} size={32} />
+
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }} numberOfLines={2}>{ex.name}</Text>
                   {ex.exercise?.category && (
-                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, marginTop: 2 }}>{ex.exercise.category}</Text>
+                    <View
+                      style={{
+                        alignSelf: "flex-start",
+                        backgroundColor: theme.primarySubtle,
+                        borderWidth: 1,
+                        borderColor: theme.primarySubtleBorder,
+                        borderRadius: S.chipR,
+                        paddingHorizontal: 8,
+                        paddingVertical: 2,
+                        marginTop: 4,
+                      }}
+                    >
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.textGreen }}>{ex.exercise.category}</Text>
+                    </View>
                   )}
 
-                  {/* Stats grid 4 colunas */}
+                  {/* Stats grid */}
                   <View style={{ flexDirection: "row", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                     {[
                       { label: "séries/reps", value: ex.repetitionsSets },
@@ -505,16 +599,17 @@ function WorkoutDetailModal({
                         <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: stat.tappable ? theme.primary : theme.text1, marginTop: 3 }}>{stat.value}</Text>
                       </TouchableOpacity>
                     ))}
-                    {hasMedia && (
-                      <MvMediaPreviewButton
-                        mediaUrl={mediaUrl!}
-                        mediaType={mediaType!}
-                        expanded={isExpanded}
-                        onToggle={() => setExpandedMediaId(isExpanded ? null : ex.id)}
-                      />
-                    )}
                   </View>
                 </View>
+
+                {hasMedia && (
+                  <ExerciseMediaThumb
+                    theme={theme}
+                    mediaUrl={mediaUrl!}
+                    mediaType={mediaType!}
+                    onPress={() => setMediaPreview({ url: mediaUrl!, type: mediaType!, title: ex.name })}
+                  />
+                )}
               </View>
 
               {ex.exercise?.description && (
@@ -522,16 +617,19 @@ function WorkoutDetailModal({
                   <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>{ex.exercise.description}</Text>
                 </View>
               )}
-
-              {hasMedia && isExpanded && (
-                <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
-                  <MvMediaViewer mediaUrl={mediaUrl!} mediaType={mediaType!} height={200} borderRadius={10} />
-                </View>
-              )}
             </View>
           );
         })}
       </ScrollView>
+
+      <MvMediaPreviewModal
+        visible={Boolean(mediaPreview)}
+        onClose={() => setMediaPreview(null)}
+        mediaUrl={mediaPreview?.url}
+        mediaType={mediaPreview?.type}
+        title={mediaPreview?.title}
+        orientation="vertical"
+      />
 
       {/* Botões fixos com safe area — Finalizar (esq, secundário) + Iniciar (dir, primário) */}
       <View style={{
@@ -859,13 +957,18 @@ export function MyTrainingScreen({ navigation, route }: Props) {
         disabled={!canOpen}
         onPress={() => canOpen && setSelectedPlan(item)}
         style={{
-          borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border,
-          backgroundColor: theme.cardBg, padding: S.cardPad,
+          borderRadius: S.cardR, borderWidth: 1,
+          borderColor: isVigente ? theme.primarySubtleBorder : theme.border,
+          backgroundColor: theme.cardBg,
+          paddingVertical: S.cardPad + 4, paddingHorizontal: S.cardPad + 2,
+          paddingLeft: S.cardPad + 6,
           opacity: isVigente ? 1 : 0.65,
+          borderLeftWidth: isVigente ? 4 : 1,
+          borderLeftColor: isVigente ? theme.primary : theme.border,
         }}
       >
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: theme.text1, letterSpacing: -0.013 * 18, flex: 1, marginRight: 10 }} numberOfLines={2}>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 19, color: theme.text1, letterSpacing: -0.013 * 19, flex: 1, marginRight: 10 }} numberOfLines={2}>
             {item.title}
           </Text>
           <View style={{ backgroundColor: bs.bg, borderWidth: 1, borderColor: bs.border, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3, flexShrink: 0 }}>
@@ -875,7 +978,7 @@ export function MyTrainingScreen({ navigation, route }: Props) {
         <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 6 }}>
           {item.description ? item.description : "Plano personalizado"}
         </Text>
-        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: isVigente ? theme.primary : theme.text3, marginTop: 10 }}>
+        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: isVigente ? theme.primary : theme.text3, marginTop: 12 }}>
           {item.providerName} · {isVigente
             ? hasExercises ? `${item.exercises!.length} exercício${item.exercises!.length !== 1 ? "s" : ""}` : "Sem exercícios cadastrados"
             : "Sem acesso — vigência encerrada"}

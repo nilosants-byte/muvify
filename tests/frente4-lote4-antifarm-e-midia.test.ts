@@ -4,6 +4,7 @@ import request from "supertest";
 import { Payment, CardToken } from "mercadopago";
 import { app } from "../src/app";
 import { prisma } from "../src/config/prisma";
+import { env } from "../src/config/env";
 import { ConsultancyService } from "../src/modules/consultancy/services/consultancy.service";
 import { ExerciseService } from "../src/modules/exercises/services/exercise.service";
 import { encryptSensitiveText } from "../src/shared/utils/encryption";
@@ -43,7 +44,9 @@ let providerUserId = "";
 let providerId = "";
 let clientId = "";
 let categoryId = "";
+let adminId = "";
 const offerIds: string[] = [];
+const prebuiltExerciseIds: string[] = [];
 
 describe("Frente 4, Lote 4 — anti-farm de XP e integridade de mídia", () => {
   beforeAll(async () => {
@@ -105,6 +108,27 @@ describe("Frente 4, Lote 4 — anti-farm de XP e integridade de mídia", () => {
         funding: "CREDIT"
       }
     });
+
+    // Segunda camada: exclusão de exercício em uso é bloqueada só na
+    // versão admin agora (deletePrebuilt) — precisa de um admin de verdade.
+    const adminEmail = env.ADMIN_ALLOWED_EMAILS[0]!;
+    const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });
+    if (existingAdmin) {
+      adminId = existingAdmin.id;
+      await prisma.user.update({ where: { id: adminId }, data: { emailVerifiedAt: new Date() } });
+    } else {
+      const admin = await prisma.user.create({
+        data: {
+          name: "Antifarm Admin",
+          email: adminEmail,
+          password: "x",
+          phone: `1188${Date.now().toString().slice(-8)}`,
+          role: "ADMIN",
+          emailVerifiedAt: new Date()
+        }
+      });
+      adminId = admin.id;
+    }
   });
 
   afterAll(async () => {
@@ -113,6 +137,7 @@ describe("Frente 4, Lote 4 — anti-farm de XP e integridade de mídia", () => {
     await prisma.consultancyContract.deleteMany({ where: { clientId } });
     await prisma.consultancyRequest.deleteMany({ where: { clientId } });
     await prisma.exercise.deleteMany({ where: { providerId } });
+    await prisma.exercise.deleteMany({ where: { id: { in: prebuiltExerciseIds } } });
     await prisma.providerServiceOffer.deleteMany({ where: { id: { in: offerIds } } });
     await prisma.customerPaymentMethod.deleteMany({ where: { userId: clientId } });
     await prisma.providerProfile.deleteMany({ where: { id: providerId } });
@@ -258,11 +283,11 @@ describe("Frente 4, Lote 4 — anti-farm de XP e integridade de mídia", () => {
   });
 
   it("excluir exercício referenciado em ficha ativa é bloqueado com mensagem clara", async () => {
-    const exercise = await exerciseService.create({
-      providerId: providerUserId,
+    const exercise = await exerciseService.createPrebuilt(adminId, {
       name: "Supino Reto Personalizado",
       category: "Peito"
     });
+    prebuiltExerciseIds.push(exercise.id);
 
     const offer = await makeOffer();
     const contract = await makeActiveContract(offer.id);
@@ -273,7 +298,7 @@ describe("Frente 4, Lote 4 — anti-farm de XP e integridade de mídia", () => {
       ]
     });
 
-    await expect(exerciseService.delete(exercise.id, providerUserId)).rejects.toThrow(/ficha\(s\) ativa\(s\)/i);
+    await expect(exerciseService.deletePrebuilt(adminId, exercise.id)).rejects.toThrow(/ficha\(s\) ativa\(s\)/i);
 
     const stillExists = await prisma.exercise.findUnique({ where: { id: exercise.id } });
     expect(stillExists).not.toBeNull();

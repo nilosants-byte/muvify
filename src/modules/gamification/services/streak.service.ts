@@ -19,10 +19,25 @@ function toLocalDateKey(date: Date): string {
   }).format(date);
 }
 
-function diffInCalendarDays(a: Date, b: Date): number {
+export function diffInCalendarDays(a: Date, b: Date): number {
   const dayA = new Date(`${toLocalDateKey(a)}T12:00:00Z`);
   const dayB = new Date(`${toLocalDateKey(b)}T12:00:00Z`);
   return Math.round((dayA.getTime() - dayB.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+// Extraído pra job de lembrete de treino (goal-reminder.job.ts): esse
+// cálculo de "já bateu a meta desta semana" já existia duplicado inline em
+// xp.service.ts (getUserGamificationProfile) e aqui mesmo (fechamento de
+// semana em recordTraining) - centraliza numa função só, com o mesmo
+// tratamento de weekKey desatualizado (streak de uma semana antiga não
+// conta pra semana corrente).
+export function hasMetWeeklyGoal(
+  streak: { weekKey: string | null; daysTrainedThisWeek: number; trainingDaysPerWeek: number } | null | undefined,
+  weekKey: string
+): boolean {
+  if (!streak) return false;
+  const trainedThisWeek = streak.weekKey === weekKey ? streak.daysTrainedThisWeek : 0;
+  return trainedThisWeek >= streak.trainingDaysPerWeek;
 }
 
 function addDaysToWeekKey(weekKey: string, days: number): string {
@@ -155,9 +170,14 @@ export async function updateTrainingDaysConfig(userId: string, trainingDaysPerWe
   if (!Number.isInteger(trainingDaysPerWeek) || trainingDaysPerWeek < 1 || trainingDaysPerWeek > 7) {
     throw new AppError("trainingDaysPerWeek deve ser um inteiro entre 1 e 7.", StatusCodes.BAD_REQUEST);
   }
+  // Distingue "usuário configurou a meta de propósito" do default de
+  // cadastro (trainingDaysPerWeek=3 sem o usuário nunca ter tocado nisso) -
+  // usado pelo lembrete diário de treino (goal-reminder.job.ts) pra decidir
+  // quem recebe o lembrete de verdade e quem recebe só o nudge sugerindo
+  // configurar uma meta.
   await prisma.user.update({
     where: { id: userId },
-    data: { trainingDaysPerWeek },
+    data: { trainingDaysPerWeek, weeklyGoalConfiguredAt: new Date() },
   });
 
   await prisma.userStreak.upsert({

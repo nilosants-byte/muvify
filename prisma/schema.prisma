@@ -319,6 +319,13 @@ model User {
   // isso além da env var (que continua valendo como fallback/lista extra).
   legalHoldUntil           DateTime?
   legalHoldReason          String?
+  // Lembretes de meta de treino: marca quando o usuário configurou a meta
+  // semanal de propósito (via setTrainingDays) - diferencia de quem nunca
+  // mexeu nisso e só carrega o default de cadastro (trainingDaysPerWeek=3).
+  // Os dois campos seguintes são throttle dos respectivos lembretes.
+  weeklyGoalConfiguredAt   DateTime?
+  lastGoalReminderSentAt   DateTime?
+  lastGoalSetupNudgeSentAt DateTime?
   customerPaymentMethods   CustomerPaymentMethod[]
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
@@ -1422,6 +1429,12 @@ model ConsultancyContract {
   // separada porque cancelamento e entrega de renovação são ações
   // diferentes que não devem disputar a mesma trava.
   cancelLockedAt          DateTime?
+  // Notificações de retenção: aviso ao profissional quando o aluno passa
+  // 3+ dias sem registrar treino nesse contrato. Throttle de 24h (mesmo
+  // padrão de TrainingPlan.lastEscalationSentAt) - não é flag de "já
+  // avisei uma vez", é "quando foi o último aviso", porque repete
+  // enquanto a inatividade continuar.
+  inactivityReminderSentAt DateTime?
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   request                 ConsultancyRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)

@@ -9,7 +9,6 @@ let providerToken = "";
 let providerUserId = "";
 let providerId = "";
 let categoryId = "";
-let exerciseId = "";
 
 function uid(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -79,50 +78,24 @@ describe("exercises", () => {
   });
 
   // ── Provider exercises ────────────────────────────────────────────────────
-  it("POST /exercises creates custom exercise", async () => {
+  // Segunda camada: criação/edição/exclusão de exercício virou exclusiva do
+  // admin (src/modules/admin/routes/admin.routes.ts) — as rotas POST/PATCH/
+  // DELETE /exercises e GET /exercises/mine foram removidas por completo,
+  // então nem chegam a checar role: qualquer chamada (mesmo autenticada
+  // como PROVIDER) cai no 404 padrão de rota inexistente.
+  it("POST /exercises no longer exists — provider can't create exercises anymore", async () => {
     const res = await request(app)
       .post("/api/exercises")
       .set("Authorization", `Bearer ${providerToken}`)
-      .send({
-        name: "Exercício Custom Teste",
-        category: "Peito",
-        description: "Deite no banco e empurre a barra.",
-      });
-    expect(res.status).toBe(201);
-    expect(res.body.id).toBeTruthy();
-    exerciseId = res.body.id;
+      .send({ name: "Exercício Custom Teste", category: "Peito" });
+    expect(res.status).toBe(404);
   });
 
-  it("POST /exercises rejects missing name", async () => {
+  it("GET /exercises/mine no longer exists", async () => {
     const res = await request(app)
-      .post("/api/exercises")
-      .set("Authorization", `Bearer ${providerToken}`)
-      .send({ category: "Costas", description: "Sem nome" });
-    expect(res.status).toBe(400);
-  });
-
-  it("POST /exercises rejects CLIENT role", async () => {
-    const email = `${uid("ex_client")}@test.com`;
-    const phone = `109${Date.now().toString().slice(-9)}`;
-    const reg = await request(app).post("/api/auth/register").send({
-      name: "Client Exercises",
-      email,
-      password: PASSWORD,
-      phone,
-      termsVersion: "2026.05",
-      consentAccepted: true,
-    });
-    const clientToken = reg.body.accessToken;
-    const clientId = reg.body.user.id;
-
-    const res = await request(app)
-      .post("/api/exercises")
-      .set("Authorization", `Bearer ${clientToken}`)
-      .send({ name: "Não autorizado", category: "Pernas" });
-    expect(res.status).toBe(403);
-
-    await prisma.session.deleteMany({ where: { userId: clientId } });
-    await prisma.user.deleteMany({ where: { id: clientId } });
+      .get("/api/exercises/mine")
+      .set("Authorization", `Bearer ${providerToken}`);
+    expect(res.status).toBe(404);
   });
 
   it("GET /exercises returns combined list (provider only)", async () => {
@@ -154,22 +127,6 @@ describe("exercises", () => {
 
     await prisma.session.deleteMany({ where: { userId: clientId } });
     await prisma.user.deleteMany({ where: { id: clientId } });
-  });
-
-  it("GET /exercises/mine returns only provider's custom exercises", async () => {
-    const res = await request(app)
-      .get("/api/exercises/mine")
-      .set("Authorization", `Bearer ${providerToken}`);
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.some((e: { id: string }) => e.id === exerciseId)).toBe(true);
-  });
-
-  it("DELETE /exercises/:exerciseId removes exercise", async () => {
-    const res = await request(app)
-      .delete(`/api/exercises/${exerciseId}`)
-      .set("Authorization", `Bearer ${providerToken}`);
-    expect(res.status).toBe(204);
   });
 
   it("GET /exercises rejects unauthenticated", async () => {

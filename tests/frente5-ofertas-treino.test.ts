@@ -534,7 +534,7 @@ describe("Frente 5 (segunda camada), Lote 7 — integridade de oferta com histó
   });
 });
 
-describe("Frente 5 (segunda camada), Lote 8 — edição de exercício próprio e proteção do pré-montado", () => {
+describe("Frente 5 (segunda camada), Lote 8 — proteção do exercício pré-montado em uso", () => {
   const exerciseService = new ExerciseService();
 
   let l8ClientId = "";
@@ -681,24 +681,7 @@ describe("Frente 5 (segunda camada), Lote 8 — edição de exercício próprio 
     });
   }
 
-  it("profissional edita nome/categoria de um exercício próprio já criado (antes só create/delete)", async () => {
-    const exercise = await exerciseService.create({
-      providerId: l8ProviderUserId,
-      name: "Supino Reto (digitação errada)",
-      category: "Peito"
-    });
-    l8ExerciseIds.push(exercise.id);
-
-    const updated = await exerciseService.update(exercise.id, l8ProviderUserId, {
-      name: "Supino Reto",
-      defaultRepetitionsSets: "4x10"
-    });
-
-    expect(updated.name).toBe("Supino Reto");
-    expect(updated.defaultRepetitionsSets).toBe("4x10");
-  });
-
-  it("excluir exercício pré-montado (admin) em uso numa ficha ativa é bloqueado, igual já acontecia com exercício próprio", async () => {
+  it("excluir exercício pré-montado (admin) em uso numa ficha ativa é bloqueado", async () => {
     const prebuilt = await exerciseService.createPrebuilt(l8AdminId, {
       name: `Agachamento Livre ${uid("ex")}`,
       category: "Pernas"

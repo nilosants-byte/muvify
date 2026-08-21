@@ -102,6 +102,12 @@ export function resolveNotificationRoute(
     if (type === "STUDENT_POST_MENTION" && clientId) {
       return { screen: "ProfessionalStudentAnamnesis", params: { clientId, clientName } };
     }
+    // Aviso de aluno de consultoria inativo (3+ dias sem treinar) deve abrir
+    // o chat com aquele aluno, não a central de solicitações - precisa vir
+    // antes do roteamento genérico por prefixo abaixo, senão cai lá.
+    if (type === "CONSULTANCY_CLIENT_INACTIVE" && contractId) {
+      return { screen: "ProfessionalChatList", params: { openContractId: contractId } };
+    }
     // Frente 9 (segunda camada), Lote 12: sempre caía na tab default
     // "dashboard" - ProfessionalConsultancyCenterScreen já aceita
     // initialTab (usado só quando o usuário toca no menu), nunca vinha do
@@ -182,7 +188,13 @@ export function resolveNotificationRoute(
     // Épico de Frentes, Frente 9, Lote 4: tipos de comunidade não tinham
     // nenhum tratamento aqui e caíam no fallback genérico (central de
     // avisos) mesmo com um destino óbvio disponível.
-    if (type === "NEW_FOLLOWER" || type === "ACHIEVEMENT_UNLOCKED" || type === "STREAK_MILESTONE") {
+    if (
+      type === "NEW_FOLLOWER" ||
+      type === "ACHIEVEMENT_UNLOCKED" ||
+      type === "STREAK_MILESTONE" ||
+      type === "DAILY_TRAINING_REMINDER" ||
+      type === "WEEKLY_GOAL_SETUP_NUDGE"
+    ) {
       return { screen: "ClientTabs", params: { screen: "Community" } };
     }
     // Épico de Frentes, Frente 9, Lote 18: sem tratamento, caía no

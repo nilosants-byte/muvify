@@ -1201,45 +1201,79 @@ export class PresentialPackageService {
   // vencimento de créditos (acima) — aqui pra avisar antes da próxima
   // cobrança automática de um pacote recorrente (FIXED_RECURRING), que hoje
   // só acontecia sem aviso nenhum ao cliente.
+  // Segunda camada: antes avisava uma única vez, 3 dias antes da cobrança, e
+  // nunca mais - se o aluno não pagasse (cartão recusado etc.), o
+  // profissional nunca mais era lembrado. Agora repete diariamente até 3
+  // dias após o vencimento e, depois disso, a cada 3 dias, até o ciclo ser
+  // pago (o que reseta billingReminderSentAt em activateCycle/
+  // activateCardFixedPeriod) ou o pacote sair de ACTIVE (cancelamento
+  // automático por falhas de cobrança repetidas, já tratado em
+  // chargeDueCycles/payment-jobs.ts).
   async sendPresentialPackageBillingReminders(referenceDate = new Date()) {
     const soon = new Date(referenceDate.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const ESCALATION_INITIAL_PHASE_MS = 3 * 24 * 60 * 60 * 1000;
+    const THROTTLE_MS_INITIAL = 24 * 60 * 60 * 1000;
+    const THROTTLE_MS_EXTENDED = 3 * 24 * 60 * 60 * 1000;
 
-    // Épico de Frentes, Frente 9, Lote 13: mesmo achado do reminder de
-    // vencimento acima - marca antes de notificar.
-    const dueSoon = await prisma.presentialPackage.findMany({
+    // Filtro grosseiro no banco (throttle mínimo de 24h); o throttle exato
+    // por registro (24h ou 72h, dependendo de quanto tempo já passou do
+    // vencimento) é aplicado em código logo abaixo, porque o Prisma não
+    // expressa um limiar dinâmico por linha direto no `where`.
+    const candidates = await prisma.presentialPackage.findMany({
       where: {
         mode: PresentialPackageMode.FIXED_RECURRING,
         status: PresentialPackageStatus.ACTIVE,
-        nextBillingAt: { gte: referenceDate, lte: soon },
-        billingReminderSentAt: null
+        nextBillingAt: { lte: soon },
+        OR: [
+          { billingReminderSentAt: null },
+          { billingReminderSentAt: { lt: new Date(referenceDate.getTime() - THROTTLE_MS_INITIAL) } }
+        ]
       },
       select: {
         id: true,
         clientId: true,
         cycleAmountCents: true,
+        nextBillingAt: true,
+        billingReminderSentAt: true,
         provider: { select: { userId: true } }
-      }
+      },
+      take: 200
     });
+
+    const dueSoon = candidates.filter((pkg): pkg is typeof pkg & { nextBillingAt: Date } => {
+      if (!pkg.nextBillingAt) return false;
+      const overdueMs = referenceDate.getTime() - pkg.nextBillingAt.getTime();
+      const requiredThrottleMs = overdueMs > ESCALATION_INITIAL_PHASE_MS ? THROTTLE_MS_EXTENDED : THROTTLE_MS_INITIAL;
+      return (
+        !pkg.billingReminderSentAt || referenceDate.getTime() - pkg.billingReminderSentAt.getTime() >= requiredThrottleMs
+      );
+    });
+
     if (dueSoon.length > 0) {
       await prisma.presentialPackage.updateMany({
-        where: { id: { in: dueSoon.map((pkg) => pkg.id) }, billingReminderSentAt: null },
+        where: { id: { in: dueSoon.map((pkg) => pkg.id) } },
         data: { billingReminderSentAt: referenceDate }
       });
       for (const pkg of dueSoon) {
         const amountLabel = (pkg.cycleAmountCents / 100).toFixed(2).replace(".", ",");
+        const overdue = pkg.nextBillingAt.getTime() < referenceDate.getTime();
         void notificationService
           .sendToUsers([pkg.clientId], {
             preferenceType: "PAYMENTS",
-            title: "Próxima cobrança do seu pacote está chegando",
-            body: `Sua próxima cobrança de R$ ${amountLabel} será processada em breve.`,
+            title: overdue ? "Cobrança do seu pacote está pendente" : "Próxima cobrança do seu pacote está chegando",
+            body: overdue
+              ? `A cobrança de R$ ${amountLabel} do seu pacote ainda não foi processada. Regularize para continuar treinando.`
+              : `Sua próxima cobrança de R$ ${amountLabel} será processada em breve.`,
             data: { type: "PRESENTIAL_PACKAGE_BILLING_DUE_SOON", packageId: pkg.id }
           })
           .catch((e) => console.error("Presential package billing reminder (client) failed:", e));
         void notificationService
           .sendToUsers([pkg.provider.userId], {
             preferenceType: "PAYMENTS",
-            title: "Cobrança de um aluno está chegando",
-            body: `A próxima cobrança do pacote de um aluno (R$ ${amountLabel}) será processada em breve.`,
+            title: overdue ? "Cobrança de um aluno está pendente" : "Cobrança de um aluno está chegando",
+            body: overdue
+              ? `A cobrança do pacote de um aluno (R$ ${amountLabel}) ainda não foi processada.`
+              : `A próxima cobrança do pacote de um aluno (R$ ${amountLabel}) será processada em breve.`,
             data: { type: "PRESENTIAL_PACKAGE_BILLING_DUE_SOON", packageId: pkg.id }
           })
           .catch((e) => console.error("Presential package billing reminder (provider) failed:", e));

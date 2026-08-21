@@ -1,13 +1,23 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, AppState, Image, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, AppState, DimensionValue, Image, TouchableOpacity, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvText } from "./MvText";
+import { getYouTubeId, getYouTubeThumbnail } from "../../utils/youtube";
 
 type Props = {
   url: string;
+  // Comportamento padrão (sem aspectRatio): caixa de altura fixa, largura
+  // 100% do container pai — pensado pra vídeo horizontal (16:9-ish), mantido
+  // pra não quebrar os callers existentes de vídeo de apresentação do
+  // profissional (ProfessionalDetailScreen, ProfessionalProfileEditorScreen,
+  // ClientProviderCard).
   height?: number;
+  // Quando passado, o container vira { width, aspectRatio } em vez de
+  // { height } fixo — usado pra vídeo vertical (YouTube Shorts, 9/16).
+  aspectRatio?: number;
+  width?: number;
   borderRadius?: number;
 };
 
@@ -16,15 +26,6 @@ type VideoSource = {
   youTubeThumbnail?: string;
   isLocalFile?: boolean;
 };
-
-function getYouTubeId(url: string): string | null {
-  const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([^&\s?/]+)/i);
-  return match?.[1] ?? null;
-}
-
-function getYouTubeThumbnail(videoId: string): string {
-  return `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
-}
 
 function escapeHtml(input: string): string {
   return input
@@ -57,6 +58,36 @@ function buildYouTubeEmbedUri(videoId: string): string {
   return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&rel=0&modestbranding=1&controls=1&fs=1`;
 }
 
+// O player do YouTube espera rodar DENTRO de um <iframe> numa página, não
+// como a página em si — navegar a WebView direto pro endereço de embed
+// (source={{ uri: ... }}) faz o handshake do player com a "janela pai"
+// falhar e ele cai num estado de erro (o famoso "erro de configuração do
+// player"), em qualquer vídeo, sempre. Envolver num HTML com iframe de
+// verdade (mesma ideia já usada em buildInlineVideoHtml pro vídeo direto)
+// resolve isso.
+function buildYouTubeEmbedHtml(videoId: string): string {
+  const embedUri = buildYouTubeEmbedUri(videoId);
+  return `
+<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
+      iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+    </style>
+  </head>
+  <body>
+    <iframe
+      src="${embedUri}"
+      frameborder="0"
+      allow="autoplay; encrypted-media; picture-in-picture"
+      allowfullscreen
+    ></iframe>
+  </body>
+</html>`;
+}
+
 // User agent de browser mobile para não ser bloqueado pelo YouTube
 const MOBILE_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
@@ -69,7 +100,7 @@ function buildVideoSource(url: string): VideoSource | null {
   const ytId = getYouTubeId(trimmed);
   if (ytId) {
     return {
-      source: { uri: buildYouTubeEmbedUri(ytId) },
+      source: { html: buildYouTubeEmbedHtml(ytId) },
       youTubeThumbnail: getYouTubeThumbnail(ytId),
     };
   }
@@ -104,7 +135,7 @@ function buildVideoSource(url: string): VideoSource | null {
   };
 }
 
-export function MvVideoPlayer({ url, height = 200, borderRadius = 12 }: Props) {
+export function MvVideoPlayer({ url, height = 200, aspectRatio, width, borderRadius = 12 }: Props) {
   const { theme } = useMvTheme();
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -120,8 +151,13 @@ export function MvVideoPlayer({ url, height = 200, borderRadius = 12 }: Props) {
     return () => sub.remove();
   }, []);
 
+  const dimensionStyle: { width: DimensionValue; height?: number; aspectRatio?: number } = aspectRatio
+    ? { width: width ?? "100%", aspectRatio }
+    : { height, width: "100%" };
+  const containerStyle = { ...dimensionStyle, borderRadius, overflow: "hidden" as const };
+
   if (!videoSource) return (
-    <View style={{ height, borderRadius, backgroundColor: theme.cardBg, alignItems: "center", justifyContent: "center", gap: 6 }}>
+    <View style={{ ...containerStyle, backgroundColor: theme.cardBg, alignItems: "center", justifyContent: "center", gap: 6 }}>
       <Ionicons name="alert-circle-outline" size={28} color={theme.text3} />
       <MvText variant="body4" color="secondary">URL de vídeo inválida</MvText>
     </View>
@@ -132,7 +168,7 @@ export function MvVideoPlayer({ url, height = 200, borderRadius = 12 }: Props) {
       <TouchableOpacity
         activeOpacity={0.85}
         onPress={() => setPlaying(true)}
-        style={{ borderRadius, overflow: "hidden", height }}
+        style={containerStyle}
       >
         {videoSource.youTubeThumbnail ? (
           <Image
@@ -184,7 +220,7 @@ export function MvVideoPlayer({ url, height = 200, borderRadius = 12 }: Props) {
   }
 
   return (
-    <View style={{ borderRadius, overflow: "hidden", height }}>
+    <View style={containerStyle}>
       {loading ? (
         <View
           style={{

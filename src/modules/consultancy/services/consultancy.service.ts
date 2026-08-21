@@ -3561,6 +3561,7 @@ export class ConsultancyService {
   // posterior nao deve gerar aviso).
   async sendFichaExpiryReminders(referenceDate = new Date()) {
     const REMINDER_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+    const APPROACHING_THROTTLE_MS = 24 * 60 * 60 * 1000;
 
     async function isLatestPlanForContract(planId: string, contractId: string, createdAt: Date) {
       const newerCount = await prisma.trainingPlan.count({
@@ -3569,11 +3570,20 @@ export class ConsultancyService {
       return newerCount === 0;
     }
 
+    // Lembretes de retenção: antes esse aviso disparava uma única vez, 3
+    // dias antes do vencimento, e nunca mais - se ninguém agisse, sumia. Foi
+    // trocado pra repetir a cada 24h (expiryReminderSentAt vira campo de
+    // "último aviso", não "já avisei uma vez") até a ficha vencer, quando o
+    // bloco de baixo assume e depois escalateExpiredFichaContracts continua
+    // avisando.
     const approaching = await prisma.trainingPlan.findMany({
       where: {
         contractId: { not: null },
-        expiryReminderSentAt: null,
-        validUntil: { gte: referenceDate, lte: new Date(referenceDate.getTime() + REMINDER_WINDOW_MS) }
+        validUntil: { gte: referenceDate, lte: new Date(referenceDate.getTime() + REMINDER_WINDOW_MS) },
+        OR: [
+          { expiryReminderSentAt: null },
+          { expiryReminderSentAt: { lt: new Date(referenceDate.getTime() - APPROACHING_THROTTLE_MS) } }
+        ]
       },
       select: {
         id: true,
@@ -3673,7 +3683,11 @@ export class ConsultancyService {
   // dinâmica de "vencimento de ficha" no mesmo sentido.
   async escalateExpiredFichaContracts(referenceDate = new Date()) {
     const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
-    const ESCALATION_THROTTLE_MS = 24 * 60 * 60 * 1000;
+    // Espaçamento pra não ficar "chato": diário nos primeiros 3 dias vencida,
+    // depois a cada 3 dias até o cancelamento automático em 7 dias.
+    const ESCALATION_INITIAL_PHASE_MS = 3 * 24 * 60 * 60 * 1000;
+    const ESCALATION_THROTTLE_MS_INITIAL = 24 * 60 * 60 * 1000;
+    const ESCALATION_THROTTLE_MS_EXTENDED = 3 * 24 * 60 * 60 * 1000;
 
     const stale = await prisma.trainingPlan.findMany({
       where: {
@@ -3747,7 +3761,10 @@ export class ConsultancyService {
         continue;
       }
 
-      if (plan.lastEscalationSentAt && referenceDate.getTime() - plan.lastEscalationSentAt.getTime() < ESCALATION_THROTTLE_MS) {
+      const daysOverdueMs = referenceDate.getTime() - plan.validUntil!.getTime();
+      const escalationThrottleMs =
+        daysOverdueMs > ESCALATION_INITIAL_PHASE_MS ? ESCALATION_THROTTLE_MS_EXTENDED : ESCALATION_THROTTLE_MS_INITIAL;
+      if (plan.lastEscalationSentAt && referenceDate.getTime() - plan.lastEscalationSentAt.getTime() < escalationThrottleMs) {
         continue;
       }
       await prisma.trainingPlan.update({ where: { id: plan.id }, data: { lastEscalationSentAt: referenceDate } });
@@ -3769,6 +3786,74 @@ export class ConsultancyService {
           data: { type: "CONSULTANCY_FICHA_EXPIRED_ESCALATION", contractId: plan.contract.id }
         })
         .catch((e) => console.error("Ficha escalation (client) failed:", e));
+    }
+  }
+
+  // Retenção: aluno de consultoria online com contrato ativo (ficha já
+  // entregue) que passa 3+ dias sem marcar nenhum treino como concluído -
+  // avisa só o profissional, repetindo a cada 24h enquanto continuar
+  // inativo. Deep link pro chat desse aluno depende de um caso à parte em
+  // mobile-app/src/navigation/notification-routing.ts (o tipo
+  // CONSULTANCY_CLIENT_INACTIVE precisa ser tratado antes do roteamento
+  // genérico de consultoria por prefixo, senão cai na central de
+  // solicitações em vez de abrir o chat).
+  async sendConsultancyInactivityReminders(referenceDate = new Date()) {
+    const INACTIVITY_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
+    const THROTTLE_MS = 24 * 60 * 60 * 1000;
+
+    const candidates = await prisma.consultancyContract.findMany({
+      where: {
+        status: ConsultancyContractStatus.DELIVERED,
+        OR: [
+          { inactivityReminderSentAt: null },
+          { inactivityReminderSentAt: { lt: new Date(referenceDate.getTime() - THROTTLE_MS) } }
+        ]
+      },
+      select: {
+        id: true,
+        deliveredAt: true,
+        createdAt: true,
+        provider: { select: { userId: true } }
+      },
+      take: 200
+    });
+    if (candidates.length === 0) return;
+
+    const lastCompletions = await prisma.trainingPlanCompletion.groupBy({
+      by: ["contractId"],
+      where: { contractId: { in: candidates.map((c) => c.id) } },
+      _max: { completedAt: true }
+    });
+    const lastCompletionByContract = new Map(
+      lastCompletions
+        .filter((row): row is typeof row & { contractId: string } => row.contractId !== null)
+        .map((row) => [row.contractId, row._max.completedAt!])
+    );
+
+    const inactive = candidates.filter((contract) => {
+      // Sem nenhuma conclusão registrada ainda: usa a data de entrega da
+      // primeira ficha (deliveredAt) como referência - fallback pro
+      // createdAt do contrato se, por algum motivo, deliveredAt não tiver
+      // sido preenchido.
+      const referencePoint = lastCompletionByContract.get(contract.id) ?? contract.deliveredAt ?? contract.createdAt;
+      return referenceDate.getTime() - referencePoint.getTime() >= INACTIVITY_THRESHOLD_MS;
+    });
+    if (inactive.length === 0) return;
+
+    await prisma.consultancyContract.updateMany({
+      where: { id: { in: inactive.map((c) => c.id) } },
+      data: { inactivityReminderSentAt: referenceDate }
+    });
+
+    for (const contract of inactive) {
+      void notificationService
+        .sendToUsers([contract.provider.userId], {
+          preferenceType: "CONSULTANCY",
+          title: "Aluno sem treinar há alguns dias",
+          body: "Um dos seus alunos de consultoria está há alguns dias sem registrar treino — que tal mandar uma mensagem?",
+          data: { type: "CONSULTANCY_CLIENT_INACTIVE", contractId: contract.id }
+        })
+        .catch((e) => console.error("Consultancy inactivity reminder (provider) failed:", e));
     }
   }
 

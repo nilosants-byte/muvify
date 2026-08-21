@@ -6,17 +6,6 @@ import { AppError } from "../../../shared/errors/app-error";
 import { assertAdminAccess } from "../../../shared/utils/admin-access";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 
-type CreateExerciseInput = {
-  providerId: string;
-  name: string;
-  category: string;
-  description?: string;
-  defaultRepetitionsSets?: string;
-  defaultRestLabel?: string;
-  mediaUrl?: string;
-  mediaType?: ExerciseMediaType;
-};
-
 type ListExercisesInput = {
   userId: string;
   category?: string;
@@ -82,54 +71,6 @@ export class ExerciseService {
       take: 500,
     });
     return stripVideoMedia(exercises);
-  }
-
-  async listMine(providerId: string, category?: string, q?: string) {
-    const provider = await prisma.providerProfile.findUnique({
-      where: { userId: providerId },
-      select: { id: true }
-    });
-
-    if (!provider) {
-      return [];
-    }
-
-    const exercises = await prisma.exercise.findMany({
-      where: {
-        providerId: provider.id,
-        isPrebuilt: false,
-        ...(category ? { category } : {}),
-        ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {})
-      },
-      orderBy: [{ category: "asc" }, { name: "asc" }],
-      take: 500,
-    });
-    return stripVideoMedia(exercises);
-  }
-
-  async create(input: CreateExerciseInput) {
-    const provider = await prisma.providerProfile.findUnique({
-      where: { userId: input.providerId }
-    });
-    if (!provider) {
-      throw new AppError("Perfil profissional não encontrado. Crie seu perfil antes de adicionar exercícios.", StatusCodes.NOT_FOUND);
-    }
-
-    const isVideoMedia = input.mediaType === ExerciseMediaType.VIDEO;
-
-    return prisma.exercise.create({
-      data: {
-        providerId: provider.id,
-        name: input.name.trim(),
-        category: input.category.trim(),
-        description: input.description?.trim() || null,
-        defaultRepetitionsSets: input.defaultRepetitionsSets?.trim() || null,
-        defaultRestLabel: input.defaultRestLabel?.trim() || null,
-        mediaUrl: (ENABLE_VIDEO_UPLOAD || !isVideoMedia) ? (input.mediaUrl || null) : null,
-        mediaType: (ENABLE_VIDEO_UPLOAD || !isVideoMedia) ? (input.mediaType || null) : null,
-        isPrebuilt: false
-      }
-    });
   }
 
   async createPrebuilt(adminId: string, input: {
@@ -248,87 +189,5 @@ export class ExerciseService {
       targetId: exerciseId,
       metadata: { name: exercise.name, category: exercise.category }
     });
-  }
-
-  // Frente 5 (segunda camada), Lote 8: só existia create/delete pro
-  // exercício próprio do profissional — sem edição, um exercício custom em
-  // uso numa ficha ativa (que `delete` bloqueia excluir, ver acima) ficava
-  // permanentemente travado: pra corrigir um erro de digitação seria
-  // preciso remover de todas as fichas ativas primeiro.
-  async update(exerciseId: string, providerId: string, input: {
-    name?: string;
-    category?: string;
-    description?: string;
-    defaultRepetitionsSets?: string;
-    defaultRestLabel?: string;
-    mediaUrl?: string;
-    mediaType?: ExerciseMediaType;
-  }) {
-    const exercise = await prisma.exercise.findUnique({ where: { id: exerciseId } });
-    if (!exercise) throw new AppError("Exercício não encontrado.", StatusCodes.NOT_FOUND);
-
-    const provider = await prisma.providerProfile.findUnique({ where: { userId: providerId } });
-    if (!provider || exercise.providerId !== provider.id) {
-      throw new AppError("Você não tem permissão para editar este exercício.", StatusCodes.FORBIDDEN);
-    }
-    if (exercise.isPrebuilt) {
-      throw new AppError("Exercícios da biblioteca Muvify não podem ser editados.", StatusCodes.FORBIDDEN);
-    }
-
-    const isVideoMedia = (input.mediaType ?? exercise.mediaType) === ExerciseMediaType.VIDEO;
-
-    return prisma.exercise.update({
-      where: { id: exerciseId },
-      data: {
-        ...(input.name !== undefined ? { name: input.name.trim() } : {}),
-        ...(input.category !== undefined ? { category: input.category.trim() } : {}),
-        ...(input.description !== undefined ? { description: input.description.trim() || null } : {}),
-        ...(input.defaultRepetitionsSets !== undefined ? { defaultRepetitionsSets: input.defaultRepetitionsSets.trim() || null } : {}),
-        ...(input.defaultRestLabel !== undefined ? { defaultRestLabel: input.defaultRestLabel.trim() || null } : {}),
-        ...(input.mediaUrl !== undefined
-          ? { mediaUrl: (ENABLE_VIDEO_UPLOAD || !isVideoMedia) ? (input.mediaUrl.trim() || null) : null }
-          : {}),
-        ...(input.mediaType !== undefined
-          ? { mediaType: (ENABLE_VIDEO_UPLOAD || !isVideoMedia) ? (input.mediaType || null) : null }
-          : {}),
-      },
-    });
-  }
-
-  async delete(exerciseId: string, providerId: string) {
-    const exercise = await prisma.exercise.findUnique({ where: { id: exerciseId } });
-    if (!exercise) throw new AppError("Exercício não encontrado.", StatusCodes.NOT_FOUND);
-
-    const provider = await prisma.providerProfile.findUnique({ where: { userId: providerId } });
-    if (!provider || exercise.providerId !== provider.id) {
-      throw new AppError("Você não tem permissão para remover este exercício.", StatusCodes.FORBIDDEN);
-    }
-    if (exercise.isPrebuilt) {
-      throw new AppError("Exercícios da biblioteca Muvify não podem ser removidos.", StatusCodes.FORBIDDEN);
-    }
-
-    // Frente 4 (Criação/entrega/evolução do treino), Lote 4: excluir um
-    // exercício em uso apagava silenciosamente o conteúdo de fichas ativas
-    // de alunos (a FK usa onDelete: SetNull) — sem aviso nenhum ao
-    // profissional de que aquilo afetaria alguém que já está treinando.
-    const activeUsages = await prisma.trainingPlanExercise.findMany({
-      where: {
-        exerciseId,
-        trainingPlan: {
-          isActive: true,
-          contract: { status: { in: [ConsultancyContractStatus.ACTIVE, ConsultancyContractStatus.DELIVERED] } }
-        }
-      },
-      select: { trainingPlanId: true },
-      distinct: ["trainingPlanId"]
-    });
-    if (activeUsages.length > 0) {
-      throw new AppError(
-        `Este exercício está em uso em ${activeUsages.length} ficha(s) ativa(s) de aluno(s) e não pode ser removido.`,
-        StatusCodes.CONFLICT
-      );
-    }
-
-    await prisma.exercise.delete({ where: { id: exerciseId } });
   }
 }

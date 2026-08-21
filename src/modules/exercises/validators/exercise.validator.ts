@@ -20,18 +20,6 @@ function assertOwnOrYoutubeMedia(data: { mediaUrl?: string; mediaType?: string }
   }
 }
 
-export const createExerciseSchema = z.object({
-  body: z.object({
-    name: z.string().trim().min(2).max(120),
-    category: z.string().trim().min(2).max(60),
-    description: z.string().trim().max(1000).optional(),
-    defaultRepetitionsSets: z.string().trim().max(120).optional(),
-    defaultRestLabel: z.string().trim().max(120).optional(),
-    mediaUrl: z.string().trim().max(2048).optional(),
-    mediaType: z.enum(["YOUTUBE", "VIDEO", "IMAGE", "GIF"]).optional()
-  }).superRefine(assertOwnOrYoutubeMedia)
-});
-
 export const listExercisesSchema = z.object({
   query: z.object({
     category: z.string().trim().optional(),
@@ -44,22 +32,6 @@ export const exerciseIdSchema = z.object({
   params: z.object({
     exerciseId: z.string().uuid()
   })
-});
-
-// Frente 5 (segunda camada), Lote 8: espelha updatePrebuiltExerciseSchema
-// (admin), agora pro exercício próprio do profissional — antes só existia
-// create/delete, sem jeito de corrigir nome/reps/carga sem recriar.
-export const updateExerciseSchema = z.object({
-  params: z.object({ exerciseId: z.string().uuid() }),
-  body: z.object({
-    name: z.string().trim().min(2).max(120).optional(),
-    category: z.string().trim().min(2).max(60).optional(),
-    description: z.string().trim().max(1000).optional(),
-    defaultRepetitionsSets: z.string().trim().max(120).optional(),
-    defaultRestLabel: z.string().trim().max(120).optional(),
-    mediaUrl: z.string().trim().max(2048).optional(),
-    mediaType: z.enum(["YOUTUBE", "VIDEO", "IMAGE", "GIF"]).optional()
-  }).superRefine(assertOwnOrYoutubeMedia)
 });
 
 export const createPrebuiltExerciseSchema = z.object({

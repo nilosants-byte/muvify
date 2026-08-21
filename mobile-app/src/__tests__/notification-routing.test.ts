@@ -8,6 +8,7 @@ import { resolveNotificationRoute } from "../navigation/notification-routing";
 // regredirem de novo.
 
 const BOOKING_ID = "11111111-1111-1111-1111-111111111111";
+const CONTRACT_ID = "22222222-2222-2222-2222-222222222222";
 
 describe("resolveNotificationRoute — profissional", () => {
   it("MP_TOKEN_INVALIDATED leva pra reconectar Mercado Pago", () => {
@@ -157,6 +158,40 @@ describe("resolveNotificationRoute — consultoria abre a aba certa, não a tab 
     expect(resolveNotificationRoute({ type: "CONSULTANCY_CONTRACT_ACCEPTED" }, "CLIENT")).toEqual({
       screen: "MyTraining",
       params: { initialTab: "pending" }
+    });
+  });
+});
+
+// Segunda camada: aviso de aluno de consultoria inativo (3+ dias sem
+// treinar) precisa abrir o chat com aquele aluno direto, não a central de
+// solicitações (isConsultancyNotificationType casaria por prefixo se este
+// "if" não viesse antes).
+describe("resolveNotificationRoute — aluno de consultoria inativo abre o chat, não a central", () => {
+  it("CONSULTANCY_CLIENT_INACTIVE com contractId abre o chat do profissional com esse aluno", () => {
+    expect(resolveNotificationRoute({ type: "CONSULTANCY_CLIENT_INACTIVE", contractId: CONTRACT_ID }, "PROVIDER")).toEqual({
+      screen: "ProfessionalChatList",
+      params: { openContractId: CONTRACT_ID }
+    });
+  });
+
+  it("CONSULTANCY_CLIENT_INACTIVE sem contractId cai no roteamento genérico de consultoria", () => {
+    expect(resolveNotificationRoute({ type: "CONSULTANCY_CLIENT_INACTIVE" }, "PROVIDER")).toEqual({
+      screen: "ProfessionalConsultancyCenter",
+      params: { initialTab: "requests" }
+    });
+  });
+});
+
+// Segunda camada: lembrete diário de meta de treino e nudge de configuração
+// de meta (goal-reminder.job.ts) não tinham nenhum tratamento aqui — sem
+// tela de detalhe própria, a aba Comunidade (onde a sequência/streak
+// aparece) é o destino mais próximo já usado por NEW_FOLLOWER/
+// ACHIEVEMENT_UNLOCKED/STREAK_MILESTONE.
+describe("resolveNotificationRoute — lembretes de meta de treino abrem a Comunidade", () => {
+  it.each(["DAILY_TRAINING_REMINDER", "WEEKLY_GOAL_SETUP_NUDGE"])("%s pro cliente abre a aba Comunidade", (type) => {
+    expect(resolveNotificationRoute({ type }, "CLIENT")).toEqual({
+      screen: "ClientTabs",
+      params: { screen: "Community" }
     });
   });
 });

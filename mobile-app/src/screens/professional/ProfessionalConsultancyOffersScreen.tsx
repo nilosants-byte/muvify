@@ -42,6 +42,16 @@ const offerKindOptions: Array<{ label: string; value: ServiceOfferKind }> = [
   { label: "Combo", value: "COMBO" },
 ];
 
+// Mesmos ícones usados no seletor de tipo do wizard (passo 0) — reaproveitados
+// aqui pro chip de categoria na vitrine, pra manter a mesma linguagem visual
+// entre "criar oferta" e "ver oferta".
+const offerKindIcon: Record<ServiceOfferKind, keyof typeof Ionicons.glyphMap> = {
+  PRESENTIAL: "body-outline",
+  ONLINE_CONSULTANCY: "phone-portrait-outline",
+  ONLINE_CONSULTANCY_SPECIALIZED: "ribbon-outline",
+  COMBO: "shuffle-outline",
+};
+
 const cycleOptions: Array<{ label: string; value: OfferBillingCycle }> = [
   { label: "Diário", value: "DAILY" },
   { label: "Semanal", value: "WEEKLY" },
@@ -399,6 +409,26 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     }
   }
 
+  // Substitui os 3 ícones de ação (olho/editar/excluir) que ficavam soltos no
+  // card — concentrados aqui num único "⋯", seguindo o mesmo padrão de
+  // Alert.alert já usado no resto da tela pra confirmações.
+  function openOfferMenu(offer: ProviderServiceOffer) {
+    const isActive = offer.isActive !== false;
+    Alert.alert(offer.title, undefined, [
+      {
+        text: isActive ? "Ocultar da vitrine" : "Reativar oferta",
+        onPress: () => void handleToggleOfferActive(offer),
+      },
+      { text: "Editar", onPress: () => startEditOffer(offer) },
+      {
+        text: "Excluir",
+        style: "destructive",
+        onPress: () => void handleDeleteOffer(offer.id),
+      },
+      { text: "Cancelar", style: "cancel" },
+    ]);
+  }
+
   async function handleCreateOffer() {
     if (!offerTitle.trim() && offerKind !== "COMBO") {
       showToast("Informe um titulo para a oferta.", "error");
@@ -582,87 +612,99 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
               </MvText>
             </View>
           ) : (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            <View style={{ gap: 10 }}>
               {offers.map((offer) => {
                 const hasDiscount = offer.isPromotionActive && offer.promotionPriceCents && offer.priceCents !== offer.promotionPriceCents;
                 const kindLabel = offerKindOptions.find((o) => o.value === offer.kind)?.label ?? offer.kind;
+                const isActive = offer.isActive !== false;
                 return (
                   <View
                     key={offer.id}
                     style={{
-                      flexBasis: "48%",
-                      flexGrow: 1,
                       borderWidth: 1,
                       borderColor: theme.border,
-                      borderRadius: 14,
-                      backgroundColor: theme.mode === "dark" ? "rgba(0,0,0,0.10)" : "#FFFFFF",
-                      padding: 12,
-                      gap: 6,
+                      borderRadius: 16,
+                      backgroundColor: theme.mode === "dark" ? "rgba(255,255,255,0.015)" : "#FFFFFF",
+                      padding: 16,
+                      opacity: deletingOfferId === offer.id ? 0.45 : 1,
                     }}
                   >
-                    <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 6 }}>
-                      <MvText variant="caption" color="secondary" style={{ textTransform: "uppercase", letterSpacing: 0.3 }} numberOfLines={1}>
-                        {kindLabel}
-                      </MvText>
+                    <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 5,
+                          alignSelf: "flex-start",
+                          backgroundColor: theme.mode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)",
+                          borderWidth: 1,
+                          borderColor: theme.border,
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Ionicons name={offerKindIcon[offer.kind]} size={11} color={theme.text2} />
+                        <MvText
+                          style={{ fontFamily: "DMSans_700Bold", fontSize: 10.5, letterSpacing: 0.3, textTransform: "uppercase", color: theme.text2 }}
+                          numberOfLines={1}
+                        >
+                          {kindLabel}
+                        </MvText>
+                      </View>
                       {offer.isPromotionActive ? <MvBadge label="Promo" variant="orange" /> : null}
                     </View>
-                    <MvText variant="semi2" numberOfLines={2}>{offer.title}</MvText>
-                    <MvText variant="caption" color="secondary">
+
+                    <MvText variant="h4" numberOfLines={2} style={{ marginTop: 10 }}>{offer.title}</MvText>
+                    <MvText variant="body4" color="secondary" style={{ marginTop: 4 }}>
                       {offerDescription(offer)}
                     </MvText>
-                    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-                      <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 18, letterSpacing: -0.2, color: theme.textGreen }}>
-                        {formatCurrencyBRL(offerEffectivePriceCents(offer) / 100)}
-                      </MvText>
-                      {hasDiscount ? (
-                        <MvText variant="caption" color="secondary" style={{ textDecorationLine: "line-through" }}>
-                          {formatCurrencyBRL(offer.priceCents / 100)}
-                        </MvText>
-                      ) : null}
-                    </View>
                     {offer.basePriceChangeLockedUntil && new Date(offer.basePriceChangeLockedUntil) > new Date() ? (
-                      <MvText variant="caption" color="secondary">
+                      <MvText variant="caption" color="secondary" style={{ marginTop: 6 }}>
                         Valor alterável a partir de {formatBRDate(offer.basePriceChangeLockedUntil)}
                       </MvText>
                     ) : null}
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
-                      <MvBadge label={offer.isActive !== false ? "Ativa" : "Inativa"} variant={offer.isActive !== false ? "green" : "gray"} />
-                      <View style={{ flexDirection: "row", gap: 6 }}>
+
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginTop: 14,
+                        paddingTop: 12,
+                        borderTopWidth: 1,
+                        borderTopColor: theme.border,
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, flexWrap: "wrap", flexShrink: 1 }}>
+                        <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 21, letterSpacing: -0.2, color: theme.textGreen }}>
+                          {formatCurrencyBRL(offerEffectivePriceCents(offer) / 100)}
+                        </MvText>
+                        {hasDiscount ? (
+                          <MvText variant="caption" color="secondary" style={{ textDecorationLine: "line-through" }}>
+                            {formatCurrencyBRL(offer.priceCents / 100)}
+                          </MvText>
+                        ) : null}
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isActive ? theme.primary : theme.text3 }} />
+                          <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 11.5, color: isActive ? theme.textGreen : theme.text3 }}>
+                            {isActive ? "Ativa" : "Inativa"}
+                          </MvText>
+                        </View>
                         <PressableScale
-                          onPress={() => void handleToggleOfferActive(offer)}
-                          scale={0.94}
-                          accessibilityLabel={offer.isActive !== false ? "Desativar oferta" : "Reativar oferta"}
-                          style={{
-                            width: 28, height: 28, borderRadius: 8,
-                            backgroundColor: theme.primarySubtle,
-                            alignItems: "center", justifyContent: "center",
-                          }}
-                        >
-                          <Ionicons name={offer.isActive !== false ? "eye-off-outline" : "eye-outline"} size={15} color={theme.textGreen} />
-                        </PressableScale>
-                        <PressableScale
-                          onPress={() => startEditOffer(offer)}
-                          scale={0.94}
-                          style={{
-                            width: 28, height: 28, borderRadius: 8,
-                            backgroundColor: theme.primarySubtle,
-                            alignItems: "center", justifyContent: "center",
-                          }}
-                        >
-                          <Ionicons name="create-outline" size={15} color={theme.textGreen} />
-                        </PressableScale>
-                        <PressableScale
-                          onPress={() => void handleDeleteOffer(offer.id)}
+                          onPress={() => openOfferMenu(offer)}
                           disabled={deletingOfferId === offer.id}
                           scale={0.94}
+                          accessibilityLabel="Gerenciar oferta"
                           style={{
-                            width: 28, height: 28, borderRadius: 8,
-                            backgroundColor: theme.dangerSubtle,
+                            width: 30, height: 30, borderRadius: 9,
+                            backgroundColor: theme.mode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)",
                             alignItems: "center", justifyContent: "center",
-                            opacity: deletingOfferId === offer.id ? 0.45 : 1,
                           }}
                         >
-                          <Ionicons name="trash-outline" size={15} color={theme.danger} />
+                          <Ionicons name="ellipsis-horizontal" size={16} color={theme.text2} />
                         </PressableScale>
                       </View>
                     </View>

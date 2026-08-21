@@ -13,6 +13,7 @@ import { startNotificationRetryJob, stopNotificationRetryJob } from "./modules/n
 import { startDataRetentionJob, stopDataRetentionJob } from "./modules/privacy/jobs/data-retention.job";
 import { startCommunityJobs, stopCommunityJobs } from "./modules/community/jobs/community.jobs";
 import { startReminderJob, stopReminderJob } from "./modules/notifications/jobs/reminder.job";
+import { startGoalReminderJob, stopGoalReminderJob } from "./modules/gamification/jobs/goal-reminder.job";
 import { initSocketServer, stopSocketServer } from "./realtime/socket";
 import * as Sentry from "@sentry/node";
 import { EmailService } from "./shared/services/email.service";
@@ -55,6 +56,7 @@ async function shutdown(reason: string, error?: unknown) {
     stopDataRetentionJob();
     stopCommunityJobs();
     stopReminderJob();
+    stopGoalReminderJob();
     await stopSocketServer();
     await prisma.$disconnect();
   } catch (disconnectError) {
@@ -177,6 +179,10 @@ async function bootstrap() {
   startReminderJob();
   if (!env.RUN_REMINDER_JOBS) {
     console.log("Reminder job disabled by RUN_REMINDER_JOBS=false");
+  }
+  startGoalReminderJob();
+  if (!env.RUN_GOAL_REMINDER_JOBS) {
+    console.log("Goal reminder job disabled by RUN_GOAL_REMINDER_JOBS=false");
   }
 }
 

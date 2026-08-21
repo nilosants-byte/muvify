@@ -97,6 +97,10 @@ export function startReminderJob() {
             "escalateExpiredFichaContracts"
           ),
           isolateReminderSubJob(
+            () => consultancyService.sendConsultancyInactivityReminders(),
+            "sendConsultancyInactivityReminders"
+          ),
+          isolateReminderSubJob(
             () => presentialPackageService.sendFlexibleSessionPackExpiryReminders(),
             "sendFlexibleSessionPackExpiryReminders"
           ),

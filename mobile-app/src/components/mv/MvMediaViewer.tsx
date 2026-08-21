@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Image, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, DimensionValue, Image, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ExerciseMediaType } from "../../services/api/client";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -10,6 +10,10 @@ type Props = {
   mediaUrl: string;
   mediaType: ExerciseMediaType;
   height?: number;
+  // Ver MvVideoPlayer — quando passado, some com height fixo em favor de
+  // { width, aspectRatio } (usado pro player vertical de Shorts no modal).
+  aspectRatio?: number;
+  width?: number;
   borderRadius?: number;
 };
 
@@ -25,7 +29,7 @@ function isVideoFile(url: string) {
   );
 }
 
-export function MvMediaViewer({ mediaUrl, mediaType, height = 200, borderRadius = 12 }: Props) {
+export function MvMediaViewer({ mediaUrl, mediaType, height = 200, aspectRatio, width, borderRadius = 12 }: Props) {
   const { theme } = useMvTheme();
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
@@ -33,8 +37,12 @@ export function MvMediaViewer({ mediaUrl, mediaType, height = 200, borderRadius 
   if (!mediaUrl) return null;
 
   if (mediaType === "YOUTUBE" || mediaType === "VIDEO") {
-    return <MvVideoPlayer url={mediaUrl} height={height} borderRadius={borderRadius} />;
+    return <MvVideoPlayer url={mediaUrl} height={height} aspectRatio={aspectRatio} width={width} borderRadius={borderRadius} />;
   }
+
+  const dimensionStyle: { width: DimensionValue; height?: number; aspectRatio?: number } = aspectRatio
+    ? { width: width ?? "100%", aspectRatio }
+    : { height, width: "100%" };
 
   if (
     mediaType === "IMAGE" ||
@@ -45,7 +53,7 @@ export function MvMediaViewer({ mediaUrl, mediaType, height = 200, borderRadius 
       return (
         <View
           style={{
-            height,
+            ...dimensionStyle,
             borderRadius,
             backgroundColor: theme.chipBg,
             alignItems: "center",
@@ -60,7 +68,7 @@ export function MvMediaViewer({ mediaUrl, mediaType, height = 200, borderRadius 
     }
 
     return (
-      <View style={{ height, borderRadius, overflow: "hidden", backgroundColor: theme.chipBg }}>
+      <View style={{ ...dimensionStyle, borderRadius, overflow: "hidden", backgroundColor: theme.chipBg }}>
         {imageLoading ? (
           <View
             style={{
@@ -109,52 +117,4 @@ export function MvMediaViewer({ mediaUrl, mediaType, height = 200, borderRadius 
   }
 
   return null;
-}
-
-export function MvMediaPreviewButton({
-  mediaType,
-  expanded,
-  onToggle,
-}: {
-  mediaUrl: string;
-  mediaType: ExerciseMediaType;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const { theme } = useMvTheme();
-
-  const isVideo = mediaType === "YOUTUBE" || mediaType === "VIDEO";
-  const color = isVideo ? "#FF0000" : theme.textGreen;
-  const bgColor = isVideo ? "rgba(255,0,0,0.10)" : "rgba(76,175,80,0.10)";
-  const borderColor = isVideo ? "rgba(255,0,0,0.28)" : "rgba(76,175,80,0.28)";
-
-  const iconName = expanded
-    ? "stop-circle-outline"
-    : isVideo
-    ? "logo-youtube"
-    : mediaType === "GIF"
-    ? "film-outline"
-    : "image-outline";
-
-  return (
-    <TouchableOpacity
-      onPress={onToggle}
-      style={{
-        width: 38,
-        height: 38,
-        borderRadius: 10,
-        backgroundColor: expanded
-          ? isVideo
-            ? "rgba(255,0,0,0.20)"
-            : "rgba(76,175,80,0.20)"
-          : bgColor,
-        borderWidth: 1,
-        borderColor,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Ionicons name={iconName as any} size={20} color={color} />
-    </TouchableOpacity>
-  );
 }

@@ -10,7 +10,6 @@ import {
   View,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import * as ImagePicker from "expo-image-picker";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,18 +24,17 @@ import {
   exerciseApi,
   providersApi,
   TrainingPlan,
-  uploadsApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvCard, MvDatePicker, MvInput, MvMediaViewer, MvText } from "../../components/mv";
+import { MvButton, MvCard, MvDatePicker, MvInput, MvMediaPreviewModal, MvText } from "../../components/mv";
 import { handleScreenError } from "../shared/api-helpers";
 import { StepProgressBar } from "../../components/professional/UXReformComponents";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
+import { getYouTubeThumbnailFromUrl } from "../../utils/youtube";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "TrainingCreation">;
-type ActiveTab = "mine" | "prebuilt";
 
 type DraftPlanExercise = {
   uid: string;
@@ -51,16 +49,6 @@ type DraftPlanExercise = {
   mediaType?: ExerciseMediaType | null;
 };
 
-type CreateExerciseForm = {
-  name: string;
-  category: ExerciseCategory | "";
-  repetitionsSets: string;
-  restLabel: string;
-  description: string;
-  mediaUrl: string;
-  mediaType: ExerciseMediaType | "";
-};
-
 type ResolvedMedia = {
   url: string;
   type: ExerciseMediaType;
@@ -73,18 +61,6 @@ type MediaPreviewState = {
 } | null;
 
 const LIST_BOX_MAX_HEIGHT = 392;
-const MAX_MEDIA_UPLOAD_BYTES = 5_500_000;
-const VIDEO_MAX_DURATION_SECONDS = 30; // ~30s é o limite razoável para demo de exercício
-
-const EMPTY_EXERCISE_FORM: CreateExerciseForm = {
-  name: "",
-  category: "",
-  repetitionsSets: "",
-  restLabel: "",
-  description: "",
-  mediaUrl: "",
-  mediaType: "",
-};
 
 function createUid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -115,16 +91,6 @@ function inferMediaTypeFromUrl(url: string): ExerciseMediaType | "" {
     return "IMAGE";
   }
   return "";
-}
-
-function extractYouTubeId(url: string): string | null {
-  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([^&\s?/]+)/i);
-  return match?.[1] ?? null;
-}
-
-function getYouTubeThumbnail(url: string): string | null {
-  const id = extractYouTubeId(url);
-  return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : null;
 }
 
 function resolveExerciseMedia(mediaUrl?: string | null, mediaType?: ExerciseMediaType | null): ResolvedMedia | null {
@@ -223,7 +189,7 @@ function ExerciseThumb({
 }) {
   const thumbnail =
     media.type === "YOUTUBE"
-      ? getYouTubeThumbnail(media.url)
+      ? getYouTubeThumbnailFromUrl(media.url)
       : media.type === "IMAGE" || media.type === "GIF"
       ? media.url
       : null;
@@ -265,7 +231,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
 
-  const [mineExercises, setMineExercises] = useState<Exercise[]>([]);
   const [prebuiltExercises, setPrebuiltExercises] = useState<Exercise[]>([]);
   const [providerPlans, setProviderPlans] = useState<TrainingPlan[]>([]);
   // Frente 5 (segunda camada), Lote 4: navigation.goBack() disparado logo
@@ -275,20 +240,8 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
   // sucesso ficaria bloqueado pelo aviso que essa correção introduz.
   const justSavedRef = useRef(false);
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>("mine");
   const [selectedCategory, setSelectedCategory] = useState<ExerciseCategory | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
-
-  const [showCreateExerciseForm, setShowCreateExerciseForm] = useState(false);
-  // Frente 5 (segunda camada), Lote 8: só existia create/delete pro
-  // exercício próprio — reaproveita o mesmo formulário/painel da criação
-  // pra edição, alternando o modo por este id.
-  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
-  const [exerciseForm, setExerciseForm] = useState<CreateExerciseForm>(EMPTY_EXERCISE_FORM);
-  const [mediaUrlInput, setMediaUrlInput] = useState("");
-  const [savingExercise, setSavingExercise] = useState(false);
-  const [deletingExerciseId, setDeletingExerciseId] = useState<string | null>(null);
-  const [attachingMedia, setAttachingMedia] = useState(false);
 
   const [showNewPlanBuilder, setShowNewPlanBuilder] = useState(false);
   const [newPlanTitle, setNewPlanTitle] = useState("");
@@ -330,11 +283,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
   const trainingQuery = useAuthQuery(
     queryKeys.exercises.trainingScreen(),
     async (token) => {
-      const [mine, prebuilt, plans, credentials] = await Promise.all([
-        exerciseApi.listMine(token).catch((error) => {
-          if (error instanceof ApiError && error.status === 404) return [] as Exercise[];
-          throw error;
-        }),
+      const [prebuilt, plans, credentials] = await Promise.all([
         exerciseApi.listPrebuilt(),
         consultancyApi.providerPlans(token).catch((error) => {
           if (error instanceof ApiError && error.status === 404) return null;
@@ -347,7 +296,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         ? allPlans.filter((plan) => plan.isPrebuilt && !plan.contractId && plan.isActive !== false)
         : null;
       return {
-        mineExercises: mine,
         prebuiltExercises: prebuilt as Exercise[],
         providerPlans: filteredPlans ?? [],
         allProviderPlans: allPlans,
@@ -365,7 +313,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
   useEffect(() => {
     const data = trainingQuery.data;
     if (!data) return;
-    setMineExercises(data.mineExercises);
     setPrebuiltExercises(data.prebuiltExercises);
     setProviderPlans(data.providerPlans);
   }, [trainingQuery.data]);
@@ -397,18 +344,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
     }
   }, [trainingQuery.error, showToast, navigation]);
 
-  const filteredMine = useMemo(() => {
-    const normalized = searchQuery.trim().toLowerCase();
-    return mineExercises.filter((exercise) => {
-      const matchCategory = selectedCategory === "all" || exercise.category === selectedCategory;
-      const matchQuery =
-        !normalized ||
-        exercise.name.toLowerCase().includes(normalized) ||
-        exercise.category.toLowerCase().includes(normalized);
-      return matchCategory && matchQuery;
-    });
-  }, [mineExercises, searchQuery, selectedCategory]);
-
   const filteredPrebuilt = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase();
     return prebuiltExercises.filter((exercise) => {
@@ -421,12 +356,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
     });
   }, [prebuiltExercises, searchQuery, selectedCategory]);
 
-  const displayExercises = activeTab === "mine" ? filteredMine : filteredPrebuilt;
-
-  const selectedFormMedia = resolveExerciseMedia(
-    exerciseForm.mediaUrl,
-    exerciseForm.mediaType || null
-  );
+  const displayExercises = filteredPrebuilt;
 
   const addToNewPlanBuilder = useCallback(
     (exercise: Exercise) => {
@@ -585,200 +515,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
     setNewPlanExercises((current) => [...current, toDraftExercise(targetExercise)]);
     showToast(`${targetExercise.name} adicionado ao treino em criação.`, "success");
     setTargetExercise(null);
-  }
-
-  async function pickMediaFromLibrary(kind: "image" | "video") {
-    try {
-      setAttachingMedia(true);
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (permission.status !== "granted") {
-        showToast("Permissão da galeria não concedida.", "error");
-        return;
-      }
-
-      const pickerResult = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes:
-          kind === "image"
-            ? ImagePicker.MediaTypeOptions.Images
-            : ImagePicker.MediaTypeOptions.Videos,
-        // allowsEditing=true em vídeos abre o seletor/recorte nativo (estilo WhatsApp):
-        // - iOS: exibe a barra de trim para escolher o trecho desejado
-        // - Android: depende da galeria do dispositivo (maioria suporta)
-        allowsEditing: kind === "video",
-        videoMaxDuration: VIDEO_MAX_DURATION_SECONDS,
-        quality: kind === "video" ? 0.5 : 0.7,
-      });
-
-      if (pickerResult.canceled) return;
-      const asset = pickerResult.assets?.[0];
-      if (!asset?.uri) return;
-
-      if ((asset.fileSize ?? 0) > MAX_MEDIA_UPLOAD_BYTES) {
-        showToast(
-          `Arquivo ainda muito grande após o recorte (máx. 5.5 MB).\nSelecione um trecho mais curto ou use qualidade menor.`,
-          "error"
-        );
-        return;
-      }
-
-      const mimeType =
-        asset.mimeType ??
-        (kind === "video"
-          ? "video/mp4"
-          : asset.uri.toLowerCase().includes(".gif")
-          ? "image/gif"
-          : "image/jpeg");
-
-      const fileName = kind === "video" ? "exercise-video.mp4" : mimeType.includes("gif") ? "exercise-media.gif" : "exercise-media.jpg";
-
-      showToast("Enviando midia...", "info");
-      const { url } = await runWithAuth((token) =>
-        uploadsApi.uploadMedia(token, { uri: asset.uri, mimeType, fileName }, "exercise-media")
-      );
-
-      const resolvedType: ExerciseMediaType =
-        kind === "video"
-          ? "VIDEO"
-          : mimeType.toLowerCase().includes("gif")
-          ? "GIF"
-          : "IMAGE";
-
-      setExerciseForm((current) => ({
-        ...current,
-        mediaUrl: url,
-        mediaType: resolvedType,
-      }));
-      setMediaUrlInput("");
-      showToast(
-        kind === "video"
-          ? "Video anexado com sucesso."
-          : "Imagem/GIF anexado com sucesso.",
-        "success"
-      );
-    } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Falha ao anexar midia.", navigation });
-    } finally {
-      setAttachingMedia(false);
-    }
-  }
-
-  function handleMediaUrlChange(value: string) {
-    setMediaUrlInput(value);
-    const trimmed = value.trim();
-    if (!trimmed) {
-      setExerciseForm((current) => ({
-        ...current,
-        mediaUrl: "",
-        mediaType: "",
-      }));
-      return;
-    }
-    setExerciseForm((current) => ({
-      ...current,
-      mediaUrl: trimmed,
-      mediaType: inferMediaTypeFromUrl(trimmed),
-    }));
-  }
-
-  function clearExerciseMedia() {
-    setExerciseForm((current) => ({
-      ...current,
-      mediaUrl: "",
-      mediaType: "",
-    }));
-    setMediaUrlInput("");
-  }
-
-  async function saveExercise() {
-    if (!exerciseForm.name.trim()) return showToast("Informe o nome do exercício.", "error");
-    if (!exerciseForm.category) return showToast("Selecione uma categoria.", "error");
-    if (!exerciseForm.repetitionsSets.trim()) return showToast("Informe series x reps.", "error");
-
-    try {
-      setSavingExercise(true);
-
-      const normalizedMediaUrl = exerciseForm.mediaUrl.trim();
-      const normalizedMediaType = normalizedMediaUrl
-        ? exerciseForm.mediaType || inferMediaTypeFromUrl(normalizedMediaUrl) || "IMAGE"
-        : undefined;
-
-      const payload = {
-        name: exerciseForm.name.trim(),
-        category: exerciseForm.category as ExerciseCategory,
-        description: exerciseForm.description.trim() || undefined,
-        defaultRepetitionsSets: exerciseForm.repetitionsSets.trim(),
-        defaultRestLabel: exerciseForm.restLabel.trim() || undefined,
-        mediaUrl: normalizedMediaUrl || undefined,
-        mediaType: normalizedMediaType,
-      };
-
-      if (editingExerciseId) {
-        await runWithAuth((token) => exerciseApi.update(token, editingExerciseId, payload));
-        showToast("Exercício atualizado com sucesso.", "success");
-      } else {
-        await runWithAuth((token) => exerciseApi.create(token, payload));
-        showToast("Exercício criado com sucesso.", "success");
-      }
-      setExerciseForm(EMPTY_EXERCISE_FORM);
-      setMediaUrlInput("");
-      setEditingExerciseId(null);
-      setShowCreateExerciseForm(false);
-      setActiveTab("mine");
-      void trainingQuery.refetch();
-    } catch (error) {
-      handleScreenError({
-        error,
-        showToast,
-        fallbackMessage: editingExerciseId ? "Falha ao atualizar exercício." : "Falha ao criar exercício.",
-        navigation,
-      });
-    } finally {
-      setSavingExercise(false);
-    }
-  }
-
-  function startEditExercise(exercise: Exercise) {
-    setEditingExerciseId(exercise.id);
-    setExerciseForm({
-      name: exercise.name,
-      category: exercise.category as ExerciseCategory,
-      repetitionsSets: exercise.defaultRepetitionsSets ?? "",
-      restLabel: exercise.defaultRestLabel ?? "",
-      description: exercise.description ?? "",
-      mediaUrl: exercise.mediaUrl ?? "",
-      mediaType: exercise.mediaType ?? "",
-    });
-    setMediaUrlInput(exercise.mediaUrl ?? "");
-    setShowCreateExerciseForm(true);
-  }
-
-  function removeExercise(exerciseId: string) {
-    Alert.alert("Remover exercício", "Deseja remover este exercício?", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Remover",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            setDeletingExerciseId(exerciseId);
-            await runWithAuth((token) => exerciseApi.delete(token, exerciseId));
-            setMineExercises((current) =>
-              current.filter((exercise) => exercise.id !== exerciseId)
-            );
-            showToast("Exercício removido.", "success");
-          } catch (error) {
-            handleScreenError({
-              error,
-              showToast,
-              fallbackMessage: "Falha ao remover exercício.",
-              navigation,
-            });
-          } finally {
-            setDeletingExerciseId(null);
-          }
-        },
-      },
-    ]);
   }
 
   async function saveNewPlan() {
@@ -971,36 +707,9 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
             {editPlanId ? "Editar Treino" : targetContractId ? "Criar Treino" : "Banco de Exercícios"}
           </MvText>
           <MvText variant="body4" color="secondary">
-            {editPlanId ? "Alterações ficam visíveis pro aluno" : targetContractId ? "Montagem e entrega de treino" : "Meus exercícios, Exercícios Muvify e Criar Treinos"}
+            {editPlanId ? "Alterações ficam visíveis pro aluno" : targetContractId ? "Montagem e entrega de treino" : "Exercícios Muvify e Criar Treinos"}
           </MvText>
         </View>
-
-        <TouchableOpacity
-          onPress={() => {
-            if (showCreateExerciseForm) {
-              setEditingExerciseId(null);
-              setExerciseForm(EMPTY_EXERCISE_FORM);
-              setMediaUrlInput("");
-            }
-            setShowCreateExerciseForm((current) => !current);
-          }}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 18,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: showCreateExerciseForm
-              ? "rgba(244,67,54,0.12)"
-              : theme.primarySubtle,
-          }}
-        >
-          <Ionicons
-            name={showCreateExerciseForm ? "close" : "add"}
-            size={20}
-            color={showCreateExerciseForm ? theme.danger : theme.primary}
-          />
-        </TouchableOpacity>
       </View>
 
       {/* Indicador de etapas */}
@@ -1167,36 +876,11 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
             ) : null}
 
         <MvCard>
-          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
-            {(["mine", "prebuilt"] as ActiveTab[]).map((tab) => {
-              const active = activeTab === tab;
-              const count = tab === "mine" ? filteredMine.length : filteredPrebuilt.length;
-              return (
-                <TouchableOpacity
-                  key={tab}
-                  onPress={() => setActiveTab(tab)}
-                  style={{
-                    flex: 1,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: active ? "rgba(34,197,94,0.35)" : theme.border,
-                    backgroundColor: active ? theme.primarySubtle : theme.chipBg,
-                    paddingVertical: 8,
-                    alignItems: "center",
-                  }}
-                >
-                  <MvText
-                    variant="semi3"
-                    style={{ color: active ? theme.textGreen : theme.text2 }}
-                  >
-                    {tab === "mine" ? "Meus exercícios" : "Exercícios Muvify"}
-                  </MvText>
-                  <MvText variant="badge" color="secondary">
-                    {count} exercícios
-                  </MvText>
-                </TouchableOpacity>
-              );
-            })}
+          <View style={{ marginBottom: 10 }}>
+            <MvText variant="semi3">Exercícios Muvify</MvText>
+            <MvText variant="badge" color="secondary">
+              {filteredPrebuilt.length} exercícios
+            </MvText>
           </View>
 
           <MvInput
@@ -1238,156 +922,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
             )}
           </ScrollView>
 
-          {showCreateExerciseForm ? (
-            <View style={{ gap: 8, marginTop: 10 }}>
-              <MvInput
-                placeholder="Nome do exercício *"
-                value={exerciseForm.name}
-                maxLength={80}
-                onChangeText={(value) =>
-                  setExerciseForm((current) => ({ ...current, name: value }))
-                }
-              />
-
-              <MvText variant="body4" color="secondary">
-                Categoria *
-              </MvText>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 6 }}
-              >
-                {EXERCISE_CATEGORIES.map((category) => (
-                  <TouchableOpacity
-                    key={category}
-                    onPress={() =>
-                      setExerciseForm((current) => ({ ...current, category }))
-                    }
-                    style={{
-                      paddingHorizontal: 9,
-                      paddingVertical: 5,
-                      borderRadius: 14,
-                      borderWidth: 1,
-                      borderColor:
-                        exerciseForm.category === category
-                          ? "rgba(34,197,94,0.35)"
-                          : theme.border,
-                      backgroundColor:
-                        exerciseForm.category === category
-                          ? theme.primarySubtle
-                          : theme.chipBg,
-                    }}
-                  >
-                    <MvText
-                      variant="body4"
-                      style={{
-                        color:
-                          exerciseForm.category === category
-                            ? theme.textGreen
-                            : theme.text2,
-                      }}
-                    >
-                      {category}
-                    </MvText>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              <MvInput
-                placeholder="Séries x Reps (ex: 4x12)"
-                value={exerciseForm.repetitionsSets}
-                onChangeText={(value) =>
-                  setExerciseForm((current) => ({ ...current, repetitionsSets: value }))
-                }
-              />
-              <MvInput
-                placeholder="Tempo de descanso (ex: 60s)"
-                value={exerciseForm.restLabel}
-                onChangeText={(value) =>
-                  setExerciseForm((current) => ({ ...current, restLabel: value }))
-                }
-              />
-
-              <MvInput
-                placeholder="Mídia por URL (YouTube, imagem, GIF ou vídeo)"
-                value={mediaUrlInput}
-                onChangeText={handleMediaUrlChange}
-                autoCapitalize="none"
-              />
-
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <View style={{ flex: 1 }}>
-                  <MvButton
-                    variant="outline"
-                    label={attachingMedia ? "Anexando..." : "Galeria imagem/GIF"}
-                    onPress={() => void pickMediaFromLibrary("image")}
-                    disabled={attachingMedia}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <MvButton
-                    variant="outline"
-                    label={attachingMedia ? "Anexando..." : "Galeria video"}
-                    onPress={() => void pickMediaFromLibrary("video")}
-                    disabled={attachingMedia}
-                  />
-                </View>
-              </View>
-
-              {selectedFormMedia ? (
-                <View
-                  style={{
-                    borderWidth: 1,
-                    borderColor: theme.border,
-                    borderRadius: 10,
-                    backgroundColor: theme.inputBg,
-                    padding: 10,
-                    gap: 8,
-                  }}
-                >
-                  <MvText variant="semi3">Mídia selecionada</MvText>
-                  <MvMediaViewer
-                    mediaUrl={selectedFormMedia.url}
-                    mediaType={selectedFormMedia.type}
-                    height={170}
-                    borderRadius={10}
-                  />
-                  <View style={{ flexDirection: "row", gap: 8 }}>
-                    <View style={{ flex: 1 }}>
-                      <MvButton
-                        variant="outline"
-                        label="Ver em tela"
-                        onPress={() =>
-                          openMediaPreview(selectedFormMedia, exerciseForm.name || "Mídia do exercício")
-                        }
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <MvButton variant="outline" label="Remover mídia" onPress={clearExerciseMedia} />
-                    </View>
-                  </View>
-                </View>
-              ) : null}
-
-              <MvInput
-                placeholder="Descrição (opcional)"
-                value={exerciseForm.description}
-                onChangeText={(value) =>
-                  setExerciseForm((current) => ({ ...current, description: value }))
-                }
-                multiline
-                numberOfLines={2}
-                maxLength={300}
-              />
-
-              <MvButton
-                label={editingExerciseId ? "Salvar alterações" : "Salvar exercício"}
-                loading={savingExercise}
-                disabled={!crefApproved}
-                onPress={() => void saveExercise()}
-              />
-            </View>
-          ) : null}
         </MvCard>
 
         <MvCard>
@@ -1452,27 +986,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                       </MvText>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                         <Ionicons name="add-circle" size={14} color={theme.textGreen} />
-                        {!exercise.isPrebuilt ? (
-                          <>
-                            <TouchableOpacity
-                              onPress={() => startEditExercise(exercise)}
-                              hitSlop={4}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Editar exercício ${exercise.name}`}
-                            >
-                              <Ionicons name="create-outline" size={12} color={theme.text3} />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => removeExercise(exercise.id)}
-                              disabled={deletingExerciseId === exercise.id}
-                              hitSlop={4}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Excluir exercício ${exercise.name}`}
-                            >
-                              <Ionicons name="trash-outline" size={12} color={deletingExerciseId === exercise.id ? theme.text3 : theme.danger} />
-                            </TouchableOpacity>
-                          </>
-                        ) : null}
                       </View>
                     </TouchableOpacity>
                   );
@@ -2037,75 +1550,14 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         </View>
       </Modal>
 
-      <Modal
+      <MvMediaPreviewModal
         visible={Boolean(mediaPreview)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMediaPreview(null)}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.55)",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
-        >
-          <Pressable
-            onPress={() => setMediaPreview(null)}
-            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-          />
-          <View
-            style={{
-              width: "100%",
-              maxWidth: 480,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: theme.border,
-              backgroundColor: theme.bg,
-              padding: 14,
-              gap: 10,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <MvText variant="semi2" style={{ flex: 1 }}>
-                {mediaPreview?.title ?? "Midia"}
-              </MvText>
-              <TouchableOpacity
-                onPress={() => setMediaPreview(null)}
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 15,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: theme.chipBg,
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                }}
-              >
-                <Ionicons name="close" size={16} color={theme.text2} />
-              </TouchableOpacity>
-            </View>
-
-            {mediaPreview ? (
-              <MvMediaViewer
-                mediaUrl={mediaPreview.url}
-                mediaType={mediaPreview.type}
-                height={280}
-                borderRadius={10}
-              />
-            ) : null}
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setMediaPreview(null)}
+        mediaUrl={mediaPreview?.url}
+        mediaType={mediaPreview?.type}
+        title={mediaPreview?.title}
+        orientation="vertical"
+      />
     </View>
   );
 }
