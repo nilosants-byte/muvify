@@ -114,16 +114,31 @@ describe("lista de espera (waitlist)", () => {
     const res = await request(app).get("/lista-espera");
     expect(res.status).toBe(200);
     expect(res.type).toBe("text/html");
-    expect(res.text).toContain("Entrar na Lista de Espera");
+    expect(res.text).toContain("Quero entrar na lista");
     expect(res.text).toContain("Sou aluno");
     expect(res.text).toContain("Sou profissional");
+  });
+
+  // A personalização aluno/profissional é só CSS (:has(), sem JS) - as duas
+  // variantes de texto sempre existem no HTML bruto, só uma fica visível
+  // por vez conforme o toggle. Cobre que o conteúdo de cada audiência de
+  // fato está presente (o teste não renderiza CSS, então não valida
+  // visibilidade - isso é conferido manualmente/visualmente), e que o
+  // desconto de lançamento só aparece atrelado à variante profissional.
+  it("HTML contém as duas variantes de conteúdo (aluno/profissional), com desconto só na de profissional", async () => {
+    const res = await request(app).get("/lista-espera");
+    expect(res.text).toContain("Quero garantir meu lugar");
+    expect(res.text).toContain("Apareça pra mais alunos");
+    expect(res.text).toContain("Taxa de lançamento reduzida");
+    expect(res.text).toContain('class="for-pro"');
+    expect(res.text).toContain('class="feature for-pro"');
   });
 
   it("GET /lista-espera?ok=1 mostra a confirmação de sucesso, não o formulário", async () => {
     const res = await request(app).get("/lista-espera?ok=1");
     expect(res.status).toBe(200);
-    expect(res.text).toContain("Você entrou!");
-    expect(res.text).not.toContain("Entrar na Lista de Espera");
+    expect(res.text).toContain("Prontinho, você está dentro!");
+    expect(res.text).not.toContain("Quero entrar na lista");
   });
 
   it("rate limiter dedicado bloqueia excesso de tentativas na mesma janela", async () => {
@@ -159,7 +174,7 @@ describe("lista de espera — prova social (contador)", () => {
     if (countBefore >= 25) return; // ambiente com carga residual alta - pula, não é o caso comum
 
     const res = await request(app).get("/lista-espera");
-    expect(res.text).toContain("Seja um dos primeiros a entrar");
+    expect(res.text).toContain("Seja um dos primeiros a garantir o seu");
     expect(res.text).not.toContain("Junte-se a");
   });
 
@@ -174,6 +189,6 @@ describe("lista de espera — prova social (contador)", () => {
 
     const res = await request(app).get("/lista-espera");
     const total = await prisma.waitlistSignup.count();
-    expect(res.text).toContain(`Junte-se a ${total} pessoas na frente`);
+    expect(res.text).toContain(`Junte-se a ${total} pessoas que já garantiram o lugar`);
   });
 });

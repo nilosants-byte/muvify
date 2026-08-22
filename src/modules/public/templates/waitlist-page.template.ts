@@ -6,10 +6,16 @@
 //
 // Sem JavaScript obrigatório: formulário HTML puro, POST + redirect
 // (padrão Post/Redirect/Get). O toggle "Sou aluno" / "Sou profissional" é
-// um par de radio nativos estilizado só com CSS (:checked) — funciona sem
-// JS, então a fricção de cadastro não depende do navegador do visitante
-// ter JS habilitado (raro, mas landing pages de campanha em vídeo recebem
-// tráfego de todo tipo de navegador embutido).
+// um par de radio nativos, e o conteúdo que muda conforme a escolha (título,
+// cards, benefícios) também é resolvido só com CSS via `:has()` — nenhuma
+// dependência de JS pra personalização, então a fricção de cadastro não
+// depende do navegador do visitante ter JS habilitado (raro, mas landing
+// pages de campanha em vídeo recebem tráfego de todo tipo de navegador
+// embutido). `:has()` tem suporte amplo em navegadores modernos (Chrome/
+// Edge/Firefox/Safari, todos desde 2023) - decisão consciente de não
+// oferecer fallback pra navegadores muito antigos aqui: sem JS, o pior caso
+// nesses navegadores é ver o conteúdo padrão (aluno) mesmo marcando
+// profissional, não a página quebrar.
 //
 // CSS servido via <link> pra /waitlist.css (public.routes.ts), não inline
 // em <style>: a CSP global (helmet, app.ts) não declara style-src próprio,
@@ -33,6 +39,8 @@ export const WAITLIST_CSS = `
     padding: 28px 0 0; text-align: center; }
   .logo span { color: var(--green); }
   .hero { text-align: center; padding: 28px 0 8px; }
+  .kicker { color: var(--green); font-weight: 800; font-size: 13px; letter-spacing: 1px;
+    text-transform: uppercase; margin: 0 0 10px; }
   h1 { font-size: clamp(30px, 6vw, 44px); font-weight: 800; letter-spacing: -0.02em; margin: 0 0 14px; }
   h1 .accent { color: var(--green); }
   .sub { color: var(--text2); font-size: 17px; max-width: 480px; margin: 0 auto 28px; }
@@ -75,9 +83,37 @@ export const WAITLIST_CSS = `
     color: var(--text3); font-size: 13px; }
   footer a { color: var(--text2); text-decoration: none; margin: 0 8px; }
   footer a:hover { color: var(--green); }
+
+  /* Personalização por audiência - só CSS, sem JS. Aluno é o estado padrão
+     (radio "checked" no HTML); quando o radio profissional é marcado,
+     .wrap:has() inverte qual variante de cada bloco aparece. Funciona
+     mesmo com o toggle posicionado abaixo do conteúdo que ele afeta,
+     porque :has() não depende de ordem no DOM, só de conter o elemento.
+
+     Seletores compostos (span.for-pro, .feature.for-pro, li.for-pro) de
+     propósito, em vez de um .for-pro genérico: a regra padrão de "esconder"
+     precisa ganhar de .benefits li (que já define display:flex com a
+     mesma especificidade de li.for-pro) - um .for-pro sozinho (uma classe
+     só) perde essa disputa e o item vazava mostrado mesmo escondido.
+     Cada tipo de elemento também recebe seu display correto ao reaparecer
+     (inline pro texto trocado via both(), block pro card de feature, flex
+     pro item de benefício) - um valor genérico quebraria o layout dos
+     outros dois tipos. */
+  span.for-pro, .feature.for-pro, li.for-pro { display: none; }
+  .wrap:has(#aud-professional:checked) span.for-client,
+  .wrap:has(#aud-professional:checked) .feature.for-client,
+  .wrap:has(#aud-professional:checked) li.for-client { display: none; }
+  .wrap:has(#aud-professional:checked) span.for-pro { display: inline; }
+  .wrap:has(#aud-professional:checked) .feature.for-pro { display: block; }
+  .wrap:has(#aud-professional:checked) li.for-pro { display: flex; }
 `;
 
+type Audience = "client" | "professional";
 type WaitlistPageState = "form" | "success" | "error";
+
+function both(client: string, professional: string): string {
+  return `<span class="for-client">${client}</span><span class="for-pro">${professional}</span>`;
+}
 
 export function renderWaitlistPage(params: {
   count: number;
@@ -88,8 +124,8 @@ export function renderWaitlistPage(params: {
 
   const proof =
     count >= SOCIAL_PROOF_MIN_COUNT
-      ? `<p class="proof">Junte-se a ${count} pessoas na frente</p>`
-      : `<p class="proof">Seja um dos primeiros a entrar</p>`;
+      ? `<p class="proof">Junte-se a ${count} pessoas que já garantiram o lugar</p>`
+      : `<p class="proof">Seja um dos primeiros a garantir o seu</p>`;
 
   const utmField = utmSource
     ? `<input type="hidden" name="utmSource" value="${escapeHtmlAttr(utmSource)}" />`
@@ -97,7 +133,7 @@ export function renderWaitlistPage(params: {
 
   const errorBox =
     state === "error"
-      ? `<div class="error-box">Não deu pra concluir o cadastro — confira o e-mail digitado e tente de novo.</div>`
+      ? `<div class="error-box">Ih, algo não saiu como esperado. Dá uma conferida no e-mail e tenta de novo?</div>`
       : "";
 
   const formOrSuccess =
@@ -105,8 +141,13 @@ export function renderWaitlistPage(params: {
       ? `
         <div class="success-box">
           <div class="check">&#10003;</div>
-          <h2 style="margin:0 0 8px;">Você entrou!</h2>
-          <p style="color:var(--text2);margin:0;">Fique de olho no seu e-mail — te avisamos assim que o Muvify estiver disponível.</p>
+          <h2 style="margin:0 0 8px;">Prontinho, você está dentro!</h2>
+          <p style="color:var(--text2);margin:0;">
+            ${both(
+              "Fica de olho no seu e-mail — assim que abrirmos as portas, você é um dos primeiros a saber.",
+              "Fica de olho no seu e-mail — vamos te chamar assim que abrirmos o cadastro de profissionais, com a condição especial de quem chegou cedo."
+            )}
+          </p>
         </div>
       `
       : `
@@ -125,7 +166,7 @@ export function renderWaitlistPage(params: {
             <input type="text" name="city" placeholder="Cidade (opcional)" maxlength="120" />
           </div>
           ${utmField}
-          <button type="submit" class="cta">Entrar na Lista de Espera</button>
+          <button type="submit" class="cta">${both("Quero entrar na lista", "Quero garantir meu lugar")}</button>
         </form>
         ${proof}
       `;
@@ -144,8 +185,14 @@ export function renderWaitlistPage(params: {
     <div class="logo">muvi<span>fy</span></div>
 
     <div class="hero">
+      <p class="kicker">${both("Pra quem treina", "Pra quem ensina")}</p>
       <h1>Conecte. <span class="accent">Evolua.</span></h1>
-      <p class="sub">O primeiro app que conecta você aos melhores profissionais de fitness perto de você. Entre na lista de espera e seja um dos primeiros a acessar.</p>
+      <p class="sub">
+        ${both(
+          "Cansou de procurar personal no boca a boca? A gente te ajuda a encontrar o profissional certo, agendar em segundos e acompanhar cada resultado — tudo num só lugar. Entra na lista e seja um dos primeiros a testar.",
+          "Menos tempo perdido organizando agenda e cobrança, mais tempo treinando quem importa. O Muvify junta seus alunos, pagamentos e divulgação num só app. Entra na lista e seja um dos primeiros profissionais a usar."
+        )}
+      </p>
     </div>
 
     <div class="card">
@@ -155,20 +202,35 @@ export function renderWaitlistPage(params: {
     <section>
       <h2>O que é o Muvify</h2>
       <div class="grid3">
-        <div class="feature">
+        <div class="feature for-client">
           <div class="icon">&#128269;</div>
-          <h3>Encontre Profissionais</h3>
-          <p>Personal, fisio e nutri perto de você.</p>
+          <h3>Encontre seu par ideal</h3>
+          <p>Personal, fisio e nutri perto de você, com avaliação de quem já treinou.</p>
         </div>
-        <div class="feature">
+        <div class="feature for-pro">
+          <div class="icon">&#128226;</div>
+          <h3>Apareça pra mais alunos</h3>
+          <p>Seu perfil na frente de quem já está procurando o que você oferece.</p>
+        </div>
+        <div class="feature for-client">
           <div class="icon">&#9889;</div>
-          <h3>Agende em 1 clique</h3>
-          <p>Direto pelo app, sem trocar mensagem no WhatsApp.</p>
+          <h3>Agende sem enrolação</h3>
+          <p>Marca, remarca e paga direto pelo app — chega de ida e volta no WhatsApp.</p>
         </div>
-        <div class="feature">
+        <div class="feature for-pro">
+          <div class="icon">&#128197;</div>
+          <h3>Agenda e cobrança no automático</h3>
+          <p>O aluno agenda e paga sozinho — você só aparece e treina.</p>
+        </div>
+        <div class="feature for-client">
           <div class="icon">&#128200;</div>
-          <h3>Acompanhe sua evolução</h3>
-          <p>Treinos, conquistas e resultados num só lugar.</p>
+          <h3>Veja sua evolução</h3>
+          <p>Treinos, conquistas e resultados registrados sozinhos, sem esforço.</p>
+        </div>
+        <div class="feature for-pro">
+          <div class="icon">&#128202;</div>
+          <h3>Sua carteira de alunos organizada</h3>
+          <p>Fichas, evolução e histórico de cada aluno, tudo num painel só.</p>
         </div>
       </div>
     </section>
@@ -176,9 +238,10 @@ export function renderWaitlistPage(params: {
     <section>
       <h2>Por que entrar na lista?</h2>
       <ul class="benefits">
-        <li><span class="check-mark">&#10003;</span> <span><b>Acesso antecipado</b> — antes de todo mundo.</span></li>
-        <li><span class="check-mark">&#10003;</span> <span><b>Benefícios exclusivos</b> pros primeiros usuários.</span></li>
-        <li><span class="check-mark">&#10003;</span> <span><b>Bônus de lançamento</b> — vale tanto pra quem quer treinar quanto pra quem é profissional.</span></li>
+        <li><span class="check-mark">&#10003;</span> <span><b>Acesso antecipado</b> — você testa antes de todo mundo.</span></li>
+        <li><span class="check-mark">&#10003;</span> <span><b>Vantagens exclusivas</b> reservadas pra quem chegou cedo.</span></li>
+        <li class="for-client"><span class="check-mark">&#10003;</span> <span><b>Sua opinião conta</b> — você ajuda a moldar o app antes do lançamento pra todo mundo.</span></li>
+        <li class="for-pro"><span class="check-mark">&#10003;</span> <span><b>Taxa de lançamento reduzida</b> — condição especial pra quem entrar na plataforma cedo.</span></li>
       </ul>
     </section>
   </div>
@@ -187,7 +250,7 @@ export function renderWaitlistPage(params: {
     <!-- TODO: trocar pelos links reais das redes sociais do Muvify -->
     <a href="#">Instagram</a>
     <a href="#">YouTube</a>
-    <p style="margin-top:14px;">&copy; ${new Date().getFullYear()} Muvify</p>
+    <p style="margin-top:14px;">Feito com carinho pela equipe Muvify &middot; &copy; ${new Date().getFullYear()}</p>
   </footer>
 </body>
 </html>`;
