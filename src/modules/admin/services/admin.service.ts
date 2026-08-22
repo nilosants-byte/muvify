@@ -1870,6 +1870,41 @@ export class AdminService {
     return { items, total };
   }
 
+  // Lista de espera pré-lançamento: cadastros só existiam pra consulta
+  // direta no banco - mesmo formato de paginação/filtro de getAuditLogs
+  // acima, aplicado a outra tabela standalone (sem relação com User).
+  async listWaitlistSignups(
+    adminId: string,
+    input: { audience?: "CLIENT" | "PROFESSIONAL"; q?: string; take?: number; skip?: number } = {}
+  ) {
+    await this.ensureAdminAccess(adminId);
+    const take = Math.min(Math.max(input.take ?? 50, 1), 200);
+    const skip = Math.max(input.skip ?? 0, 0);
+    const where: Prisma.WaitlistSignupWhereInput = {
+      ...(input.audience ? { audience: input.audience } : {}),
+      ...(input.q
+        ? {
+            OR: [
+              { name: { contains: input.q, mode: "insensitive" } },
+              { email: { contains: input.q, mode: "insensitive" } }
+            ]
+          }
+        : {})
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.waitlistSignup.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take,
+        skip
+      }),
+      prisma.waitlistSignup.count({ where })
+    ]);
+
+    return { items, total };
+  }
+
   // Raio-X de pagamentos, Rodada 4, Lote 3: não existia nenhuma tela pra
   // buscar um usuário por nome/e-mail e ver tudo relacionado a ele num
   // lugar só — a única busca disponível exigia CPF, e suspender só era

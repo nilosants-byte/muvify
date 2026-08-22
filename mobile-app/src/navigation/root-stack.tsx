@@ -21,6 +21,7 @@ import { AdminChatAuditScreen } from "../screens/admin/AdminChatAuditScreen";
 import { AdminConsultasBookingDetailScreen } from "../screens/admin/AdminConsultasBookingDetailScreen";
 import { AdminConsultasScreen } from "../screens/admin/AdminConsultasScreen";
 import { AdminDebtsScreen } from "../screens/admin/AdminDebtsScreen";
+import { AdminWaitlistScreen } from "../screens/admin/AdminWaitlistScreen";
 import { AdminDisputeDetailScreen } from "../screens/admin/AdminDisputeDetailScreen";
 import { AdminDisputesScreen } from "../screens/admin/AdminDisputesScreen";
 import { AdminUserSearchScreen } from "../screens/admin/AdminUserSearchScreen";
@@ -647,6 +648,11 @@ export function RootNavigator() {
             <AdminStack.Screen
               name="AdminDebts"
               component={AdminDebtsScreen as React.ComponentType<any>}
+              options={{ headerShown: false }}
+            />
+            <AdminStack.Screen
+              name="AdminWaitlist"
+              component={AdminWaitlistScreen as React.ComponentType<any>}
               options={{ headerShown: false }}
             />
             <AdminStack.Screen

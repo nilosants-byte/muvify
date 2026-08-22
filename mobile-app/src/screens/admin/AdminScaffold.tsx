@@ -92,6 +92,12 @@ export function AdminScaffold({
         action: () => navigation.navigate("AdminDebts")
       },
       {
+        key: "AdminWaitlist" as const,
+        label: "Lista de espera",
+        icon: "mail-open-outline" as const,
+        action: () => navigation.navigate("AdminWaitlist")
+      },
+      {
         key: "AdminUserSearch" as const,
         label: "Buscar usuário",
         icon: "person-outline" as const,

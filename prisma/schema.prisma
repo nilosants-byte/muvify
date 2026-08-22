@@ -889,8 +889,13 @@ enum WaitlistAudience {
 model WaitlistSignup {
   id         String           @id @default(uuid())
   email      String           @unique
+  name       String?
   audience   WaitlistAudience
-  whatsapp   String?
+  // Único quando presente (mesmo padrão de User.apelido) - evita alguém
+  // inflar a lista com e-mails descartáveis usando o mesmo WhatsApp real.
+  // Postgres trata múltiplos NULL como não-conflitantes, então continua
+  // opcional sem quebrar quem não preenche.
+  whatsapp   String?          @unique
   city       String?
   utmSource  String?
   createdAt  DateTime         @default(now())

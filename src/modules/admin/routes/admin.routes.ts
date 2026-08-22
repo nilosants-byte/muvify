@@ -34,6 +34,7 @@ import {
   adminSearchUsersSchema,
   adminSetLegalHoldSchema,
   adminAuditLogsQuerySchema,
+  adminWaitlistSignupsQuerySchema,
   adminSuspendUserSchema,
   adminSupportQueueQuerySchema,
   adminSupportReplySchema,
@@ -81,6 +82,21 @@ adminRoutes.get(
   "/audit-logs",
   validate(adminAuditLogsQuerySchema),
   adminController.getAuditLogs
+);
+
+// Lista de espera pré-lançamento: cadastros só existiam pra consultar
+// direto no banco - endpoint de leitura, mesmo padrão de /audit-logs.
+/**
+ * @swagger
+ * /admin/waitlist-signups:
+ *   get:
+ *     summary: Lista cadastros da lista de espera pré-lançamento, com filtros
+ *     tags: [Admin]
+ */
+adminRoutes.get(
+  "/waitlist-signups",
+  validate(adminWaitlistSignupsQuerySchema),
+  adminController.getWaitlistSignups
 );
 
 /**

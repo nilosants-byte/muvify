@@ -1980,6 +1980,15 @@ export const adminApi = {
     if (minStrikes) query.set("minStrikes", String(minStrikes));
     const suffix = query.toString() ? `?${query}` : "";
     return apiRequest<AdminNoShowReport[]>(`/admin/no-show-reports${suffix}`, { token });
+  },
+  listWaitlistSignups(token: string, params?: { audience?: "CLIENT" | "PROFESSIONAL"; q?: string; skip?: number; take?: number }) {
+    const query = new URLSearchParams();
+    if (params?.audience) query.set("audience", params.audience);
+    if (params?.q) query.set("q", params.q);
+    if (params?.skip) query.set("skip", String(params.skip));
+    if (params?.take) query.set("take", String(params.take));
+    const suffix = query.toString() ? `?${query}` : "";
+    return apiRequest<{ items: AdminWaitlistSignup[]; total: number }>(`/admin/waitlist-signups${suffix}`, { token });
   }
 };
 
@@ -2002,6 +2011,17 @@ export type AdminDebtRecord = {
   disputeCase: { id: string; type: AdminDisputeCaseType } | null;
   client: { id: string; name: string; email: string } | null;
   provider: { id: string; displayName: string; user: { email: string } } | null;
+};
+
+export type AdminWaitlistSignup = {
+  id: string;
+  email: string;
+  name: string | null;
+  audience: "CLIENT" | "PROFESSIONAL";
+  whatsapp: string | null;
+  city: string | null;
+  utmSource: string | null;
+  createdAt: string;
 };
 
 export type AdminSuspendedUser = {

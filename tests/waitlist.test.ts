@@ -29,7 +29,7 @@ describe("lista de espera (waitlist)", () => {
     const res = await request(app)
       .post("/waitlist")
       .type("form")
-      .send({ email, audience: "CLIENT" });
+      .send({ email, audience: "CLIENT", name: "Fulano de Tal" });
 
     expect(res.status).toBe(303);
     expect(res.headers.location).toBe("/lista-espera?ok=1");
@@ -37,6 +37,7 @@ describe("lista de espera (waitlist)", () => {
     const row = await prisma.waitlistSignup.findUnique({ where: { email } });
     expect(row).not.toBeNull();
     expect(row!.audience).toBe("CLIENT");
+    expect(row!.name).toBe("Fulano de Tal");
   });
 
   it("enfileira o e-mail de boas-vindas com o payload certo", async () => {
@@ -74,6 +75,39 @@ describe("lista de espera (waitlist)", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.audience).toBe("PROFESSIONAL");
     expect(rows[0]!.city).toBe("Olinda");
+  });
+
+  // Mescladas num teste só (em vez de dois) pra economizar POSTs contra o
+  // orçamento compartilhado do rate limiter dedicado desta suíte (8/15min
+  // por IP, mesmo bucket usado por todos os testes deste arquivo).
+  it("WhatsApp já cadastrado em outro e-mail é rejeitado, mas reenviar pro mesmo e-mail continua funcionando", async () => {
+    const emailA = `${uid("wl_wa")}@test.com`;
+    const emailB = `${uid("wl_wb")}@test.com`;
+    const whatsapp = `1199${Date.now().toString().slice(-8)}`;
+    createdEmails.push(emailA, emailB);
+
+    const resA = await request(app).post("/waitlist").type("form").send({ email: emailA, audience: "CLIENT", whatsapp });
+    expect(resA.status).toBe(303);
+    expect(resA.headers.location).toBe("/lista-espera?ok=1");
+
+    const resB = await request(app).post("/waitlist").type("form").send({ email: emailB, audience: "PROFESSIONAL", whatsapp });
+    expect(resB.status).toBe(303);
+    expect(resB.headers.location).toBe("/lista-espera?erro=1");
+
+    const rowB = await prisma.waitlistSignup.findUnique({ where: { email: emailB } });
+    expect(rowB).toBeNull();
+
+    // Mesmo e-mail (A) reenviando o mesmo WhatsApp não deveria ser
+    // bloqueado - não conflita consigo mesmo.
+    const resSelf = await request(app)
+      .post("/waitlist")
+      .type("form")
+      .send({ email: emailA, audience: "CLIENT", whatsapp, city: "Recife" });
+    expect(resSelf.status).toBe(303);
+    expect(resSelf.headers.location).toBe("/lista-espera?ok=1");
+
+    const rowA = await prisma.waitlistSignup.findUnique({ where: { email: emailA } });
+    expect(rowA!.city).toBe("Recife");
   });
 
   it("GET /lista-espera retorna 200 com o formulário", async () => {

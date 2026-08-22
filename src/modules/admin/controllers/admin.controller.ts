@@ -178,6 +178,16 @@ export class AdminController {
     return response.json(payload);
   }
 
+  async getWaitlistSignups(request: Request, response: Response) {
+    const payload = await adminService.listWaitlistSignups(request.user!.id, {
+      audience: request.query.audience as "CLIENT" | "PROFESSIONAL" | undefined,
+      q: request.query.q ? String(request.query.q) : undefined,
+      take: request.query.take ? Number(request.query.take) : undefined,
+      skip: request.query.skip ? Number(request.query.skip) : undefined
+    });
+    return response.json(payload);
+  }
+
   async changeUserRole(request: Request, response: Response) {
     const payload = await adminService.changeUserRole(
       request.user!.id,

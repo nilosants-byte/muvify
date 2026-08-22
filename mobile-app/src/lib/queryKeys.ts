@@ -146,6 +146,7 @@ export const queryKeys = {
     noShowReports: (params?: object) => ["admin", "noShowReports", params] as const,
     dataRetentionRuns: (params?: object) => ["admin", "dataRetentionRuns", params] as const,
     reports: (params?: object) => ["admin", "reports", params] as const,
+    waitlistSignups: (params?: object) => ["admin", "waitlistSignups", params] as const,
   },
 
   // ── Exercícios ─────────────────────────────────────────────────────────────

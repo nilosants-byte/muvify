@@ -9,6 +9,7 @@ import { z } from "zod";
 export const waitlistSignupSchema = z.object({
   body: z.object({
     email: z.string().trim().toLowerCase().email().max(254),
+    name: z.string().trim().max(120).optional().or(z.literal("").transform(() => undefined)),
     audience: z.enum(["CLIENT", "PROFESSIONAL"]),
     whatsapp: z.string().trim().max(20).optional().or(z.literal("").transform(() => undefined)),
     city: z.string().trim().max(120).optional().or(z.literal("").transform(() => undefined)),

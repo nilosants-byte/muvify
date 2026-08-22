@@ -119,6 +119,7 @@ export function renderWaitlistPage(params: {
             <label for="aud-professional">Sou profissional</label>
           </div>
           <input type="email" name="email" placeholder="Seu melhor e-mail" required maxlength="254" />
+          <input type="text" name="name" placeholder="Seu nome (opcional)" maxlength="120" />
           <div class="optional-row">
             <input type="tel" name="whatsapp" placeholder="WhatsApp (opcional)" maxlength="20" />
             <input type="text" name="city" placeholder="Cidade (opcional)" maxlength="120" />

@@ -173,6 +173,15 @@ export const adminAuditLogsQuerySchema = z.object({
   })
 });
 
+export const adminWaitlistSignupsQuerySchema = z.object({
+  query: z.object({
+    audience: z.enum(["CLIENT", "PROFESSIONAL"]).optional(),
+    q: z.string().trim().min(1).max(120).optional(),
+    take: z.coerce.number().int().min(1).max(200).optional(),
+    skip: z.coerce.number().int().min(0).optional()
+  })
+});
+
 export const adminChangeUserRoleSchema = z.object({
   params: z.object({ userId: z.string().uuid() }),
   body: z.object({
