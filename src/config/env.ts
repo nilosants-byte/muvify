@@ -36,6 +36,10 @@ const envSchema = z.object({
   // dá pra desligar de verdade sob pressão (troca de env + restart).
   ENABLE_VIDEO_UPLOAD: booleanFlag.default(true),
   ENABLE_REALTIME_CHAT: booleanFlag.default(true),
+  // Lista de espera pré-lançamento (landing page pública) - desligador de
+  // emergência se a captura de e-mail virar alvo de spam/abuso antes de o
+  // rate limiter dedicado (waitlistRateLimiter) dar conta sozinho.
+  WAITLIST_ENABLED: booleanFlag.default(true),
   JWT_SECRET: z.string().min(32),
   APP_ENCRYPTION_KEY: z.string().min(32).optional(),
   JWT_EXPIRES_IN: z.string().optional(),

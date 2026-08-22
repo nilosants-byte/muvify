@@ -2,6 +2,10 @@ import { Router } from "express";
 import fs from "fs";
 import path from "path";
 import { marked } from "marked";
+import { waitlistRateLimiter } from "../../middlewares/rate-limit.middleware";
+import { waitlistSignupSchema } from "./validators/waitlist.validator";
+import { WaitlistService } from "./services/waitlist.service";
+import { renderWaitlistPage, WAITLIST_CSS } from "./templates/waitlist-page.template";
 
 // Frente 17 (segunda camada, prontidão de lançamento): política de privacidade e
 // exclusão de conta precisam de URL pública acessível sem instalar o app —
@@ -63,4 +67,41 @@ publicRoutes.get("/privacidade", (_request, response) => {
 publicRoutes.get("/excluir-conta", (_request, response) => {
   const markdown = fs.readFileSync(path.join(docsDir, "EXCLUSAO-DE-CONTA-PUBLICO.md"), "utf-8");
   response.type("html").send(renderLegalPage("Excluir conta", markdown));
+});
+
+const waitlistService = new WaitlistService();
+
+publicRoutes.get("/waitlist.css", (_request, response) => {
+  response.type("text/css").send(WAITLIST_CSS);
+});
+
+// Lista de espera pré-lançamento. GET renderiza a página (form/sucesso/erro
+// conforme os query params ?ok=1 / ?erro=1 setados pelo redirect do POST
+// abaixo); POST recebe o cadastro. utm_source flui da URL do vídeo do
+// YouTube (?utm_source=<video>) pro form via campo oculto, sem precisar de
+// JS, pra depois saber qual vídeo converteu mais.
+publicRoutes.get("/lista-espera", async (request, response) => {
+  const count = await waitlistService.countForSocialProof();
+  const utmSource = typeof request.query.utm_source === "string" ? request.query.utm_source : undefined;
+  const state = request.query.ok === "1" ? "success" : request.query.erro ? "error" : "form";
+  response.type("html").send(renderWaitlistPage({ count, utmSource, state }));
+});
+
+// safeParse (não o middleware `validate` padrão) de propósito: essa rota é
+// um form HTML puro sem JS, então uma falha de validação precisa
+// redirecionar de volta pra página com uma mensagem amigável, não devolver
+// o JSON de erro genérico do errorMiddleware pra quem só preencheu um
+// campo errado.
+publicRoutes.post("/waitlist", waitlistRateLimiter, async (request, response) => {
+  const parsed = waitlistSignupSchema.safeParse({ body: request.body });
+  if (!parsed.success) {
+    return response.redirect(303, "/lista-espera?erro=1");
+  }
+  try {
+    await waitlistService.signup(parsed.data.body);
+    return response.redirect(303, "/lista-espera?ok=1");
+  } catch (error) {
+    console.error("Waitlist signup failed:", error);
+    return response.redirect(303, "/lista-espera?erro=1");
+  }
 });

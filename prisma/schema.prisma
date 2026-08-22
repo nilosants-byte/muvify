@@ -875,6 +875,30 @@ model ConsentRecord {
   @@index([userId, createdAt])
 }
 
+enum WaitlistAudience {
+  CLIENT
+  PROFESSIONAL
+}
+
+// Lista de espera pré-lançamento (landing page pública, sem login) -
+// captura quem quer ser avisado quando o app abrir. `audience` separa aluno
+// de profissional porque a divulgação (vídeos do YouTube) atinge os dois
+// públicos, mas o follow-up e a ordem de lançamento por cidade são
+// diferentes pra cada um. Append-only - reenvio do mesmo e-mail faz upsert
+// (waitlist.service.ts), nunca cria linha duplicada.
+model WaitlistSignup {
+  id         String           @id @default(uuid())
+  email      String           @unique
+  audience   WaitlistAudience
+  whatsapp   String?
+  city       String?
+  utmSource  String?
+  createdAt  DateTime         @default(now())
+
+  @@index([createdAt])
+  @@index([audience])
+}
+
 model Payment {
   id                  String        @id @default(uuid())
   bookingId           String        @unique

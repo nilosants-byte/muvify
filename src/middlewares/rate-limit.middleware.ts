@@ -110,6 +110,23 @@ export const uploadRateLimiter = rateLimit({
   }
 });
 
+// Lista de espera pré-lançamento: endpoint público, sem autenticação,
+// exposto em landing page divulgada em massa (vídeos do YouTube) - alvo
+// natural de spam de bot. Mais apertado que authRateLimiter (20/15min)
+// porque é uma ação de valor único (cadastrar e-mail), não um fluxo inteiro
+// de autenticação que um usuário legítimo repete várias vezes.
+export const waitlistRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  passOnStoreError: true,
+  store: makeStore("rl:waitlist:"),
+  message: {
+    message: "Muitas tentativas. Tente novamente em alguns minutos."
+  }
+});
+
 // Frente 5 (Descoberta, agendamento e agenda), Lote 11: disponibilidade e
 // bloqueio manual reaproveitavam o uploadRateLimiter (mesmo limite de
 // 20/hora), mas devolviam a mensagem "Limite de uploads atingido" pra uma

@@ -31,7 +31,11 @@ type EmailQueueTemplate =
   // (BOOKING_CONFIRMATION_*) tinha isso. Template genérico (não amarrado a
   // "sessão" como o de booking) reaproveitado pelos dois fluxos.
   | "PURCHASE_CONFIRMATION_CLIENT"
-  | "PURCHASE_CONFIRMATION_PROVIDER";
+  | "PURCHASE_CONFIRMATION_PROVIDER"
+  // Lista de espera pré-lançamento (landing page pública) - confirmação
+  // única de "você entrou na lista", não recorrente, por isso não exige
+  // opt-out (ver comentário em email.service.ts sobre a invariante).
+  | "WAITLIST_WELCOME";
 
 type VerificationPayload = {
   to: string;
@@ -107,6 +111,11 @@ type PurchaseConfirmationProviderPayload = {
   clientName: string;
   serviceName: string;
   priceCents: number;
+};
+
+type WaitlistWelcomePayload = {
+  to: string;
+  audience: "CLIENT" | "PROFESSIONAL";
 };
 
 export class EmailQueueService {
@@ -208,6 +217,15 @@ export class EmailQueueService {
     return prisma.emailDeliveryQueue.create({
       data: {
         template: "PURCHASE_CONFIRMATION_PROVIDER",
+        payload: input
+      }
+    });
+  }
+
+  async enqueueWaitlistWelcome(input: WaitlistWelcomePayload) {
+    return prisma.emailDeliveryQueue.create({
+      data: {
+        template: "WAITLIST_WELCOME",
         payload: input
       }
     });
@@ -333,6 +351,11 @@ export class EmailQueueService {
     if (template === "PURCHASE_CONFIRMATION_PROVIDER") {
       const parsed = this.parsePurchaseConfirmationProviderPayload(payload);
       await this.emailService.sendPurchaseConfirmationToProvider(parsed);
+      return;
+    }
+    if (template === "WAITLIST_WELCOME") {
+      const parsed = this.parseWaitlistWelcomePayload(payload);
+      await this.emailService.sendWaitlistWelcomeEmail(parsed);
       return;
     }
     throw new Error(`Unsupported email queue template: ${template}`);
@@ -488,6 +511,16 @@ export class EmailQueueService {
     }
     this.validateEmail(to);
     return { to, providerName, clientName, serviceName, priceCents };
+  }
+
+  private parseWaitlistWelcomePayload(payload: Record<string, unknown>): WaitlistWelcomePayload {
+    const to = typeof payload.to === "string" ? payload.to : "";
+    const audience = payload.audience === "CLIENT" || payload.audience === "PROFESSIONAL" ? payload.audience : null;
+    if (!to || !audience) {
+      throw new Error("Invalid WAITLIST_WELCOME payload.");
+    }
+    this.validateEmail(to);
+    return { to, audience };
   }
 
   async purgeOldFailures(olderThanDays = 30): Promise<number> {

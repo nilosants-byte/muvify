@@ -40,6 +40,11 @@ type RecoveryEmailUpdatedInput = {
   recoveryEmail: string;
 };
 
+type WaitlistWelcomeInput = {
+  to: string;
+  audience: "CLIENT" | "PROFESSIONAL";
+};
+
 type SupportMessageEmailInput = {
   to: string;
   userName: string;
@@ -216,6 +221,10 @@ function buildEmailLayout(body: string): string {
 // conta, redefinição de senha, aviso de troca de senha, e-mail de
 // recuperação alterado), nunca marketing. Se um template de marketing for
 // adicionado no futuro, opt-out deixa de ser opcional (CAN-SPAM/LGPD).
+// sendWaitlistWelcomeEmail é uma confirmação única ("você entrou na
+// lista"), não um informativo recorrente - mantém a invariante. Se um dia
+// a lista de espera ganhar envios periódicos (novidades, contagem
+// regressiva etc.), aí sim vira obrigatório ter opt-out.
 export class EmailService {
   canSendEmail() {
     return isSmtpConfigured();
@@ -407,6 +416,36 @@ export class EmailService {
         </div>
         <div class="security-note">
           Se voc&ecirc; n&atilde;o realizou esta altera&ccedil;&atilde;o, acesse as configura&ccedil;&otilde;es de seguran&ccedil;a no aplicativo.
+        </div>
+      `)
+    });
+  }
+
+  async sendWaitlistWelcomeEmail(input: WaitlistWelcomeInput) {
+    const mailer = requireMailer();
+    const nextStep =
+      input.audience === "PROFESSIONAL"
+        ? "Avisaremos assim que abrirmos cadastro de profissionais, com desconto de lancamento pra quem entrou cedo."
+        : "Avisaremos assim que o app estiver disponivel na sua regiao.";
+    const nextStepHtml =
+      input.audience === "PROFESSIONAL"
+        ? "Avisaremos assim que abrirmos cadastro de profissionais, com <strong>desconto de lan&ccedil;amento</strong> pra quem entrou cedo."
+        : "Avisaremos assim que o app estiver dispon&iacute;vel na sua regi&atilde;o.";
+
+    await mailer.sendMail({
+      from: env.SMTP_FROM,
+      to: input.to,
+      subject: "Muvify — Você está na lista de espera",
+      text: [
+        "Voce entrou na lista de espera do Muvify!",
+        "",
+        nextStep
+      ].join("\n"),
+      html: buildEmailLayout(`
+        <h2>Voc&ecirc; est&aacute; na lista! &#127881;</h2>
+        <p>Obrigado por entrar na lista de espera do <strong>Muvify</strong>.</p>
+        <div class="info-box">
+          <p>${nextStepHtml}</p>
         </div>
       `)
     });

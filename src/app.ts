@@ -115,6 +115,10 @@ app.use(
         "req.body.caption",
         "req.body.latitude",
         "req.body.longitude",
+        // Lista de espera pré-lançamento (POST /waitlist): whatsapp é PII
+        // (telefone) na mesma categoria de req.body.phone acima; city fica
+        // de fora por não ser sensível sozinho.
+        "req.body.whatsapp",
         "req.query.email",
         "req.query.token"
       ],
