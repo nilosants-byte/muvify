@@ -247,9 +247,8 @@ export function renderWaitlistPage(params: {
   </div>
 
   <footer>
-    <!-- TODO: trocar pelos links reais das redes sociais do Muvify -->
-    <a href="#">Instagram</a>
-    <a href="#">YouTube</a>
+    <a href="https://www.instagram.com/muvify.app" target="_blank" rel="noopener noreferrer">Instagram</a>
+    <a href="https://www.youtube.com/@muvify-app" target="_blank" rel="noopener noreferrer">YouTube</a>
     <p style="margin-top:14px;">Feito com carinho pela equipe Muvify &middot; &copy; ${new Date().getFullYear()}</p>
   </footer>
 </body>
