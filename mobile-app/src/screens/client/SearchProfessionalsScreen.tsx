@@ -15,10 +15,12 @@ import {
   TrainingObjective
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
+import { useBlockedWhileLocked } from "../../hooks/useBlockedWhileLocked";
 import { averageToFive, handleScreenError } from "../shared/api-helpers";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { FounderBadge } from "../../components/professional/FounderBadge";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "SearchProfessionals">;
 
@@ -59,6 +61,7 @@ function normalizeLoose(value: string) {
 }
 
 export function SearchProfessionalsScreen({ route, navigation }: Props) {
+  useBlockedWhileLocked();
   const { showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
@@ -286,7 +289,10 @@ export function SearchProfessionalsScreen({ route, navigation }: Props) {
               onPress={() => navigation.navigate("ProfessionalDetail", { professionalId: item.id })}
               style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 4 }}
             >
-              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }} numberOfLines={1}>{item.displayName}</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1, flexShrink: 1 }} numberOfLines={1}>{item.displayName}</Text>
+                {item.isFounder ? <FounderBadge compact /> : null}
+              </View>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }} numberOfLines={1}>{item.bio}</Text>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 2 }}>
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.primary }}>★ {averageToFive(item.avgRating ?? item.averageRating).toFixed(1)}</Text>

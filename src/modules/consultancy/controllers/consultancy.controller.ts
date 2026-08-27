@@ -16,6 +16,46 @@ export class ConsultancyController {
     return response.json(catalog);
   }
 
+  async previewExternalStudentInvite(request: Request, response: Response) {
+    const preview = await consultancyService.previewExternalStudentInvite(request.params.token);
+    return response.json(preview);
+  }
+
+  async createExternalStudentInvite(request: Request, response: Response) {
+    const result = await consultancyService.createExternalStudentInvite(request.user!.id, {
+      studentName: request.body.studentName,
+      channel: request.body.channel,
+      phone: request.body.phone,
+      email: request.body.email
+    });
+    return response.status(StatusCodes.CREATED).json(result);
+  }
+
+  async claimExternalStudentInvite(request: Request, response: Response) {
+    const contract = await consultancyService.claimExternalStudentInvite(request.user!.id, request.params.token);
+    return response.json(contract);
+  }
+
+  async cancelExternalStudentInvite(request: Request, response: Response) {
+    const invite = await consultancyService.cancelExternalStudentInvite(request.user!.id, request.params.inviteId);
+    return response.json(invite);
+  }
+
+  async listMyExternalStudentInvites(request: Request, response: Response) {
+    const invites = await consultancyService.listMyExternalStudentInvites(request.user!.id);
+    return response.json(invites);
+  }
+
+  async listExternalCheckIns(request: Request, response: Response) {
+    const checkIns = await consultancyService.listExternalCheckIns(request.user!.id);
+    return response.json(checkIns);
+  }
+
+  async confirmExternalCheckIn(request: Request, response: Response) {
+    const contract = await consultancyService.confirmExternalCheckIn(request.user!.id, request.params.contractId);
+    return response.json(contract);
+  }
+
   async upsertOnlineSetting(request: Request, response: Response) {
     const setting = await consultancyService.upsertOnlineSetting(request.user!.id, {
       enabled: request.body.enabled

@@ -3,6 +3,7 @@ import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../../shared/errors/app-error";
 import { verifyUserPhotoSignature } from "../../../shared/utils/user-photo-signature";
 import { UserService } from "../services/user.service";
+import { getActiveEngagementSummary } from "../../../shared/utils/client-engagement";
 import { DisputeCaseService } from "../../admin/services/dispute-case.service";
 
 const userService = new UserService();
@@ -40,6 +41,16 @@ export class UserController {
   async updateMe(request: Request, response: Response) {
     const user = await userService.updateMe(request.user!.id, request.body);
     return response.json(user);
+  }
+
+  async myActiveEngagement(request: Request, response: Response) {
+    const summary = await getActiveEngagementSummary(request.user!.id);
+    return response.json(summary);
+  }
+
+  async switchOrAddOffer(request: Request, response: Response) {
+    const result = await userService.switchOrAddOffer(request.user!.id, request.body);
+    return response.json(result);
   }
 
   async getMyAnamnesis(request: Request, response: Response) {

@@ -53,6 +53,7 @@ const envSchema = z.object({
   PASSWORD_RESET_TOKEN_EXPOSE_IN_DEV: booleanFlag.default(false),
   EMAIL_VERIFICATION_TOKEN_EXPIRES_HOURS: z.coerce.number().int().min(1).max(168).default(72),
   EMAIL_VERIFICATION_WEB_URL: z.string().url().optional(),
+  EXTERNAL_STUDENT_INVITE_EXPIRES_DAYS: z.coerce.number().int().min(1).max(30).default(7),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).optional(),
   SMTP_USER: z.string().optional(),

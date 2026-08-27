@@ -2001,7 +2001,7 @@ export function CommunityScreen({ navigation }: Props) {
         badges={{ community: pendingFeedItems.length }}
         onNavigate={(tab) => {
           if (tab === "home") navigation.navigate("ClientHome");
-          if (tab === "agenda") navigation.navigate("ClientBookings");
+          if (tab === "meuPersonal") navigation.navigate("ClientBookings");
           if (tab === "trainings") navigation.navigate("MyTraining");
           if (tab === "profile") navigation.navigate("ClientProfile");
         }}

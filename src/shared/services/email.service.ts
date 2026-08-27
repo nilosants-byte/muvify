@@ -34,6 +34,14 @@ type AccountDeletedEmailInput = {
   name: string;
 };
 
+type ExternalStudentInviteEmailInput = {
+  to: string;
+  studentName: string;
+  providerName: string;
+  inviteToken: string;
+  expiresDays: number;
+};
+
 type RecoveryEmailUpdatedInput = {
   to: string;
   name: string;
@@ -316,6 +324,49 @@ export class EmailService {
         <p class="small"><a href="${resetUrl}" style="color:#4CAF50;word-break:break-all;">${resetUrl}</a></p>
         <div class="security-note">
           Se voc&ecirc; n&atilde;o solicitou a redefini&ccedil;&atilde;o de senha, ignore este e-mail. Sua senha continuar&aacute; a mesma.
+        </div>
+      `)
+    });
+  }
+
+  // Bloco 2 (aluno externo): o link muvify://convite/... só abre o app se ele
+  // já estiver instalado (não temos Universal Links configurados ainda — ver
+  // plano do bloco). Por isso o código também aparece em texto puro no
+  // e-mail, como alternativa garantida pra quem ainda não tem o app.
+  async sendExternalStudentInviteEmail(input: ExternalStudentInviteEmailInput) {
+    const mailer = requireMailer();
+    const deepLink = `muvify://convite/${encodeURIComponent(input.inviteToken)}`;
+
+    await mailer.sendMail({
+      from: env.SMTP_FROM,
+      to: input.to,
+      subject: `${input.providerName} te convidou para o Muvify`,
+      text: [
+        `Ola, ${input.studentName}!`,
+        "",
+        `${input.providerName} te cadastrou como aluno(a) no Muvify e quer liberar sua ficha de treino por la.`,
+        "",
+        "Se voce ja tem o app instalado, abra este link:",
+        deepLink,
+        "",
+        "Se ainda nao tem o app, baixe o Muvify e use este codigo de convite ao entrar:",
+        input.inviteToken,
+        "",
+        `Este convite expira em ${input.expiresDays} dias.`
+      ].join("\n"),
+      html: buildEmailLayout(`
+        <h2>${escapeHtml(input.providerName)} te convidou para o Muvify</h2>
+        <p>Ola, <strong>${escapeHtml(input.studentName)}</strong>!</p>
+        <p>${escapeHtml(input.providerName)} te cadastrou como aluno(a) no Muvify e quer liberar sua ficha de treino por l&aacute;.</p>
+        <p>
+          <a class="btn" href="${deepLink}" target="_blank" rel="noreferrer">
+            Abrir convite no app
+          </a>
+        </p>
+        <div class="info-box">
+          <p>Ainda n&atilde;o tem o app? Baixe o Muvify e use este c&oacute;digo de convite ao entrar:</p>
+          <p style="font-size:20px;font-weight:bold;letter-spacing:2px;">${escapeHtml(input.inviteToken)}</p>
+          <p>&#9201; Este convite expira em <strong>${input.expiresDays} dias</strong> e s&oacute; pode ser usado uma vez.</p>
         </div>
       `)
     });

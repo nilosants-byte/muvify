@@ -1,7 +1,10 @@
 import React, { useMemo, useState } from "react";
 import { Alert, Linking, Platform, ScrollView, Share, StatusBar, TouchableOpacity, View } from "react-native";
-import { userApi } from "../../services/api/client";
+import { providerSubscriptionApi, userApi } from "../../services/api/client";
+import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { queryKeys } from "../../lib/queryKeys";
 import { shareExportedDataAsFile } from "../../utils/exportDataFile";
+import { formatCurrencyBRL } from "../../utils/formatters";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -41,6 +44,26 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const lightModeEnabled = !isDark;
   const isLight = theme.mode === "light";
+
+  // Bloco 5 (assinatura do profissional).
+  const subscriptionQuery = useAuthQuery(queryKeys.providers.mySubscription(), (token) =>
+    providerSubscriptionApi.myStatus(token)
+  );
+  const subscriptionSub = useMemo(() => {
+    const sub = subscriptionQuery.data;
+    if (!sub) return undefined;
+    if (sub.status === "TRIALING" && sub.trialEndsAt) {
+      const daysLeft = Math.max(0, Math.ceil((new Date(sub.trialEndsAt).getTime() - Date.now()) / 86400000));
+      return `Trial · ${daysLeft} dias restantes`;
+    }
+    // Raio-X pós-épico (achado baixo): preço fixo em texto — inofensivo hoje
+    // (preço único por design), mas divergia silenciosamente se algum dia
+    // existir preço legado diferente via priceLockedUntil.
+    if (sub.status === "ACTIVE") return `Ativa · ${formatCurrencyBRL(sub.priceCents / 100)}/mês`;
+    if (sub.status === "PAST_DUE") return "Pagamento com falha";
+    if (sub.status === "CANCELED") return "Cancelada";
+    return "Pagamento pendente";
+  }, [subscriptionQuery.data]);
 
   function handleAnalyticsToggle(enabled: boolean) {
     void setAnalyticsPreference(enabled);
@@ -221,6 +244,12 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
             sub="Saldo, repasses, receitas e despesas"
             onPress={() => goToStack("PayoutStatus")}
             isFirst
+          />
+          <MenuItem
+            icon="ribbon-outline"
+            label="Minha assinatura"
+            sub={subscriptionSub}
+            onPress={() => goToStack("MySubscription")}
           />
         </View>
 

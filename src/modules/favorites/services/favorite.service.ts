@@ -3,12 +3,23 @@ import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { PUBLIC_PROVIDER_SELECT, jitterPublicCoordinates } from "../../providers/services/provider.service";
+import { isProviderSubscriptionActive } from "../../providers/services/provider-subscription.service";
+
+// Bloco 7 (programa 100 Fundadores): mesmo tratamento de
+// provider.service.ts::getById/toSafeSummary — só o selo booleano sai pro
+// cliente, nunca subscription.status (dado privado de cobrança).
+function toPublicFavoriteProvider<
+  T extends { id: string; latitude?: number | null; longitude?: number | null; subscription?: { isFounder: boolean } | null }
+>(provider: T) {
+  const { subscription, ...rest } = provider;
+  return { ...jitterPublicCoordinates(rest), isFounder: subscription?.isFounder ?? false };
+}
 
 export class FavoriteService {
   async add(userId: string, providerId: string) {
     const provider = await prisma.providerProfile.findUnique({
       where: { id: providerId },
-      include: { user: { select: { suspendedAt: true } } }
+      include: { user: { select: { suspendedAt: true } }, subscription: { select: { status: true } } }
     });
     if (!provider) {
       throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
@@ -16,7 +27,11 @@ export class FavoriteService {
     // Raio-X de pagamentos, Rodada 4, Lote 3: suspensão só bloqueava o
     // próprio login do profissional — a mesma correção já feita na busca
     // pública nunca chegou em favoritos.
-    if (provider.crefValidationStatus !== CrefValidationStatus.APPROVED || provider.user.suspendedAt) {
+    if (
+      provider.crefValidationStatus !== CrefValidationStatus.APPROVED ||
+      provider.user.suspendedAt ||
+      !isProviderSubscriptionActive(provider.subscription?.status)
+    ) {
       throw new AppError("Prestador não disponível no momento.", StatusCodes.BAD_REQUEST);
     }
 
@@ -57,7 +72,7 @@ export class FavoriteService {
       }
     });
 
-    return { ...favorite, provider: jitterPublicCoordinates(favorite.provider) };
+    return { ...favorite, provider: toPublicFavoriteProvider(favorite.provider) };
   }
 
   // Frente 5 (Descoberta, agendamento e agenda), Lote 10: lacuna de produto
@@ -93,7 +108,14 @@ export class FavoriteService {
           // Frente 5 (Descoberta, agendamento e agenda), Lote 5: profissional
           // suspenso continuava aparecendo nos favoritos do cliente como se
           // estivesse disponível — mesmo filtro já usado na busca pública.
-          user: { suspendedAt: null }
+          user: { suspendedAt: null },
+          // Bloco 6 (bloqueio por assinatura inativa): mesmo tratamento —
+          // `subscription: null` também passa (fail-open, mesma regra de
+          // isProviderSubscriptionActive).
+          OR: [
+            { subscription: null },
+            { subscription: { status: { in: ["TRIALING", "ACTIVE"] } } }
+          ]
         }
       },
       select: {
@@ -104,11 +126,13 @@ export class FavoriteService {
         provider: {
           select: {
             ...PUBLIC_PROVIDER_SELECT,
+            // Raio-X pós-épico (achado baixo): telefone pessoal do
+            // profissional vazava aqui sem nenhuma tela do app usar
+            // `provider.user.phone` — mesmo select enxuto que add() já usa.
             user: {
               select: {
                 id: true,
-                name: true,
-                phone: true
+                name: true
               }
             },
             categoryLinks: {
@@ -124,6 +148,6 @@ export class FavoriteService {
       skip,
     });
 
-    return favorites.map((favorite) => ({ ...favorite, provider: jitterPublicCoordinates(favorite.provider) }));
+    return favorites.map((favorite) => ({ ...favorite, provider: toPublicFavoriteProvider(favorite.provider) }));
   }
 }

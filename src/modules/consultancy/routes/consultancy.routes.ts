@@ -1,7 +1,7 @@
 import { UserRole } from "@prisma/client";
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
-import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
+import { authRateLimiter, uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { ConsultancyController } from "../controllers/consultancy.controller";
@@ -11,6 +11,9 @@ import {
   contestDeliverySchema,
   contractIdParamSchema,
   createConsultancyRequestSchema,
+  createExternalStudentInviteSchema,
+  externalStudentInviteIdParamSchema,
+  externalStudentInviteTokenParamSchema,
   offerIdParamSchema,
   createProviderOfferSchema,
   createTrainingPlanSchema,
@@ -33,6 +36,16 @@ consultancyRoutes.get(
   "/providers/:providerId/catalog",
   validate(providerCatalogSchema),
   consultancyController.providerCatalog
+);
+// Bloco 2 (aluno externo): sem autenticação de propósito, pra dar pra ver
+// quem está convidando antes de logar/criar conta — mesmo rate limit já
+// usado em rotas públicas sensíveis (forgot-password) contra tentativa de
+// adivinhar o código do convite.
+consultancyRoutes.get(
+  "/external-students/invites/:token/preview",
+  authRateLimiter,
+  validate(externalStudentInviteTokenParamSchema),
+  consultancyController.previewExternalStudentInvite
 );
 
 consultancyRoutes.use(ensureAuthenticated);
@@ -170,4 +183,45 @@ consultancyRoutes.post(
   uploadRateLimiter,
   validate(deliverContractSchema),
   consultancyController.deliverContract
+);
+
+consultancyRoutes.get(
+  "/external-students/invites",
+  ensureRole(UserRole.PROVIDER),
+  consultancyController.listMyExternalStudentInvites
+);
+consultancyRoutes.post(
+  "/external-students/invites",
+  ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
+  validate(createExternalStudentInviteSchema),
+  consultancyController.createExternalStudentInvite
+);
+consultancyRoutes.post(
+  "/external-students/invites/:inviteId/cancel",
+  ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
+  validate(externalStudentInviteIdParamSchema),
+  consultancyController.cancelExternalStudentInvite
+);
+consultancyRoutes.post(
+  "/external-students/invites/:token/claim",
+  ensureRole(UserRole.CLIENT),
+  uploadRateLimiter,
+  validate(externalStudentInviteTokenParamSchema),
+  consultancyController.claimExternalStudentInvite
+);
+
+// Bloco 4 (aluno externo): check-in periódico trimestral (90 dias).
+consultancyRoutes.get(
+  "/external-students/check-ins",
+  ensureRole(UserRole.PROVIDER),
+  consultancyController.listExternalCheckIns
+);
+consultancyRoutes.post(
+  "/external-students/check-ins/:contractId/confirm",
+  ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
+  validate(contractIdParamSchema),
+  consultancyController.confirmExternalCheckIn
 );

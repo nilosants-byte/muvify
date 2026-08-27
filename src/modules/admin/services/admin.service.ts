@@ -1,4 +1,4 @@
-﻿import { BookingStatus, ConsultancyContractStatus, ConsultancyPaymentStatus, ContentReportStatus, CrefValidationStatus, DisputeCaseStatus, PaymentStatus, PresentialPackageStatus, Prisma, SupportTicketStatus, UserRole } from "@prisma/client";
+﻿import { BookingStatus, ConsultancyContractOrigin, ConsultancyContractStatus, ConsultancyPaymentStatus, ContentReportStatus, CrefValidationStatus, DisputeCaseStatus, PaymentStatus, PresentialPackageStatus, Prisma, SupportTicketStatus, UserRole } from "@prisma/client";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
@@ -15,6 +15,7 @@ import { UserService } from "../../users/services/user.service";
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
 import { BookingService } from "../../bookings/services/booking.service";
+import { ProviderSubscriptionService } from "../../providers/services/provider-subscription.service";
 import { platformFeeAmount } from "../../../shared/utils/platform-fee";
 import {
   effectiveBookingRevenueCents,
@@ -276,6 +277,7 @@ export class AdminService {
   private presentialPackageService = new PresentialPackageService();
   private consultancyService = new ConsultancyService();
   private bookingService = new BookingService();
+  private providerSubscriptionService = new ProviderSubscriptionService();
   private financialService = new FinancialService();
 
   // Frente 7 (segunda camada), Lote 1: implementação movida pra
@@ -474,6 +476,10 @@ export class AdminService {
       }),
       prisma.consultancyContract.findMany({
         where: {
+          // Bloco 1 (aluno externo): contrato origin EXTERNAL não é receita
+          // nem comissão de verdade — não deve entrar no GMV/comissão da
+          // plataforma exibidos aqui.
+          origin: ConsultancyContractOrigin.MARKETPLACE,
           paymentStatus: { in: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] },
           paymentCapturedAt: { gte: start, lt: end }
         },
@@ -1583,6 +1589,16 @@ export class AdminService {
         .catch((error) =>
           console.error(`Falha ao cancelar agendamentos avulsos na suspensão do profissional ${target.id}:`, error)
         );
+
+      // Raio-X pós-épico (achado médio): mesma lacuna dos achados acima, mas
+      // pro Bloco 5 — sem isso, um profissional suspenso continuava sendo
+      // cobrado R$ 29,90/mês pela assinatura Muvify enquanto travado de usar
+      // o app inteiro, cobrança sem contrapartida nenhuma.
+      await this.providerSubscriptionService
+        .cancelSubscription(target.id)
+        .catch((error) =>
+          console.error(`Falha ao cancelar assinatura na suspensão do profissional ${target.id}:`, error)
+        );
     }
 
     await writeAdminAuditLog({
@@ -1993,7 +2009,30 @@ export class AdminService {
         emailVerifiedAt: true,
         twoFactorEnabled: true,
         providerProfile: {
-          select: { id: true, displayName: true, crefValidationStatus: true, mpAccountId: true }
+          select: {
+            id: true,
+            displayName: true,
+            crefValidationStatus: true,
+            mpAccountId: true,
+            // Raio-X pós-épico (achado médio): suporte não tinha NENHUMA
+            // forma de confirmar "profissional sumiu do marketplace porque a
+            // assinatura venceu" sem consultar o banco direto — nem essa
+            // tela de detalhe do usuário trazia o status da assinatura do
+            // Bloco 5/6.
+            subscription: {
+              select: {
+                status: true,
+                isFounder: true,
+                priceCents: true,
+                trialEndsAt: true,
+                nextBillingAt: true,
+                cancelAtPeriodEnd: true,
+                lastChargeAt: true,
+                lastChargeStatus: true,
+                consecutiveFailedCharges: true
+              }
+            }
+          }
         }
       }
     });
@@ -2127,7 +2166,8 @@ export class AdminService {
             id: user.providerProfile.id,
             displayName: user.providerProfile.displayName,
             crefValidationStatus: user.providerProfile.crefValidationStatus,
-            mpConnected: Boolean(user.providerProfile.mpAccountId)
+            mpConnected: Boolean(user.providerProfile.mpAccountId),
+            subscription: user.providerProfile.subscription
           }
         : null,
       clientDebts,

@@ -19,6 +19,8 @@ import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { assertAnamnesisCompleted } from "../../../shared/utils/anamnesis-required";
+import { assertNoActiveEngagementWithOtherProvider } from "../../../shared/utils/client-engagement";
+import { assertProviderSubscriptionActive } from "../../../shared/utils/provider-subscription-gate";
 import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
@@ -312,6 +314,15 @@ export class PresentialPackageService {
         StatusCodes.BAD_REQUEST
       );
     }
+    await assertProviderSubscriptionActive(
+      offer.providerId,
+      "Este profissional não está disponível para novas compras no momento."
+    );
+
+    // Bloco 3 (exclusividade de marketplace): só um profissional ativo por
+    // vez — comprar de um profissional diferente do que já está vinculado é
+    // bloqueado aqui.
+    await assertNoActiveEngagementWithOtherProvider(clientId, offer.providerId);
 
     if (input.paymentMethod === ConsultancyPaymentMethod.DEBIT_CARD) {
       throw new AppError(
@@ -1634,6 +1645,16 @@ export class PresentialPackageService {
         StatusCodes.BAD_REQUEST
       );
     }
+    await assertProviderSubscriptionActive(
+      offer.providerId,
+      "Este profissional não está disponível para novas compras no momento."
+    );
+
+    // Bloco 3 (exclusividade de marketplace): só um profissional ativo por
+    // vez — comprar de um profissional diferente do que já está vinculado é
+    // bloqueado aqui.
+    await assertNoActiveEngagementWithOtherProvider(clientId, offer.providerId);
+
     if (input.paymentMethod === ConsultancyPaymentMethod.DEBIT_CARD) {
       throw new AppError(
         "Combo não aceita débito - use cartão de crédito ou Pix.",

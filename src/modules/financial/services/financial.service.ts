@@ -1,5 +1,6 @@
 import {
   BookingStatus,
+  ConsultancyContractOrigin,
   ConsultancyPaymentStatus,
   FinancialExpenseCategory,
   FinancialRecurrence,
@@ -474,6 +475,11 @@ export class FinancialService {
       prisma.consultancyContract.findMany({
         where: {
           providerId: provider.id,
+          // Bloco 1 (aluno externo): contrato origin EXTERNAL não é receita —
+          // nasce com paymentAmountCents 0 e paymentStatus CAPTURED só pra
+          // aparecer normalmente em "Meus alunos"/"Meu treino", mas não deve
+          // entrar em nenhum relatório financeiro/de comissão.
+          origin: ConsultancyContractOrigin.MARKETPLACE,
           paymentStatus: { in: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] },
           paymentCapturedAt: { gte: from, lte: to }
         },
@@ -484,6 +490,7 @@ export class FinancialService {
       prisma.consultancyContract.findMany({
         where: {
           providerId: provider.id,
+          origin: ConsultancyContractOrigin.MARKETPLACE,
           paymentStatus: { in: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] },
           paymentCapturedAt: { gte: lastMonthFrom, lte: lastMonthTo }
         },
@@ -1006,6 +1013,7 @@ export class FinancialService {
       prisma.consultancyContract.findMany({
         where: {
           providerId: provider.id,
+          origin: ConsultancyContractOrigin.MARKETPLACE,
           paymentStatus: { in: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] },
           paymentCapturedAt: { gte: from, lte: to }
         },
@@ -1183,6 +1191,7 @@ export class FinancialService {
         prisma.consultancyContract.findMany({
           where: {
             providerId: provider.id,
+            origin: ConsultancyContractOrigin.MARKETPLACE,
             paymentStatus: { in: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] },
             paymentCapturedAt: { gte: from, lte: to }
           },
@@ -1347,6 +1356,7 @@ export class FinancialService {
       prisma.consultancyContract.findMany({
         where: {
           providerId: provider.id,
+          origin: ConsultancyContractOrigin.MARKETPLACE,
           paymentStatus: { in: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] },
           ...(monthRange ? { paymentCapturedAt: { gte: monthRange.from, lte: monthRange.to } } : {})
         },

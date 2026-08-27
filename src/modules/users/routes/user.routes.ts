@@ -10,6 +10,7 @@ import {
   deleteMeSchema,
   recordConsentSchema,
   sendSupportMessageSchema,
+  switchOrAddOfferSchema,
   userPhotoParamsSchema,
   updateMeSchema,
   upsertNotificationPreferencesSchema,
@@ -29,6 +30,21 @@ userRoutes.get(
 userRoutes.use(ensureAuthenticated);
 
 userRoutes.get("/me", userController.me);
+// Bloco 3 (exclusividade de marketplace): resumo do vínculo ativo do
+// cliente (profissional + tipo + valor + sessões) — alimenta o gate de
+// Home/navegação e o card de plano da aba "Meu Personal" no app.
+userRoutes.get(
+  "/me/active-engagement",
+  ensureRole(UserRole.CLIENT),
+  userController.myActiveEngagement
+);
+userRoutes.post(
+  "/me/active-engagement/switch",
+  ensureRole(UserRole.CLIENT),
+  uploadRateLimiter,
+  validate(switchOrAddOfferSchema),
+  userController.switchOrAddOffer
+);
 userRoutes.patch("/me", uploadRateLimiter, validate(updateMeSchema), userController.updateMe);
 userRoutes.get(
   "/me/anamnesis",

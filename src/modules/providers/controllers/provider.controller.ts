@@ -1,11 +1,34 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { ProviderService } from "../services/provider.service";
+import { ProviderSubscriptionService } from "../services/provider-subscription.service";
 const providerService = new ProviderService();
+const providerSubscriptionService = new ProviderSubscriptionService();
 export class ProviderController {
   async getOwnCredentials(request: Request, response: Response) {
     const payload = await providerService.getOwnCredentials(request.user!.id);
     return response.json(payload);
+  }
+
+  // Bloco 5 (assinatura do profissional).
+  async getMySubscription(request: Request, response: Response) {
+    const subscription = await providerSubscriptionService.getMySubscription(request.user!.id);
+    return response.json(subscription);
+  }
+
+  async cancelMySubscription(request: Request, response: Response) {
+    const subscription = await providerSubscriptionService.cancelSubscription(request.user!.id);
+    return response.json(subscription);
+  }
+
+  async reactivateMySubscription(request: Request, response: Response) {
+    const subscription = await providerSubscriptionService.reactivateSubscription(request.user!.id);
+    return response.json(subscription);
+  }
+
+  async chargeMySubscriptionNow(request: Request, response: Response) {
+    const subscription = await providerSubscriptionService.chargeNow(request.user!.id);
+    return response.json(subscription);
   }
 
   async upsertOwnCredentials(request: Request, response: Response) {

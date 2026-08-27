@@ -3,6 +3,7 @@ import { StatusCodes } from "http-status-codes";
 import { env } from "../../../../config/env";
 import { prisma } from "../../../../config/prisma";
 import { AppError } from "../../../../shared/errors/app-error";
+import { assertProviderSubscriptionActive } from "../../../../shared/utils/provider-subscription-gate";
 import { sessionOverlapsRange, sessionOverflowIntoNextDayMinutes } from "../../../../shared/utils/time-range";
 import { toDateKeyInTimezone, toTimeInTimezone } from "../../../../shared/utils/timezone";
 
@@ -48,6 +49,7 @@ export class ManualBlockService {
     }
   ) {
     const provider = await getProviderByUserId(userId);
+    await assertProviderSubscriptionActive(provider.id);
     const { date, startTime, endTime, label, location } = input;
 
     if (startTime >= endTime) {

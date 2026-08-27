@@ -6,12 +6,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientStackParamList } from "../../navigation/route-types";
 import { ProviderServiceMode, providersApi, ProviderSummary } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
+import { useBlockedWhileLocked } from "../../hooks/useBlockedWhileLocked";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { averageToFive, formatPriceFromCents, handleScreenError } from "../shared/api-helpers";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { S } from "../../theme/v2tokens";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { MvAvatar, MvEmptyState, MvText } from "../../components/mv";
+import { FounderBadge } from "../../components/professional/FounderBadge";
 import { resolveMediaUrl } from "../../utils/media";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ProfessionalsList">;
@@ -31,6 +33,7 @@ function serviceModeLabel(mode?: ProviderServiceMode | null): string {
 }
 
 export function ProfessionalsListScreen({ navigation, route }: Props) {
+  useBlockedWhileLocked();
   const { showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
@@ -156,7 +159,10 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
                   size={52 as any}
                 />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }} numberOfLines={1}>{item.displayName}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, flexShrink: 1 }} numberOfLines={1}>{item.displayName}</Text>
+                    {item.isFounder ? <FounderBadge compact /> : null}
+                  </View>
                   <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 2 }} numberOfLines={2}>{item.bio}</Text>
                 </View>
                 <View style={{ backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 4, alignSelf: "flex-start" }}>

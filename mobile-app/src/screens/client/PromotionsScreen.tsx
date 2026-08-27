@@ -11,6 +11,7 @@ import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { useAppState } from "../../state/AppState";
+import { useBlockedWhileLocked } from "../../hooks/useBlockedWhileLocked";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { hapticCta } from "../../utils/haptics";
@@ -47,6 +48,7 @@ function discountPercent(item: PromotionFeedItem): number {
 }
 
 export function PromotionsScreen({ navigation }: Props) {
+  useBlockedWhileLocked();
   const { showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
@@ -340,7 +342,7 @@ export function PromotionsScreen({ navigation }: Props) {
         activeTab="home"
         onNavigate={(tab) => {
           if (tab === "home") navigation.navigate("ClientHome");
-          if (tab === "agenda") navigation.navigate("ClientBookings");
+          if (tab === "meuPersonal") navigation.navigate("ClientBookings");
           if (tab === "trainings") navigation.navigate("MyTraining");
           if (tab === "community") navigation.navigate("Community");
           if (tab === "profile") navigation.navigate("ClientProfile");

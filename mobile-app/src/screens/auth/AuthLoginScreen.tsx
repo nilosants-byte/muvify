@@ -204,6 +204,16 @@ export function AuthLoginScreen({ navigation }: Props) {
           onPress={() => navigation.navigate("ProfileSelection")}
           testID="button.auth.login.go-register"
         />
+
+        <PressableScale
+          onPress={() => navigation.navigate("ClaimInvite")}
+          accessibilityRole="button"
+          accessibilityLabel="Tenho um convite"
+          testID="button.auth.login.claim-invite"
+          style={{ alignItems: "center", marginTop: 16, minHeight: 44, justifyContent: "center" }}
+        >
+          <MvText variant="label" style={{ color: theme.text3 }}>Tenho um convite</MvText>
+        </PressableScale>
       </ScrollView>
     </KeyboardAvoidingView>
   );

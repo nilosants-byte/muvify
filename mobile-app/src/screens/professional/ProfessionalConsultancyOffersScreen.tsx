@@ -123,11 +123,14 @@ function offerDescription(offer: ProviderServiceOffer): string {
 }
 
 export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { runWithAuth, showToast, showSubscriptionRequiredSheet } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
 
-  const { centerQuery, loading, crefValidated, offers, setOffers } = useConsultancyCenterData();
+  const { centerQuery, loading, crefValidated, subscriptionActive, offers, setOffers } = useConsultancyCenterData();
+  // Bloco 6 (bloqueio por assinatura inativa): mesma condição que já barra
+  // por CREF, agora também considerando assinatura.
+  const canSaveOffer = crefValidated && subscriptionActive;
 
   const myProfileQuery = useAuthQuery(queryKeys.user.me(), (token) => userApi.me(token));
   const profileServiceMode: ProviderServiceMode = myProfileQuery.data?.providerProfile?.serviceMode ?? "BOTH";
@@ -405,7 +408,12 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
       setOffers((prev) => prev.map((o) => (o.id === offer.id ? updated : o)));
       showToast(nextIsActive ? "Oferta reativada." : "Oferta desativada — ela some da vitrine, mas contratos ativos continuam normalmente.", "success");
     } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: "Não foi possível alterar o status da oferta." });
+      handleScreenError({
+        error,
+        showToast,
+        fallbackMessage: "Não foi possível alterar o status da oferta.",
+        onSubscriptionRequired: showSubscriptionRequiredSheet
+      });
     }
   }
 
@@ -544,7 +552,13 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
       setOfferFormVisible(false);
       void centerQuery.refetch();
     } catch (error) {
-      handleScreenError({ error, showToast, fallbackMessage: editingOfferId ? "Falha ao atualizar oferta." : "Falha ao criar oferta.", navigation });
+      handleScreenError({
+        error,
+        showToast,
+        fallbackMessage: editingOfferId ? "Falha ao atualizar oferta." : "Falha ao criar oferta.",
+        navigation,
+        onSubscriptionRequired: showSubscriptionRequiredSheet
+      });
     } finally {
       setCreatingOffer(false);
     }
@@ -884,10 +898,12 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                 ) : null}
                 {!crefValidated ? (
                   <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Publicar ofertas fica disponível quando seu CREF for aprovado.</MvText>
+                ) : !subscriptionActive ? (
+                  <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Exige assinatura ativa.</MvText>
                 ) : null}
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <MvButton label="Salvar alterações" loading={creatingOffer} disabled={!crefValidated || Boolean(promotionValueError || promotionDateError || comboDaysError || presentialPackageError || comboShareError)} onPress={() => void handleCreateOffer()} />
+                    <MvButton label="Salvar alterações" loading={creatingOffer} disabled={!canSaveOffer || Boolean(promotionValueError || promotionDateError || comboDaysError || presentialPackageError || comboShareError)} onPress={() => void handleCreateOffer()} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <MvButton variant="outline" label="Cancelar" onPress={closeOfferForm} />
@@ -1096,6 +1112,8 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     </View>
                     {!crefValidated ? (
                       <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Publicar ofertas fica disponível quando seu CREF for aprovado.</MvText>
+                    ) : !subscriptionActive ? (
+                      <MvText variant="body4" color="secondary" style={{ textAlign: "center" }}>Exige assinatura ativa.</MvText>
                     ) : null}
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       <View style={{ flex: 1 }}>
@@ -1106,7 +1124,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                           label="Criar oferta"
                           loading={creatingOffer}
                           disabled={
-                            !crefValidated ||
+                            !canSaveOffer ||
                             Boolean(promotionValueError || promotionDateError || comboDaysError || presentialPackageError || comboShareError || paymentMethodsError)
                           }
                           onPress={() => void handleCreateOffer()}

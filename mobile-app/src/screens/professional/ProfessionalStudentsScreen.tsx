@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { useAuthMutation, useAuthQuery } from "../../hooks/useAuthQuery";
+import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../lib/queryKeys";
 import * as Haptics from "expo-haptics";
-import { FlatList, ScrollView, StatusBar, View } from "react-native";
+import { Alert, FlatList, ScrollView, StatusBar, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfessionalStackParamList } from "../../navigation/route-types";
-import { ProviderStudent, ProviderStudentServiceKind, providersApi } from "../../services/api/client";
+import { consultancyApi, ExternalCheckIn, ProviderStudent, ProviderStudentServiceKind, providersApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar, MvEmptyState, MvInput, MvRefreshControl, MvText } from "../../components/mv";
@@ -50,6 +51,78 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
     (token) => providersApi.dashboardStudents(token),
     { retry: false },
   );
+
+  // Bloco 2 (aluno externo): convites que o profissional gerou e ainda estão
+  // aguardando o aluno confirmar — não aparecem em "Meus alunos" até serem
+  // confirmados (só existe contrato de verdade depois do claim).
+  const queryClient = useQueryClient();
+  const invitesQuery = useAuthQuery(
+    queryKeys.consultancy.externalStudentInvites(),
+    (token) => consultancyApi.listExternalStudentInvites(token),
+    { retry: false },
+  );
+  const cancelInvite = useAuthMutation(
+    (token, inviteId: string) => consultancyApi.cancelExternalStudentInvite(token, inviteId),
+    {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.consultancy.externalStudentInvites() });
+      },
+      onError: (error) => handleScreenError({ error, showToast, fallbackMessage: "Falha ao cancelar o convite." })
+    }
+  );
+
+  function confirmCancelInvite(inviteId: string, studentName: string) {
+    Alert.alert(
+      "Cancelar convite",
+      `Cancelar o convite de ${studentName}? Ele não vai mais conseguir confirmar o vínculo por esse link.`,
+      [
+        { text: "Manter", style: "cancel" },
+        { text: "Cancelar convite", style: "destructive", onPress: () => cancelInvite.mutate(inviteId) }
+      ]
+    );
+  }
+
+  // Bloco 4 (aluno externo): check-in periódico trimestral (90 dias,
+  // realinhado com o Will em 2026-08-25 — era mensal/30 dias) — "ainda é seu
+  // aluno?" pros vínculos externos vencidos. "Encerrar" reaproveita o mesmo
+  // cancelContract usado em qualquer consultoria (contrato externo nunca
+  // teve pagamento real, então a rota de estorno nem entra em ação).
+  const checkInsQuery = useAuthQuery(
+    queryKeys.consultancy.externalCheckIns(),
+    (token) => consultancyApi.listExternalCheckIns(token),
+    { retry: false },
+  );
+  const confirmCheckIn = useAuthMutation(
+    (token, contractId: string) => consultancyApi.confirmExternalCheckIn(token, contractId),
+    {
+      onSuccess: () => {
+        showToast("Vínculo confirmado por mais 90 dias.", "success");
+        void queryClient.invalidateQueries({ queryKey: queryKeys.consultancy.externalCheckIns() });
+      },
+      onError: (error) => handleScreenError({ error, showToast, fallbackMessage: "Falha ao confirmar o check-in." })
+    }
+  );
+  const endCheckInContract = useAuthMutation(
+    (token, contractId: string) => consultancyApi.cancelContract(token, contractId),
+    {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.consultancy.externalCheckIns() });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.providers.dashboardStudents() });
+      },
+      onError: (error) => handleScreenError({ error, showToast, fallbackMessage: "Falha ao encerrar o vínculo." })
+    }
+  );
+
+  function confirmEndCheckIn(checkIn: ExternalCheckIn) {
+    Alert.alert(
+      "Encerrar vínculo",
+      `Encerrar o vínculo com ${checkIn.studentName}? Ele sai da sua lista de alunos.`,
+      [
+        { text: "Manter", style: "cancel" },
+        { text: "Encerrar vínculo", style: "destructive", onPress: () => endCheckInContract.mutate(checkIn.contractId) }
+      ]
+    );
+  }
 
   const data = studentsQuery.data ?? null;
   const loading = studentsQuery.isLoading;
@@ -252,11 +325,20 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
         </View>
         <PressableScale
           scale={0.92}
-          onPress={() => navigation.navigate("ProfessionalConsultancyCenter" as never)}
-          accessibilityLabel="Central de consultoria"
+          onPress={() => navigation.navigate("AddExternalStudent" as never)}
+          accessibilityLabel="Adicionar aluno de fora do app"
+          testID="button.professional-students.add-external"
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="person-add-outline" size={18} color={theme.textGreen} />
+        </PressableScale>
+        <PressableScale
+          scale={0.92}
+          onPress={() => navigation.navigate("ProfessionalConsultancyCenter" as never)}
+          accessibilityLabel="Central de consultoria"
+          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.chipBg, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
+        >
+          <Ionicons name="briefcase-outline" size={16} color={theme.text2} />
         </PressableScale>
       </View>
 
@@ -352,6 +434,117 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
             <MvText variant="body4" color="secondary" numberOfLines={1} style={{ marginTop: 2, fontSize: 11, textAlign: "center" }}>Ticket médio</MvText>
           </View>
         </View>
+
+        {/* ── Convites de aluno externo pendentes ── */}
+        {invitesQuery.data && invitesQuery.data.length > 0 ? (
+          <View style={{ gap: 8 }}>
+            <MvText variant="caption" style={{ color: theme.text3 }}>
+              CONVITES PENDENTES ({invitesQuery.data.length})
+            </MvText>
+            {invitesQuery.data.map((invite) => (
+              <View
+                key={invite.id}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: theme.warningSubtleBorder,
+                  backgroundColor: theme.warningSubtle,
+                  paddingHorizontal: 14,
+                  paddingVertical: 11,
+                }}
+              >
+                <Ionicons name="time-outline" size={16} color={theme.warning} />
+                <View style={{ flex: 1 }}>
+                  <MvText variant="semi3" numberOfLines={1}>{invite.studentName}</MvText>
+                  <MvText variant="caption" style={{ color: theme.text3, marginTop: 1 }}>
+                    {invite.channel === "WHATSAPP" ? "WhatsApp" : "E-mail"} · aguardando confirmação
+                  </MvText>
+                </View>
+                <PressableScale
+                  scale={0.9}
+                  onPress={() => confirmCancelInvite(invite.id, invite.studentName)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel={`Cancelar convite de ${invite.studentName}`}
+                  testID={`button.professional-students.cancel-invite-${invite.id}`}
+                >
+                  <Ionicons name="close-circle-outline" size={20} color={theme.text3} />
+                </PressableScale>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {/* ── Bloco 4 (aluno externo): check-in periódico trimestral (90 dias) ── */}
+        {checkInsQuery.data && checkInsQuery.data.length > 0 ? (
+          <View style={{ gap: 8 }}>
+            <MvText variant="caption" style={{ color: theme.text3 }}>
+              CHECK-IN PENDENTE ({checkInsQuery.data.length})
+            </MvText>
+            {checkInsQuery.data.map((checkIn) => (
+              <View
+                key={checkIn.contractId}
+                style={{
+                  gap: 10,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: theme.warningSubtleBorder,
+                  backgroundColor: theme.warningSubtle,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Ionicons name="help-circle-outline" size={16} color={theme.warning} />
+                  <View style={{ flex: 1 }}>
+                    <MvText variant="semi3" numberOfLines={1}>{checkIn.studentName}</MvText>
+                    <MvText variant="caption" style={{ color: theme.text3, marginTop: 1 }}>
+                      Ainda é seu aluno?
+                    </MvText>
+                  </View>
+                </View>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {(() => {
+                    // Raio-X pós-épico (achado baixo): sem isso, dava pra
+                    // tocar duas vezes seguidas antes da resposta da API —
+                    // diferente do padrão já usado em outros botões do
+                    // próprio épico (ex: AddExternalStudentScreen).
+                    const confirmingThis = confirmCheckIn.isPending && confirmCheckIn.variables === checkIn.contractId;
+                    const endingThis = endCheckInContract.isPending && endCheckInContract.variables === checkIn.contractId;
+                    return (
+                      <>
+                        <PressableScale
+                          scale={0.97}
+                          onPress={() => confirmCheckIn.mutate(checkIn.contractId)}
+                          disabled={confirmingThis || endingThis}
+                          style={{ flex: 1, height: 38, borderRadius: 10, backgroundColor: theme.textGreen, alignItems: "center", justifyContent: "center", opacity: confirmingThis || endingThis ? 0.6 : 1 }}
+                          testID={`button.professional-students.confirm-checkin-${checkIn.contractId}`}
+                        >
+                          <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 12.5, color: theme.textOnPrimary }}>
+                            {confirmingThis ? "Confirmando..." : "Sim, continua"}
+                          </MvText>
+                        </PressableScale>
+                        <PressableScale
+                          scale={0.97}
+                          onPress={() => confirmEndCheckIn(checkIn)}
+                          disabled={confirmingThis || endingThis}
+                          style={{ flex: 1, height: 38, borderRadius: 10, borderWidth: 1, borderColor: theme.borderMid, backgroundColor: theme.cardBg, alignItems: "center", justifyContent: "center", opacity: confirmingThis || endingThis ? 0.6 : 1 }}
+                          testID={`button.professional-students.end-checkin-${checkIn.contractId}`}
+                        >
+                          <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 12.5, color: theme.text1 }}>
+                            {endingThis ? "Encerrando..." : "Encerrar"}
+                          </MvText>
+                        </PressableScale>
+                      </>
+                    );
+                  })()}
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         {/* ── Busca ── */}
         <View style={{

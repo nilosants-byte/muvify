@@ -9,6 +9,10 @@ export type AuthStackParamList = {
   ResetPassword: { token?: string } | undefined;
   SessionExpired: { reason?: string } | undefined;
   TwoFactor: { challengeToken: string };
+  // Bloco 2 (aluno externo): "Tenho um convite" (digitado à mão) ou o link
+  // muvify://convite/:token quando o app já está instalado — o token só
+  // pré-preenche, nunca é obrigatório (mesmo espírito de ResetPassword acima).
+  ClaimInvite: { token?: string } | undefined;
 };
 export type ClientTabParamList = {
   ClientHome: undefined;
@@ -105,6 +109,10 @@ export type ClientStackParamList = {
   ConnectedDevices: undefined;
   GenericError: { title?: string; message?: string } | undefined;
   FriendsList: undefined;
+  ClaimInvite: { token?: string } | undefined;
+  // Bloco 3 (exclusividade de marketplace): trocar/adicionar serviço do
+  // mesmo profissional já contratado.
+  ProviderServicesUpgrade: { providerId: string };
 };
 export type ProfessionalStackParamList = {
   ProfessionalTabs: NavigatorScreenParams<ProfessionalTabParamList>;
@@ -130,6 +138,13 @@ export type ProfessionalStackParamList = {
   FinancialGoals: undefined;
   ProfessionalStudentDetail: { clientId: string };
   ProfessionalStudentAnamnesis: { clientId: string; clientName: string };
+  AddExternalStudent: undefined;
+  ExternalStudentInviteCreated: {
+    inviteId: string;
+    studentName: string;
+    inviteToken: string;
+    channel: "WHATSAPP" | "EMAIL";
+  };
   Notifications: undefined;
   TrainingCreation: { contractId?: string; clientId?: string; editPlanId?: string; contractValidUntil?: string } | undefined;
   Support: undefined;
@@ -137,6 +152,8 @@ export type ProfessionalStackParamList = {
   Security: undefined;
   ConnectedDevices: undefined;
   GenericError: { title?: string; message?: string } | undefined;
+  // Bloco 5 (assinatura do profissional).
+  MySubscription: undefined;
 };
 
 export type AdminStackParamList = {

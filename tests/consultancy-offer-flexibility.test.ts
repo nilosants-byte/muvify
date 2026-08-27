@@ -86,6 +86,13 @@ describe("Liberdade de ofertas — Frente B (validade de ficha + rota HTTP de of
       where: { id: providerId },
       data: { crefValidationStatus: "APPROVED" }
     });
+    // Bloco 6 (bloqueio por assinatura inativa): mesmo raciocínio acima —
+    // createProfile cria a assinatura PENDING_PAYMENT por padrão, não é o
+    // alvo deste teste.
+    await prisma.providerSubscription.update({
+      where: { providerId },
+      data: { status: "ACTIVE" }
+    });
   });
 
   afterAll(async () => {

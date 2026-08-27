@@ -6,6 +6,7 @@ import { connectSocket, disconnectSocket } from "../services/realtime/socket";
 import { captureException, setSentryUser } from "../observability/sentry";
 import { applyAnalyticsPreference, identifyUser, resetAnalyticsUser, trackEvent } from "../services/analytics";
 import {
+  ActiveEngagementSummary,
   ApiError,
   authApi,
   AuthLoginResponse,
@@ -18,6 +19,7 @@ import { stopProviderBackgroundLocation } from "../services/location/providerBac
 import { getPushRegistrationPayload } from "../services/notifications/push";
 import { ThemeMode, setThemeMode } from "../theme/tokens";
 import { ToastType, useToast } from "./ToastState";
+import { useSubscriptionGate } from "./SubscriptionGateState";
 
 type UserRole = "CLIENT" | "PROVIDER" | "ADMIN";
 
@@ -30,6 +32,11 @@ type AppStateContextValue = {
   pushNotificationsEnabled: boolean;
   role: UserRole | null;
   user: AuthUser | null;
+  // Bloco 3 (exclusividade de marketplace): null enquanto ainda não
+  // carregou/não é cliente logado; depois disso sempre um objeto
+  // ActiveEngagementSummary (hasActive true ou false).
+  activeEngagement: ActiveEngagementSummary | null;
+  refreshActiveEngagement: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   chooseRole: (role: UserRole) => Promise<void>;
   setThemePreference: (mode: ThemeMode) => Promise<void>;
@@ -53,6 +60,7 @@ type AppStateContextValue = {
   runWithAuth: <T>(operation: (accessToken: string) => Promise<T>) => Promise<T>;
   showToast: (message: string, type?: ToastType) => void;
   clearToast: () => void;
+  showSubscriptionRequiredSheet: () => void;
 };
 
 const STORAGE_KEYS = {
@@ -206,6 +214,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   // push de chegar de fato.
   const [pushNotificationsEnabled, setPushNotificationsEnabledState] = useState(true);
   const [role, setRole] = useState<UserRole | null>(null);
+  // Bloco 3 (exclusividade de marketplace).
+  const [activeEngagement, setActiveEngagement] = useState<ActiveEngagementSummary | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
@@ -214,9 +224,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   // funções estáveis de lá, mantendo os 380+ call sites existentes de
   // `useAppState().showToast(...)` funcionando sem mudança nenhuma.
   const { showToast, clearToast } = useToast();
+  // Bloco 6 (bloqueio por assinatura inativa): mesmo repasse de função
+  // estável já usado acima pro toast (ver SubscriptionGateState.tsx).
+  const { showSubscriptionRequiredSheet } = useSubscriptionGate();
 
   const accessTokenRef = useRef<string | null>(null);
   const refreshTokenRef = useRef<string | null>(null);
+  const roleRef = useRef<UserRole | null>(null);
   // Singleton promise: evita múltiplos refreshes simultâneos quando várias
   // operações falham com 401 ao mesmo tempo (race condition)
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
@@ -224,6 +238,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     accessTokenRef.current = accessToken;
   }, [accessToken]);
+
+  useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
 
   useEffect(() => {
     refreshTokenRef.current = refreshToken;
@@ -354,8 +372,19 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       loadPreferredRoleForUser(input.user.id),
       loadOnboardingDoneForUser(input.user.id)
     ]);
-    setRole(resolveSessionRole(input.user, preferredRole));
+    const resolvedRole = resolveSessionRole(input.user, preferredRole);
+    setRole(resolvedRole);
     setOnboardingDone(doneOnboarding);
+
+    // Bloco 3 (exclusividade de marketplace): fail-open, não trava login.
+    if (resolvedRole === "CLIENT") {
+      userApi
+        .myActiveEngagement(input.accessToken)
+        .then(setActiveEngagement)
+        .catch((error) => captureException(error, { stage: "app_state_set_session_active_engagement" }));
+    } else {
+      setActiveEngagement({ hasActive: false });
+    }
   }, [loadPreferredRoleForUser, loadOnboardingDoneForUser]);
 
   const clearSession = useCallback(async () => {
@@ -366,6 +395,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setAccessToken(null);
     setRefreshToken(null);
+    setActiveEngagement(null);
     clearToast();
     try {
       await stopProviderBackgroundLocation({ preservePreference: true });
@@ -453,8 +483,21 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             loadPreferredRoleForUser(me.id),
             loadOnboardingDoneForUser(me.id)
           ]);
-          setRole(resolveSessionRole(me, preferredRole));
+          const resolvedRole = resolveSessionRole(me, preferredRole);
+          setRole(resolvedRole);
           setOnboardingDone(doneOnboarding);
+
+          // Bloco 3 (exclusividade de marketplace): só existe pra cliente —
+          // não bloqueia o resto do boot se falhar (fail-open, mesmo
+          // espírito de outras chamadas "extras" do hydrate).
+          if (resolvedRole === "CLIENT") {
+            userApi
+              .myActiveEngagement(storedAccessToken)
+              .then(setActiveEngagement)
+              .catch((error) => captureException(error, { stage: "app_state_hydrate_active_engagement" }));
+          } else {
+            setActiveEngagement({ hasActive: false });
+          }
         } catch (error) {
           captureException(error, { stage: "app_state_hydrate_me" });
           if (!(error instanceof ApiError) || error.status !== 401 || !storedRefreshToken) {
@@ -658,6 +701,23 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     return me;
   }, [setCurrentUser]);
 
+  // Bloco 3 (exclusividade de marketplace): recarrega o vínculo ativo do
+  // cliente — chamado no boot (role CLIENT) e depois de qualquer ação que
+  // possa mudar o vínculo (confirmar convite, trocar/cancelar serviço).
+  const refreshActiveEngagement = useCallback(async () => {
+    const token = accessTokenRef.current;
+    if (!token || roleRef.current !== "CLIENT") {
+      setActiveEngagement({ hasActive: false });
+      return;
+    }
+    try {
+      const summary = await userApi.myActiveEngagement(token);
+      setActiveEngagement(summary);
+    } catch (error) {
+      captureException(error, { stage: "app_state_refresh_active_engagement" });
+    }
+  }, []);
+
   const runWithAuth = useCallback(async <T,>(operation: (token: string) => Promise<T>): Promise<T> => {
     const token = accessTokenRef.current;
     if (!token) {
@@ -720,6 +780,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       pushNotificationsEnabled,
       role,
       user,
+      activeEngagement,
+      refreshActiveEngagement,
       completeOnboarding,
       chooseRole,
       setThemePreference,
@@ -734,7 +796,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       syncCurrentUser,
       runWithAuth,
       showToast,
-      clearToast
+      clearToast,
+      showSubscriptionRequiredSheet
     }),
     [
       bootstrapping,
@@ -745,11 +808,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       pushNotificationsEnabled,
       role,
       user,
+      activeEngagement,
+      refreshActiveEngagement,
       setCurrentUser,
       syncCurrentUser,
       runWithAuth,
       showToast,
-      clearToast
+      clearToast,
+      showSubscriptionRequiredSheet
     ]
   );
 

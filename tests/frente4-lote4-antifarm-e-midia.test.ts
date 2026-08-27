@@ -84,6 +84,12 @@ describe("Frente 4, Lote 4 — anti-farm de XP e integridade de mídia", () => {
         mpAccessToken: encryptSensitiveText("fake_access_token")
       }
     });
+    // Bloco 6 (bloqueio por assinatura inativa): createProfile cria a
+    // assinatura PENDING_PAYMENT por padrão — não é o alvo deste teste.
+    await prisma.providerSubscription.update({
+      where: { providerId },
+      data: { status: "ACTIVE" }
+    });
 
     const client = await prisma.user.create({
       data: {

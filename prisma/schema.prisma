@@ -84,6 +84,12 @@ enum ConsultancyContractStatus {
   ARCHIVED
 }
 
+// Bloco 1 (aluno externo): ver comentário em ConsultancyContract.origin.
+enum ConsultancyContractOrigin {
+  MARKETPLACE
+  EXTERNAL
+}
+
 enum ConsultancyPaymentStatus {
   PENDING
   AUTHORIZED
@@ -378,6 +384,7 @@ model User {
   disputeCasesResolved     DisputeCase[]               @relation("DisputeCaseResolvedBy")
   debtRecords              DebtRecord[]
   crefDocumentUploads      CrefDocumentUpload[]
+  claimedExternalStudentInvites ExternalStudentInvite[]
 
   @@index([createdAt])
   @@index([documentHash])
@@ -497,11 +504,74 @@ model ProviderProfile {
   financialGoals              FinancialGoal[]
   manualBlocks                ProviderManualBlock[]
   debtRecords                 DebtRecord[]
+  externalStudentInvites      ExternalStudentInvite[]
+  // Bloco 5 (assinatura do profissional).
+  subscription                ProviderSubscription?
 
   @@index([displayName])
   @@index([serviceMode, averageRating])
   @@index([latitude, longitude])
   @@index([crefValidatedAt, averageRating, totalReviews])
+}
+
+enum ProviderSubscriptionStatus {
+  TRIALING
+  // Nunca teve cobrança bem-sucedida - trial acabou sem cartão, ou
+  // profissional não-fundador (nasce assim, sem trial nenhum).
+  PENDING_PAYMENT
+  ACTIVE
+  // Já foi ACTIVE, uma renovação mensal falhou.
+  PAST_DUE
+  CANCELED
+}
+
+// Bloco 5 (assinatura do profissional). Realinhamento com o Will (sócio),
+// 2026-08-26: preço único virou 3 faixas por posição na lista de espera —
+// rank 0-99 (fundador, isFounder=true): 90 dias trial, R$29,90/mês por 12
+// meses (priceLockedUntil), depois R$39,90/mês (preço base) pra sempre;
+// rank 100-199: 30 dias trial, R$39,90/mês direto, sem fase promocional;
+// rank 200+ (ou nunca esteve na waitlist): sem trial, R$39,90/mês desde o
+// dia 1. Ver provider-subscription.service.ts (resolveSignupTier,
+// computeEffectivePriceCents). Cobrança recorrente é cobrança avulsa
+// repetida via Mercado Pago (mesmo padrão de ConsultancyContract/
+// PresentialPackage), sem usar o produto de assinatura nativo do MP - nunca
+// usado em nenhum outro lugar do código.
+model ProviderSubscription {
+  id                       String                      @id @default(uuid())
+  providerId               String                      @unique
+  status                   ProviderSubscriptionStatus  @default(TRIALING)
+  isFounder                Boolean                     @default(false)
+  priceCents               Int                         @default(2990)
+  // Setado só na 1ª cobrança bem-sucedida da vida desta assinatura = agora
+  // + 12 meses (mesma ideia de ProviderServiceOffer.basePriceChangeLockedUntil,
+  // mas travando o preço do PROFISSIONAL pagante, não o da oferta dele).
+  // Gravado incondicionalmente pra qualquer faixa (não só fundador) — só
+  // fundador realmente usa esse valor pra decidir se já é hora de subir o
+  // preço (computeEffectivePriceCents); pras outras faixas fica presente
+  // mas inerte, porque `priceCents` já nasce igual ao preço base.
+  priceLockedUntil         DateTime?
+  // Presente pra fundador (90 dias) E pra 2ª faixa/rank 100-199 (30 dias) —
+  // só a 3ª faixa (rank 200+) nasce sem trial nenhum, null aqui.
+  trialEndsAt              DateTime?
+  nextBillingAt            DateTime?
+  cancelAtPeriodEnd        Boolean                     @default(false)
+  canceledAt               DateTime?
+  lastChargeAt             DateTime?
+  lastChargeStatus         String?
+  lastMpPaymentId          String?
+  consecutiveFailedCharges Int                         @default(0)
+  // Raio-X pós-épico (achado crítico): a idempotencyKey de cobrança usava
+  // só `consecutiveFailedCharges` — como esse contador zera a cada sucesso,
+  // a 1ª tentativa de TODO ciclo futuro gerava a MESMA chave da 1ª cobrança
+  // bem-sucedida da vida da assinatura, arriscando o Mercado Pago devolver
+  // o pagamento antigo em cache sem cobrar de novo. Incrementado só em
+  // cobrança bem-sucedida (mesmo papel de PresentialPackage.nextCycleIndex).
+  billingCycleIndex        Int                         @default(0)
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime                    @updatedAt
+  provider                 ProviderProfile             @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextBillingAt])
 }
 
 model ServiceCategory {
@@ -899,6 +969,12 @@ model WaitlistSignup {
   city       String?
   utmSource  String?
   createdAt  DateTime         @default(now())
+  // Bloco 5 (assinatura do profissional, programa 100 Fundadores): setado
+  // quando este registro é usado pra confirmar que um ProviderProfile é um
+  // dos 100 primeiros (bate e-mail/WhatsApp no momento da criação do
+  // perfil) - impede o mesmo registro de virar fundador duas vezes.
+  claimedByProviderId String?  @unique
+  claimedAt  DateTime?
 
   @@index([createdAt])
   @@index([audience])
@@ -1407,6 +1483,13 @@ model ConsultancyContract {
   clientId                String
   offerId                 String
   status                  ConsultancyContractStatus @default(PENDING_PAYMENT)
+  // Bloco 1 (aluno externo): distingue contrato nascido no marketplace do
+  // Muvify (paga comissão, exige CREF) de contrato criado pelo profissional
+  // pra um aluno que ele já tinha fora do app (sem comissão, sem venda
+  // intermediada). request/offer desse segundo caso são sintéticos, criados
+  // só pra satisfazer as FKs obrigatórias abaixo - nunca aparecem em busca,
+  // catálogo ou qualquer tela voltada ao aluno/marketplace.
+  origin                  ConsultancyContractOrigin @default(MARKETPLACE)
   paymentMethod           ConsultancyPaymentMethod?
   paymentInstallments     Int                       @default(1)
   paymentStatus           ConsultancyPaymentStatus  @default(PENDING)
@@ -1464,6 +1547,14 @@ model ConsultancyContract {
   // avisei uma vez", é "quando foi o último aviso", porque repete
   // enquanto a inatividade continuar.
   inactivityReminderSentAt DateTime?
+  // Bloco 4 (aluno externo): só usado quando origin = EXTERNAL. Nasce em
+  // createdAt+30d, reseta pra now+30d a cada confirmação do profissional
+  // ("ainda é seu aluno?"). Sem confirmação, o job de lembrete escala pra
+  // cancelamento automático 15 dias depois do vencimento (mesmo prazo de
+  // carência já citado no documento de estratégia original pro aluno
+  // externo inadimplente).
+  externalCheckInDueAt         DateTime?
+  externalCheckInReminderSentAt DateTime?
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   request                 ConsultancyRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
@@ -1476,10 +1567,55 @@ model ConsultancyContract {
   disputeCases            DisputeCase[]
   messages                ConsultancyMessage[]
   review                  Review?
+  externalStudentInvite   ExternalStudentInvite?
 
   @@index([providerId, status, deliveryDeadlineAt])
   @@index([clientId, status, createdAt])
   @@index([clientId, paymentStatus, status])
+  // Raio-X pós-épico (achado baixo): sendExternalCheckInReminders (Bloco 4)
+  // filtra por origin+status+externalCheckInDueAt sem índice dedicado —
+  // table scan hoje (poucos contratos externos), cresce sem isso conforme o
+  // volume de alunos externos aumenta.
+  @@index([origin, status, externalCheckInDueAt])
+}
+
+enum ExternalStudentInviteStatus {
+  PENDING
+  CLAIMED
+  EXPIRED
+  CANCELLED
+}
+
+enum ExternalStudentInviteChannel {
+  WHATSAPP
+  EMAIL
+}
+
+// Bloco 2 (aluno externo): convite que o profissional gera pra um aluno que
+// já era dele fora do app confirmar o vínculo (ver ConsultancyContractOrigin
+// no Bloco 1). Mesmo padrão de PasswordResetToken/EmailVerificationToken —
+// só o hash do token fica salvo, o valor bruto nunca é persistido.
+model ExternalStudentInvite {
+  id              String                        @id @default(uuid())
+  providerId      String
+  tokenHash       String                        @unique
+  studentName     String
+  channel         ExternalStudentInviteChannel
+  phone           String?
+  email           String?
+  status          ExternalStudentInviteStatus   @default(PENDING)
+  expiresAt       DateTime
+  claimedAt       DateTime?
+  claimedByUserId String?
+  contractId      String?                       @unique
+  cancelledAt     DateTime?
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+  provider        ProviderProfile               @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  claimedBy       User?                         @relation(fields: [claimedByUserId], references: [id], onDelete: SetNull)
+  contract        ConsultancyContract?          @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@index([providerId, status])
 }
 
 model ProviderCalendarEvent {

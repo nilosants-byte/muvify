@@ -29,12 +29,28 @@ export function isSessionExpiredError(message: string) {
   return normalized.includes("sessão expirada") || normalized.includes("sessão inválida");
 }
 
+// Bloco 6 (bloqueio por assinatura inativa): o backend marca esse erro com
+// `{ code: "SUBSCRIPTION_REQUIRED" }` em AppError.details (ver
+// shared/utils/provider-subscription-gate.ts) — o middleware de erro do
+// backend embrulha isso em `{ message, details, requestId }`, e ApiError
+// guarda esse corpo inteiro em `.details`, daí o aninhamento duplo abaixo.
+export function getApiErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  const body = error.details as { details?: { code?: string } } | undefined;
+  return body?.details?.code;
+}
+
 export function handleScreenError(options: {
   error: unknown;
   showToast: ToastFn;
   fallbackMessage: string;
   navigation?: NavigationLike;
+  onSubscriptionRequired?: () => void;
 }) {
+  if (options.onSubscriptionRequired && getApiErrorCode(options.error) === "SUBSCRIPTION_REQUIRED") {
+    options.onSubscriptionRequired();
+    return;
+  }
   const message = extractApiMessage(options.error, options.fallbackMessage);
   captureException(options.error, {
     fallbackMessage: options.fallbackMessage,

@@ -91,6 +91,12 @@ describe("Frente 2, Lote 1 — perfil do profissional não vaza token MP nem doc
         ]
       }
     });
+    // Bloco 6 (bloqueio por assinatura inativa): createProfile cria a
+    // assinatura PENDING_PAYMENT por padrão — não é o alvo deste teste.
+    await prisma.providerSubscription.update({
+      where: { providerId },
+      data: { status: "ACTIVE" }
+    });
 
     const res = await request(app)
       .put("/api/providers/profile")

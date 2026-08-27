@@ -1272,7 +1272,7 @@ export function MyTrainingScreen({ navigation, route }: Props) {
         activeTab="trainings"
         onNavigate={(tab) => {
           if (tab === "home") navigation.navigate("ClientHome");
-          if (tab === "agenda") navigation.navigate("ClientBookings");
+          if (tab === "meuPersonal") navigation.navigate("ClientBookings");
           if (tab === "community") navigation.navigate("Community");
           if (tab === "profile") navigation.navigate("ClientProfile");
         }}

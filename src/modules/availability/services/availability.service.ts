@@ -4,6 +4,7 @@ import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { deleteByPattern } from "../../../shared/utils/cache";
+import { assertProviderSubscriptionActive } from "../../../shared/utils/provider-subscription-gate";
 import { toTimeInTimezone, toWeekdayInTimezone } from "../../../shared/utils/timezone";
 
 export class AvailabilityService {
@@ -14,6 +15,7 @@ export class AvailabilityService {
     if (!profile) {
       throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
     }
+    await assertProviderSubscriptionActive(profile.id);
     if (startTime >= endTime) {
       throw new AppError("Horário inicial deve ser menor que o final.");
     }
@@ -40,6 +42,7 @@ export class AvailabilityService {
   async deleteAvailability(userId: string, availabilityId: string, force = false) {
     const profile = await prisma.providerProfile.findUnique({ where: { userId }, select: { id: true } });
     if (!profile) throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
+    await assertProviderSubscriptionActive(profile.id);
     const slot = await prisma.availability.findUnique({
       where: { id: availabilityId },
       select: { id: true, providerId: true, weekday: true, startTime: true, endTime: true }

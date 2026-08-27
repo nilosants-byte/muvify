@@ -99,6 +99,8 @@ export type ProviderSummary = {
   excludedLocations?: string[] | null;
   minBookingNoticeHours?: number;
   distanceKm?: number;
+  // Bloco 7 (programa 100 Fundadores): selo visual público.
+  isFounder?: boolean;
 };
 
 export type ProviderCategoryLink = {
@@ -302,6 +304,8 @@ export type ProviderConsultancyCatalog = {
     displayName: string;
     photoUrl?: string | null;
     specialties: string[];
+    // Bloco 7 (programa 100 Fundadores): selo visual público.
+    isFounder?: boolean;
   };
   onlineConsultancyEnabled: boolean;
   offers: ProviderServiceOffer[];
@@ -358,6 +362,10 @@ export type ConsultancyContract = {
   providerId: string;
   clientId: string;
   offerId: string;
+  // Bloco 1/2 (aluno externo): MARKETPLACE é o fluxo normal (pago, com
+  // comissão); EXTERNAL é o aluno que o profissional já tinha fora do app,
+  // cadastrado por convite — sem cobrança, sem comissão.
+  origin?: "MARKETPLACE" | "EXTERNAL";
   status: "PENDING_PAYMENT" | "ACTIVE" | "DELIVERED" | "CANCELLED" | "REFUNDED_EXPIRED" | "ARCHIVED";
   paymentMethod?: ConsultancyPaymentMethod | null;
   paymentStatus: "PENDING" | "AUTHORIZED" | "CAPTURED" | "CANCELED" | "REFUNDED" | "PARTIALLY_REFUNDED" | "FAILED";
@@ -405,6 +413,75 @@ export type TrainingPlan = {
   validUntil?: string | null;
   isVigente?: boolean;
   exercises: TrainingPlanExercise[];
+};
+
+// Bloco 2 (aluno externo): convite que o profissional gera pra um aluno que
+// já era dele fora do app confirmar o vínculo.
+export type ExternalStudentInviteChannel = "WHATSAPP" | "EMAIL";
+
+export type ExternalStudentInvite = {
+  id: string;
+  studentName: string;
+  channel: ExternalStudentInviteChannel;
+  phone?: string | null;
+  email?: string | null;
+  expiresAt: string;
+  createdAt: string;
+};
+
+// Bloco 4 (aluno externo): check-in periódico trimestral (90 dias) — só vínculos
+// vencidos (dueAt <= agora) aparecem aqui.
+export type ExternalCheckIn = {
+  contractId: string;
+  studentName: string;
+  dueAt: string;
+};
+
+// Bloco 3 (exclusividade de marketplace) — resumo do vínculo ativo do
+// cliente, usado tanto pra travar Home/navegação quanto pro card de plano
+// da aba "Meu Personal".
+export type ActiveEngagementSummary =
+  | { hasActive: false }
+  | {
+      hasActive: true;
+      providerId: string;
+      providerName: string;
+      providerPhotoUrl?: string | null;
+      crefApproved: boolean;
+      kind: "PRESENTIAL" | "ONLINE_CONSULTANCY" | "ONLINE_CONSULTANCY_SPECIALIZED" | "COMBO";
+      priceCents: number;
+      billingCycle: string;
+      contractId?: string | null;
+      packageId?: string | null;
+      // Raio-X pós-épico: vínculo puramente avulso (agendamento sem
+      // contrato/pacote) — presente só quando os dois acima são null.
+      bookingId?: string | null;
+      // Raio-X pós-épico (achado alto): oferta real do catálogo por trás do
+      // vínculo — null só pra vínculo booking avulso.
+      offerId?: string | null;
+      // Raio-X pós-épico (achado baixo): "EXTERNAL" é aluno cadastrado
+      // manualmente pelo profissional (Bloco 1) — Muvify não intermedia,
+      // sem cobrança. null pra vínculo via pacote presencial/booking avulso.
+      origin?: "MARKETPLACE" | "EXTERNAL" | null;
+      upcomingSessions: Array<{
+        bookingId: string;
+        scheduledAt: string;
+        sessionLocation?: string | null;
+        status: "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED";
+      }>;
+    };
+
+export type ExternalStudentInvitePreview = {
+  studentName: string;
+  provider: {
+    // Realinhamento com o Will (2026-08-25, Bloco 2): usado pra comparar com
+    // o vínculo ativo atual do cliente e avisar quando aceitar for trocar
+    // de profissional.
+    id: string;
+    displayName: string;
+    photoUrl?: string | null;
+    crefApproved: boolean;
+  };
 };
 
 export type TrainingPlanCompletion = {
@@ -1597,6 +1674,25 @@ export const userApi = {
   me(token: string) {
     return apiRequest<AuthUser>("/users/me", { token });
   },
+  // Bloco 3 (exclusividade de marketplace).
+  myActiveEngagement(token: string) {
+    return apiRequest<ActiveEngagementSummary>("/users/me/active-engagement", { token });
+  },
+  switchOrAddOffer(
+    token: string,
+    body: {
+      newOfferId: string;
+      paymentMethod: ConsultancyPaymentMethod;
+      acknowledgedImmediateExecution?: boolean;
+      categoryId?: string;
+      weeklySchedule?: Array<{ weekday: number; time: string }>;
+      sessionLocation?: string;
+      clientLatitude?: number;
+      clientLongitude?: number;
+    }
+  ) {
+    return apiRequest<{ id: string }>("/users/me/active-engagement/switch", { method: "POST", token, body });
+  },
   // Épico de Frentes, Frente 11, Lote 2: /me/consent nunca era chamado
   // pelo app - endpoint morto. termsVersion continua obrigatório no corpo
   // por compatibilidade, mas o servidor sempre grava a versão canônica
@@ -2475,6 +2571,43 @@ export const providersApi = {
   getTimeline(token: string) {
     return apiRequest<ProviderTimelineResponse>("/providers/me/timeline", { token });
   },
+};
+
+// Bloco 5 (assinatura do profissional).
+export type ProviderSubscriptionStatus = "TRIALING" | "PENDING_PAYMENT" | "ACTIVE" | "PAST_DUE" | "CANCELED";
+export type ProviderSubscription = {
+  status: ProviderSubscriptionStatus;
+  isFounder: boolean;
+  priceCents: number;
+  // Realinhamento com o Will (2026-08-26): preço padrão pra onde o valor
+  // sobe depois que o preço promocional do fundador vence (12 meses) —
+  // sempre presente, só é relevante mostrar quando isFounder &&
+  // priceCents < basePriceCents (ainda dentro da janela promocional).
+  basePriceCents: number;
+  priceLockedUntil: string | null;
+  trialEndsAt: string | null;
+  nextBillingAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  canceledAt: string | null;
+  lastChargeAt: string | null;
+  lastChargeStatus: string | null;
+  hasCard: boolean;
+  cardBrand: string | null;
+  cardLast4: string | null;
+};
+export const providerSubscriptionApi = {
+  myStatus(token: string) {
+    return apiRequest<ProviderSubscription>("/providers/me/subscription", { token });
+  },
+  cancel(token: string) {
+    return apiRequest<ProviderSubscription>("/providers/me/subscription/cancel", { method: "POST", token });
+  },
+  reactivate(token: string) {
+    return apiRequest<ProviderSubscription>("/providers/me/subscription/reactivate", { method: "POST", token });
+  },
+  chargeNow(token: string) {
+    return apiRequest<ProviderSubscription>("/providers/me/subscription/charge-now", { method: "POST", token });
+  }
 };
 
 export const availabilityApi = {
@@ -3484,6 +3617,51 @@ export const consultancyApi = {
       method: "POST",
       token,
       body
+    });
+  },
+  // Bloco 2 (aluno externo) — sem token: precisa dar pra ver antes de logar.
+  previewExternalStudentInvite(inviteToken: string) {
+    return apiRequest<ExternalStudentInvitePreview>(
+      `/consultancy/external-students/invites/${encodeURIComponent(inviteToken)}/preview`
+    );
+  },
+  createExternalStudentInvite(
+    token: string,
+    body: {
+      studentName: string;
+      channel: ExternalStudentInviteChannel;
+      phone?: string;
+      email?: string;
+    }
+  ) {
+    return apiRequest<{ invite: ExternalStudentInvite; inviteToken: string }>(
+      "/consultancy/external-students/invites",
+      { method: "POST", token, body }
+    );
+  },
+  listExternalStudentInvites(token: string) {
+    return apiRequest<ExternalStudentInvite[]>("/consultancy/external-students/invites", { token });
+  },
+  cancelExternalStudentInvite(token: string, inviteId: string) {
+    return apiRequest<ExternalStudentInvite>(`/consultancy/external-students/invites/${inviteId}/cancel`, {
+      method: "POST",
+      token
+    });
+  },
+  claimExternalStudentInvite(token: string, inviteToken: string) {
+    return apiRequest<ConsultancyContract>(
+      `/consultancy/external-students/invites/${encodeURIComponent(inviteToken)}/claim`,
+      { method: "POST", token }
+    );
+  },
+  // Bloco 4 (aluno externo): check-in periódico trimestral (90 dias).
+  listExternalCheckIns(token: string) {
+    return apiRequest<ExternalCheckIn[]>("/consultancy/external-students/check-ins", { token });
+  },
+  confirmExternalCheckIn(token: string, contractId: string) {
+    return apiRequest<ConsultancyContract>(`/consultancy/external-students/check-ins/${contractId}/confirm`, {
+      method: "POST",
+      token
     });
   }
 };

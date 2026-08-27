@@ -258,3 +258,43 @@ export const completeTrainingPlanSchema = z.object({
     notes: z.string().trim().max(500).optional()
   })
 });
+
+// Bloco 2 (aluno externo): código curto (o mockup aprovado mostra algo como
+// "8F2A91"), não um token longo — precisa ser digitável manualmente quando o
+// link muvify://convite/... não conseguir abrir o app (ver plano do bloco).
+const externalStudentInviteTokenSchema = z
+  .string()
+  .trim()
+  .min(4)
+  .max(12)
+  .transform((value) => value.toUpperCase());
+
+export const createExternalStudentInviteSchema = z.object({
+  body: z
+    .object({
+      studentName: z.string().trim().min(2).max(120),
+      channel: z.enum(["WHATSAPP", "EMAIL"]),
+      phone: z.string().trim().min(8).max(20).optional(),
+      email: z.string().trim().toLowerCase().email().optional()
+    })
+    .superRefine((data, ctx) => {
+      if (data.channel === "WHATSAPP" && !data.phone) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Informe o telefone.", path: ["phone"] });
+      }
+      if (data.channel === "EMAIL" && !data.email) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Informe o e-mail.", path: ["email"] });
+      }
+    })
+});
+
+export const externalStudentInviteTokenParamSchema = z.object({
+  params: z.object({
+    token: externalStudentInviteTokenSchema
+  })
+});
+
+export const externalStudentInviteIdParamSchema = z.object({
+  params: z.object({
+    inviteId: z.string().uuid()
+  })
+});

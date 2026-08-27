@@ -4,6 +4,7 @@ import { queryKeys } from "../../lib/queryKeys";
 import { useFocusEffect } from "@react-navigation/native";
 import { ClientNotificationsDrawer } from "./components/ClientNotificationsDrawer";
 import { ClientHomeDrawer, SideMenuItem } from "./components/ClientHomeDrawer";
+import { ClientHomeLocked } from "./components/ClientHomeLocked";
 import { ClientHomeFilters } from "./components/ClientHomeFilters";
 import { ClientHomeMapSection, ProviderWithExtras, MapSearchModal } from "./components/ClientHomeMapSection";
 import { ClientProviderCard } from "./components/ClientProviderCard";
@@ -272,7 +273,7 @@ function providerMatchesServiceModeFilter(
 export function ClientHomeScreen({ navigation }: Props) {
   const {
     runWithAuth, showToast, signOut, user, setCurrentUser, role,
-    pushNotificationsEnabled, setPushNotificationsPreference
+    pushNotificationsEnabled, setPushNotificationsPreference, activeEngagement
   } = useAppState();
   const { theme, isDark, toggleTheme } = useMvTheme();
   const insets = useSafeAreaInsets();
@@ -1017,6 +1018,14 @@ export function ClientHomeScreen({ navigation }: Props) {
     },
   ];
 
+  // Bloco 3 (exclusividade de marketplace): mapa/busca/categorias somem por
+  // completo enquanto o cliente tem vínculo ativo — nem chega a montar o
+  // resto desta tela (ClientHomeLocked é um componente à parte, sem nenhuma
+  // rota de navegação pra descoberta de outros profissionais).
+  if (activeEngagement?.hasActive) {
+    return <ClientHomeLocked />;
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.home">
       <StatusBar
@@ -1566,7 +1575,7 @@ export function ClientHomeScreen({ navigation }: Props) {
       <ClientBottomNavV2
         activeTab="home"
         onNavigate={(tab) => {
-          if (tab === "agenda") navigation.navigate("ClientBookings");
+          if (tab === "meuPersonal") navigation.navigate("ClientBookings");
           if (tab === "trainings") navigation.navigate("MyTraining");
           if (tab === "community") navigation.navigate("Community");
           if (tab === "profile") navigation.navigate("ClientProfile");

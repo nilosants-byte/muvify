@@ -1,12 +1,13 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, RefreshControl, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, RefreshControl, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
+import { useQueryClient } from "@tanstack/react-query";
 import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientTabParamList } from "../../navigation/route-types";
-import { bookingsApi, Booking } from "../../services/api/client";
+import { ActiveEngagementSummary, bookingsApi, Booking, consultancyApi, presentialPackagesApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { MvAvatar, MvEmptyState } from "../../components/mv";
 import { handleScreenError } from "../shared/api-helpers";
@@ -18,8 +19,8 @@ import { ClientBottomNavV2 } from "../../components/navigation/ClientBottomNavV2
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonBookingCard } from "../../components/polish/SkeletonCard";
-import { formatBRDateTime, isTodayInAppTimezone } from "../../utils/formatters";
-import { useAuthQuery } from "../../hooks/useAuthQuery";
+import { formatBRDateTime, formatCurrencyBRL, isTodayInAppTimezone } from "../../utils/formatters";
+import { useAuthMutation, useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 
 type Props = BottomTabScreenProps<ClientTabParamList, "ClientBookings">;
@@ -33,6 +34,120 @@ function useTabNav() {
     toTab: (screen: keyof ClientTabParamList) => nav.navigate("ClientTabs", { screen }),
     goBack: () => (nav.canGoBack() ? nav.goBack() : nav.navigate("ClientTabs", { screen: "ClientHome" })),
   };
+}
+
+// Bloco 3 (exclusividade de marketplace): card do plano contratado, sempre
+// no topo desta tela quando existe vínculo ativo — troca/adiciona serviço
+// só com o MESMO profissional (leva pra ProviderServicesUpgrade) e cancelar
+// aqui é a única saída pra liberar o marketplace de novo.
+function ActivePlanCard({
+  engagement,
+  navigation
+}: {
+  engagement: Extract<ActiveEngagementSummary, { hasActive: true }>;
+  navigation: any;
+}) {
+  const { theme } = useMvTheme();
+  const { showToast, refreshActiveEngagement } = useAppState();
+  const queryClient = useQueryClient();
+
+  const cancelMutation = useAuthMutation(
+    async (token) => {
+      if (engagement.contractId) {
+        await consultancyApi.cancelContract(token, engagement.contractId);
+      } else if (engagement.packageId) {
+        await presentialPackagesApi.cancel(token, engagement.packageId);
+      } else if (engagement.bookingId) {
+        // Raio-X pós-épico: vínculo puramente avulso (agendamento sem
+        // contrato/pacote) — cancela o próprio Booking.
+        await bookingsApi.updateStatus(token, engagement.bookingId, "CANCELLED");
+      }
+    },
+    {
+      onSuccess: async () => {
+        showToast("Plano cancelado. Você já pode ver outros profissionais.", "success");
+        await refreshActiveEngagement();
+        void queryClient.invalidateQueries({ queryKey: queryKeys.bookings.me() });
+      },
+      onError: (error) => handleScreenError({ error, showToast, fallbackMessage: "Falha ao cancelar o plano." })
+    }
+  );
+
+  function confirmCancel() {
+    Alert.alert(
+      "Cancelar plano",
+      `Cancelar seu plano com ${engagement.providerName}? Você vai poder ver e contratar outros profissionais depois disso.`,
+      [
+        { text: "Manter plano", style: "cancel" },
+        { text: "Cancelar plano", style: "destructive", onPress: () => cancelMutation.mutate() }
+      ]
+    );
+  }
+
+  const kindLabel =
+    engagement.kind === "PRESENTIAL"
+      ? "Presencial"
+      : engagement.kind === "COMBO"
+        ? "Combo — Presencial + Consultoria online"
+        : "Consultoria online";
+
+  return (
+    <View
+      style={{
+        borderRadius: 16,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: theme.primarySubtleBorder,
+        backgroundColor: theme.primaryHighlight,
+        gap: 12
+      }}
+    >
+      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.primary, letterSpacing: 0.6, textTransform: "uppercase" }}>
+        Seu plano ativo
+      </Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
+        <MvAvatar initials={getInitials(engagement.providerName)} photoUri={resolveMediaUrl(engagement.providerPhotoUrl)} tone="green" size="md" />
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 16, color: theme.text1, letterSpacing: -0.3 }}>
+            {engagement.providerName}
+          </Text>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11.5, color: theme.text2, marginTop: 2 }}>{kindLabel}</Text>
+        </View>
+      </View>
+      {engagement.origin === "EXTERNAL" ? (
+        // Raio-X pós-épico (achado baixo): sem isso, aluno externo (Bloco 1)
+        // via "R$ 0,00/mês" sem nenhum contexto — só o disclaimer da tela de
+        // aceite do convite explicava, uma vez, e nunca mais.
+        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>
+          Cadastro manual — o Muvify não intermedia essa relação nem cobra por ela.
+        </Text>
+      ) : (
+        <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: theme.text1, letterSpacing: -0.3 }}>
+            {formatCurrencyBRL(engagement.priceCents / 100)}
+          </Text>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>/mês</Text>
+        </View>
+      )}
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate("ProviderServicesUpgrade", { providerId: engagement.providerId })}
+          style={{ flex: 1, height: 42, borderRadius: 13, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center" }}
+        >
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12.5, color: theme.textOnPrimary }}>Ver outros serviços</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={confirmCancel}
+          disabled={cancelMutation.isPending}
+          style={{ flex: 1, height: 42, borderRadius: 13, backgroundColor: "transparent", borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", alignItems: "center", justifyContent: "center", opacity: cancelMutation.isPending ? 0.6 : 1 }}
+        >
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12.5, color: theme.text2 }}>
+            {cancelMutation.isPending ? "Cancelando..." : "Cancelar plano"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 }
 
 function getInitials(name?: string | null): string {
@@ -79,7 +194,7 @@ function sortByDateDesc(list: Booking[]) {
 }
 
 export function ClientBookingsScreen({ navigation }: Props) {
-  const { showToast } = useAppState();
+  const { showToast, activeEngagement } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const { toTab } = useTabNav();
@@ -207,17 +322,24 @@ export function ClientBookingsScreen({ navigation }: Props) {
       {/* Header V2 */}
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: theme.border, flexDirection: "row", alignItems: "center", gap: 10 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Agenda</Text>
-          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>somente aulas presenciais</Text>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Meu Personal</Text>
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3, marginTop: 2 }}>
+            {activeEngagement?.hasActive ? "seu plano e suas sessões marcadas" : "somente aulas presenciais"}
+          </Text>
         </View>
-        <TouchableOpacity
-          onPress={goToStack.bind(null, "SearchProfessionals")}
-          accessibilityRole="button"
-          accessibilityLabel="Novo agendamento"
-          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
-        >
-          <Ionicons name="add" size={20} color={theme.primary} />
-        </TouchableOpacity>
+        {/* Bloco 3: com vínculo ativo, não existe "agendar com outro
+            profissional" — trocar/adicionar serviço só passa pelo card do
+            plano abaixo, sempre com o mesmo profissional. */}
+        {!activeEngagement?.hasActive ? (
+          <TouchableOpacity
+            onPress={goToStack.bind(null, "SearchProfessionals")}
+            accessibilityRole="button"
+            accessibilityLabel="Novo agendamento"
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
+          >
+            <Ionicons name="add" size={20} color={theme.primary} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <ScreenEntrance>
@@ -229,6 +351,7 @@ export function ClientBookingsScreen({ navigation }: Props) {
         refreshControl={<RefreshControl refreshing={bookingsQuery.isRefetching} onRefresh={() => void bookingsQuery.refetch()} tintColor={theme.primary} colors={[theme.primary]} />}
         ListHeaderComponent={
           <View style={{ gap: 14, marginBottom: 4 }}>
+            {activeEngagement?.hasActive ? <ActivePlanCard engagement={activeEngagement} navigation={navigation} /> : null}
             {/* Hero card panorama V2 */}
             <View style={{ borderRadius: S.cardR, padding: 16, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primaryHighlight }}>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 10, color: theme.primary, letterSpacing: 0.1 * 10, textTransform: "uppercase", fontWeight: "700" }}>
@@ -325,7 +448,7 @@ export function ClientBookingsScreen({ navigation }: Props) {
       </ScreenEntrance>
 
       <ClientBottomNavV2
-        activeTab="agenda"
+        activeTab="meuPersonal"
         onNavigate={(tab) => {
           if (tab === "home") toTab("ClientHome");
           if (tab === "trainings") toTab("MyTraining");

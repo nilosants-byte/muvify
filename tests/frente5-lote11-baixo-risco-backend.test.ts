@@ -66,6 +66,14 @@ describe("Frente 5, Lote 11 — validações, mensagens, rate limit e busca de b
       where: { id: providerId },
       data: { crefValidationStatus: "APPROVED", mpAccountId: "111222333" }
     });
+    // Bloco 6 (bloqueio por assinatura inativa): createProfile cria a
+    // assinatura PENDING_PAYMENT por padrão — não é o alvo deste teste, e o
+    // filtro silencioso de busca exige assinatura ativa (mesmo tratamento
+    // do CREF).
+    await prisma.providerSubscription.update({
+      where: { providerId },
+      data: { status: "ACTIVE" }
+    });
 
     const clientEmail = `${uid("f5l11_client")}@test.com`;
     const clientPhone = `11${Date.now().toString().slice(-9)}2`;

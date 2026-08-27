@@ -3,26 +3,33 @@ import { hapticCta } from "../../utils/haptics";
 import { Platform, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { S, UI } from "../../theme/v2tokens";
 import { MvText } from "../mv";
 import { useMvTheme } from "../../theme/MvThemeContext";
 
-export type ClientV2Tab = "home" | "agenda" | "trainings" | "community" | "profile";
+// Bloco 3 (exclusividade de marketplace): "agenda" virou "meuPersonal" — a
+// aba passou a mostrar o card do plano contratado além das sessões
+// presenciais, então nem "Agenda" nem "Plano" descreviam bem as duas coisas
+// juntas (ver debate no épico do aluno externo).
+export type ClientV2Tab = "home" | "meuPersonal" | "trainings" | "community" | "profile";
 
 interface NavItem {
   key: ClientV2Tab;
   label: string;
-  icon: React.ComponentProps<typeof Ionicons>["name"];
-  iconActive: React.ComponentProps<typeof Ionicons>["name"];
+  family: "ionicons" | "mci";
+  icon: string;
+  iconActive: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { key: "home",      label: "Início",     icon: "home-outline",     iconActive: "home" },
-  { key: "agenda",    label: "Agenda",     icon: "calendar-outline", iconActive: "calendar" },
-  { key: "trainings", label: "Treino",     icon: "barbell-outline",  iconActive: "barbell" },
-  { key: "community", label: "Comunidade", icon: "people-outline",   iconActive: "people" },
-  { key: "profile",   label: "Perfil",     icon: "person-outline",   iconActive: "person" },
+  { key: "home",        label: "Início",       family: "ionicons", icon: "home-outline",     iconActive: "home" },
+  // Ícone de bíceps flexionado (não é Ionicons — precisa da família
+  // MaterialCommunityIcons, já disponível em @expo/vector-icons).
+  { key: "meuPersonal", label: "Meu Personal", family: "mci",      icon: "arm-flex-outline", iconActive: "arm-flex" },
+  { key: "trainings",   label: "Treino",       family: "ionicons", icon: "barbell-outline",  iconActive: "barbell" },
+  { key: "community",   label: "Comunidade",   family: "ionicons", icon: "people-outline",   iconActive: "people" },
+  { key: "profile",     label: "Perfil",       family: "ionicons", icon: "person-outline",   iconActive: "person" },
 ];
 
 interface ClientBottomNavV2Props {
@@ -95,11 +102,19 @@ function NavContent({ activeTab, onNavigate, theme, badges }: ClientBottomNavV2P
 
             {/* Ícone com badge opcional */}
             <View style={{ position: "relative" }}>
-              <Ionicons
-                name={isActive ? item.iconActive : item.icon}
-                size={isActive ? 22 : 20}
-                color={color}
-              />
+              {item.family === "mci" ? (
+                <MaterialCommunityIcons
+                  name={(isActive ? item.iconActive : item.icon) as React.ComponentProps<typeof MaterialCommunityIcons>["name"]}
+                  size={isActive ? 22 : 20}
+                  color={color}
+                />
+              ) : (
+                <Ionicons
+                  name={(isActive ? item.iconActive : item.icon) as React.ComponentProps<typeof Ionicons>["name"]}
+                  size={isActive ? 22 : 20}
+                  color={color}
+                />
+              )}
               {badgeCount > 0 && (
                 <View style={{ position: "absolute", top: -4, right: -6, minWidth: 14, height: 14, borderRadius: 7, backgroundColor: "#ef4444", alignItems: "center", justifyContent: "center", paddingHorizontal: 3 }}>
                   <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 8, color: "#fff", lineHeight: 12 }}>

@@ -227,7 +227,7 @@ function ExerciseThumb({
 }
 
 export function ProfessionalTrainingCreationScreen({ navigation, route }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { runWithAuth, showToast, showSubscriptionRequiredSheet } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
 
@@ -582,6 +582,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         showToast,
         fallbackMessage: "Falha ao salvar treino.",
         navigation,
+        onSubscriptionRequired: showSubscriptionRequiredSheet,
       });
     } finally {
       setSavingNewPlan(false);
@@ -623,6 +624,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         showToast,
         fallbackMessage: "Falha ao atualizar treino.",
         navigation,
+        onSubscriptionRequired: showSubscriptionRequiredSheet,
       });
     } finally {
       setSavingEditedPlan(false);
@@ -650,6 +652,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
               showToast,
               fallbackMessage: "Falha ao excluir treino.",
               navigation,
+              onSubscriptionRequired: showSubscriptionRequiredSheet,
             });
           } finally {
             setDeletingPlanId(null);

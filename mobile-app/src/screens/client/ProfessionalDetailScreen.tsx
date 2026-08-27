@@ -16,8 +16,10 @@ import {
   userApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
+import { useBlockedWhileLocked } from "../../hooks/useBlockedWhileLocked";
 import { MvAvatar } from "../../components/mv";
 import { MvVideoPlayer } from "../../components/mv/MvVideoPlayer";
+import { FounderBadge } from "../../components/professional/FounderBadge";
 import { averageToFive, extractApiMessage, formatPriceFromCents, handleScreenError } from "../shared/api-helpers";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { resolveMediaUrl } from "../../utils/media";
@@ -58,6 +60,7 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const providerId = route.params.professionalId;
+  useBlockedWhileLocked(providerId);
 
   const detailQuery = useAuthQuery(
     queryKeys.providers.detail(providerId),
@@ -353,6 +356,11 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
               <Text numberOfLines={1} style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.02 * 22 }}>{provider.displayName}</Text>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 4 }}>{categoryLabel}</Text>
               <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                {/* Raio-X pós-épico (achado baixo): FounderBadge documenta
+                    "compact só pra cards apertados de busca/lista, perfil
+                    completo usa a variante por extenso" — esta hero card
+                    (perfil completo) estava usando `compact` por engano. */}
+                {(provider.isFounder || consultancyCatalog?.provider.isFounder) && <FounderBadge />}
                 {consultancyCatalog?.onlineConsultancyEnabled && (
                   <View style={{ backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3 }}>
                     <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.primary }}>CREF VALIDADO</Text>

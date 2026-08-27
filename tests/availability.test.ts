@@ -53,6 +53,14 @@ describe("availability, manual-blocks and calendar", () => {
         categoryIds: [categoryId],
       });
     providerId = profile.body.id;
+    // Bloco 6 (bloqueio por assinatura inativa): createProfile agora cria a
+    // assinatura junto (PENDING_PAYMENT por padrão, sem match de fundador) —
+    // este teste testa disponibilidade/agenda, não assinatura, então ativa
+    // direto pra não ficar bloqueado pelas ações abaixo.
+    await prisma.providerSubscription.update({
+      where: { providerId },
+      data: { status: "ACTIVE" }
+    });
   });
 
   afterAll(async () => {

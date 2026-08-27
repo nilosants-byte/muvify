@@ -46,6 +46,7 @@ export const queryKeys = {
     schedulePreview: (id: string, params?: object) => ["providers", "schedulePreview", id, params] as const,
     myCredentials: () => ["providers", "myCredentials"] as const,
     dashboardStudents: () => ["providers", "dashboardStudents"] as const,
+    mySubscription: () => ["providers", "mySubscription"] as const,
     dashboardStudentDetail: (clientId: string) => ["providers", "dashboardStudentDetail", clientId] as const,
     studentAnamnesis: (clientId: string) => ["providers", "studentAnamnesis", clientId] as const,
     timeline: () => ["providers", "timeline"] as const,
@@ -169,6 +170,8 @@ export const queryKeys = {
     myArchivedRequests: (params?: object) => ["consultancy", "myArchivedRequests", params] as const,
     providerCenter: () => ["consultancy", "providerCenter"] as const,
     providerArchivedRequests: (params?: object) => ["consultancy", "providerArchivedRequests", params] as const,
+    externalStudentInvites: () => ["consultancy", "externalStudentInvites"] as const,
+    externalCheckIns: () => ["consultancy", "externalCheckIns"] as const,
   },
 
   // ── Pacote presencial ──────────────────────────────────────────────────────

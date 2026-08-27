@@ -20,6 +20,7 @@ import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { encryptSensitiveText, decryptSensitiveText } from "../../../shared/utils/encryption";
 import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { assertProviderSubscriptionActive } from "../../../shared/utils/provider-subscription-gate";
 import { recalculateProviderRatingAfterRefund } from "../../../shared/utils/provider-rating";
 import { assertOfferAcceptsPaymentMethod } from "../../../shared/utils/offer-payment-method";
 import { NotificationService } from "../../notifications/services/notification.service";
@@ -645,6 +646,7 @@ export class PaymentService {
         StatusCodes.BAD_REQUEST
       );
     }
+    await assertProviderSubscriptionActive(provider.id);
 
     const appId = env.MP_APP_ID?.trim();
     if (!appId) {

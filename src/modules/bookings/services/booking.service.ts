@@ -18,6 +18,8 @@ import { AppError } from "../../../shared/errors/app-error";
 import { deleteByPattern } from "../../../shared/utils/cache";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { assertAnamnesisCompleted } from "../../../shared/utils/anamnesis-required";
+import { assertNoActiveEngagementWithOtherProvider } from "../../../shared/utils/client-engagement";
+import { assertProviderSubscriptionActive } from "../../../shared/utils/provider-subscription-gate";
 import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/utils/encryption";
 import { haversineKm } from "../../../shared/utils/geo";
 import { sessionOverlapsRange } from "../../../shared/utils/time-range";
@@ -231,6 +233,10 @@ export class BookingService {
           StatusCodes.BAD_REQUEST
         );
       }
+      await assertProviderSubscriptionActive(
+        provider.id,
+        "Este profissional não está disponível para novos agendamentos no momento."
+      );
 
       if (!provider.mpAccountId) {
         throw new AppError(
@@ -245,6 +251,11 @@ export class BookingService {
           StatusCodes.UNPROCESSABLE_ENTITY
         );
       }
+
+      // Bloco 3 (exclusividade de marketplace): só um profissional ativo por
+      // vez — agendamento avulso com outro profissional enquanto já existe um
+      // vínculo ativo (com qualquer um dos três tipos) é bloqueado aqui.
+      await assertNoActiveEngagementWithOtherProvider(clientId, provider.id);
 
       // Frente D (liberdade de ofertas): pacote de sessões avulsas (modo
       // FLEXIBLE_CREDITS, redesenhado) - um número fechado de sessões com

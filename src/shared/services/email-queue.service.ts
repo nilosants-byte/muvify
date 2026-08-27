@@ -35,7 +35,12 @@ type EmailQueueTemplate =
   // Lista de espera pré-lançamento (landing page pública) - confirmação
   // única de "você entrou na lista", não recorrente, por isso não exige
   // opt-out (ver comentário em email.service.ts sobre a invariante).
-  | "WAITLIST_WELCOME";
+  | "WAITLIST_WELCOME"
+  // Bloco 2 (aluno externo): convite que o profissional gera pra um aluno
+  // que já era dele fora do app - só entra na fila quando o profissional
+  // escolhe o canal EMAIL (WhatsApp é compartilhamento local, não passa
+  // pelo servidor - ver plano do bloco).
+  | "EXTERNAL_STUDENT_INVITE";
 
 type VerificationPayload = {
   to: string;
@@ -63,6 +68,14 @@ type RecoveryEmailUpdatedPayload = {
 type DataExportConfirmationPayload = {
   to: string;
   name: string;
+};
+
+type ExternalStudentInvitePayload = {
+  to: string;
+  studentName: string;
+  providerName: string;
+  inviteToken: string;
+  expiresDays: number;
 };
 
 type AccountDeletedPayload = {
@@ -134,6 +147,15 @@ export class EmailQueueService {
     return prisma.emailDeliveryQueue.create({
       data: {
         template: "PASSWORD_RESET",
+        payload: input
+      }
+    });
+  }
+
+  async enqueueExternalStudentInvite(input: ExternalStudentInvitePayload) {
+    return prisma.emailDeliveryQueue.create({
+      data: {
+        template: "EXTERNAL_STUDENT_INVITE",
         payload: input
       }
     });
@@ -308,6 +330,11 @@ export class EmailQueueService {
       await this.emailService.sendPasswordResetEmail(parsed);
       return;
     }
+    if (template === "EXTERNAL_STUDENT_INVITE") {
+      const parsed = this.parseExternalStudentInvitePayload(payload);
+      await this.emailService.sendExternalStudentInviteEmail(parsed);
+      return;
+    }
     if (template === "PASSWORD_CHANGED") {
       const parsed = this.parsePasswordChangedPayload(payload);
       await this.emailService.sendPasswordChangedEmail(parsed);
@@ -388,6 +415,19 @@ export class EmailQueueService {
     }
     this.validateEmail(to);
     return { to, name, resetToken };
+  }
+
+  private parseExternalStudentInvitePayload(payload: Record<string, unknown>): ExternalStudentInvitePayload {
+    const to = typeof payload.to === "string" ? payload.to : "";
+    const studentName = typeof payload.studentName === "string" ? payload.studentName : "";
+    const providerName = typeof payload.providerName === "string" ? payload.providerName : "";
+    const inviteToken = typeof payload.inviteToken === "string" ? payload.inviteToken : "";
+    const expiresDays = typeof payload.expiresDays === "number" ? payload.expiresDays : 0;
+    if (!to || !studentName || !providerName || !inviteToken || !expiresDays) {
+      throw new Error("Invalid EXTERNAL_STUDENT_INVITE payload.");
+    }
+    this.validateEmail(to);
+    return { to, studentName, providerName, inviteToken, expiresDays };
   }
 
   private parsePasswordChangedPayload(payload: Record<string, unknown>): PasswordChangedPayload {

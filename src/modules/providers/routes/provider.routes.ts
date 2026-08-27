@@ -41,6 +41,35 @@ providerRoutes.put(
   providerController.upsertOwnCredentials
 );
 
+// Bloco 5 (assinatura do profissional).
+providerRoutes.get(
+  "/me/subscription",
+  ensureAuthenticated,
+  ensureRole(UserRole.PROVIDER),
+  providerController.getMySubscription
+);
+providerRoutes.post(
+  "/me/subscription/cancel",
+  ensureAuthenticated,
+  ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
+  providerController.cancelMySubscription
+);
+providerRoutes.post(
+  "/me/subscription/reactivate",
+  ensureAuthenticated,
+  ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
+  providerController.reactivateMySubscription
+);
+providerRoutes.post(
+  "/me/subscription/charge-now",
+  ensureAuthenticated,
+  ensureRole(UserRole.PROVIDER),
+  uploadRateLimiter,
+  providerController.chargeMySubscriptionNow
+);
+
 providerRoutes.get(
   "/dashboard/calendar",
   ensureAuthenticated,

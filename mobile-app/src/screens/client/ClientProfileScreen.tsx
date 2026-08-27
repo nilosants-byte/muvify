@@ -529,7 +529,7 @@ export function ClientProfileScreen({ navigation }: Props) {
         activeTab="profile"
         onNavigate={(tab) => {
           if (tab === "home") navigation.navigate("ClientHome");
-          if (tab === "agenda") navigation.navigate("ClientBookings");
+          if (tab === "meuPersonal") navigation.navigate("ClientBookings");
           if (tab === "trainings") navigation.navigate("MyTraining");
           if (tab === "community") navigation.navigate("Community");
         }}

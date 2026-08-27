@@ -7,6 +7,7 @@ import { AuthService } from "../../auth/services/auth.service";
 import { BookingService } from "../../bookings/services/booking.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
+import { ProviderSubscriptionService } from "../../providers/services/provider-subscription.service";
 import { UserService } from "../../users/services/user.service";
 import { NotificationService } from "../services/notification.service";
 
@@ -14,6 +15,7 @@ const authService = new AuthService();
 const bookingService = new BookingService();
 const consultancyService = new ConsultancyService();
 const presentialPackageService = new PresentialPackageService();
+const providerSubscriptionService = new ProviderSubscriptionService();
 const userService = new UserService();
 const notificationService = new NotificationService();
 
@@ -99,6 +101,14 @@ export function startReminderJob() {
           isolateReminderSubJob(
             () => consultancyService.sendConsultancyInactivityReminders(),
             "sendConsultancyInactivityReminders"
+          ),
+          isolateReminderSubJob(
+            () => consultancyService.sendExternalCheckInReminders(),
+            "sendExternalCheckInReminders"
+          ),
+          isolateReminderSubJob(
+            () => providerSubscriptionService.runSubscriptionBilling(),
+            "runSubscriptionBilling"
           ),
           isolateReminderSubJob(
             () => presentialPackageService.sendFlexibleSessionPackExpiryReminders(),

@@ -8,6 +8,7 @@ import {
   Prisma,
   PresentialPackageStatus,
   ProviderServiceMode,
+  ProviderSubscriptionStatus,
   ServiceOfferKind,
   UserRole
 } from "@prisma/client";
@@ -38,6 +39,8 @@ import {
   encryptSensitiveText
 } from "../../../shared/utils/encryption";
 import { getPrivateMediaBuffer } from "../../../shared/services/storage.service";
+import { assertProviderSubscriptionActive } from "../../../shared/utils/provider-subscription-gate";
+import { ProviderSubscriptionService, isProviderSubscriptionActive } from "./provider-subscription.service";
 import { ENABLE_VIDEO_UPLOAD } from "../../../config/features";
 import { NotificationService } from "../../notifications/services/notification.service";
 
@@ -334,11 +337,31 @@ export const PUBLIC_PROVIDER_SELECT = {
   crefValidationStatus: true,
   specialties: true,
   createdAt: true,
-  updatedAt: true
+  updatedAt: true,
+  // Bloco 7 (programa 100 Fundadores): `isFounder` é o selo visual público.
+  // `status` também vem junto — não é exposto ao cliente (removido na
+  // serialização de cada endpoint que usa este select), só usado
+  // internamente pelo gate do Bloco 6 em getById.
+  subscription: { select: { isFounder: true, status: true } }
 } as const;
+
+// Raio-X pós-épico (achado médio, cluster de vazamento leve): `status` de
+// cobrança do PUBLIC_PROVIDER_SELECT nunca deveria sair pro cliente (revela
+// se o profissional está inadimplente) — getById/toSafeSummary/
+// toPublicFavoriteProvider já faziam essa limpeza, mas 4 endpoints de
+// consultancy.service.ts que reaproveitam este mesmo select devolviam o
+// resultado do Prisma cru, com `provider.subscription.status` incluso.
+// Único ponto de limpeza agora, reaproveitado nos 4 lugares.
+export function sanitizePublicProviderRef<T extends { subscription?: { isFounder: boolean } | null }>(
+  provider: T
+): Omit<T, "subscription"> & { isFounder: boolean } {
+  const { subscription, ...rest } = provider;
+  return { ...rest, isFounder: subscription?.isFounder ?? false };
+}
 
 export class ProviderService {
   private emailService = new EmailService();
+  private providerSubscriptionService = new ProviderSubscriptionService();
 
   private async getProviderByUserId(userId: string) {
     const provider = await prisma.providerProfile.findUnique({
@@ -1032,7 +1055,7 @@ export class ProviderService {
         radiusKm: typeof loc.radiusKm === "number" ? Math.max(1, Math.round(loc.radiusKm)) : null
       }));
 
-      return tx.providerProfile.create({
+      const createdProfile = await tx.providerProfile.create({
         data: {
           displayName: input.displayName,
           bio: input.bio,
@@ -1075,6 +1098,15 @@ export class ProviderService {
           }
         }
       });
+
+      // Bloco 5 (assinatura do profissional): checa fundador + cria a
+      // assinatura na mesma transação da criação do perfil.
+      await this.providerSubscriptionService.createSubscriptionForProvider(tx, createdProfile.id, {
+        email: user.email,
+        phone: user.phone
+      });
+
+      return createdProfile;
     }).catch((err) => {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         throw new AppError("Perfil profissional já existe.", StatusCodes.CONFLICT);
@@ -1097,6 +1129,7 @@ export class ProviderService {
     if (!provider) {
       throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
     }
+    await assertProviderSubscriptionActive(provider.id);
 
     // Frente 5 (segunda camada), Lote 3: sessionDurationMinutes não é
     // gravado por agendamento — é lido ao vivo do perfil toda vez que se
@@ -1298,6 +1331,32 @@ export class ProviderService {
         ).map((row) => row.id)
       : null;
 
+    // Cleanup pós-épico segunda camada, 14/08/2026: `AND` em vez de mais um
+    // `OR` de topo, pra não colidir entre si quando várias condições com OR
+    // vierem juntas (busca por texto + filtro de objetivo + assinatura).
+    // Bloco 6 (bloqueio por assinatura inativa) reaproveita o mesmo mecanismo
+    // — `subscription: null` também passa (fail-open, mesma regra de
+    // isProviderSubscriptionActive: fixture de teste antigo sem assinatura
+    // nunca acontece em produção, onde createProfile sempre cria uma junto).
+    const andConditions: Prisma.ProviderProfileWhereInput[] = [];
+    if (filters.q) {
+      andConditions.push({
+        OR: [
+          { displayName: { contains: filters.q, mode: "insensitive" as const } },
+          { id: { in: specialtyMatchIds } },
+        ]
+      });
+    }
+    if (objectiveMatchIds) {
+      andConditions.push({ id: { in: objectiveMatchIds } });
+    }
+    andConditions.push({
+      OR: [
+        { subscription: null },
+        { subscription: { status: { in: [ProviderSubscriptionStatus.TRIALING, ProviderSubscriptionStatus.ACTIVE] } } }
+      ]
+    });
+
     const where: Prisma.ProviderProfileWhereInput = {
       crefValidationStatus: CrefValidationStatus.APPROVED,
       mpAccountId: { not: null },
@@ -1306,16 +1365,7 @@ export class ProviderService {
       // receber novos agendamentos/compras normalmente.
       user: { suspendedAt: null },
       averageRating: filters.minRating ? { gte: filters.minRating } : undefined,
-      ...(filters.q ? {
-        OR: [
-          { displayName: { contains: filters.q, mode: "insensitive" as const } },
-          { id: { in: specialtyMatchIds } },
-        ]
-      } : {}),
-      // Cleanup pós-épico segunda camada, 14/08/2026: `AND` em vez de mais
-      // um `id`/`OR` de topo, pra não colidir com o filtro de `q` acima
-      // quando os dois vierem juntos (busca por texto + filtro de objetivo).
-      ...(objectiveMatchIds ? { AND: [{ id: { in: objectiveMatchIds } }] } : {}),
+      AND: andConditions,
       categoryLinks: filters.categoryId
         ? { some: { categoryId: filters.categoryId } }
         : undefined,
@@ -1339,15 +1389,19 @@ export class ProviderService {
         updatedAt?: Date;
         latitude?: number | null;
         longitude?: number | null;
+        subscription?: { isFounder: boolean } | null;
       }
     >(
       provider: T,
       distanceKm?: number
     ) => {
-      const { presentationVideoUrl: _v, ...rest } = provider;
+      // Bloco 7 (programa 100 Fundadores): mesmo tratamento de getById —
+      // só o selo booleano sai pro cliente, nunca o status de cobrança.
+      const { presentationVideoUrl: _v, subscription, ...rest } = provider;
       const jittered = jitterPublicCoordinates(rest);
       return {
         ...jittered,
+        isFounder: subscription?.isFounder ?? false,
         ...(typeof distanceKm === "number" ? { distanceKm } : {}),
         photoUrl: toProviderPhotoUrl(rest.id, rest.photoUrl ?? null, rest.updatedAt ?? null),
       };
@@ -1592,6 +1646,13 @@ export class ProviderService {
     if (!this.isCrefApproved(provider)) {
       throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
     }
+    // Bloco 6 (bloqueio por assinatura inativa): gap encontrado durante o
+    // Bloco 7 — getById (perfil público completo) tinha o mesmo tratamento
+    // de CREF acima, mas nunca ganhou o de assinatura na rodada anterior.
+    // Mesmo tratamento silencioso da busca pública.
+    if (!isProviderSubscriptionActive(provider.subscription?.status)) {
+      throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
+    }
     // Frente 5 (Descoberta, agendamento e agenda), Lote 5: mesmo filtro de
     // suspensão já aplicado na busca pública — sem isso, o perfil completo
     // do profissional suspenso continuava acessível diretamente pelo id.
@@ -1636,8 +1697,13 @@ export class ProviderService {
     // Replace base64 media blobs with streaming paths so the JSON response stays small.
     // Clients reconstruct the full URL by prepending their API base URL.
     const { suspendedAt: _suspendedAt, ...publicUser } = provider.user;
+    // Bloco 7 (programa 100 Fundadores): expõe só o selo booleano — o
+    // status de cobrança (subscription.status) é dado privado do próprio
+    // profissional, nunca vaza pro perfil público.
+    const { subscription: _subscription, ...providerWithoutSubscription } = provider;
     return {
-      ...jitterPublicCoordinates(provider),
+      ...jitterPublicCoordinates(providerWithoutSubscription),
+      isFounder: provider.subscription?.isFounder ?? false,
       user: publicUser,
       photoUrl: toProviderPhotoUrl(provider.id, provider.photoUrl, provider.updatedAt),
       presentationVideoUrl:
@@ -1958,6 +2024,7 @@ export class ProviderService {
 
   async createManualCalendarEvent(userId: string, input: ProviderManualCalendarEventInput) {
     const provider = await this.getProviderByUserId(userId);
+    await assertProviderSubscriptionActive(provider.id);
     const startsAt = new Date(input.startsAt);
     const endsAt = new Date(input.endsAt);
 
@@ -1982,6 +2049,7 @@ export class ProviderService {
     input: Partial<ProviderManualCalendarEventInput>
   ) {
     const provider = await this.getProviderByUserId(userId);
+    await assertProviderSubscriptionActive(provider.id);
 
     const event = await prisma.providerCalendarEvent.findUnique({
       where: { id: eventId }
@@ -2011,6 +2079,7 @@ export class ProviderService {
 
   async deleteManualCalendarEvent(userId: string, eventId: string) {
     const provider = await this.getProviderByUserId(userId);
+    await assertProviderSubscriptionActive(provider.id);
 
     const event = await prisma.providerCalendarEvent.findUnique({
       where: { id: eventId }
@@ -2639,6 +2708,7 @@ export class ProviderService {
     input: UpsertStudentPhysicalAssessmentInput
   ) {
     const provider = await this.getProviderByUserId(userId);
+    await assertProviderSubscriptionActive(provider.id);
     await this.assertStudentManagedByProvider(provider.id, clientId);
 
     // Frente 4 (segunda camada), Lote 1: a LEITURA já bloqueia/redige dado

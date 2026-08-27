@@ -7,6 +7,7 @@ import { ClientTabParamList } from "../../navigation/route-types";
 import { PROFESSIONAL_SPECIALTIES } from "../../services/api/client";
 import { S } from "../../theme/v2tokens";
 import { ClientBottomNavV2 } from "../../components/navigation/ClientBottomNavV2";
+import { useBlockedWhileLocked } from "../../hooks/useBlockedWhileLocked";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvText } from "../../components/mv";
 
@@ -32,6 +33,7 @@ const ALL_CATEGORIES = PROFESSIONAL_SPECIALTIES.map((name) => ({
 }));
 
 export function CategoriesScreen({ navigation }: Props) {
+  useBlockedWhileLocked();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
@@ -146,7 +148,7 @@ export function CategoriesScreen({ navigation }: Props) {
         onNavigate={(tab) => {
           const parent = navigation.getParent<any>();
           if (tab === "home") parent?.navigate("ClientHome");
-          if (tab === "agenda") parent?.navigate("ClientBookings");
+          if (tab === "meuPersonal") parent?.navigate("ClientBookings");
           if (tab === "trainings") parent?.navigate("MyTraining");
           if (tab === "community") navigation.navigate("Community");
           if (tab === "profile") parent?.navigate("ClientProfile");

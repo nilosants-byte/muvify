@@ -92,6 +92,12 @@ describe("flows", () => {
         crefReviewedAt: new Date()
       }
     });
+    // Bloco 6 (bloqueio por assinatura inativa): createProfile cria a
+    // assinatura PENDING_PAYMENT por padrão — não é o alvo deste teste.
+    await prisma.providerSubscription.update({
+      where: { providerId },
+      data: { status: "ACTIVE" }
+    });
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const weekday = tomorrow.getUTCDay();
 

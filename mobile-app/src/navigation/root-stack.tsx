@@ -60,6 +60,9 @@ import { ResetPasswordScreen } from "../screens/client/ResetPasswordScreen";
 import { ReviewProfessionalScreen } from "../screens/client/ReviewProfessionalScreen";
 import { SearchProfessionalsScreen } from "../screens/client/SearchProfessionalsScreen";
 import { FriendsListScreen } from "../screens/client/FriendsListScreen";
+import { ProviderServicesUpgradeScreen } from "../screens/client/ProviderServicesUpgradeScreen";
+import { AddExternalStudentScreen } from "../screens/professional/AddExternalStudentScreen";
+import { ExternalStudentInviteCreatedScreen } from "../screens/professional/ExternalStudentInviteCreatedScreen";
 import { AvailabilityManagerScreen } from "../screens/professional/AvailabilityManagerScreen";
 import { BookingDetailProfessionalScreen } from "../screens/professional/BookingDetailProfessionalScreen";
 import { BookingPaymentStatusScreen } from "../screens/professional/BookingPaymentStatusScreen";
@@ -80,8 +83,10 @@ import { ProfessionalStudentDetailScreen } from "../screens/professional/Profess
 import { ProfessionalStudentsScreen } from "../screens/professional/ProfessionalStudentsScreen";
 import { ProviderDebtsScreen } from "../screens/professional/ProviderDebtsScreen";
 import { ProviderPaymentMethodScreen } from "../screens/professional/ProviderPaymentMethodScreen";
+import { MySubscriptionScreen } from "../screens/professional/MySubscriptionScreen";
 import { ProfessionalTrainingCreationScreen } from "../screens/professional/ProfessionalTrainingCreationScreen";
 import { ProfessionalChatListScreen } from "../screens/professional/ProfessionalChatListScreen";
+import { ClaimInviteScreen } from "../screens/shared/ClaimInviteScreen";
 import { GenericErrorScreen } from "../screens/shared/GenericErrorScreen";
 import { ErrorBoundary, withScreenErrorBoundary } from "../components/ErrorBoundary";
 import { NotificationsScreen } from "../screens/shared/NotificationsScreen";
@@ -94,6 +99,8 @@ import { SecurityScreen } from "../screens/shared/SecurityScreen";
 import { ConnectedDevicesScreen } from "../screens/shared/ConnectedDevicesScreen";
 import { useAppState } from "../state/AppState";
 import { useToast } from "../state/ToastState";
+import { useSubscriptionGate } from "../state/SubscriptionGateState";
+import { SubscriptionRequiredSheet } from "../components/professional/SubscriptionRequiredSheet";
 import { queryClient } from "../lib/queryClient";
 import { queryKeys } from "../lib/queryKeys";
 import { useConnectivity } from "../state/useConnectivity";
@@ -248,6 +255,10 @@ export function RootNavigator() {
   // (ver ToastState.tsx) — só este arquivo lê o payload de verdade, então só
   // ele precisa re-renderizar quando um toast aparece.
   const { toast, clearToast } = useToast();
+  // Bloco 6 (bloqueio por assinatura inativa): mesmo motivo do toast acima —
+  // só este arquivo (que renderiza o sheet) precisa re-renderizar quando a
+  // visibilidade muda.
+  const { subscriptionSheetVisible, hideSubscriptionRequiredSheet } = useSubscriptionGate();
   const { online, recheckNow } = useConnectivity(5000, false);
   const { shouldHardBlockColdStart, showOfflineBanner } = useOfflineGate(online, OFFLINE_GRACE_MS);
   const [showLaunchSplash, setShowLaunchSplash] = useState(
@@ -296,6 +307,10 @@ export function RootNavigator() {
       <AuthStack.Screen
         name="ResetPassword"
         component={ResetPasswordScreen as React.ComponentType<any>}
+      />
+      <AuthStack.Screen
+        name="ClaimInvite"
+        component={ClaimInviteScreen as React.ComponentType<any>}
       />
       <AuthStack.Screen
         name="TwoFactor"
@@ -439,6 +454,14 @@ export function RootNavigator() {
         name="FriendsList"
         component={FriendsListScreen as React.ComponentType<any>}
       />
+      <ClientStack.Screen
+        name="ClaimInvite"
+        component={ClaimInviteScreen as React.ComponentType<any>}
+      />
+      <ClientStack.Screen
+        name="ProviderServicesUpgrade"
+        component={ProviderServicesUpgradeScreen as React.ComponentType<any>}
+      />
     </ClientStack.Navigator>
         );
       },
@@ -526,6 +549,16 @@ export function RootNavigator() {
         component={ProfessionalStudentsScreen as React.ComponentType<any>}
       />
       <ProfessionalStack.Screen
+        name="AddExternalStudent"
+        component={AddExternalStudentScreen as React.ComponentType<any>}
+        options={{ headerShown: false }}
+      />
+      <ProfessionalStack.Screen
+        name="ExternalStudentInviteCreated"
+        component={ExternalStudentInviteCreatedScreen as React.ComponentType<any>}
+        options={{ headerShown: false }}
+      />
+      <ProfessionalStack.Screen
         name="ProviderDebts"
         component={ProviderDebtsScreen as React.ComponentType<any>}
       />
@@ -540,6 +573,10 @@ export function RootNavigator() {
       <ProfessionalStack.Screen
         name="ProviderPaymentMethod"
         component={ProviderPaymentMethodScreenSafe as React.ComponentType<any>}
+      />
+      <ProfessionalStack.Screen
+        name="MySubscription"
+        component={MySubscriptionScreen as React.ComponentType<any>}
       />
       <ProfessionalStack.Screen
         name="ProfessionalStudentDetail"
@@ -810,11 +847,21 @@ export function RootNavigator() {
     prefixes: ["muvify://", "https://muvify.app"],
     config: {
       screens: {
+        // Bloco 2 (aluno externo): funciona só se o app já estiver
+        // instalado (não temos Universal Links configurados nativamente
+        // ainda — ver plano do bloco). Sem o app instalado, o convite cai
+        // pro código digitado à mão em "Tenho um convite".
+        AuthStack: {
+          screens: {
+            ClaimInvite: "convite/:token",
+          },
+        },
         ClientStack: {
           screens: {
             ClientBookingDetail: "booking/:bookingId",
             Notifications: "notifications",
             WorkoutCelebration: "celebration/:bookingId",
+            ClaimInvite: "convite/:token",
           },
         },
         ProfessionalStack: {
@@ -864,6 +911,16 @@ export function RootNavigator() {
         {showOfflineBanner ? <MvOfflineBanner onRetry={() => void recheckNow()} /> : null}
         {toast ? <MvToastHost message={toast.message} type={toast.type} /> : null}
       </NavigationContainer>
+      <SubscriptionRequiredSheet
+        visible={subscriptionSheetVisible}
+        onDismiss={hideSubscriptionRequiredSheet}
+        onActivate={() => {
+          hideSubscriptionRequiredSheet();
+          if (navigationRef.isReady()) {
+            (navigationRef as any).navigate("MySubscription");
+          }
+        }}
+      />
     </ErrorBoundary>
   );
 }

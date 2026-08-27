@@ -1,18 +1,24 @@
 ﻿import {
+  BookingStatus,
   ConsultancyContractStatus,
+  ConsultancyContractOrigin,
   CrefValidationStatus,
   ConsultancyPaymentMethod,
   ConsultancyPaymentStatus,
   ConsultancyRequestStatus,
+  ExternalStudentInviteChannel,
+  ExternalStudentInviteStatus,
   OfferBillingCycle,
   Prisma,
   PresentialPackageMode,
   ProviderServiceMode,
+  ProviderSubscriptionStatus,
   ServiceOfferKind,
   UserRole
 } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import * as Sentry from "@sentry/node";
+import { randomInt } from "crypto";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
@@ -21,13 +27,18 @@ import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
+import { hashRefreshToken } from "../../../shared/utils/refresh-token";
+import { assertNoActiveEngagementWithOtherProvider, getActiveEngagementSummary } from "../../../shared/utils/client-engagement";
 import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
-import { PUBLIC_PROVIDER_SELECT } from "../../providers/services/provider.service";
+import { PUBLIC_PROVIDER_SELECT, sanitizePublicProviderRef } from "../../providers/services/provider.service";
+import { isProviderSubscriptionActive, normalizePhoneDigits } from "../../providers/services/provider-subscription.service";
 import { EmailQueueService } from "../../../shared/services/email-queue.service";
+import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
+import { BookingService } from "../../bookings/services/booking.service";
 
 function startOfTodayInSaoPaulo(): Date {
   const dateKey = new Intl.DateTimeFormat("en-CA", {
@@ -42,6 +53,14 @@ function startOfTodayInSaoPaulo(): Date {
 const BASE_PRICE_UPDATE_COOLDOWN_DAYS = 30;
 const BASE_PRICE_UPDATE_COOLDOWN_MS =
   BASE_PRICE_UPDATE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+
+// Bloco 4 (aluno externo, check-in periódico). Realinhamento com o Will
+// (sócio), 2026-08-25: era mensal (30 dias), virou trimestral (90 dias) —
+// a carência de 15 dias depois do vencimento continua igual, decisão
+// explícita de não mexer nela.
+const EXTERNAL_CHECK_IN_INTERVAL_MS = 90 * 24 * 60 * 60 * 1000;
+const EXTERNAL_CHECK_IN_GRACE_MS = 15 * 24 * 60 * 60 * 1000;
+const EXTERNAL_CHECK_IN_REMINDER_THROTTLE_MS = 24 * 60 * 60 * 1000;
 
 // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 1: telas do
 // cliente reusavam `include` no contrato/provider, vazando
@@ -128,6 +147,14 @@ type ExerciseInput = {
 const notificationService = new NotificationService();
 const debtService = new DebtService();
 const emailQueueService = new EmailQueueService();
+// Realinhamento com o Will (2026-08-25, Bloco 2): aceitar um convite de
+// aluno externo agora pode trocar de profissional (cancela o vínculo
+// antigo, seja ele contrato, pacote presencial ou agendamento avulso) em
+// vez de bloquear — precisa alcançar os dois módulos que
+// createExternalStudentContract não tocava antes. Nenhum dos dois importa
+// consultancy.service.ts de volta, sem risco de import circular.
+const presentialPackageService = new PresentialPackageService();
+const bookingService = new BookingService();
 
 function providerAmountFrom(priceCents: number) {
   return providerSplitAmount(priceCents);
@@ -172,6 +199,27 @@ const MP_STATUS_PENDING = "pending";
 const MP_STATUS_IN_PROCESS = "in_process";
 const CREF_APPROVAL_REQUIRED_MESSAGE =
   "Esta funcionalidade ficará disponível quando seu CREF for aprovado.";
+// Bloco 6 (bloqueio por assinatura inativa).
+const SUBSCRIPTION_REQUIRED_MESSAGE =
+  "Ative sua assinatura Muvify para continuar usando esta funcionalidade.";
+
+// Bloco 2 (aluno externo): código curto o bastante pra ser digitado à mão
+// (mockup aprovado mostra algo como "8F2A91") — sem 0/O/1/I/L, que se
+// confundem fácil quando lidos numa tela pequena ou ditados por telefone.
+const EXTERNAL_STUDENT_INVITE_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const EXTERNAL_STUDENT_INVITE_CODE_LENGTH = 6;
+
+function generateExternalStudentInviteCode() {
+  let code = "";
+  for (let i = 0; i < EXTERNAL_STUDENT_INVITE_CODE_LENGTH; i++) {
+    code += EXTERNAL_STUDENT_INVITE_CODE_ALPHABET[randomInt(0, EXTERNAL_STUDENT_INVITE_CODE_ALPHABET.length)];
+  }
+  return code;
+}
+
+function normalizeExternalStudentInviteToken(rawToken: string) {
+  return rawToken.trim().toUpperCase();
+}
 
 function extractMpPixData(payment: Awaited<ReturnType<Payment["get"]>>) {
   const poi = payment.point_of_interaction as Record<string, unknown> | null | undefined;
@@ -246,6 +294,21 @@ export class ConsultancyService {
   ) {
     if (profile.crefValidationStatus !== CrefValidationStatus.APPROVED) {
       throw new AppError(errorMessage, StatusCodes.BAD_REQUEST);
+    }
+  }
+
+  // Bloco 6 (bloqueio por assinatura inativa): mesmo formato exato do gate de
+  // CREF acima — sem exceção pra cliente já pagante (ver comentário no plano
+  // do bloco: deliverContract também bloqueia aqui, mesmo raciocínio que o
+  // CREF já usa pra renovação de ficha).
+  private ensureProviderSubscriptionActive(
+    profile: {
+      subscription?: { status: ProviderSubscriptionStatus } | null;
+    },
+    errorMessage: string = SUBSCRIPTION_REQUIRED_MESSAGE
+  ) {
+    if (!isProviderSubscriptionActive(profile.subscription?.status)) {
+      throw new AppError(errorMessage, StatusCodes.BAD_REQUEST, { code: "SUBSCRIPTION_REQUIRED" });
     }
   }
 
@@ -537,7 +600,11 @@ export class ConsultancyService {
             id: true,
             role: true
           }
-        }
+        },
+        // Bloco 6 (bloqueio por assinatura inativa): quase todo método que
+        // chama esse helper precisa checar isso — evita uma query extra
+        // repetida em cada um.
+        subscription: { select: { status: true } }
       }
     });
 
@@ -957,7 +1024,11 @@ export class ConsultancyService {
               }
             }
           }
-        }
+        },
+        // Bloco 6 (bloqueio por assinatura inativa): mesmo tratamento que o
+        // CREF já recebe aqui embaixo — profissional sem assinatura ativa
+        // some do catálogo público, igual profissional suspenso.
+        subscription: { select: { status: true, isFounder: true } }
       }
     });
 
@@ -965,7 +1036,12 @@ export class ConsultancyService {
     // checava CREF — profissional suspenso continuava aparecendo aqui
     // como "contratável" (diferente de listPromotions, que já filtra os
     // dois). Suspensão só barrava no último passo (decideRequest).
-    if (!provider || provider.crefValidationStatus !== CrefValidationStatus.APPROVED || provider.user.suspendedAt) {
+    if (
+      !provider ||
+      provider.crefValidationStatus !== CrefValidationStatus.APPROVED ||
+      provider.user.suspendedAt ||
+      !isProviderSubscriptionActive(provider.subscription?.status)
+    ) {
       throw new AppError("Profissional não encontrado.", StatusCodes.NOT_FOUND);
     }
 
@@ -974,7 +1050,9 @@ export class ConsultancyService {
         id: provider.id,
         displayName: provider.displayName,
         photoUrl: toProviderPhotoUrl(provider.id, provider.photoUrl, provider.updatedAt),
-        specialties: provider.categoryLinks.map((item) => item.category?.name).filter(Boolean)
+        specialties: provider.categoryLinks.map((item) => item.category?.name).filter(Boolean),
+        // Bloco 7 (programa 100 Fundadores): selo visual público.
+        isFounder: provider.subscription?.isFounder ?? false
       },
       onlineConsultancyEnabled: provider.onlineConsultancySetting?.enabled ?? false,
       offers: provider.serviceOffers.map((offer) => this.serializeOffer(offer)),
@@ -995,6 +1073,7 @@ export class ConsultancyService {
         provider,
         `Seu CREF ainda não foi aprovado. ${CREF_APPROVAL_REQUIRED_MESSAGE}`
       );
+      this.ensureProviderSubscriptionActive(provider);
 
       if (!provider.mpAccountId) {
         throw new AppError(
@@ -1086,6 +1165,7 @@ export class ConsultancyService {
   async createProviderOffer(userId: string, input: OfferInput) {
     const provider = await this.providerProfileByUserId(userId);
     this.ensureProviderCanSaveOffer(provider);
+    this.ensureProviderSubscriptionActive(provider);
     this.validateOfferInput(input, undefined, provider.serviceMode);
     const now = new Date();
     const isPromotion = Boolean(input.isPromotion);
@@ -1154,6 +1234,7 @@ export class ConsultancyService {
   async updateProviderOffer(userId: string, offerId: string, input: Partial<OfferInput>) {
     const provider = await this.providerProfileByUserId(userId);
     this.ensureProviderCanSaveOffer(provider);
+    this.ensureProviderSubscriptionActive(provider);
 
     const offer = await prisma.providerServiceOffer.findUnique({
       where: { id: offerId }
@@ -1399,6 +1480,7 @@ export class ConsultancyService {
 
   async deleteProviderOffer(userId: string, offerId: string) {
     const provider = await this.providerProfileByUserId(userId);
+    this.ensureProviderSubscriptionActive(provider);
 
     const offer = await prisma.providerServiceOffer.findUnique({
       where: { id: offerId }
@@ -1463,6 +1545,632 @@ export class ConsultancyService {
     }
   }
 
+  // Bloco 2 (aluno externo): gera o convite que o aluno precisa confirmar
+  // antes do vínculo existir de verdade — createExternalStudentContract (logo
+  // abaixo) exige um clientId de conta já existente, então esse convite é o
+  // que permite alguém sem conta (ou com conta, mas que nunca abriu o app
+  // com esse profissional) confirmar explicitamente, sem vínculo automático.
+  async createExternalStudentInvite(
+    userId: string,
+    input: {
+      studentName: string;
+      channel: ExternalStudentInviteChannel;
+      phone?: string;
+      email?: string;
+    }
+  ) {
+    const provider = await this.providerProfileByUserId(userId);
+    this.ensureProviderSubscriptionActive(provider);
+
+    // Reenvio: cancela qualquer convite pendente pro mesmo contato antes de
+    // criar um novo — mesmo princípio de "um token ativo por vez" já usado
+    // em PasswordResetToken, evita acumular convites órfãos pro mesmo aluno.
+    if (input.channel === ExternalStudentInviteChannel.WHATSAPP && input.phone) {
+      // Raio-X pós-épico (achado médio): comparar string exata deixava
+      // reenvio com telefone formatado diferente ("11987654321" numa vez,
+      // "(11) 98765-4321" na próxima) acumular convites órfãos duplicados
+      // pro mesmo aluno — mesmo problema que resolveSignupTier (Bloco 5) já
+      // resolveu pra WhatsApp normalizando em memória, replicado aqui.
+      const normalizedNew = normalizePhoneDigits(input.phone);
+      const pendingWhatsapp = await prisma.externalStudentInvite.findMany({
+        where: { providerId: provider.id, status: ExternalStudentInviteStatus.PENDING, phone: { not: null } },
+        select: { id: true, phone: true }
+      });
+      const toCancelIds = pendingWhatsapp
+        .filter((inv) => normalizedNew && normalizePhoneDigits(inv.phone) === normalizedNew)
+        .map((inv) => inv.id);
+      if (toCancelIds.length > 0) {
+        await prisma.externalStudentInvite.updateMany({
+          where: { id: { in: toCancelIds } },
+          data: { status: ExternalStudentInviteStatus.CANCELLED, cancelledAt: new Date() }
+        });
+      }
+    } else {
+      await prisma.externalStudentInvite.updateMany({
+        where: {
+          providerId: provider.id,
+          status: ExternalStudentInviteStatus.PENDING,
+          email: input.email
+        },
+        data: { status: ExternalStudentInviteStatus.CANCELLED, cancelledAt: new Date() }
+      });
+    }
+
+    const rawToken = generateExternalStudentInviteCode();
+    const tokenHash = hashRefreshToken(rawToken);
+    const expiresAt = new Date(
+      Date.now() + env.EXTERNAL_STUDENT_INVITE_EXPIRES_DAYS * 24 * 60 * 60 * 1000
+    );
+
+    const invite = await prisma.externalStudentInvite.create({
+      data: {
+        providerId: provider.id,
+        tokenHash,
+        studentName: input.studentName,
+        channel: input.channel,
+        phone: input.phone,
+        email: input.email,
+        expiresAt
+      }
+    });
+
+    // WhatsApp não passa pelo servidor — o app monta o texto/link e usa o
+    // share sheet do próprio celular do profissional (ver plano do bloco).
+    // Só o canal EMAIL dispara envio de verdade daqui.
+    if (input.channel === ExternalStudentInviteChannel.EMAIL && input.email) {
+      try {
+        await emailQueueService.enqueueExternalStudentInvite({
+          to: input.email,
+          studentName: input.studentName,
+          providerName: provider.displayName,
+          inviteToken: rawToken,
+          expiresDays: env.EXTERNAL_STUDENT_INVITE_EXPIRES_DAYS
+        });
+      } catch (error) {
+        console.warn(
+          `[EXTERNAL_STUDENT_INVITE_EMAIL_FAILED] inviteId=${invite.id} reason=${error instanceof Error ? error.message : "unknown"}`
+        );
+        Sentry.captureException(error, {
+          tags: { area: "consultancy-external-invite" },
+          extra: { inviteId: invite.id }
+        });
+      }
+    }
+
+    return { invite, inviteToken: rawToken };
+  }
+
+  // Sem autenticação de propósito — precisa ser consultável antes do aluno
+  // logar/criar conta (tela de preview do convite). Nunca muta nada, mesmo
+  // cuidado de checkVerificationTokenValid (auth.service.ts): protege contra
+  // scanner de link de e-mail corporativo pré-carregando e queimando o
+  // convite sozinho.
+  async previewExternalStudentInvite(rawToken: string) {
+    const tokenHash = hashRefreshToken(normalizeExternalStudentInviteToken(rawToken));
+    const invite = await prisma.externalStudentInvite.findUnique({
+      where: { tokenHash },
+      select: {
+        status: true,
+        expiresAt: true,
+        studentName: true,
+        provider: {
+          select: {
+            id: true,
+            displayName: true,
+            photoUrl: true,
+            updatedAt: true,
+            crefValidationStatus: true
+          }
+        }
+      }
+    });
+
+    if (!invite) {
+      throw new AppError("Convite não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    if (invite.status !== ExternalStudentInviteStatus.PENDING) {
+      throw new AppError("Este convite não está mais disponível.", StatusCodes.BAD_REQUEST);
+    }
+    if (invite.expiresAt <= new Date()) {
+      throw new AppError("Este convite expirou.", StatusCodes.BAD_REQUEST);
+    }
+
+    return {
+      studentName: invite.studentName,
+      provider: {
+        // Realinhamento com o Will (2026-08-25, Bloco 2): o mobile precisa
+        // saber QUEM está convidando pra comparar com o vínculo ativo atual
+        // do cliente e avisar quando aceitar for trocar de profissional.
+        id: invite.provider.id,
+        displayName: invite.provider.displayName,
+        photoUrl: toProviderPhotoUrl(invite.provider.id, invite.provider.photoUrl, invite.provider.updatedAt),
+        crefApproved: invite.provider.crefValidationStatus === CrefValidationStatus.APPROVED
+      }
+    };
+  }
+
+  // Autenticado como o próprio aluno — confirmação explícita, nunca vínculo
+  // automático (decisão tomada no debate do produto: mesmo quando o convite
+  // chega por telefone/e-mail já cadastrado, a pessoa do outro lado precisa
+  // clicar "confirmar").
+  async claimExternalStudentInvite(userId: string, rawToken: string) {
+    const tokenHash = hashRefreshToken(normalizeExternalStudentInviteToken(rawToken));
+    const invite = await prisma.externalStudentInvite.findUnique({
+      where: { tokenHash },
+      include: { provider: { select: { id: true, userId: true } } }
+    });
+
+    if (!invite) {
+      throw new AppError("Convite não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    if (invite.status !== ExternalStudentInviteStatus.PENDING) {
+      throw new AppError("Este convite não está mais disponível.", StatusCodes.BAD_REQUEST);
+    }
+    if (invite.expiresAt <= new Date()) {
+      await prisma.externalStudentInvite.updateMany({
+        where: { id: invite.id, status: ExternalStudentInviteStatus.PENDING },
+        data: { status: ExternalStudentInviteStatus.EXPIRED }
+      });
+      throw new AppError("Este convite expirou.", StatusCodes.BAD_REQUEST);
+    }
+    if (invite.provider.userId === userId) {
+      throw new AppError("Você não pode confirmar seu próprio convite.", StatusCodes.BAD_REQUEST);
+    }
+
+    const contract = await this.createExternalStudentContract(invite.provider.userId, {
+      clientId: userId
+    });
+
+    // Trava de uso único por update condicional atômico (mesmo idioma já
+    // usado em deliverContract/renewalDeliveryLockedAt neste arquivo) — se
+    // duas requisições com o mesmo token chegarem quase juntas, só uma marca
+    // CLAIMED; a outra cancela o contrato que acabou de criar em vez de
+    // deixar dois vínculos ativos pro mesmo convite.
+    const claimed = await prisma.externalStudentInvite.updateMany({
+      where: { id: invite.id, status: ExternalStudentInviteStatus.PENDING },
+      data: {
+        status: ExternalStudentInviteStatus.CLAIMED,
+        claimedAt: new Date(),
+        claimedByUserId: userId,
+        contractId: contract.id
+      }
+    });
+
+    if (claimed.count === 0) {
+      await prisma.consultancyContract.update({
+        where: { id: contract.id },
+        data: { status: ConsultancyContractStatus.CANCELLED }
+      });
+      throw new AppError("Este convite já foi confirmado.", StatusCodes.CONFLICT);
+    }
+
+    return contract;
+  }
+
+  async cancelExternalStudentInvite(userId: string, inviteId: string) {
+    const provider = await this.providerProfileByUserId(userId);
+    const invite = await prisma.externalStudentInvite.findUnique({ where: { id: inviteId } });
+    if (!invite || invite.providerId !== provider.id) {
+      throw new AppError("Convite não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    if (invite.status !== ExternalStudentInviteStatus.PENDING) {
+      throw new AppError("Este convite não pode mais ser cancelado.", StatusCodes.BAD_REQUEST);
+    }
+    return prisma.externalStudentInvite.update({
+      where: { id: inviteId },
+      data: { status: ExternalStudentInviteStatus.CANCELLED, cancelledAt: new Date() }
+    });
+  }
+
+  async listMyExternalStudentInvites(userId: string) {
+    const provider = await this.providerProfileByUserId(userId);
+    return prisma.externalStudentInvite.findMany({
+      where: { providerId: provider.id, status: ExternalStudentInviteStatus.PENDING },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        studentName: true,
+        channel: true,
+        phone: true,
+        email: true,
+        expiresAt: true,
+        createdAt: true
+      }
+    });
+  }
+
+  // Bloco 1 (aluno externo): profissional cadastra manualmente um aluno que
+  // já era dele fora do Muvify. Sem comissão, sem CREF exigido (não há venda
+  // intermediada pelo app aqui — ver ConsultancyContract.origin no schema).
+  // O ConsultancyRequest/ProviderServiceOffer sintéticos seguem o mesmo
+  // padrão já usado pelo combo presencial+online em
+  // presential-package.service.ts (purchaseCombo), só pra satisfazer as FKs
+  // obrigatórias do contrato — a oferta fica isActive: false e nunca aparece
+  // em busca, catálogo ou promoções (que sempre filtram isActive: true).
+  async createExternalStudentContract(userId: string, input: { clientId: string }) {
+    const provider = await this.providerProfileByUserId(userId);
+    // Raio-X pós-épico (achado crítico do Bloco 6): faltava aqui — o
+    // convite podia ser criado com assinatura ativa e confirmado até 7 dias
+    // depois (prazo de expiração do convite) já com a assinatura vencida,
+    // criando vínculo novo pra um profissional inadimplente. Mesma
+    // mensagem/tratamento do resto do épico pro lado do cliente.
+    this.ensureProviderSubscriptionActive(
+      provider,
+      "Este profissional não está disponível para novas contratações no momento."
+    );
+
+    const client = await prisma.user.findUnique({
+      where: { id: input.clientId },
+      select: { id: true, role: true }
+    });
+    if (!client || client.role !== UserRole.CLIENT) {
+      throw new AppError("Aluno não encontrado.", StatusCodes.NOT_FOUND);
+    }
+
+    // Guarda de idempotência (mesmo profissional) — evita duplicar o vínculo
+    // se o convite for reenviado/confirmado duas vezes.
+    const existingActiveContract = await prisma.consultancyContract.findFirst({
+      where: {
+        providerId: provider.id,
+        clientId: client.id,
+        status: { in: [ConsultancyContractStatus.ACTIVE, ConsultancyContractStatus.DELIVERED] }
+      },
+      select: { id: true }
+    });
+    if (existingActiveContract) {
+      throw new AppError("Este aluno já possui um contrato ativo com você.", StatusCodes.CONFLICT);
+    }
+
+    // Realinhamento com o Will (2026-08-25): antes, a regra global de
+    // exclusividade do Bloco 3 bloqueava aqui com 409 se o aluno já tivesse
+    // vínculo com OUTRO profissional — o convite nem chegava a ser
+    // confirmável. Agora o convite sempre chega pro aluno decidir: aceitar
+    // TROCA o vínculo (cancela o antigo, cria este novo); não aceitar não
+    // muda nada, porque esse método só roda quando o aluno de fato confirma
+    // (claimExternalStudentInvite). Snapshot do vínculo atual ANTES de criar
+    // o novo — depois de criado, getActiveEngagementSummary passaria a
+    // enxergar o novo contrato em vez do antigo.
+    const previousEngagement = await getActiveEngagementSummary(client.id);
+
+    const now = new Date();
+    const checkInDueAt = new Date(now.getTime() + EXTERNAL_CHECK_IN_INTERVAL_MS);
+
+    const contract = await prisma.$transaction(async (tx) => {
+      const offer = await tx.providerServiceOffer.create({
+        data: {
+          providerId: provider.id,
+          kind: ServiceOfferKind.ONLINE_CONSULTANCY,
+          title: "Consultoria externa (cadastro manual)",
+          billingCycle: OfferBillingCycle.MONTHLY,
+          priceCents: 0,
+          acceptsPix: false,
+          acceptsDebitCard: false,
+          acceptsCreditCard: false,
+          isActive: false
+        }
+      });
+
+      const request = await tx.consultancyRequest.create({
+        data: {
+          providerId: provider.id,
+          clientId: client.id,
+          status: ConsultancyRequestStatus.RESPONDED,
+          quotedOfferId: offer.id,
+          responseDeadlineAt: now,
+          respondedAt: now
+        }
+      });
+
+      return tx.consultancyContract.create({
+        data: {
+          requestId: request.id,
+          providerId: provider.id,
+          clientId: client.id,
+          offerId: offer.id,
+          origin: ConsultancyContractOrigin.EXTERNAL,
+          status: ConsultancyContractStatus.ACTIVE,
+          paymentInstallments: 1,
+          paymentStatus: ConsultancyPaymentStatus.CAPTURED,
+          paymentAmountCents: 0,
+          providerAmountCents: 0,
+          platformAmountCents: 0,
+          paymentCapturedAt: now,
+          deliveryDeadlineAt: now,
+          immediateExecutionAcknowledgedAt: now,
+          billingCycle: offer.billingCycle,
+          kind: offer.kind,
+          fichaValidityDays: offer.fichaValidityDays,
+          externalCheckInDueAt: checkInDueAt
+        }
+      });
+    });
+
+    // Mesma ordem/racional de UserService.switchOrAddOffer (Bloco 3): cria o
+    // vínculo novo primeiro, cancela o antigo depois (best-effort) — nunca
+    // deixa o aluno sem NENHUM vínculo se o cancelamento falhar por algum
+    // motivo. Só cancela se o vínculo anterior era de fato outro
+    // profissional (mesmo profissional/nenhum vínculo: nada a cancelar).
+    //
+    // Raio-X focado (achado alto): esse bloco falhava em silêncio em dois
+    // cenários reais — (1) contrato antigo ainda PENDING_PAYMENT (ex: Pix
+    // não compensou) faz cancelContract lançar 400 ("não pode mais ser
+    // cancelado", só aceita ACTIVE/DELIVERED), sem nenhum job de expiração
+    // pra resolver sozinho depois — o aluno ficava PRESO PRA SEMPRE com dois
+    // vínculos ativos, quebrando a invariante que os Blocos 3/6 assumem
+    // garantida; (2) pacote presencial cancelado com `notify: false`
+    // (parâmetro pensado pra pacote órfão que o cliente nunca soube que
+    // existiu) suprimia o aviso pros DOIS lados, então o profissional antigo
+    // nunca ficava sabendo que perdeu o aluno. Corrigido: contrato
+    // PENDING_PAYMENT agora tem um caminho de cancelamento direto (sem nada
+    // a estornar — o webhook de pagamento já é condicionado a
+    // `status: PENDING_PAYMENT`, então um Pix atrasado não reativa um
+    // contrato já cancelado); pacote volta a notificar os dois lados
+    // (comportamento padrão); e toda falha agora vai pro Sentry também, não
+    // só console.error — antes disso não tinha NENHUMA forma de descobrir
+    // que isso aconteceu além de um cliente reclamando de estar bloqueado.
+    if (previousEngagement.hasActive && previousEngagement.providerId !== provider.id) {
+      if (previousEngagement.contractId) {
+        const oldContractId = previousEngagement.contractId;
+        const oldContract = await prisma.consultancyContract.findUnique({
+          where: { id: oldContractId },
+          select: { status: true }
+        });
+        if (
+          oldContract?.status === ConsultancyContractStatus.ACTIVE ||
+          oldContract?.status === ConsultancyContractStatus.DELIVERED
+        ) {
+          await this.cancelContract(client.id, oldContractId).catch((error) => {
+            console.error(`Falha ao cancelar contrato antigo ${oldContractId} ao trocar via convite externo:`, error);
+            Sentry.captureException(error, {
+              tags: { area: "consultancy-external-invite-switch" },
+              extra: { contractId: oldContractId, clientId: client.id }
+            });
+          });
+        } else if (oldContract?.status === ConsultancyContractStatus.PENDING_PAYMENT) {
+          await prisma.consultancyContract
+            .updateMany({
+              where: { id: oldContractId, status: ConsultancyContractStatus.PENDING_PAYMENT },
+              data: { status: ConsultancyContractStatus.CANCELLED }
+            })
+            .then((result) => {
+              if (result.count === 0) return;
+              void notificationService
+                .sendToUsers([client.id], {
+                  preferenceType: "CONSULTANCY",
+                  title: "Solicitação anterior cancelada",
+                  body: "Você tinha uma consultoria aguardando pagamento com outro profissional — foi cancelada porque você confirmou um novo vínculo.",
+                  data: { type: "CONSULTANCY_CANCELLED_BY_SWITCH", contractId: oldContractId }
+                })
+                .catch((e) => console.error("Notificação de contrato pendente cancelado por troca falhou:", e));
+            })
+            .catch((error) => {
+              console.error(`Falha ao cancelar contrato antigo pendente ${oldContractId} ao trocar via convite externo:`, error);
+              Sentry.captureException(error, {
+                tags: { area: "consultancy-external-invite-switch" },
+                extra: { contractId: oldContractId, clientId: client.id }
+              });
+            });
+        }
+      } else if (previousEngagement.packageId) {
+        const oldPackageId = previousEngagement.packageId;
+        await presentialPackageService.cancelPackage(client.id, oldPackageId).catch((error) => {
+          console.error(`Falha ao cancelar pacote antigo ${oldPackageId} ao trocar via convite externo:`, error);
+          Sentry.captureException(error, {
+            tags: { area: "consultancy-external-invite-switch" },
+            extra: { packageId: oldPackageId, clientId: client.id }
+          });
+        });
+      } else if (previousEngagement.bookingId) {
+        const oldBookingId = previousEngagement.bookingId;
+        const oldBooking = await prisma.booking.findUnique({
+          where: { id: oldBookingId },
+          select: { scheduledAt: true, attendanceCodeValidatedAt: true }
+        });
+        // Raio-X focado (achado médio-alto): sessão com horário já passado
+        // e presença nunca validada só pode ser resolvida via "reportar
+        // falta" (booking.service.ts), nunca um cancelamento simples —
+        // updateStatus sempre rejeita esse caso de propósito, pra proteger
+        // o profissional de perder a sessão sem contestação. Forçar por
+        // aqui seria burlar essa proteção (o cliente pode muito bem ter
+        // comparecido e só não validado). `autoExpireStaleBookings` já
+        // resolve isso sozinho em até 48h; tentar cancelar aqui só geraria
+        // um erro esperado a cada troca nessas condições, sem nenhuma ação
+        // real a tomar — pular direto evita ruído de Sentry pra um caso que
+        // não precisa de nenhuma intervenção.
+        const willBeRejected =
+          oldBooking && oldBooking.scheduledAt <= new Date() && !oldBooking.attendanceCodeValidatedAt;
+        if (!willBeRejected) {
+          await bookingService.updateStatus(client.id, oldBookingId, BookingStatus.CANCELLED).catch((error) => {
+            console.error(`Falha ao cancelar agendamento avulso antigo ${oldBookingId} ao trocar via convite externo:`, error);
+            Sentry.captureException(error, {
+              tags: { area: "consultancy-external-invite-switch" },
+              extra: { bookingId: oldBookingId, clientId: client.id }
+            });
+          });
+        }
+      }
+    }
+
+    return contract;
+  }
+
+  // Bloco 4 (aluno externo): contratos externos do profissional com check-in
+  // vencido (dueAt <= agora) — fonte do banner "ainda é seu aluno?" na tela
+  // de alunos. Independe do throttle de lembrete do job (esse é só o push).
+  async listExternalCheckIns(userId: string) {
+    const provider = await this.providerProfileByUserId(userId);
+    const now = new Date();
+
+    const contracts = await prisma.consultancyContract.findMany({
+      where: {
+        providerId: provider.id,
+        origin: ConsultancyContractOrigin.EXTERNAL,
+        status: { in: [ConsultancyContractStatus.ACTIVE, ConsultancyContractStatus.DELIVERED] },
+        externalCheckInDueAt: { lte: now }
+      },
+      select: {
+        id: true,
+        externalCheckInDueAt: true,
+        client: { select: { name: true } }
+      },
+      orderBy: { externalCheckInDueAt: "asc" }
+    });
+
+    return contracts.map((c) => ({
+      contractId: c.id,
+      studentName: c.client.name,
+      dueAt: c.externalCheckInDueAt!
+    }));
+  }
+
+  // Bloco 4 (aluno externo): "sim, continua" — reseta o relógio de 90 dias
+  // (trimestral, realinhado com o Will em 2026-08-25) a partir de agora (não
+  // do vencimento anterior), decisão explícita do usuário pra manter simples.
+  async confirmExternalCheckIn(userId: string, contractId: string) {
+    const provider = await this.providerProfileByUserId(userId);
+    // Raio-X pós-épico (achado médio): faltava aqui — sem o gate, um
+    // profissional com assinatura vencida podia confirmar "sim, continua" no
+    // check-in a cada 90 dias indefinidamente, mantendo alunos externos
+    // vinculados pra sempre sem nunca precisar reativar a cobrança.
+    this.ensureProviderSubscriptionActive(
+      provider,
+      "Sua assinatura está inativa — reative para continuar confirmando vínculos de alunos externos."
+    );
+
+    const contract = await prisma.consultancyContract.findUnique({
+      where: { id: contractId },
+      select: { id: true, providerId: true, origin: true, status: true }
+    });
+    if (
+      !contract ||
+      contract.providerId !== provider.id ||
+      contract.origin !== ConsultancyContractOrigin.EXTERNAL
+    ) {
+      throw new AppError("Contrato não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    if (
+      contract.status !== ConsultancyContractStatus.ACTIVE &&
+      contract.status !== ConsultancyContractStatus.DELIVERED
+    ) {
+      throw new AppError("Este vínculo não está mais ativo.", StatusCodes.BAD_REQUEST);
+    }
+
+    const now = new Date();
+    return prisma.consultancyContract.update({
+      where: { id: contract.id },
+      data: {
+        externalCheckInDueAt: new Date(now.getTime() + EXTERNAL_CHECK_IN_INTERVAL_MS),
+        externalCheckInReminderSentAt: null
+      }
+    });
+  }
+
+  // Bloco 1 (aluno externo): versão de deliverContract dedicada a contratos
+  // origin: EXTERNAL — sem CREF, sem a lógica de cobrança de renovação (não
+  // existe cartão/Pix associado a esse contrato). Nunca reaproveita
+  // deliverContract diretamente pra não arriscar a lógica de cobrança do
+  // fluxo pago tocar um contrato sem meio de pagamento.
+  async deliverExternalPlan(
+    userId: string,
+    contractId: string,
+    input: {
+      title: string;
+      description?: string;
+      exercises: ExerciseInput[];
+      validUntil?: string;
+    }
+  ) {
+    const provider = await this.providerProfileByUserId(userId);
+    this.ensureProviderSubscriptionActive(provider);
+
+    const suspendedProvider = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { suspendedAt: true }
+    });
+    if (suspendedProvider?.suspendedAt) {
+      throw new AppError("Sua conta está suspensa e não pode entregar novas fichas.", StatusCodes.FORBIDDEN);
+    }
+
+    const contract = await prisma.consultancyContract.findUnique({ where: { id: contractId } });
+    if (!contract || contract.providerId !== provider.id) {
+      throw new AppError("Contrato não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    if (contract.origin !== ConsultancyContractOrigin.EXTERNAL) {
+      throw new AppError(
+        "Esta operação é exclusiva para alunos cadastrados manualmente pelo profissional.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+    if (
+      contract.status !== ConsultancyContractStatus.ACTIVE &&
+      contract.status !== ConsultancyContractStatus.DELIVERED
+    ) {
+      throw new AppError(
+        "Contrato não está mais ativo — não é possível entregar novos treinos.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    let planValidUntil: Date | undefined;
+    if (input.validUntil) {
+      const parsed = new Date(input.validUntil);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new AppError("Data de vigência do treino inválida.", StatusCodes.BAD_REQUEST);
+      }
+      if (parsed <= new Date()) {
+        throw new AppError("A vigência do treino deve ser uma data futura.", StatusCodes.BAD_REQUEST);
+      }
+      planValidUntil = parsed;
+    }
+
+    const isFirstDelivery = contract.status !== ConsultancyContractStatus.DELIVERED;
+    const normalizedExercises = await this.normalizePlanExercises(provider.id, input.exercises);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const plan = await tx.trainingPlan.create({
+        data: {
+          providerId: provider.id,
+          contractId: contract.id,
+          title: input.title,
+          description: input.description,
+          isPrebuilt: false,
+          isActive: true,
+          validUntil: planValidUntil,
+          exercises: { create: normalizedExercises }
+        },
+        include: {
+          exercises: { orderBy: { sortOrder: "asc" }, include: { exercise: true } }
+        }
+      });
+
+      const updatedContract = isFirstDelivery
+        ? await tx.consultancyContract.update({
+            where: { id: contract.id },
+            data: { status: ConsultancyContractStatus.DELIVERED, deliveredAt: new Date() }
+          })
+        : contract;
+
+      return { plan, contract: updatedContract };
+    });
+
+    // Raio-X pós-épico (achado médio): deliverContract (fluxo MARKETPLACE
+    // normal) sempre avisa o aluno quando uma ficha nova é entregue —
+    // deliverExternalPlan nunca ganhou o equivalente, aluno externo só
+    // descobria abrindo o app por conta própria e checando "Seu Treino".
+    void notificationService
+      .sendToUsers([contract.clientId], {
+        preferenceType: "CONSULTANCY",
+        title: isFirstDelivery ? "Treino personalizado disponível" : "Novo treino disponível",
+        body: isFirstDelivery
+          ? "Seu treino foi entregue e já está liberado em Seu Treino."
+          : "Seu profissional liberou mais um treino em Seu Treino.",
+        data: { type: "CONSULTANCY_TRAINING_DELIVERED", contractId: contract.id }
+      })
+      .catch((error) => console.error("Falha ao notificar aluno externo sobre ficha entregue:", error));
+
+    return result;
+  }
+
   async createTrainingPlan(
     userId: string,
     input: {
@@ -1477,6 +2185,7 @@ export class ConsultancyService {
       provider,
       `Seu CREF ainda não foi aprovado. ${CREF_APPROVAL_REQUIRED_MESSAGE}`
     );
+    this.ensureProviderSubscriptionActive(provider);
     const normalizedExercises = await this.normalizePlanExercises(
       provider.id,
       input.exercises
@@ -1533,16 +2242,6 @@ export class ConsultancyService {
     }
   ) {
     const provider = await this.providerProfileByUserId(userId);
-    // Frente 4 (Criação/entrega/evolução do treino), Lote 3: este endpoint
-    // não checava nada além de dono - diferente de deliverContract, que
-    // exige CREF aprovado, conta não suspensa, contrato ACTIVE/DELIVERED e
-    // ausência de contestação em aberto. Um profissional podia reescrever o
-    // conteúdo de uma ficha até durante uma disputa aberta sobre ela mesma,
-    // apagando a evidência que gerou a reclamação antes do admin julgar.
-    this.ensureProviderCrefApproved(
-      provider,
-      `Seu CREF ainda não foi aprovado. ${CREF_APPROVAL_REQUIRED_MESSAGE}`
-    );
     const suspendedProvider = await prisma.user.findUnique({
       where: { id: userId },
       select: { suspendedAt: true }
@@ -1563,7 +2262,8 @@ export class ConsultancyService {
             paymentCapturedAt: true,
             createdAt: true,
             status: true,
-            billingCycle: true
+            billingCycle: true,
+            origin: true
           }
         }
       }
@@ -1572,6 +2272,25 @@ export class ConsultancyService {
     if (!existing || existing.providerId !== provider.id) {
       throw new AppError("Treino não encontrado.", StatusCodes.NOT_FOUND);
     }
+
+    // Frente 4 (Criação/entrega/evolução do treino), Lote 3: este endpoint
+    // não checava nada além de dono - diferente de deliverContract, que
+    // exige CREF aprovado, conta não suspensa, contrato ACTIVE/DELIVERED e
+    // ausência de contestação em aberto. Um profissional podia reescrever o
+    // conteúdo de uma ficha até durante uma disputa aberta sobre ela mesma,
+    // apagando a evidência que gerou a reclamação antes do admin julgar.
+    //
+    // Bloco 1 (aluno externo): ficha de contrato origin: EXTERNAL não exige
+    // CREF — não há venda intermediada pelo app nesse caso. Todo contrato
+    // hoje em produção é MARKETPLACE (valor padrão da coluna), então isso
+    // não muda nada pro fluxo pago existente.
+    if (existing.contract?.origin !== ConsultancyContractOrigin.EXTERNAL) {
+      this.ensureProviderCrefApproved(
+        provider,
+        `Seu CREF ainda não foi aprovado. ${CREF_APPROVAL_REQUIRED_MESSAGE}`
+      );
+    }
+    this.ensureProviderSubscriptionActive(provider);
 
     if (
       existing.contract &&
@@ -1677,6 +2396,7 @@ export class ConsultancyService {
 
   async deleteTrainingPlan(userId: string, planId: string) {
     const provider = await this.providerProfileByUserId(userId);
+    this.ensureProviderSubscriptionActive(provider);
     const existing = await prisma.trainingPlan.findUnique({
       where: { id: planId },
       select: {
@@ -1722,7 +2442,8 @@ export class ConsultancyService {
       where: { id: input.providerId },
       include: {
         onlineConsultancySetting: true,
-        user: { select: { suspendedAt: true } }
+        user: { select: { suspendedAt: true } },
+        subscription: { select: { status: true } }
       }
     });
 
@@ -1733,6 +2454,10 @@ export class ConsultancyService {
     this.ensureProviderCrefApproved(
       provider,
       "Este profissional ainda não está habilitado para consultoria on-line."
+    );
+    this.ensureProviderSubscriptionActive(
+      provider,
+      "Este profissional não está disponível para novas contratações no momento."
     );
 
     // Frente 9 (segunda camada), Lote 7: booking e pacote presencial já
@@ -1843,11 +2568,11 @@ export class ConsultancyService {
       }
     });
 
-    return request;
+    return { ...request, provider: sanitizePublicProviderRef(request.provider) };
   }
 
   async listClientRequests(clientId: string) {
-    return prisma.consultancyRequest.findMany({
+    const requests = await prisma.consultancyRequest.findMany({
       where: { clientId },
       include: {
         provider: {
@@ -1872,6 +2597,7 @@ export class ConsultancyService {
       orderBy: { createdAt: "desc" },
       take: 100,
     });
+    return requests.map((request) => ({ ...request, provider: sanitizePublicProviderRef(request.provider) }));
   }
 
   async listClientArchivedRequests(
@@ -1894,7 +2620,7 @@ export class ConsultancyService {
           }
         : status;
 
-    return prisma.consultancyRequest.findMany({
+    const requests = await prisma.consultancyRequest.findMany({
       where: {
         clientId,
         status: whereStatus
@@ -1922,6 +2648,7 @@ export class ConsultancyService {
       orderBy: { updatedAt: "desc" },
       take: 100,
     });
+    return requests.map((request) => ({ ...request, provider: sanitizePublicProviderRef(request.provider) }));
   }
 
   async listProviderRequests(userId: string) {
@@ -2007,6 +2734,7 @@ export class ConsultancyService {
       provider,
       `Seu CREF ainda não foi aprovado. ${CREF_APPROVAL_REQUIRED_MESSAGE}`
     );
+    this.ensureProviderSubscriptionActive(provider);
 
     const request = await prisma.consultancyRequest.findUnique({
       where: { id: requestId }
@@ -2163,6 +2891,11 @@ export class ConsultancyService {
       return { request, contract: request.contract };
     }
 
+    // Bloco 3 (exclusividade de marketplace): só um profissional ativo por
+    // vez — aceitar uma proposta de um profissional diferente do que já está
+    // vinculado é bloqueado aqui.
+    await assertNoActiveEngagementWithOtherProvider(clientId, request.providerId);
+
     if (input.acknowledgedImmediateExecution !== true) {
       // Defesa em profundidade — o validator já bloqueia isso, mas o consentimento
       // expresso ao início imediato do atendimento é a base legal (art. 49 do CDC)
@@ -2252,12 +2985,17 @@ export class ConsultancyService {
       const paymentAmountCentsTx = this.offerEffectivePriceCents(freshOffer);
       const freshProvider = await tx.providerProfile.findUnique({
         where: { id: request.providerId },
-        select: { crefValidationStatus: true, user: { select: { suspendedAt: true } } }
+        select: {
+          crefValidationStatus: true,
+          user: { select: { suspendedAt: true } },
+          subscription: { select: { status: true } }
+        }
       });
       if (
         !freshProvider ||
         freshProvider.crefValidationStatus !== CrefValidationStatus.APPROVED ||
-        freshProvider.user.suspendedAt
+        freshProvider.user.suspendedAt ||
+        !isProviderSubscriptionActive(freshProvider.subscription?.status)
       ) {
         throw new AppError(
           "Este profissional não está mais disponível para novas contratações.",
@@ -2491,6 +3229,183 @@ export class ConsultancyService {
     };
   }
 
+  // Bloco 3 (trocar/adicionar serviço do mesmo profissional): compra direta
+  // de uma oferta de consultoria já publicada, sem passar pela negociação
+  // normal (createConsultancyRequest → respondToRequest → decideRequest) —
+  // faz sentido pular a negociação aqui porque o profissional já é o mesmo
+  // do vínculo atual do cliente (já vetado, já com relação estabelecida) e a
+  // oferta já tem preço fixo publicado, nada a negociar de verdade. Mesmo
+  // padrão de "request/contrato sintéticos já aceitos" que purchaseCombo já
+  // usa pra metade de consultoria de um combo — reaproveita
+  // createConsultancyMpPayment (a MESMA função que decideRequest chama) em
+  // vez de duplicar a chamada ao Mercado Pago.
+  async purchaseConsultancyDirect(
+    clientId: string,
+    input: { offerId: string; paymentMethod: ConsultancyPaymentMethod; acknowledgedImmediateExecution?: boolean }
+  ) {
+    const offer = await prisma.providerServiceOffer.findFirst({
+      where: { id: input.offerId, isActive: true, kind: { in: onlineOfferKinds } },
+      include: {
+        provider: {
+          include: { user: { select: { suspendedAt: true } }, subscription: { select: { status: true } } }
+        }
+      }
+    });
+    if (!offer) {
+      throw new AppError("Oferta não encontrada ou indisponível.", StatusCodes.NOT_FOUND);
+    }
+    if (offer.kind === ServiceOfferKind.COMBO) {
+      throw new AppError("Use a compra de combo para esta oferta.", StatusCodes.BAD_REQUEST);
+    }
+    if (offer.provider.userId === clientId) {
+      throw new AppError("Você não pode contratar seu próprio serviço.", StatusCodes.UNPROCESSABLE_ENTITY);
+    }
+    if (offer.provider.user.suspendedAt) {
+      throw new AppError("Este profissional não está disponível para novas contratações no momento.", StatusCodes.BAD_REQUEST);
+    }
+    this.ensureProviderCrefApproved(offer.provider, "Este profissional ainda não está habilitado para consultoria on-line.");
+    this.ensureProviderSubscriptionActive(
+      offer.provider,
+      "Este profissional não está disponível para novas contratações no momento."
+    );
+    if (!offer.provider.mpAccountId) {
+      throw new AppError("Este profissional ainda não configurou o recebimento de pagamentos.", StatusCodes.BAD_REQUEST);
+    }
+    if (input.acknowledgedImmediateExecution !== true) {
+      throw new AppError(
+        "É necessário confirmar a ciência sobre o início imediato do atendimento para contratar.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+    if (input.paymentMethod === ConsultancyPaymentMethod.PIX && !offer.acceptsPix) {
+      throw new AppError("Este profissional não aceita PIX para este serviço.", StatusCodes.BAD_REQUEST);
+    }
+    if (input.paymentMethod === ConsultancyPaymentMethod.DEBIT_CARD && !offer.acceptsDebitCard) {
+      throw new AppError("Este profissional não aceita cartão de débito para este serviço.", StatusCodes.BAD_REQUEST);
+    }
+    if (input.paymentMethod === ConsultancyPaymentMethod.CREDIT_CARD && !offer.acceptsCreditCard) {
+      throw new AppError("Este profissional não aceita cartão de crédito para este serviço.", StatusCodes.BAD_REQUEST);
+    }
+
+    const now = new Date();
+    const deliveryDeadlineAt = new Date(now.getTime() + env.CONSULTANCY_DELIVERY_DEADLINE_HOURS * 60 * 60 * 1000);
+    const paymentAmountCents = this.offerEffectivePriceCents(offer);
+
+    const { request, contract } = await prisma.$transaction(async (tx) => {
+      const requestTx = await tx.consultancyRequest.create({
+        data: {
+          providerId: offer.providerId,
+          clientId,
+          status: ConsultancyRequestStatus.RESPONDED,
+          quotedOfferId: offer.id,
+          responseDeadlineAt: now,
+          respondedAt: now
+        }
+      });
+      const contractTx = await tx.consultancyContract.create({
+        data: {
+          requestId: requestTx.id,
+          providerId: offer.providerId,
+          clientId,
+          offerId: offer.id,
+          status: ConsultancyContractStatus.PENDING_PAYMENT,
+          paymentMethod: input.paymentMethod,
+          paymentInstallments: 1,
+          paymentStatus: ConsultancyPaymentStatus.PENDING,
+          paymentAmountCents,
+          providerAmountCents: providerAmountFrom(paymentAmountCents),
+          platformAmountCents: platformAmountFrom(paymentAmountCents),
+          deliveryDeadlineAt,
+          immediateExecutionAcknowledgedAt: now,
+          billingCycle: offer.billingCycle,
+          kind: offer.kind,
+          fichaValidityDays: offer.fichaValidityDays
+        }
+      });
+      return { request: requestTx, contract: contractTx };
+    });
+
+    let mpPay: Awaited<ReturnType<Payment["create"]>>;
+    try {
+      mpPay = await this.createConsultancyMpPayment({
+        requestId: request.id,
+        contractId: contract.id,
+        providerId: offer.providerId,
+        clientId,
+        paymentMethod: input.paymentMethod,
+        amountCents: paymentAmountCents
+      });
+    } catch (error) {
+      await prisma.consultancyContract.update({
+        where: { id: contract.id },
+        data: { paymentStatus: ConsultancyPaymentStatus.FAILED }
+      });
+      const message = error instanceof Error ? error.message : "Falha ao processar pagamento da consultoria.";
+      throw new AppError(message, StatusCodes.BAD_REQUEST);
+    }
+
+    const mpStatus = mpPay.status;
+    const mpPayId = String(mpPay.id);
+    const paymentNow = new Date();
+    let updatedContract;
+
+    if (mpStatus === MP_STATUS_APPROVED) {
+      updatedContract = await prisma.consultancyContract.update({
+        where: { id: contract.id },
+        data: { mpPaymentId: mpPayId, paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: paymentNow, status: ConsultancyContractStatus.ACTIVE }
+      });
+    } else if (mpStatus === "authorized") {
+      updatedContract = await prisma.consultancyContract.update({
+        where: { id: contract.id },
+        data: { mpPaymentId: mpPayId, paymentStatus: ConsultancyPaymentStatus.AUTHORIZED, status: ConsultancyContractStatus.ACTIVE }
+      });
+    } else if (
+      input.paymentMethod === ConsultancyPaymentMethod.PIX &&
+      (mpStatus === MP_STATUS_PENDING || mpStatus === MP_STATUS_IN_PROCESS)
+    ) {
+      const pixPayload = extractMpPixData(mpPay);
+      updatedContract = await prisma.consultancyContract.update({
+        where: { id: contract.id },
+        data: {
+          mpPaymentId: mpPayId,
+          paymentStatus: ConsultancyPaymentStatus.PENDING,
+          status: ConsultancyContractStatus.PENDING_PAYMENT,
+          pixQrCodeUrl: pixPayload?.qrCodeUrl ?? null,
+          pixCopyPasteCode: pixPayload?.copyAndPasteCode ?? null,
+          pixExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+        }
+      });
+    } else {
+      await prisma.consultancyContract.update({
+        where: { id: contract.id },
+        data: { mpPaymentId: mpPayId, paymentStatus: ConsultancyPaymentStatus.FAILED, status: ConsultancyContractStatus.PENDING_PAYMENT }
+      });
+      throw new AppError("Pagamento não foi confirmado. Tente novamente.", StatusCodes.BAD_REQUEST);
+    }
+
+    void prisma.consultancyMessage
+      .create({
+        data: {
+          contractId: contract.id,
+          isSystem: true,
+          content: `🎉 Consultoria contratada com ${offer.provider.displayName}! Use este chat para tirar dúvidas, combinar detalhes ou se apresentar ao seu personal.`
+        }
+      })
+      .catch(() => undefined);
+
+    await notificationService.sendToUsers([offer.provider.userId], {
+      preferenceType: "CONSULTANCY",
+      title: mpStatus === MP_STATUS_APPROVED ? "Consultoria contratada" : "Pagamento pendente",
+      body:
+        mpStatus === MP_STATUS_APPROVED
+          ? "Um aluno contratou um serviço de consultoria e pagou com sucesso."
+          : "Um aluno iniciou o pagamento de uma consultoria e aguarda confirmação.",
+      data: { type: "CONSULTANCY_CONTRACT_ACCEPTED", requestId: request.id, contractId: contract.id }
+    });
+
+    return updatedContract;
+  }
+
   async deliverContract(
     userId: string,
     contractId: string,
@@ -2506,6 +3421,7 @@ export class ConsultancyService {
       provider,
       `Seu CREF ainda não foi aprovado. ${CREF_APPROVAL_REQUIRED_MESSAGE}`
     );
+    this.ensureProviderSubscriptionActive(provider);
 
     // Raio-X de pagamentos, Rodada 5, Lote 2: cada nova ficha entregue cobra
     // o aluno de novo (Frente B) — um profissional suspenso nao pode seguir
@@ -2811,6 +3727,19 @@ export class ConsultancyService {
       throw new AppError("Contrato não encontrado.", StatusCodes.NOT_FOUND);
     }
 
+    // Bloco 1 (aluno externo): não há venda intermediada pelo Muvify nesse
+    // caso (ver disclaimer em ConsultancyContract.origin) — não faz sentido
+    // abrir uma disputa formal contra algo que a plataforma não intermediou.
+    // (O reembolso em si já ficaria travado de qualquer forma: amountCents
+    // 0 nunca passa na validação de resolveCase — mas nem deixa chegar a
+    // existir um caso aberto sem propósito na fila do admin.)
+    if (contract.origin === ConsultancyContractOrigin.EXTERNAL) {
+      throw new AppError(
+        "Este vínculo foi cadastrado diretamente pelo profissional e não é intermediado pelo Muvify — não é possível abrir uma contestação por aqui.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
     if (contract.status !== ConsultancyContractStatus.DELIVERED || !contract.deliveredAt) {
       throw new AppError("Este contrato ainda não teve a primeira ficha entregue.", StatusCodes.BAD_REQUEST);
     }
@@ -2927,6 +3856,7 @@ export class ConsultancyService {
     // visiveis, o conteudo em si so e acessivel enquanto o treino estiver vigente.
     const contractsWithPlanValidity = contracts.map((contract) => ({
       ...contract,
+      provider: sanitizePublicProviderRef(contract.provider),
       trainingPlans: contract.trainingPlans.map((plan) => {
         const effectiveValidUntil =
           plan.validUntil ?? consultancyValidUntil(contract);
@@ -3455,6 +4385,11 @@ export class ConsultancyService {
     const due24h = await prisma.consultancyContract.findMany({
       where: {
         status: ConsultancyContractStatus.ACTIVE,
+        // Bloco 1 (aluno externo): deliveryDeadlineAt de um contrato EXTERNAL
+        // é só um valor de preenchimento (= now no momento da criação, pra
+        // satisfazer o campo obrigatório) — esse contrato não tem prazo real
+        // de entrega, então nunca deve entrar nesses lembretes/expirações.
+        origin: ConsultancyContractOrigin.MARKETPLACE,
         expiry24hSentAt: null,
         deliveryDeadlineAt: { gte: lower24h, lte: upper24h },
       },
@@ -3496,6 +4431,7 @@ export class ConsultancyService {
     const due6h = await prisma.consultancyContract.findMany({
       where: {
         status: ConsultancyContractStatus.ACTIVE,
+        origin: ConsultancyContractOrigin.MARKETPLACE,
         expiry6hSentAt: null,
         deliveryDeadlineAt: { gte: lower6h, lte: upper6h },
       },
@@ -3530,6 +4466,7 @@ export class ConsultancyService {
     const expiredContracts = await prisma.consultancyContract.findMany({
       where: {
         status: ConsultancyContractStatus.ACTIVE,
+        origin: ConsultancyContractOrigin.MARKETPLACE,
         expiryNoticeSentAt: null,
         deliveryDeadlineAt: { lte: referenceDate },
       },
@@ -3789,6 +4726,82 @@ export class ConsultancyService {
     }
   }
 
+  // Bloco 4 (aluno externo): "ainda é seu aluno?" — sem confirmação em 30
+  // dias, lembra o profissional (throttle de 24h, mesmo padrão de
+  // inactivityReminderSentAt acima) até completar 15 dias de carência desde
+  // o vencimento, quando encerra sozinho. Contrato EXTERNAL nunca teve
+  // pagamento real via Mercado Pago (paymentStatus CAPTURED direto na
+  // criação, sem mpPaymentId) — encerrar aqui é só mudar o status, sem
+  // nenhuma ação de estorno.
+  async sendExternalCheckInReminders(referenceDate = new Date()) {
+    const dueContracts = await prisma.consultancyContract.findMany({
+      where: {
+        origin: ConsultancyContractOrigin.EXTERNAL,
+        status: { in: [ConsultancyContractStatus.ACTIVE, ConsultancyContractStatus.DELIVERED] },
+        externalCheckInDueAt: { lte: referenceDate }
+      },
+      select: {
+        id: true,
+        clientId: true,
+        externalCheckInDueAt: true,
+        externalCheckInReminderSentAt: true,
+        provider: { select: { userId: true } }
+      },
+      take: 200
+    });
+
+    for (const contract of dueContracts) {
+      const autoCancelDeadline = new Date(contract.externalCheckInDueAt!.getTime() + EXTERNAL_CHECK_IN_GRACE_MS);
+      if (referenceDate >= autoCancelDeadline) {
+        await prisma.consultancyContract.update({
+          where: { id: contract.id },
+          data: { status: ConsultancyContractStatus.CANCELLED }
+        });
+        void notificationService
+          .sendToUsers([contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: "Vínculo com aluno externo encerrado",
+            body: "Você não confirmou o check-in periódico a tempo — o vínculo foi encerrado automaticamente. Você pode cadastrar o aluno de novo quando quiser.",
+            data: { type: "EXTERNAL_STUDENT_CHECK_IN_AUTO_CANCELLED", contractId: contract.id }
+          })
+          .catch((e) => console.error("External check-in auto-cancel notice (provider) failed:", e));
+        // Raio-X pós-épico (achado médio): só o profissional era avisado —
+        // o aluno externo (que pode ter conta de verdade no app, ver Bloco
+        // 2) perdia acesso à ficha/relação sem nenhum aviso, só percebia ao
+        // tentar abrir o treino. cancelContract (cancelamento manual normal)
+        // sempre notifica os dois lados; esse desfecho automático também deve.
+        void notificationService
+          .sendToUsers([contract.clientId], {
+            preferenceType: "CONSULTANCY",
+            title: "Vínculo com seu personal foi encerrado",
+            body: "Seu profissional não confirmou a continuidade do acompanhamento e o vínculo foi encerrado automaticamente.",
+            data: { type: "EXTERNAL_STUDENT_CHECK_IN_AUTO_CANCELLED", contractId: contract.id }
+          })
+          .catch((e) => console.error("External check-in auto-cancel notice (client) failed:", e));
+        continue;
+      }
+
+      if (
+        contract.externalCheckInReminderSentAt &&
+        referenceDate.getTime() - contract.externalCheckInReminderSentAt.getTime() < EXTERNAL_CHECK_IN_REMINDER_THROTTLE_MS
+      ) {
+        continue;
+      }
+      await prisma.consultancyContract.update({
+        where: { id: contract.id },
+        data: { externalCheckInReminderSentAt: referenceDate }
+      });
+      void notificationService
+        .sendToUsers([contract.provider.userId], {
+          preferenceType: "CONSULTANCY",
+          title: "Confirme seu vínculo com um aluno externo",
+          body: "Faz 90 dias desde o último check-in — confirme se o vínculo continua ativo antes que ele seja encerrado automaticamente.",
+          data: { type: "EXTERNAL_STUDENT_CHECK_IN_DUE", contractId: contract.id }
+        })
+        .catch((e) => console.error("External check-in reminder (provider) failed:", e));
+    }
+  }
+
   // Retenção: aluno de consultoria online com contrato ativo (ficha já
   // entregue) que passa 3+ dias sem marcar nenhum treino como concluído -
   // avisa só o profissional, repetindo a cada 24h enquanto continuar
@@ -3861,6 +4874,12 @@ export class ConsultancyService {
     const expiredContracts = await prisma.consultancyContract.findMany({
       where: {
         status: ConsultancyContractStatus.ACTIVE,
+        // Bloco 1 (aluno externo): sem isso, um contrato EXTERNAL era
+        // auto-cancelado por esse job minutos depois de criado — ele nasce
+        // com paymentStatus CAPTURED e deliveryDeadlineAt = now (só pra
+        // satisfazer o campo obrigatório), então bateria em todos os
+        // critérios abaixo antes mesmo do profissional entregar a 1ª ficha.
+        origin: ConsultancyContractOrigin.MARKETPLACE,
         paymentStatus: { in: [ConsultancyPaymentStatus.AUTHORIZED, ConsultancyPaymentStatus.CAPTURED] },
         deliveredAt: null,
         deliveryDeadlineAt: {

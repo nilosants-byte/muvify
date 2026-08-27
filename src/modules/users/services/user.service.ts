@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 import {
   AnamnesisStatus,
+  BookingStatus,
+  ConsultancyPaymentMethod,
   NotificationPreferenceType,
   Prisma,
+  ServiceOfferKind,
   SupportTicketStatus,
   UserRole
 } from "@prisma/client";
@@ -31,10 +34,13 @@ import { PresentialPackageService } from "../../presential-packages/services/pre
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
 import { BookingService } from "../../bookings/services/booking.service";
 import { NotificationService } from "../../notifications/services/notification.service";
+import { getActiveEngagementSummary } from "../../../shared/utils/client-engagement";
+import { ProviderSubscriptionService } from "../../providers/services/provider-subscription.service";
 
 const presentialPackageService = new PresentialPackageService();
 const consultancyService = new ConsultancyService();
 const bookingService = new BookingService();
+const providerSubscriptionService = new ProviderSubscriptionService();
 const notificationService = new NotificationService();
 
 const ACTIVE_PACKAGE_STATUSES = ["PENDING_PAYMENT", "ACTIVE", "PAST_DUE"] as const;
@@ -880,6 +886,19 @@ export class UserService {
         .catch((error) =>
           console.error(`Falha ao cancelar agendamentos avulsos na exclusão de conta do profissional ${userId}:`, error)
         );
+
+      // Raio-X pós-épico (achado médio): a assinatura do Bloco 5
+      // (ProviderSubscription) nunca entrava nessa limpeza — `ProviderProfile`
+      // é anonimizado, não apagado, então a linha de assinatura sobrevivia
+      // intacta e o job diário (runSubscriptionBilling) continuava tentando
+      // cobrar uma conta morta pra sempre. cancelSubscription já lança se já
+      // estiver CANCELED (nada a fazer) — best-effort, mesmo padrão dos
+      // outros cancelamentos aqui.
+      await providerSubscriptionService
+        .cancelSubscription(userId)
+        .catch((error) =>
+          console.error(`Falha ao cancelar assinatura na exclusão de conta do profissional ${userId}:`, error)
+        );
     }
 
     const anonymizedEmail = `deleted_${userId}@removed.invalid`;
@@ -1678,5 +1697,97 @@ export class UserService {
       )
     );
     return this.getNotificationPreferences(userId);
+  }
+
+  // Bloco 3 (trocar/adicionar serviço do mesmo profissional): orquestra
+  // entre os módulos consultancy/presential-packages porque nenhum dos dois
+  // importa o outro diretamente (evita import cruzado) — mesmo padrão já
+  // usado em deleteMe acima, que já chama cancelPackage/cancelContract dos
+  // dois. Ordem importa: cria/cobra o serviço NOVO primeiro, só cancela o
+  // antigo depois de confirmado — se a cobrança do novo falhar, o cliente
+  // não fica sem nenhum vínculo (o que destravaria o marketplace à toa).
+  async switchOrAddOffer(
+    clientId: string,
+    input: {
+      newOfferId: string;
+      paymentMethod: ConsultancyPaymentMethod;
+      acknowledgedImmediateExecution?: boolean;
+      categoryId?: string;
+      weeklySchedule?: Array<{ weekday: number; time: string }>;
+      sessionLocation?: string;
+      clientLatitude?: number;
+      clientLongitude?: number;
+    }
+  ) {
+    const current = await getActiveEngagementSummary(clientId);
+    if (!current.hasActive) {
+      throw new AppError("Você não tem um vínculo ativo para trocar de serviço.", StatusCodes.BAD_REQUEST);
+    }
+
+    const newOffer = await prisma.providerServiceOffer.findFirst({
+      where: { id: input.newOfferId, isActive: true },
+      select: { id: true, providerId: true, kind: true }
+    });
+    if (!newOffer) {
+      throw new AppError("Oferta não encontrada ou indisponível.", StatusCodes.NOT_FOUND);
+    }
+    if (newOffer.providerId !== current.providerId) {
+      throw new AppError(
+        "Só é possível trocar ou adicionar um serviço do profissional com quem você já tem vínculo.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    let newResult: { id: string };
+    if (newOffer.kind === ServiceOfferKind.PRESENTIAL || newOffer.kind === ServiceOfferKind.COMBO) {
+      if (!input.categoryId) {
+        throw new AppError("Selecione a categoria do serviço.", StatusCodes.BAD_REQUEST);
+      }
+      const purchaseInput = {
+        offerId: newOffer.id,
+        categoryId: input.categoryId,
+        paymentMethod: input.paymentMethod,
+        weeklySchedule: input.weeklySchedule,
+        acknowledgedImmediateExecution: input.acknowledgedImmediateExecution,
+        sessionLocation: input.sessionLocation,
+        clientLatitude: input.clientLatitude,
+        clientLongitude: input.clientLongitude
+      };
+      newResult =
+        newOffer.kind === ServiceOfferKind.COMBO
+          ? (await presentialPackageService.purchaseCombo(clientId, purchaseInput)).package
+          : (await presentialPackageService.purchasePackage(clientId, purchaseInput)).package;
+    } else {
+      newResult = await consultancyService.purchaseConsultancyDirect(clientId, {
+        offerId: newOffer.id,
+        paymentMethod: input.paymentMethod,
+        acknowledgedImmediateExecution: input.acknowledgedImmediateExecution
+      });
+    }
+
+    // Só chega aqui se o novo serviço foi criado/cobrado com sucesso acima.
+    if (current.contractId) {
+      await consultancyService.cancelContract(clientId, current.contractId).catch((error) =>
+        console.error(`Falha ao cancelar contrato antigo ${current.contractId} ao trocar de serviço:`, error)
+      );
+    }
+    if (current.packageId) {
+      await presentialPackageService.cancelPackage(clientId, current.packageId, false).catch((error) =>
+        console.error(`Falha ao cancelar pacote antigo ${current.packageId} ao trocar de serviço:`, error)
+      );
+    }
+    // Raio-X pós-épico (achado médio): faltava o branch equivalente pro
+    // vínculo antigo ser só um Booking avulso (sem contrato/pacote) — o
+    // Lote 1 já corrigiu esse caso no cancelamento explícito do mobile
+    // (ActivePlanCard), mas o fluxo de TROCA de serviço nunca ganhou a peça
+    // equivalente. Sem isso, o agendamento avulso antigo ficava
+    // PENDING/CONFIRMED pra sempre depois da troca.
+    if (current.bookingId) {
+      await bookingService.updateStatus(clientId, current.bookingId, BookingStatus.CANCELLED).catch((error) =>
+        console.error(`Falha ao cancelar agendamento avulso antigo ${current.bookingId} ao trocar de serviço:`, error)
+      );
+    }
+
+    return newResult;
   }
 }

@@ -420,3 +420,24 @@ export const upsertMyAnamnesisSchema = z.object({
       });
     })
 });
+
+// Bloco 3 (trocar/adicionar serviço do mesmo profissional).
+export const switchOrAddOfferSchema = z.object({
+  body: z.object({
+    newOfferId: z.string().uuid(),
+    paymentMethod: z.enum(["PIX", "CREDIT_CARD", "DEBIT_CARD"]),
+    acknowledgedImmediateExecution: z.boolean().optional(),
+    categoryId: z.string().uuid().optional(),
+    weeklySchedule: z
+      .array(
+        z.object({
+          weekday: z.number().int().min(0).max(6),
+          time: z.string().regex(/^\d{2}:\d{2}$/)
+        })
+      )
+      .optional(),
+    sessionLocation: z.string().trim().max(300).optional(),
+    clientLatitude: z.number().optional(),
+    clientLongitude: z.number().optional()
+  })
+});

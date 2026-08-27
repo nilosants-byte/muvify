@@ -11,6 +11,7 @@ import {
   PROFESSIONAL_SPECIALTIES,
   ProviderFixedLocation,
   providersApi,
+  providerSubscriptionApi,
   uploadsApi,
   userApi,
 } from "../../services/api/client";
@@ -274,7 +275,27 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
         showToast("Perfil atualizado com sucesso.", "success");
       } else {
         await runWithAuth((token) => providersApi.createProfile(token, profilePayload));
-        showToast("Perfil profissional criado com sucesso.", "success");
+        // Raio-X pós-épico (achado alto): sem isso, o profissional recém-criado
+        // não tinha NENHUM sinal de que ganhou trial de fundador (ou de que já
+        // nasce com assinatura pendente de cartão) — descobria só se abrisse
+        // Configurações > Financeiro por conta própria. Busca o status real
+        // (fonte do Bloco 5, já testada) e leva direto pra "Minha assinatura",
+        // que já mostra fundador/dias de trial/preço — nenhuma tela nova.
+        try {
+          const subscription = await runWithAuth((token) => providerSubscriptionApi.myStatus(token));
+          showToast(
+            subscription.isFounder
+              ? "Perfil criado! Você é um dos 100 primeiros fundadores do Muvify."
+              : "Perfil profissional criado com sucesso.",
+            "success"
+          );
+          await syncCurrentUser();
+          void profileQuery.refetch();
+          goToStack("MySubscription");
+          return;
+        } catch {
+          showToast("Perfil profissional criado com sucesso.", "success");
+        }
       }
       await syncCurrentUser();
       void profileQuery.refetch();

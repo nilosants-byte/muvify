@@ -5,6 +5,7 @@ import {
   consultancyApi,
   ConsultancyRequest,
   ProviderServiceOffer,
+  providerSubscriptionApi,
 } from "../services/api/client";
 import { providersApi } from "../services/api/client";
 import { useAuthQuery } from "./useAuthQuery";
@@ -15,6 +16,9 @@ type CenterData = {
   offers: ProviderServiceOffer[];
   requests: ConsultancyRequest[];
   crefValidated: boolean;
+  // Bloco 6 (bloqueio por assinatura inativa): selinho de cadeado nos
+  // botões de ação desta área (mesmo padrão já usado pro crefValidated).
+  subscriptionActive: boolean;
   prebuiltPlanCount: number;
   profileMissing: boolean;
 };
@@ -36,7 +40,7 @@ export function useConsultancyCenterData() {
   const centerQuery = useAuthQuery(
     queryKeys.consultancy.providerCenter(),
     async (token) => {
-      const [providerSettings, providerOffers, providerRequests, credentialsResult, providerPlans] = await Promise.all([
+      const [providerSettings, providerOffers, providerRequests, credentialsResult, providerPlans, subscriptionResult] = await Promise.all([
         consultancyApi.providerSettings(token).catch((err) => {
           const msg = err instanceof Error ? err.message : "";
           const isMissing =
@@ -50,6 +54,7 @@ export function useConsultancyCenterData() {
         consultancyApi.providerRequests(token).catch(() => [] as ConsultancyRequest[]),
         providersApi.myCredentials(token).catch(() => null),
         consultancyApi.providerPlans(token).catch(() => [] as unknown[]),
+        providerSubscriptionApi.myStatus(token).catch(() => null),
       ]);
       const credentials = credentialsResult as { crefValidationStatus?: string } | null;
       const planList = providerPlans as Array<{ isPrebuilt?: boolean }>;
@@ -58,6 +63,7 @@ export function useConsultancyCenterData() {
         offers: providerOffers,
         requests: providerRequests,
         crefValidated: credentials?.crefValidationStatus === "APPROVED",
+        subscriptionActive: subscriptionResult?.status === "TRIALING" || subscriptionResult?.status === "ACTIVE",
         prebuiltPlanCount: planList.filter((item) => item.isPrebuilt !== false).length,
         profileMissing: providerSettings === null,
       } as CenterData;
@@ -66,6 +72,7 @@ export function useConsultancyCenterData() {
 
   const needsProfileSetup = centerQuery.data?.profileMissing ?? false;
   const crefValidated = centerQuery.data?.crefValidated ?? false;
+  const subscriptionActive = centerQuery.data?.subscriptionActive ?? false;
   const prebuiltPlanCount = centerQuery.data?.prebuiltPlanCount ?? 0;
   const loading = centerQuery.isLoading;
 
@@ -172,6 +179,7 @@ export function useConsultancyCenterData() {
     loading,
     needsProfileSetup,
     crefValidated,
+    subscriptionActive,
     prebuiltPlanCount,
     settingsEnabled,
     setSettingsEnabled,
