@@ -49,10 +49,13 @@ function resolveSize(size: AvatarSize): number {
   return SIZE_MAP[size] ?? 46;
 }
 
-// Espessura da capa proporcional ao tamanho do avatar (~7.5%), pra ficar
-// "fina" em qualquer tamanho — 4px no tamanho testado/aprovado (56px).
+// Espessura da capa proporcional ao tamanho do avatar (~4.5%) — pedido do
+// usuário pra ficar mais fina do que a versão original (~7.5%, 3-4px nos
+// tamanhos padrão). Sem arredondar pra inteiro: em telas de alta densidade
+// o RN escala frações de ponto sem problema, e arredondar pra cima só
+// voltaria a engrossar o traço nos tamanhos pequenos.
 function resolveAuraThickness(dim: number): number {
-  return Math.max(2, Math.min(6, Math.round(dim * 0.075)));
+  return Math.max(1.5, Math.min(4, dim * 0.045));
 }
 
 // Gradientes V2: fundo escuro com overlay colorido translúcido
@@ -102,15 +105,23 @@ export function MvAvatar({
     // novo a cada montagem/lista nova, só a cada troca real de foto (a URL
     // muda quando a foto é trocada, invalidando o cache naturalmente).
     content = (
-      <Image
-        source={{ uri: resolvedPhotoUri }}
-        style={{ width: dim, height: dim, borderRadius: br }}
-        contentFit="cover"
-        cachePolicy="memory-disk"
-        onError={() => setPhotoError(true)}
-        accessible={Boolean(accessibilityLabel)}
-        accessibilityLabel={accessibilityLabel}
-      />
+      // Pedido do usuário: a foto ficava "quadrada" dentro da moldura
+      // circular, sem se moldar à borda. `borderRadius` sozinho no próprio
+      // <Image> não é suficiente pra recortar o conteúdo em todo
+      // Android/RN — precisa de um container com `overflow: "hidden"` de
+      // verdade por fora pra garantir o clip circular em qualquer densidade
+      // de tela, não só a moldura visual do lado de fora.
+      <View style={{ width: dim, height: dim, borderRadius: br, overflow: "hidden" }}>
+        <Image
+          source={{ uri: resolvedPhotoUri }}
+          style={{ width: dim, height: dim }}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          onError={() => setPhotoError(true)}
+          accessible={Boolean(accessibilityLabel)}
+          accessibilityLabel={accessibilityLabel}
+        />
+      </View>
     );
   } else {
     const [from, to] = GRADIENTS[resolvedTone] ?? GRADIENTS.green;
@@ -172,11 +183,14 @@ export function MvAvatar({
         alignItems: "center",
         justifyContent: "center",
         flexShrink: 0,
+        // Brilho um pouco mais discreto pra combinar com o aro mais fino —
+        // no valor antigo (0.45/8/8), o glow deixava o traço fino com
+        // aparência mais grossa do que ele realmente é.
         shadowColor: theme.textGreen,
         shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.45,
-        shadowRadius: 8,
-        elevation: 8,
+        shadowOpacity: 0.32,
+        shadowRadius: 5,
+        elevation: 5,
       }}
     >
       {content}

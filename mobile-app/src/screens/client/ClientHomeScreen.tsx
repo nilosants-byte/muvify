@@ -1046,10 +1046,16 @@ export function ClientHomeScreen({ navigation }: Props) {
       }}>
         {/* Esquerda: avatar + logo (abre menu lateral) */}
         <TouchableOpacity onPress={() => setMenuOpen((open) => !open)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Abrir menu" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {/* Pedido do usuário: esse avatar destoava dos demais porque
+              borderRadius={11} num size={34} não é um círculo de verdade
+              (metade seria 17) — ficava um quadrado arredondado por baixo
+              do anel circular da "aura", com a foto real não se moldando
+              certo à borda. Removido o override pra usar o círculo padrão
+              (mesmo comportamento do mesmo avatar dentro do menu lateral,
+              que já usava size/2 corretamente). */}
           <MvAvatar
             initials={clientInitials}
             size={34}
-            borderRadius={11}
             color="green"
             photoUri={profilePhotoUri}
           />
