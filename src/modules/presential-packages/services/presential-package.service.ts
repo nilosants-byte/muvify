@@ -21,6 +21,7 @@ import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { assertAnamnesisCompleted } from "../../../shared/utils/anamnesis-required";
 import { assertNoActiveEngagementWithOtherProvider } from "../../../shared/utils/client-engagement";
 import { assertProviderSubscriptionActive } from "../../../shared/utils/provider-subscription-gate";
+import { isOnboardingGatesBypassActive } from "../../../shared/utils/onboarding-gates-bypass";
 import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
@@ -308,7 +309,7 @@ export class PresentialPackageService {
         StatusCodes.BAD_REQUEST
       );
     }
-    if (offer.provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
+    if (!isOnboardingGatesBypassActive() && offer.provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
       throw new AppError(
         "Este profissional ainda não está habilitado para novos agendamentos.",
         StatusCodes.BAD_REQUEST
@@ -1639,7 +1640,7 @@ export class PresentialPackageService {
         StatusCodes.BAD_REQUEST
       );
     }
-    if (offer.provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
+    if (!isOnboardingGatesBypassActive() && offer.provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
       throw new AppError(
         "Este profissional ainda não está habilitado para novos agendamentos.",
         StatusCodes.BAD_REQUEST

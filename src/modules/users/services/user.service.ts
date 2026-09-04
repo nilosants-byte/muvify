@@ -30,6 +30,7 @@ import {
 import { resolveEffectiveUserRole } from "../../../shared/utils/admin-access";
 import { compareHash, hashValue } from "../../../shared/utils/hash";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
+import { isOnboardingGatesBypassActive } from "../../../shared/utils/onboarding-gates-bypass";
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
 import { BookingService } from "../../bookings/services/booking.service";
@@ -260,7 +261,7 @@ export class UserService {
       // Épico de Frentes, Frente 11, Lote 1: nada indicava ao app que os
       // termos vigentes mudaram - usuário antigo ficava sob versão
       // desatualizada indefinidamente, sem nenhum gate de re-aceite.
-      needsReconsent: user.termsVersion !== CURRENT_TERMS_VERSION,
+      needsReconsent: !isOnboardingGatesBypassActive() && user.termsVersion !== CURRENT_TERMS_VERSION,
       providerProfile: user.providerProfile
         ? {
             ...user.providerProfile,

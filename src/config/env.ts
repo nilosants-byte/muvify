@@ -107,6 +107,15 @@ const envSchema = z.object({
   BOOKING_ATTENDANCE_CODE_RELEASE_MINUTES: z.coerce.number().int().min(1).max(120).default(10),
   BOOKING_ATTENDANCE_CODE_EXPIRY_HOURS: z.coerce.number().int().min(1).max(72).default(6),
   REQUIRE_ANAMNESIS_FOR_CONTRACTS: booleanFlag.default(true),
+  // Interruptor central de testes manuais ponta a ponta (checklist de
+  // lançamento): quando true, libera de uma vez as travas de CREF, e-mail
+  // verificado, anamnese, reconsentimento de termos e assinatura do
+  // profissional — sem apagar nenhuma regra de negócio, só "adormecendo"
+  // temporariamente. Nunca deve valer true em produção — ver
+  // assertNoOnboardingGatesBypassInProduction logo abaixo (falha o boot) e
+  // o override redundante no `env` exportado no fim do arquivo (força false
+  // de novo, independente da checagem anterior).
+  E2E_BYPASS_ONBOARDING_GATES: booleanFlag.default(false),
   AUTO_CAPTURE_CONFIRMATION_HOURS: z.coerce.number().int().min(1).max(168).default(24),
   CONSULTANCY_DELIVERY_DEADLINE_HOURS: z.coerce.number().int().min(1).max(168).default(48),
   PAYMENT_JOB_INTERVAL_SECONDS: z.coerce.number().int().min(15).max(3600).default(60),
@@ -130,6 +139,21 @@ const envSchema = z.object({
   EXPO_PUSH_ACCESS_TOKEN: z.string().optional()
 });
 const parsed = envSchema.parse(process.env);
+
+// Camada 1 das duas independentes contra vazar o bypass de testes pra
+// produção: falha o boot do processo inteiro (não é um erro silencioso
+// descoberto depois) se alguém setar as duas variáveis ao mesmo tempo por
+// engano. Exportada e testada isoladamente (sem precisar recarregar este
+// módulo inteiro) em tests/onboarding-gates-bypass-safety.test.ts.
+export function assertNoOnboardingGatesBypassInProduction(nodeEnv: string, bypassFlag: boolean) {
+  if (nodeEnv === "production" && bypassFlag) {
+    throw new Error(
+      "E2E_BYPASS_ONBOARDING_GATES nao pode ser true quando NODE_ENV=production. " +
+        "Essa variavel existe so para testes manuais em ambiente de desenvolvimento/staging."
+    );
+  }
+}
+assertNoOnboardingGatesBypassInProduction(parsed.NODE_ENV, parsed.E2E_BYPASS_ONBOARDING_GATES);
 // Wildcard CORS is never permitted — origins must be explicit in all environments.
 if (parsed.CORS_ORIGIN.trim() === "*") {
   throw new Error("CORS_ORIGIN nao pode ser '*'. Informe URLs explícitas separadas por vírgula.");
@@ -210,6 +234,12 @@ const adminAllowedEmails = parsed.ADMIN_ALLOWED_EMAILS
 export const env = {
   ...parsed,
   ADMIN_ALLOWED_EMAILS: adminAllowedEmails,
+  // Camada 2, independente da camada 1 acima (assertNoOnboardingGatesBypassInProduction):
+  // mesmo que aquela checagem seja enfraquecida ou removida no futuro sem
+  // querer, o valor que o resto do código realmente enxerga (env.E2E_BYPASS_ONBOARDING_GATES)
+  // já vem forçado como false em produção aqui, de forma independente.
+  E2E_BYPASS_ONBOARDING_GATES:
+    parsed.NODE_ENV !== "production" && parsed.E2E_BYPASS_ONBOARDING_GATES,
   AUTH_REQUIRE_REDIS_FOR_BLACKLIST:
     parsed.AUTH_REQUIRE_REDIS_FOR_BLACKLIST ?? (parsed.NODE_ENV === "production"),
   SMTP_TLS_REJECT_UNAUTHORIZED:

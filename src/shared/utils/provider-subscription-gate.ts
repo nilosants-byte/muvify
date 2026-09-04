@@ -2,6 +2,7 @@ import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../config/prisma";
 import { AppError } from "../errors/app-error";
 import { isProviderSubscriptionActive } from "../../modules/providers/services/provider-subscription.service";
+import { isOnboardingGatesBypassActive } from "./onboarding-gates-bypass";
 
 const DEFAULT_MESSAGE =
   "Você ainda não tem assinatura ativa no Muvify. Ative sua assinatura para continuar.";
@@ -18,6 +19,7 @@ export async function assertProviderSubscriptionActive(
   providerId: string,
   message: string = DEFAULT_MESSAGE
 ): Promise<void> {
+  if (isOnboardingGatesBypassActive()) return;
   const subscription = await prisma.providerSubscription.findUnique({
     where: { providerId },
     select: { status: true }

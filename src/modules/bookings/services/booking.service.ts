@@ -20,6 +20,7 @@ import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { assertAnamnesisCompleted } from "../../../shared/utils/anamnesis-required";
 import { assertNoActiveEngagementWithOtherProvider } from "../../../shared/utils/client-engagement";
 import { assertProviderSubscriptionActive } from "../../../shared/utils/provider-subscription-gate";
+import { isOnboardingGatesBypassActive } from "../../../shared/utils/onboarding-gates-bypass";
 import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/utils/encryption";
 import { haversineKm } from "../../../shared/utils/geo";
 import { sessionOverlapsRange } from "../../../shared/utils/time-range";
@@ -227,7 +228,7 @@ export class BookingService {
         );
       }
 
-      if (provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
+      if (!isOnboardingGatesBypassActive() && provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
         throw new AppError(
           "Este profissional ainda não está habilitado para novos agendamentos.",
           StatusCodes.BAD_REQUEST

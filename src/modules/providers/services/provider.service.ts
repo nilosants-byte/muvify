@@ -22,6 +22,7 @@ import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { deleteByPattern, getCache, setCache } from "../../../shared/utils/cache";
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
 import { haversineKm } from "../../../shared/utils/geo";
+import { isOnboardingGatesBypassActive } from "../../../shared/utils/onboarding-gates-bypass";
 import { normalizeLoose } from "../../../shared/utils/normalize-text";
 import { sessionOverlapsRange } from "../../../shared/utils/time-range";
 import { toDateKeyInTimezone, toTimeInTimezone, toWeekdayInTimezone } from "../../../shared/utils/timezone";
@@ -1350,15 +1351,18 @@ export class ProviderService {
     if (objectiveMatchIds) {
       andConditions.push({ id: { in: objectiveMatchIds } });
     }
-    andConditions.push({
-      OR: [
-        { subscription: null },
-        { subscription: { status: { in: [ProviderSubscriptionStatus.TRIALING, ProviderSubscriptionStatus.ACTIVE] } } }
-      ]
-    });
+    const bypassOnboardingGates = isOnboardingGatesBypassActive();
+    if (!bypassOnboardingGates) {
+      andConditions.push({
+        OR: [
+          { subscription: null },
+          { subscription: { status: { in: [ProviderSubscriptionStatus.TRIALING, ProviderSubscriptionStatus.ACTIVE] } } }
+        ]
+      });
+    }
 
     const where: Prisma.ProviderProfileWhereInput = {
-      crefValidationStatus: CrefValidationStatus.APPROVED,
+      ...(bypassOnboardingGates ? {} : { crefValidationStatus: CrefValidationStatus.APPROVED }),
       mpAccountId: { not: null },
       // Raio-X de pagamentos, Rodada 4, Lote 3: suspensão só bloqueava o
       // próprio login do profissional — ele continuava pesquisável e podia
@@ -1643,14 +1647,14 @@ export class ProviderService {
     if (!provider) {
       throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
     }
-    if (!this.isCrefApproved(provider)) {
+    if (!isOnboardingGatesBypassActive() && !this.isCrefApproved(provider)) {
       throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
     }
     // Bloco 6 (bloqueio por assinatura inativa): gap encontrado durante o
     // Bloco 7 — getById (perfil público completo) tinha o mesmo tratamento
     // de CREF acima, mas nunca ganhou o de assinatura na rodada anterior.
     // Mesmo tratamento silencioso da busca pública.
-    if (!isProviderSubscriptionActive(provider.subscription?.status)) {
+    if (!isOnboardingGatesBypassActive() && !isProviderSubscriptionActive(provider.subscription?.status)) {
       throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
     }
     // Frente 5 (Descoberta, agendamento e agenda), Lote 5: mesmo filtro de
@@ -1753,7 +1757,10 @@ export class ProviderService {
       }
     });
 
-    if (!provider || provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
+    if (!provider) {
+      throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
+    }
+    if (!isOnboardingGatesBypassActive() && provider.crefValidationStatus !== CrefValidationStatus.APPROVED) {
       throw new AppError("Prestador não encontrado.", StatusCodes.NOT_FOUND);
     }
 

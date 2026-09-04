@@ -23,6 +23,7 @@ import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { assertAnamnesisCompleted } from "../../../shared/utils/anamnesis-required";
+import { isOnboardingGatesBypassActive } from "../../../shared/utils/onboarding-gates-bypass";
 import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
@@ -292,6 +293,7 @@ export class ConsultancyService {
     },
     errorMessage: string
   ) {
+    if (isOnboardingGatesBypassActive()) return;
     if (profile.crefValidationStatus !== CrefValidationStatus.APPROVED) {
       throw new AppError(errorMessage, StatusCodes.BAD_REQUEST);
     }
@@ -307,6 +309,7 @@ export class ConsultancyService {
     },
     errorMessage: string = SUBSCRIPTION_REQUIRED_MESSAGE
   ) {
+    if (isOnboardingGatesBypassActive()) return;
     if (!isProviderSubscriptionActive(profile.subscription?.status)) {
       throw new AppError(errorMessage, StatusCodes.BAD_REQUEST, { code: "SUBSCRIPTION_REQUIRED" });
     }
