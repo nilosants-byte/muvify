@@ -552,7 +552,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
     setNewLocAddressFocused(false);
     setExtraAddressSuggestionOpen(false);
     setAddingExtra(false);
-    showToast("Local adicional criado.", "success");
+    showToast("Local adicionado à lista. Toque em \"Salvar\" para confirmar.", "success");
   }
 
   function removeExtraLocation(id: string) {
@@ -1284,7 +1284,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
                         backgroundColor: theme.primarySubtle,
                       }}
                     >
-                      <Ionicons name="checkmark" size={15} color={theme.primary} />
+                      <Ionicons name="add" size={18} color={theme.primary} />
                     </TouchableOpacity>
                   </View>
                   {extraAddrSuggestions.length > 0 && extraAddressSuggestionOpen ? (

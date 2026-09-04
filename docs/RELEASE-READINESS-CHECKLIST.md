@@ -86,10 +86,18 @@ App ainda em desenvolvimento nesta data: sem domínio público registrado, sem c
 Itens abaixo já têm o conteúdo pronto onde possível; o resto só pode ser feito quando essas duas coisas
 existirem. Não é parte do Go/No-Go técnico acima — é o checklist específico de "primeira submissão".
 
+**Atualização 2026-09-03**: domínio `muvify.com.br` registrado e DNS configurado (aponta pro
+backend no Render + domínio verificado no Resend para envio de e-mail). `mobile-app/src/navigation/
+root-stack.tsx::linking.prefixes` atualizado de `https://muvify.app` (placeholder) para
+`https://muvify.com.br`/`https://www.muvify.com.br` (domínio real). Segue faltando: conta em cada
+loja, e o trabalho de `associatedDomains`/`assetlinks.json` abaixo (não é mais bloqueado pelo domínio,
+mas ainda não foi feito).
+
 **Pronto, esperando domínio/conta:**
 1. Política de privacidade e exclusão de conta já servidas como página pública pelo próprio backend
-   (`/privacidade`, `/excluir-conta` — ver `src/modules/public/public.routes.ts`). Só falta um domínio
-   apontar pro backend em produção.
+   (`/privacidade`, `/excluir-conta` — ver `src/modules/public/public.routes.ts`). Domínio já aponta
+   pro backend em produção — confirmar que essas páginas respondem em `https://muvify.com.br/...`
+   assim que a propagação de DNS terminar.
 2. Rascunho do formulário "Data Safety" (Google Play): `docs/GOOGLE-PLAY-DATA-SAFETY-DRAFT.md`.
 3. Rascunho do "App Privacy" / nutrition label (Apple): `docs/APPLE-APP-PRIVACY-DRAFT.md`.
 4. Justificativa + roteiro de vídeo pro formulário de localização em segundo plano (Google Play):
@@ -97,14 +105,17 @@ existirem. Não é parte do Go/No-Go técnico acima — é o checklist específi
 5. Textos e checklist de assets de loja (ícone, screenshots, feature graphic, descrição):
    `mobile-app/STORE_ASSETS_GUIDE.md`.
 
-**Bloqueado até existir domínio público:**
+**Pendente agora que o domínio existe (não é mais bloqueado por domínio, mas ainda não foi feito):**
 1. `associatedDomains` (iOS) / `intentFilters` com `autoVerify` (Android) pro deep link
-   `https://muvify.app/...` funcionar como universal link/app link — hoje só o esquema customizado
+   `https://muvify.com.br/...` funcionar como universal link/app link — hoje só o esquema customizado
    `muvify://` funciona (o que já é suficiente pro fluxo de validação de presença por QR, que nunca
    passa pelo linking do SO — ver `ProfessionalConfirmCompletionScreen`). Precisa de `assetlinks.json`
-   (Android) e `apple-app-site-association` (iOS) servidos no domínio.
-2. Atualizar a política de privacidade e o rascunho de Data Safety/App Privacy com a URL real depois
-   que o domínio existir.
+   (Android) e `apple-app-site-association` (iOS) servidos no domínio. **O lado Android dá pra fazer
+   agora** (só precisa da impressão digital SHA-256 do certificado de assinatura, via EAS). **O lado
+   iOS depende da conta paga da Apple Developer Program** (ver bloqueio abaixo) — sem Team ID não dá
+   pra gerar o arquivo `apple-app-site-association` corretamente.
+2. Atualizar a política de privacidade e o rascunho de Data Safety/App Privacy com a URL real
+   (`https://muvify.com.br/privacidade`) depois que a propagação terminar.
 
 **Bloqueado até existir conta em cada loja:**
 1. Google Play: `google-service-account.json` (referenciado em `mobile-app/eas.json::submit.production`,

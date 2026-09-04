@@ -9,7 +9,6 @@ import { ProfessionalTabParamList } from "../../navigation/route-types";
 import {
   ApiError,
   PROFESSIONAL_SPECIALTIES,
-  ProviderFixedLocation,
   providersApi,
   providerSubscriptionApi,
   uploadsApi,
@@ -76,10 +75,6 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
     Array.isArray(cachedProfile?.specialties) ? (cachedProfile!.specialties as string[]) : []
   );
   const [customSpecialty, setCustomSpecialty] = useState("");
-  // Locations / academies
-  const [fixedLocations, setFixedLocations] = useState<ProviderFixedLocation[]>(
-    Array.isArray(cachedProfile?.fixedLocations) ? (cachedProfile!.fixedLocations as ProviderFixedLocation[]) : []
-  );
   const profileQuery = useAuthQuery(
     queryKeys.user.me(),
     (token) => userApi.me(token),
@@ -108,7 +103,6 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       setPriceInput(maskPriceInput(String(profile.priceCents || 0)) || "0,00");
       const specialties = Array.isArray(profile.specialties) ? (profile.specialties as string[]) : [];
       setSelectedSpecialties(specialties);
-      setFixedLocations(Array.isArray(profile.fixedLocations) ? (profile.fixedLocations as ProviderFixedLocation[]) : []);
     } else {
       setHasExistingProfile(false);
       setDisplayName(me.name || "");
@@ -259,13 +253,6 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       experienceYears: parsedExperience,
       priceCents: parsedPriceCents,
       specialties: selectedSpecialties,
-      fixedLocations: fixedLocations.map((l) => ({
-        id: l.id,
-        name: l.name,
-        address: l.address ?? undefined,
-        latitude: l.latitude ?? undefined,
-        longitude: l.longitude ?? undefined,
-      })),
     };
 
     try {

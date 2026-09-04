@@ -75,6 +75,13 @@ publicRoutes.get("/waitlist.css", (_request, response) => {
   response.type("text/css").send(WAITLIST_CSS);
 });
 
+// Domínio próprio (muvify.com.br) não tem homepage dedicada ainda — quem
+// digitar o endereço puro, sem caminho, cai direto na lista de espera em vez
+// do 404 genérico da API.
+publicRoutes.get("/", (_request, response) => {
+  response.redirect(302, "/lista-espera");
+});
+
 // Lista de espera pré-lançamento. GET renderiza a página (form/sucesso/erro
 // conforme os query params ?ok=1 / ?erro=1 setados pelo redirect do POST
 // abaixo); POST recebe o cadastro. utm_source flui da URL do vídeo do

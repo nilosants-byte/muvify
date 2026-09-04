@@ -324,13 +324,14 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
           <MvText style={{ fontFamily: "PlusJakartaSans_800ExtraBold", fontSize: 24, color: theme.text1, letterSpacing: -0.3 }}>Gestão de Alunos</MvText>
         </View>
         <PressableScale
-          scale={0.92}
+          scale={0.96}
           onPress={() => navigation.navigate("AddExternalStudent" as never)}
           accessibilityLabel="Adicionar aluno de fora do app"
           testID="button.professional-students.add-external"
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
+          style={{ flexDirection: "row", alignItems: "center", gap: 6, height: 36, paddingHorizontal: 12, borderRadius: 18, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder }}
         >
-          <Ionicons name="person-add-outline" size={18} color={theme.textGreen} />
+          <Ionicons name="person-add-outline" size={16} color={theme.textGreen} />
+          <MvText style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textGreen }}>Aluno externo</MvText>
         </PressableScale>
         <PressableScale
           scale={0.92}

@@ -844,7 +844,7 @@ export function RootNavigator() {
   }
 
   const linking = {
-    prefixes: ["muvify://", "https://muvify.app"],
+    prefixes: ["muvify://", "https://muvify.com.br", "https://www.muvify.com.br"],
     config: {
       screens: {
         // Bloco 2 (aluno externo): funciona só se o app já estiver
