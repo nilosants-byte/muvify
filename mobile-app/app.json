@@ -83,7 +83,12 @@
       "expo-notifications",
       "expo-dev-client",
       "expo-updates",
-      "@sentry/react-native"
+      "@sentry/react-native",
+      "@react-native-community/datetimepicker",
+      "expo-image",
+      "expo-sharing",
+      "expo-splash-screen",
+      "expo-status-bar"
     ],
     "owner": "dancsan",
     "extra": {

@@ -10,6 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import { AppStateProvider, useAppState } from "../state/AppState";
 import { ToastProvider } from "../state/ToastState";
+import { SubscriptionGateProvider } from "../state/SubscriptionGateState";
 import { authApi, AuthUser, notificationsApi } from "../services/api/client";
 import { getPushRegistrationPayload } from "../services/notifications/push";
 import { stopProviderBackgroundLocation } from "../services/location/providerBackgroundLocation";
@@ -48,9 +49,11 @@ function buildSession(user: AuthUser, accessToken: string, refreshToken: string)
 async function renderProvider() {
   render(
     <ToastProvider>
-      <AppStateProvider>
-        <ContextProbe />
-      </AppStateProvider>
+      <SubscriptionGateProvider>
+        <AppStateProvider>
+          <ContextProbe />
+        </AppStateProvider>
+      </SubscriptionGateProvider>
     </ToastProvider>
   );
   await waitFor(() => expect(context.bootstrapping).toBe(false));

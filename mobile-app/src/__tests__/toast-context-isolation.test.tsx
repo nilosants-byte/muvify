@@ -4,6 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import { AppStateProvider, useAppState } from "../state/AppState";
 import { ToastProvider, useToast } from "../state/ToastState";
+import { SubscriptionGateProvider } from "../state/SubscriptionGateState";
 
 // Frente 11 (engenharia mobile), Lote 4: showToast é chamado em 380+ pontos
 // do app. Antes, toast vivia dentro do mesmo valor memoizado do
@@ -57,9 +58,11 @@ describe("Frente 11, Lote 4 — toast isolado do AppStateContext", () => {
   it("showToast não re-renderiza consumidores de useAppState() que não leem toast", async () => {
     render(
       <ToastProvider>
-        <AppStateProvider>
-          <AppStateConsumerProbe />
-        </AppStateProvider>
+        <SubscriptionGateProvider>
+          <AppStateProvider>
+            <AppStateConsumerProbe />
+          </AppStateProvider>
+        </SubscriptionGateProvider>
       </ToastProvider>
     );
 

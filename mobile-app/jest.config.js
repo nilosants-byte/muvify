@@ -1,6 +1,12 @@
 /** @type {import('jest').Config} */
 module.exports = {
   preset: "jest-expo",
+  // Upgrade Expo SDK 54->57 (react-native-worklets 0.5->0.10): mesmo com o mock
+  // oficial do reanimated (jest.setup.ts), o próprio mock.js reimporta os
+  // initializers reais, que tentam carregar o módulo nativo de worklets sob
+  // Jest. O resolver oficial do worklets evita resolver os arquivos *.native.ts
+  // nesse caminho, sem precisar mockar módulo por módulo.
+  resolver: "react-native-worklets/jest/resolver.js",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
   testMatch: ["**/?(*.)+(spec|test).[tj]s?(x)"],
   testPathIgnorePatterns: ["/node_modules/", "/android/", "/ios/"],

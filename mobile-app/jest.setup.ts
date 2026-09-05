@@ -1,5 +1,30 @@
 import "react-native-gesture-handler/jestSetup";
 
+// Upgrade Expo SDK 54->57 (react-native-reanimated 4.1->4.5 / react-native-worklets
+// 0.5->0.10): sem isso, o módulo nativo tenta carregar de verdade sob Jest e quebra
+// com "Cannot read properties of undefined (reading 'loadUnpackers')" em qualquer
+// tela que use PressableScale/MvButton (Animated.* do reanimated). Mock oficial do
+// próprio pacote.
+jest.mock("react-native-reanimated", () => require("react-native-reanimated/mock"));
+
+// react-native-maps não tem mock oficial — só os 4 exports que o app realmente usa
+// (MapView, Marker, Circle, PROVIDER_DEFAULT). Sem isso, o módulo nativo lança
+// TurboModuleRegistry.getEnforcing (erro) em vez de retornar undefined em silêncio.
+jest.mock("react-native-maps", () => {
+  const React = require("react");
+  const { View } = require("react-native");
+  const MockMapView = React.forwardRef(({ children, ...props }: any, ref: any) =>
+    React.createElement(View, { ...props, ref }, children)
+  );
+  return {
+    __esModule: true,
+    default: MockMapView,
+    Marker: ({ children, ...props }: any) => React.createElement(View, props, children),
+    Circle: (props: any) => React.createElement(View, props),
+    PROVIDER_DEFAULT: "default"
+  };
+});
+
 // Frente 12 (segunda camada), Lote 8: AnimatedNumber anima via
 // requestAnimationFrame real (não mockado) — cada instância renderizada em
 // teste custa ~700ms de tempo de parede real (o duration default) e
