@@ -74,7 +74,7 @@ export function AuthRegisterScreen({ navigation }: Props) {
   const [apelido, setApelido] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [phoneSelection, setPhoneSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+  const phoneSelectionRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -123,10 +123,16 @@ export function AuthRegisterScreen({ navigation }: Props) {
   // cursor por dígito (não por caractere da máscara) e, quando o apagar cai
   // em cima de um caractere de máscara, removemos o dígito imediatamente
   // anterior no lugar dele — backspace sempre remove alguma coisa visível.
+  //
+  // O cursor é reposicionado de forma IMPERATIVA (setNativeProps), não via
+  // prop `selection` controlada — a primeira tentativa usava `selection`
+  // como estado controlado e isso brigava com o próprio TextInput a cada
+  // tecla (o RN reafirma sua própria posição de cursor por cima da nossa
+  // logo em seguida), embaralhando a ordem dos dígitos digitados.
   function handlePhoneChange(text: string) {
     const oldDigits = phone.replace(/\D/g, "");
     const newDigitsRaw = text.replace(/\D/g, "").slice(0, 11);
-    const cursorDigitIndexOld = digitIndexAtCursor(phone, phoneSelection.start);
+    const cursorDigitIndexOld = digitIndexAtCursor(phone, phoneSelectionRef.current.start);
 
     let finalDigits: string;
     let targetDigitIndex: number;
@@ -148,7 +154,15 @@ export function AuthRegisterScreen({ navigation }: Props) {
     const masked = formatPhoneMask(finalDigits);
     setPhone(masked);
     const newCursor = cursorAtDigitIndex(masked, targetDigitIndex);
-    setPhoneSelection({ start: newCursor, end: newCursor });
+    phoneSelectionRef.current = { start: newCursor, end: newCursor };
+    // Só necessário quando o cursor precisa ficar ANTES do fim (ex: apagando
+    // no meio) — digitar/apagar no final já deixa o cursor no lugar certo
+    // sozinho, sem precisar forçar nada.
+    if (newCursor < masked.length) {
+      requestAnimationFrame(() => {
+        phoneRef.current?.setNativeProps?.({ selection: { start: newCursor, end: newCursor } });
+      });
+    }
   }
 
   async function handleRegister() {
@@ -309,8 +323,7 @@ export function AuthRegisterScreen({ navigation }: Props) {
             ref={phoneRef}
             value={phone}
             onChangeText={handlePhoneChange}
-            selection={phoneSelection}
-            onSelectionChange={(e) => setPhoneSelection(e.nativeEvent.selection)}
+            onSelectionChange={(e) => { phoneSelectionRef.current = e.nativeEvent.selection; }}
             placeholder="(11) 99999-9999"
             keyboardType="phone-pad"
             textContentType="telephoneNumber"
