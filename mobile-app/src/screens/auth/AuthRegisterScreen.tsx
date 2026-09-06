@@ -74,6 +74,7 @@ export function AuthRegisterScreen({ navigation }: Props) {
   const [apelido, setApelido] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneSelection, setPhoneSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -92,17 +93,62 @@ export function AuthRegisterScreen({ navigation }: Props) {
     setApelido(text.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 30));
   }
 
-  function handlePhoneChange(text: string) {
-    const digits = text.replace(/\D/g, "").slice(0, 11);
-    let masked = digits;
-    if (digits.length > 6) {
-      masked = `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-    } else if (digits.length > 2) {
-      masked = `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-    } else if (digits.length > 0) {
-      masked = `(${digits}`;
+  function formatPhoneMask(digits: string) {
+    if (digits.length > 6) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+    if (digits.length > 2) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length > 0) return `(${digits}`;
+    return "";
+  }
+
+  function digitIndexAtCursor(masked: string, cursor: number) {
+    return masked.slice(0, cursor).replace(/\D/g, "").length;
+  }
+
+  function cursorAtDigitIndex(masked: string, digitIndex: number) {
+    if (digitIndex <= 0) return 0;
+    let seen = 0;
+    for (let i = 0; i < masked.length; i++) {
+      if (/\d/.test(masked[i])) {
+        seen++;
+        if (seen === digitIndex) return i + 1;
+      }
     }
+    return masked.length;
+  }
+
+  // O telefone é remontado do zero a cada tecla (só dígitos + máscara fixa),
+  // então apagar um caractere de máscara (parêntese/espaço/hífen) no meio do
+  // texto não removia nenhum dígito — o texto recalculado ficava idêntico ao
+  // anterior e parecia "travar" o backspace ali. Rastreamos a posição do
+  // cursor por dígito (não por caractere da máscara) e, quando o apagar cai
+  // em cima de um caractere de máscara, removemos o dígito imediatamente
+  // anterior no lugar dele — backspace sempre remove alguma coisa visível.
+  function handlePhoneChange(text: string) {
+    const oldDigits = phone.replace(/\D/g, "");
+    const newDigitsRaw = text.replace(/\D/g, "").slice(0, 11);
+    const cursorDigitIndexOld = digitIndexAtCursor(phone, phoneSelection.start);
+
+    let finalDigits: string;
+    let targetDigitIndex: number;
+
+    if (text.length < phone.length) {
+      if (newDigitsRaw.length === oldDigits.length) {
+        const removeAt = Math.max(0, cursorDigitIndexOld - 1);
+        finalDigits = oldDigits.slice(0, removeAt) + oldDigits.slice(removeAt + 1);
+        targetDigitIndex = removeAt;
+      } else {
+        finalDigits = newDigitsRaw;
+        targetDigitIndex = Math.max(0, cursorDigitIndexOld - (oldDigits.length - newDigitsRaw.length));
+      }
+    } else {
+      finalDigits = newDigitsRaw;
+      targetDigitIndex = cursorDigitIndexOld + (newDigitsRaw.length - oldDigits.length);
+    }
+
+    const masked = formatPhoneMask(finalDigits);
     setPhone(masked);
+    const newCursor = cursorAtDigitIndex(masked, targetDigitIndex);
+    setPhoneSelection({ start: newCursor, end: newCursor });
   }
 
   async function handleRegister() {
@@ -263,6 +309,8 @@ export function AuthRegisterScreen({ navigation }: Props) {
             ref={phoneRef}
             value={phone}
             onChangeText={handlePhoneChange}
+            selection={phoneSelection}
+            onSelectionChange={(e) => setPhoneSelection(e.nativeEvent.selection)}
             placeholder="(11) 99999-9999"
             keyboardType="phone-pad"
             textContentType="telephoneNumber"
@@ -271,18 +319,23 @@ export function AuthRegisterScreen({ navigation }: Props) {
             onSubmitEditing={() => passwordRef.current?.focus()}
             testID="input.auth.register.phone"
           />
-          <MvInput
-            ref={passwordRef}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Mínimo 8 caracteres"
-            secureTextEntry
-            textContentType="newPassword"
-            autoComplete="new-password"
-            returnKeyType="next"
-            onSubmitEditing={() => confirmPasswordRef.current?.focus()}
-            testID="input.auth.register.password"
-          />
+          <View style={{ gap: 4 }}>
+            <MvInput
+              ref={passwordRef}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Mínimo 8 caracteres"
+              secureTextEntry
+              textContentType="newPassword"
+              autoComplete="new-password"
+              returnKeyType="next"
+              onSubmitEditing={() => confirmPasswordRef.current?.focus()}
+              testID="input.auth.register.password"
+            />
+            <MvText variant="body4" color="secondary">
+              Mínimo 8 caracteres, com letras e números.
+            </MvText>
+          </View>
           <MvInput
             ref={confirmPasswordRef}
             value={confirmPassword}
