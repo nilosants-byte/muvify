@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Alert, Linking, Platform, ScrollView, Share, StatusBar, TouchableOpacity, View } from "react-native";
-import { providerSubscriptionApi, userApi } from "../../services/api/client";
+import { authApi, providerSubscriptionApi, userApi } from "../../services/api/client";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { shareExportedDataAsFile } from "../../utils/exportDataFile";
@@ -42,6 +42,22 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
   const { theme, isDark, toggleTheme } = useMvTheme();
   const [showDeletePasswordModal, setShowDeletePasswordModal] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  // Mesmo aviso que ClientSettingsScreen já tem (Raio-X de pagamentos, Rodada
+  // 4, Lote 11) -- nunca tinha sido replicado aqui, então um profissional
+  // com e-mail não verificado não tinha nenhum jeito de saber disso ou
+  // reenviar o link dentro do app.
+  const [resendingVerification, setResendingVerification] = useState(false);
+  async function handleResendVerificationEmail() {
+    setResendingVerification(true);
+    try {
+      await runWithAuth((token) => authApi.resendVerificationEmail(token));
+      Alert.alert("E-mail enviado", "Verifique sua caixa de entrada (e o spam) para confirmar seu e-mail.");
+    } catch {
+      Alert.alert("Erro", "Não foi possível reenviar o e-mail de verificação. Tente novamente mais tarde.");
+    } finally {
+      setResendingVerification(false);
+    }
+  }
   const lightModeEnabled = !isDark;
   const isLight = theme.mode === "light";
 
@@ -235,6 +251,19 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
             <MvText variant="semi3" color="secondary">Editar perfil</MvText>
           </TouchableOpacity>
         </View>
+
+        {/* ── E-MAIL NÃO VERIFICADO ── */}
+        {!user?.emailVerifiedAt ? (
+          <View style={{ marginHorizontal: 16, borderRadius: 16, borderWidth: 1, backgroundColor: cardBg, borderColor: border, overflow: "hidden", marginBottom: 12 }}>
+            <MenuItem
+              icon="mail-unread-outline"
+              label="Confirmar e-mail"
+              sub={resendingVerification ? "Enviando..." : "Reenviar e-mail de verificação"}
+              onPress={resendingVerification ? undefined : () => void handleResendVerificationEmail()}
+              isFirst
+            />
+          </View>
+        ) : null}
 
         {/* ── FINANCEIRO (destaque no topo) ── */}
         <View style={{ marginHorizontal: 16, borderRadius: 16, borderWidth: 1, backgroundColor: cardBg, borderColor: border, overflow: "hidden", marginBottom: 12 }}>

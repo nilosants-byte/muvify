@@ -25,6 +25,7 @@ import * as Location from "expo-location";
 import { ProfessionalTabParamList } from "../../navigation/route-types";
 import {
   ApiError,
+  authApi,
   Availability,
   availabilityApi,
   Booking,
@@ -155,6 +156,23 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   const [showCrefBanner, setShowCrefBanner] = useState(false);
   const [showProfileBanner, setShowProfileBanner] = useState(false);
   const [showPayoutBanner, setShowPayoutBanner] = useState(false);
+  // Raio-X de pagamentos, Rodada 4, Lote 11 tinha replicado esse aviso na
+  // Home do CLIENTE (ClientHomeScreen) mas nunca na do profissional -- quem
+  // se cadastra como profissional não via nenhum sinal de e-mail não
+  // verificado, e só ia descobrir com um erro genérico ao tentar mandar
+  // mensagem no chat (assertEmailVerified bloqueia isso pros dois papéis).
+  const [resendingVerification, setResendingVerification] = useState(false);
+  async function handleResendVerification() {
+    setResendingVerification(true);
+    try {
+      await runWithAuth((token) => authApi.resendVerificationEmail(token));
+      showToast("E-mail de verificação reenviado. Confira sua caixa de entrada.", "success");
+    } catch {
+      showToast("Não foi possível reenviar o e-mail agora. Tente novamente mais tarde.", "error");
+    } finally {
+      setResendingVerification(false);
+    }
+  }
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [providerPhotoUrl, setProviderPhotoUrl] = useState<string | null>(
     () => resolveMediaUrl(user?.providerProfile?.photoUrl, true)
@@ -778,6 +796,18 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
             onNavigateCref={() => navigation.navigate("ProfessionalCredentials" as never)}
             onNavigateMercadoPago={() => navigation.navigate("ConnectPayoutAccount" as never)}
           />
+
+          {/* ── BANNER: E-MAIL NÃO VERIFICADO ── */}
+          {!user?.emailVerifiedAt ? (
+            <UrgencyCard
+              icon="mail-unread-outline"
+              tone="amber"
+              subtitle="e-mail não confirmado"
+              title={resendingVerification ? "Enviando..." : "Confirme seu e-mail para não perder acesso a mensagens e compras"}
+              cta="Reenviar"
+              onPress={() => { if (!resendingVerification) void handleResendVerification(); }}
+            />
+          ) : null}
 
           {/* ── BANNER: PERFIL INCOMPLETO ── */}
           {showProfileBanner ? (
