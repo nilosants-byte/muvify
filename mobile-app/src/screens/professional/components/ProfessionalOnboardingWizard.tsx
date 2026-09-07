@@ -3,6 +3,7 @@ import { Text, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useMvTheme } from "../../../theme/MvThemeContext";
+import { useAppState } from "../../../state/AppState";
 import { C, S } from "../../../theme/v2tokens";
 
 const ONBOARDING_KEY = "@muvify/professionalOnboardingDone";
@@ -59,19 +60,28 @@ interface Props {
 
 export function ProfessionalOnboardingWizard({ onNavigateProfile, onNavigateAvailability, onNavigateCref, onNavigateMercadoPago }: Props) {
   const { theme } = useMvTheme();
+  const { user } = useAppState();
   const [visible, setVisible] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
 
+  // A marcação de "já vi esse tour" precisa ser por CONTA, não por aparelho
+  // — sem o id do usuário na chave, um segundo profissional logando no
+  // mesmo celular (comum em teste manual, e também no mundo real numa casa
+  // com aparelho compartilhado) nunca veria o tour, mesmo sendo a primeira
+  // vez dele.
+  const storageKey = user?.id ? `${ONBOARDING_KEY}:${user.id}` : null;
+
   useEffect(() => {
-    AsyncStorage.getItem(ONBOARDING_KEY)
+    if (!storageKey) return;
+    AsyncStorage.getItem(storageKey)
       .then((done) => { if (!done) setVisible(true); })
       .catch(() => {});
-  }, []);
+  }, [storageKey]);
 
   const dismiss = useCallback(() => {
     setVisible(false);
-    void AsyncStorage.setItem(ONBOARDING_KEY, "1").catch(() => {});
-  }, []);
+    if (storageKey) void AsyncStorage.setItem(storageKey, "1").catch(() => {});
+  }, [storageKey]);
 
   const handleAction = useCallback(() => {
     const step = STEPS[currentStep];
