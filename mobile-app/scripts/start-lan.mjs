@@ -1,7 +1,39 @@
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
+
+const METRO_PORT = 8081;
+
+// Mesmo problema documentado em start-share.mjs: fechar o terminal direto
+// (em vez de Ctrl+C + esperar sair) deixa o Metro anterior travado na
+// porta 8081, e a rodada nova acaba brigando com ele ou se comportando de
+// forma inconsistente. Limpa antes de começar, sem depender de lembrar.
+function killStaleMetroProcess() {
+  if (process.platform === "win32") {
+    try {
+      const out = execSync(`netstat -ano | findstr :${METRO_PORT} | findstr LISTENING`, { encoding: "utf8" });
+      const pids = new Set(
+        out.split("\n").map((line) => line.trim().split(/\s+/).pop()).filter(Boolean)
+      );
+      for (const pid of pids) {
+        try { execSync(`taskkill /F /PID ${pid}`, { stdio: "ignore" }); } catch { /* já não existia mais */ }
+      }
+    } catch {
+      // porta já livre, ok.
+    }
+  } else {
+    try { execSync(`lsof -ti tcp:${METRO_PORT} | xargs -r kill -9`, { stdio: "ignore" }); } catch { /* porta livre */ }
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+console.log("[start:lan] Limpando processo antigo do Metro, se houver...");
+killStaleMetroProcess();
+await sleep(2000);
 
 function isPrivateIpv4(address) {
   return (

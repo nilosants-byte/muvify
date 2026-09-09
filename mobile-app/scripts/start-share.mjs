@@ -14,11 +14,47 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import net from "node:net";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import { createInterface } from "node:readline";
 
 const CLOUDFLARED_PATTERN = /https:\/\/([a-z0-9]+-[a-z0-9][a-z0-9-]*)\.trycloudflare\.com/i;
 const METRO_PORT_CANDIDATES = [8081, 8082, 8083];
+
+// Se um terminal anterior for fechado direto (em vez de Ctrl+C + esperar o
+// processo sair), o Metro e/ou o cloudflared ficam "fantasmas" rodando em
+// segundo plano, presos numa porta e/ou com um túnel que não aponta mais
+// pra nada de útil. Rodadas seguintes então competem com esses processos
+// travados, ou o QR/link gerado às vezes acaba resolvendo pro processo
+// morto -- é exatamente o que causou o "the request timed out" no Expo Go.
+// Limpa qualquer processo preso ANTES de começar uma rodada nova, sem
+// depender de ninguém lembrar de fazer isso manualmente.
+function killStaleMetroAndTunnelProcesses() {
+  if (process.platform === "win32") {
+    for (const port of METRO_PORT_CANDIDATES) {
+      try {
+        const out = execSync(`netstat -ano | findstr :${port} | findstr LISTENING`, { encoding: "utf8" });
+        const pids = new Set(
+          out.split("\n").map((line) => line.trim().split(/\s+/).pop()).filter(Boolean)
+        );
+        for (const pid of pids) {
+          try { execSync(`taskkill /F /PID ${pid}`, { stdio: "ignore" }); } catch { /* já não existia mais */ }
+        }
+      } catch {
+        // findstr sem match sai com código != 0 -- porta já livre, ok.
+      }
+    }
+    try {
+      execSync(`taskkill /F /IM cloudflared.exe`, { stdio: "ignore" });
+    } catch {
+      // nenhum cloudflared rodando -- ok.
+    }
+  } else {
+    for (const port of METRO_PORT_CANDIDATES) {
+      try { execSync(`lsof -ti tcp:${port} | xargs -r kill -9`, { stdio: "ignore" }); } catch { /* porta livre */ }
+    }
+    try { execSync(`pkill -f cloudflared`, { stdio: "ignore" }); } catch { /* nao tinha nenhum */ }
+  }
+}
 
 const CLOUDFLARED_BIN = process.platform === "win32"
   ? `${os.homedir()}\\cloudflared.exe`
@@ -128,7 +164,19 @@ function startExpo(metroTunnelUrl, metroPort) {
   });
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function main() {
+  console.log("[start:share] Limpando processos antigos do Metro/túnel, se houver...");
+  killStaleMetroAndTunnelProcesses();
+  // Depois de um taskkill, o Windows leva um instante pra liberar a porta de
+  // verdade (netstat pode continuar mostrando LISTENING por alguns segundos
+  // mesmo com o processo já encerrado) -- sem essa espera, resolveMetroPort()
+  // logo abaixo poderia ver a porta como "ocupada" ainda por engano.
+  await sleep(2000);
+
   const metroPort = await resolveMetroPort();
   console.log(`[start:share] Porta Metro selecionada: ${metroPort}`);
   console.log(`[start:share] Abrindo tunnel do app (Metro ${metroPort}) via cloudflared...`);
