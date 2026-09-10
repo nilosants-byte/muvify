@@ -58,6 +58,7 @@ export class InvalidFileContentError extends Error {}
 export type UploadFolder =
   | "profile-photos"
   | "presentation-videos"
+  | "presentation-video-thumbnails"
   | "feed-photos"
   | "cref-documents"
   | "attendance-proofs"

@@ -86,6 +86,7 @@
     "expo-status-bar": "~57.0.1",
     "expo-task-manager": "~57.0.16",
     "expo-updates": "~57.0.21",
+    "expo-video-thumbnails": "~57.0.1",
     "leaflet": "^1.9.4",
     "lottie-react-native": "^7.3.8",
     "posthog-react-native": "^4.46.11",

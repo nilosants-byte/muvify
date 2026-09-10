@@ -8,6 +8,12 @@ import { getYouTubeId, getYouTubeThumbnail } from "../../utils/youtube";
 
 type Props = {
   url: string;
+  // Quadro real do vídeo (extraído no upload), mostrado no lugar da caixa
+  // escura genérica antes de tocar — sem isso, não dá pra confirmar
+  // visualmente que o vídeo certo foi salvo. Opcional: quando ausente
+  // (vídeo antigo salvo antes dessa mudança, ou falha silenciosa ao gerar),
+  // cai de volta no placeholder escuro de sempre.
+  thumbnailUrl?: string | null;
   // Comportamento padrão (sem aspectRatio): caixa de altura fixa, largura
   // 100% do container pai — pensado pra vídeo horizontal (16:9-ish), mantido
   // pra não quebrar os callers existentes de vídeo de apresentação do
@@ -135,7 +141,7 @@ function buildVideoSource(url: string): VideoSource | null {
   };
 }
 
-export function MvVideoPlayer({ url, height = 200, aspectRatio, width, borderRadius = 12 }: Props) {
+export function MvVideoPlayer({ url, thumbnailUrl, height = 200, aspectRatio, width, borderRadius = 12 }: Props) {
   const { theme } = useMvTheme();
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -170,9 +176,9 @@ export function MvVideoPlayer({ url, height = 200, aspectRatio, width, borderRad
         onPress={() => setPlaying(true)}
         style={containerStyle}
       >
-        {videoSource.youTubeThumbnail ? (
+        {videoSource.youTubeThumbnail || thumbnailUrl ? (
           <Image
-            source={{ uri: videoSource.youTubeThumbnail }}
+            source={{ uri: videoSource.youTubeThumbnail ?? thumbnailUrl! }}
             style={{ width: "100%", height: "100%" }}
             resizeMode="cover"
           />

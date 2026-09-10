@@ -2,6 +2,7 @@
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import * as ImagePicker from "expo-image-picker";
+import * as VideoThumbnails from "expo-video-thumbnails";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { MvVideoPlayer } from "../../components/mv/MvVideoPlayer";
@@ -55,6 +56,11 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
     resolveMediaUrl(cachedProfile?.photoUrl)
   );
   const [presentationVideoUrl, setPresentationVideoUrl] = useState<string | null>(null);
+  // Miniatura real (um quadro do próprio vídeo), extraída no momento do
+  // upload — antes disso, o player só tinha uma caixa escura genérica de
+  // "toque para reproduzir", sem nenhum jeito de confirmar visualmente que
+  // o vídeo certo foi salvo.
+  const [presentationVideoThumbUrl, setPresentationVideoThumbUrl] = useState<string | null>(null);
   // Local file:// URI for crash-free preview; URL real do R2 vive em presentationVideoUrl para submissão
   const [videoLocalUri, setVideoLocalUri] = useState<string | null>(null);
   const [videoProcessing, setVideoProcessing] = useState(false);
@@ -95,7 +101,8 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       setBio(profile.bio || "");
       setPhotoUrl(profile.photoUrl || "");
       setPhotoPreviewUri(resolveMediaUrl(profile.photoUrl));
-      setPresentationVideoUrl((profile as any).presentationVideoUrl ?? null);
+      setPresentationVideoUrl(profile.presentationVideoUrl ?? null);
+      setPresentationVideoThumbUrl(profile.presentationVideoThumbUrl ?? null);
       setVideoLocalUri(null);
       setVideoProcessing(false);
       setVideoRemoved(false);
@@ -201,6 +208,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       // Prévia local (file://) — o vídeo em si nunca é convertido pra base64 na memória do app.
       setVideoLocalUri(asset.uri);
       setPresentationVideoUrl(null); // limpa a URL anterior até o novo upload terminar
+      setPresentationVideoThumbUrl(null);
       setVideoRemoved(false);
       setVideoProcessing(true);
       setVideoUploadProgress(0);
@@ -218,6 +226,23 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       setVideoLocalUri(null); // troca pra URL real do R2 assim que sobe — a prévia local pode não tocar no WebView
       setVideoProcessing(false);
       showToast("Vídeo enviado. Salve o perfil para concluir.", "success");
+
+      // Miniatura é um "nice to have" — se falhar (formato exótico, etc.),
+      // o vídeo em si já está salvo e funcional, então nunca deixamos essa
+      // etapa derrubar o fluxo principal nem mostrar erro pro usuário.
+      try {
+        const { uri: thumbLocalUri } = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 0 });
+        const { url: thumbUrl } = await runWithAuth((token) =>
+          uploadsApi.uploadMedia(
+            token,
+            { uri: thumbLocalUri, mimeType: "image/jpeg", fileName: "presentation-video-thumb.jpg" },
+            "presentation-video-thumbnails"
+          )
+        );
+        setPresentationVideoThumbUrl(thumbUrl);
+      } catch {
+        setPresentationVideoThumbUrl(null);
+      }
     } catch (error) {
       setVideoProcessing(false);
       // Frente 11 (engenharia mobile), Lote 2: videoLocalUri não é limpo em
@@ -250,6 +275,9 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       presentationVideoUrl: videoRemoved
         ? ""
         : isUploadableUrl(presentationVideoUrl) ? presentationVideoUrl! : undefined,
+      presentationVideoThumbUrl: videoRemoved
+        ? ""
+        : isUploadableUrl(presentationVideoThumbUrl) ? presentationVideoThumbUrl! : undefined,
       experienceYears: parsedExperience,
       priceCents: parsedPriceCents,
       specialties: selectedSpecialties,
@@ -417,7 +445,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                   onPress={() => {
                     Alert.alert("Remover vídeo", "Deseja remover o vídeo de apresentação?", [
                       { text: "Cancelar", style: "cancel" },
-                      { text: "Remover", style: "destructive", onPress: () => { setVideoLocalUri(null); setPresentationVideoUrl(null); setVideoProcessing(false); setVideoRemoved(true); } },
+                      { text: "Remover", style: "destructive", onPress: () => { setVideoLocalUri(null); setPresentationVideoUrl(null); setPresentationVideoThumbUrl(null); setVideoProcessing(false); setVideoRemoved(true); } },
                     ]);
                   }}
                   style={{
@@ -434,7 +462,12 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
           ) : presentationVideoUrl ? (
             // Carregado do backend — já é uma URL real do R2, pode reproduzir normalmente
             <View style={{ gap: 10 }}>
-              <MvVideoPlayer url={resolveMediaUrl(presentationVideoUrl) ?? presentationVideoUrl} height={180} borderRadius={10} />
+              <MvVideoPlayer
+                url={resolveMediaUrl(presentationVideoUrl) ?? presentationVideoUrl}
+                thumbnailUrl={resolveMediaUrl(presentationVideoThumbUrl) ?? presentationVideoThumbUrl}
+                height={180}
+                borderRadius={10}
+              />
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <View style={{ flex: 1 }}>
                   <MvButton variant="outline" label="Trocar vídeo" onPress={() => void doPickPresentationVideo()} />
@@ -444,7 +477,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                   onPress={() => {
                     Alert.alert("Remover vídeo", "Deseja remover o vídeo de apresentação?", [
                       { text: "Cancelar", style: "cancel" },
-                      { text: "Remover", style: "destructive", onPress: () => { setVideoLocalUri(null); setPresentationVideoUrl(null); setVideoProcessing(false); setVideoRemoved(true); } },
+                      { text: "Remover", style: "destructive", onPress: () => { setVideoLocalUri(null); setPresentationVideoUrl(null); setPresentationVideoThumbUrl(null); setVideoProcessing(false); setVideoRemoved(true); } },
                     ]);
                   }}
                   style={{

@@ -1563,6 +1563,7 @@ export function ClientHomeScreen({ navigation }: Props) {
           priceCents: providerModal.priceCents,
           photoUrl: providerModal.photoUrl ?? null,
           presentationVideoUrl: selectedProviderDetail?.presentationVideoUrl ?? null,
+          presentationVideoThumbUrl: selectedProviderDetail?.presentationVideoThumbUrl ?? null,
         } : null}
         detailLoading={providerDetailLoading}
         specialties={providerModalSpecialties}

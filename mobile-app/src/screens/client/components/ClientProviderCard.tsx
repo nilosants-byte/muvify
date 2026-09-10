@@ -22,6 +22,7 @@ export type ProviderModalData = {
   priceCents: number;
   photoUrl?: string | null;
   presentationVideoUrl?: string | null;
+  presentationVideoThumbUrl?: string | null;
 };
 
 type Props = {
@@ -139,6 +140,7 @@ export const ClientProviderCard = React.memo(function ClientProviderCard({
               {provider.presentationVideoUrl && (
                 <MvVideoPlayer
                   url={resolveMediaUrl(provider.presentationVideoUrl) ?? provider.presentationVideoUrl}
+                  thumbnailUrl={resolveMediaUrl(provider.presentationVideoThumbUrl) ?? provider.presentationVideoThumbUrl}
                   height={140}
                   borderRadius={12}
                 />

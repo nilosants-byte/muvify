@@ -62,6 +62,7 @@ type CreateProviderInput = {
   priceCents: number;
   photoUrl?: string;
   presentationVideoUrl?: string;
+  presentationVideoThumbUrl?: string;
   serviceRadiusKm?: number;
   latitude?: number;
   longitude?: number;
@@ -333,6 +334,7 @@ export const PUBLIC_PROVIDER_SELECT = {
   totalReviews: true,
   photoUrl: true,
   presentationVideoUrl: true,
+  presentationVideoThumbUrl: true,
   crefNumber: true,
   crefValidatedAt: true,
   crefValidationStatus: true,
@@ -1064,6 +1066,7 @@ export class ProviderService {
           priceCents: input.priceCents,
           photoUrl: input.photoUrl,
           presentationVideoUrl: ENABLE_VIDEO_UPLOAD && input.presentationVideoUrl ? input.presentationVideoUrl : undefined,
+          presentationVideoThumbUrl: ENABLE_VIDEO_UPLOAD && input.presentationVideoThumbUrl ? input.presentationVideoThumbUrl : undefined,
           serviceRadiusKm: input.serviceRadiusKm,
           latitude: input.latitude,
           longitude: input.longitude,
@@ -1224,6 +1227,9 @@ export class ProviderService {
         ...(input.photoUrl !== undefined && { photoUrl: input.photoUrl }),
         ...(ENABLE_VIDEO_UPLOAD && input.presentationVideoUrl !== undefined
           ? { presentationVideoUrl: input.presentationVideoUrl === "" ? null : input.presentationVideoUrl }
+          : {}),
+        ...(ENABLE_VIDEO_UPLOAD && input.presentationVideoThumbUrl !== undefined
+          ? { presentationVideoThumbUrl: input.presentationVideoThumbUrl === "" ? null : input.presentationVideoThumbUrl }
           : {}),
         ...(input.serviceRadiusKm !== undefined && { serviceRadiusKm: input.serviceRadiusKm }),
         ...(input.latitude !== undefined && { latitude: input.latitude }),
@@ -1400,6 +1406,7 @@ export class ProviderService {
         id: string;
         photoUrl?: string | null;
         presentationVideoUrl?: string | null;
+        presentationVideoThumbUrl?: string | null;
         updatedAt?: Date;
         latitude?: number | null;
         longitude?: number | null;
@@ -1727,6 +1734,10 @@ export class ProviderService {
               provider.presentationVideoUrl,
               provider.updatedAt
             )
+          : null,
+      presentationVideoThumbUrl:
+        ENABLE_VIDEO_UPLOAD && provider.presentationVideoThumbUrl
+          ? provider.presentationVideoThumbUrl
           : null,
     };
   }

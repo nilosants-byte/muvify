@@ -448,6 +448,7 @@ model ProviderProfile {
   totalReviews                Int                         @default(0)
   photoUrl                    String?
   presentationVideoUrl        String?
+  presentationVideoThumbUrl   String?
   mpAccountId                 String?
   mpAccessToken               String?
   mpRefreshToken              String?

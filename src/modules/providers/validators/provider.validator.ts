@@ -13,6 +13,9 @@ const profilePhotoSchema = z.string().trim().url();
 
 // Aceita uma URL válida ou string vazia (sinaliza remoção do vídeo no update)
 const presentationVideoSchema = z.union([z.string().trim().url(), z.literal("")]);
+// Mesma forma do vídeo (URL ou string vazia pra remover) — a miniatura
+// sempre acompanha o vídeo, nunca existe sozinha.
+const presentationVideoThumbSchema = z.union([z.string().trim().url(), z.literal("")]);
 
 export const createProviderProfileSchema = z.object({
   body: z.object({
@@ -22,6 +25,7 @@ export const createProviderProfileSchema = z.object({
     priceCents: z.number().int().min(100).max(10_000_000),
     photoUrl: profilePhotoSchema.optional(),
     presentationVideoUrl: presentationVideoSchema.optional(),
+    presentationVideoThumbUrl: presentationVideoThumbSchema.optional(),
     serviceRadiusKm: z.number().int().min(1).max(500).optional(),
     latitude: z.number().min(-90).max(90).optional(),
     longitude: z.number().min(-180).max(180).optional(),
@@ -41,6 +45,7 @@ export const updateProviderProfileSchema = z.object({
     priceCents: z.number().int().min(100).max(10_000_000).optional(),
     photoUrl: profilePhotoSchema.optional(),
     presentationVideoUrl: presentationVideoSchema.nullable().optional(),
+    presentationVideoThumbUrl: presentationVideoThumbSchema.nullable().optional(),
     serviceRadiusKm: z.number().int().min(1).max(500).optional(),
     latitude: z.number().min(-90).max(90).optional(),
     longitude: z.number().min(-180).max(180).optional(),

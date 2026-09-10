@@ -35,6 +35,8 @@ export type AuthUser = {
     displayName: string;
     bio: string;
     photoUrl?: string | null;
+    presentationVideoUrl?: string | null;
+    presentationVideoThumbUrl?: string | null;
     experienceYears: number;
     priceCents: number;
     serviceRadiusKm?: number | null;
@@ -123,6 +125,7 @@ export type ProviderReview = {
 
 export type ProviderDetail = ProviderSummary & {
   presentationVideoUrl?: string | null;
+  presentationVideoThumbUrl?: string | null;
   user?: {
     id: string;
     name?: string;
@@ -1625,6 +1628,7 @@ export const authApi = {
 export type UploadFolder =
   | "profile-photos"
   | "presentation-videos"
+  | "presentation-video-thumbnails"
   | "feed-photos"
   | "cref-documents"
   | "exercise-media";
@@ -2456,6 +2460,7 @@ export const providersApi = {
       bio: string;
       photoUrl?: string;
       presentationVideoUrl?: string;
+      presentationVideoThumbUrl?: string;
       experienceYears: number;
       priceCents: number;
       serviceRadiusKm?: number;
@@ -2484,6 +2489,7 @@ export const providersApi = {
       bio: string;
       photoUrl: string;
       presentationVideoUrl: string | null;
+      presentationVideoThumbUrl: string | null;
       experienceYears: number;
       priceCents: number;
       serviceRadiusKm: number;

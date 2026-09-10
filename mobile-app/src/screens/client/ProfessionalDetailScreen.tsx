@@ -38,6 +38,7 @@ type ProviderDetail = ProviderSummary & {
   reviews?: Array<{ id: string; rating: number; comment?: string | null; providerResponse?: string | null; user?: { name?: string } }>;
   fixedLocations?: Array<{ id: string; name: string; latitude?: number | null; longitude?: number | null }>;
   presentationVideoUrl?: string | null;
+  presentationVideoThumbUrl?: string | null;
 };
 
 function getInitials(name: string) {
@@ -394,7 +395,12 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
         {provider.presentationVideoUrl ? (
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, marginBottom: 10 }}>Vídeo de apresentação</Text>
-            <MvVideoPlayer url={resolveMediaUrl(provider.presentationVideoUrl) ?? provider.presentationVideoUrl} height={200} borderRadius={10} />
+            <MvVideoPlayer
+              url={resolveMediaUrl(provider.presentationVideoUrl) ?? provider.presentationVideoUrl}
+              thumbnailUrl={resolveMediaUrl(provider.presentationVideoThumbUrl) ?? provider.presentationVideoThumbUrl}
+              height={200}
+              borderRadius={10}
+            />
           </View>
         ) : null}
 
