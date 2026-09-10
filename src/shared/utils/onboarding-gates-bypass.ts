@@ -9,12 +9,17 @@ import { env } from "../../config/env";
 // e-mail que receba de fato, etc). Mercado Pago fica de fora de propósito —
 // aquele fluxo é testado com conta de sandbox real, não com bypass.
 //
-// Duas camadas independentes garantem que isso nunca vale em produção (ver
-// src/config/env.ts): a checagem no boot derruba o processo se alguém setar
-// as duas variáveis ao mesmo tempo, e o próprio valor de
+// Duas camadas independentes garantem que isso nunca vale em produção de
+// verdade (ver src/config/env.ts): a checagem no boot derruba o processo se
+// alguém setar as duas variáveis ao mesmo tempo, e o próprio valor de
 // env.E2E_BYPASS_ONBOARDING_GATES já vem forçado como false quando
-// NODE_ENV=production — esta função só lê esse valor já protegido, não
-// reimplementa a checagem de ambiente.
+// DEPLOYMENT_ENV (ou NODE_ENV, se DEPLOYMENT_ENV não estiver definida) é
+// "production" — esta função só lê esse valor já protegido, não reimplementa
+// a checagem de ambiente. DEPLOYMENT_ENV existe separada de NODE_ENV porque
+// um servidor de staging real (Render) precisa manter NODE_ENV=production
+// pra ter as mesmas exigências de segurança da produção (TLS, cookies,
+// SMTP, R2 etc.), então só ele pode dizer "sou staging" via DEPLOYMENT_ENV
+// sem abrir mão dessas outras proteções.
 export function isOnboardingGatesBypassActive(): boolean {
   if (env.E2E_BYPASS_ONBOARDING_GATES) {
     // eslint-disable-next-line no-console

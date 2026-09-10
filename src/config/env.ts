@@ -17,6 +17,17 @@ const booleanFlag = z.preprocess((value) => {
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // Sinal independente do NODE_ENV, usado só pra decidir se o bypass de
+  // testes (E2E_BYPASS_ONBOARDING_GATES) pode ligar. Existe porque um
+  // servidor de staging real (Render) precisa de NODE_ENV=production pra
+  // manter as mesmas exigencias de seguranca de producao (TLS, cookies,
+  // SMTP, R2, etc. — todas as checagens abaixo que testam NODE_ENV
+  // continuam usando NODE_ENV, de proposito, e não mudam). Sem essa
+  // variavel, staging fica com NODE_ENV=production e o bypass nunca
+  // consegue ligar ali, mesmo com E2E_BYPASS_ONBOARDING_GATES=true. Se
+  // DEPLOYMENT_ENV nao for definida, cai no valor de NODE_ENV (nenhum
+  // ambiente existente muda de comportamento por causa desta variavel).
+  DEPLOYMENT_ENV: z.enum(["production", "staging", "development", "test"]).optional(),
   PORT: z.coerce.number().default(3000),
   APP_BASE_URL: z.string().url().default("http://localhost:3000"),
   APP_TIMEZONE: z.string().default("America/Sao_Paulo"),
@@ -153,7 +164,8 @@ export function assertNoOnboardingGatesBypassInProduction(nodeEnv: string, bypas
     );
   }
 }
-assertNoOnboardingGatesBypassInProduction(parsed.NODE_ENV, parsed.E2E_BYPASS_ONBOARDING_GATES);
+const deploymentEnv = parsed.DEPLOYMENT_ENV ?? parsed.NODE_ENV;
+assertNoOnboardingGatesBypassInProduction(deploymentEnv, parsed.E2E_BYPASS_ONBOARDING_GATES);
 // Wildcard CORS is never permitted — origins must be explicit in all environments.
 if (parsed.CORS_ORIGIN.trim() === "*") {
   throw new Error("CORS_ORIGIN nao pode ser '*'. Informe URLs explícitas separadas por vírgula.");
@@ -238,8 +250,12 @@ export const env = {
   // mesmo que aquela checagem seja enfraquecida ou removida no futuro sem
   // querer, o valor que o resto do código realmente enxerga (env.E2E_BYPASS_ONBOARDING_GATES)
   // já vem forçado como false em produção aqui, de forma independente.
+  // Usa deploymentEnv (DEPLOYMENT_ENV, ou NODE_ENV se não definida) — não
+  // NODE_ENV puro — pra permitir ligar isso num staging que precisa manter
+  // NODE_ENV=production por outros motivos de segurança.
+  DEPLOYMENT_ENV: deploymentEnv,
   E2E_BYPASS_ONBOARDING_GATES:
-    parsed.NODE_ENV !== "production" && parsed.E2E_BYPASS_ONBOARDING_GATES,
+    deploymentEnv !== "production" && parsed.E2E_BYPASS_ONBOARDING_GATES,
   AUTH_REQUIRE_REDIS_FOR_BLACKLIST:
     parsed.AUTH_REQUIRE_REDIS_FOR_BLACKLIST ?? (parsed.NODE_ENV === "production"),
   SMTP_TLS_REJECT_UNAUTHORIZED:

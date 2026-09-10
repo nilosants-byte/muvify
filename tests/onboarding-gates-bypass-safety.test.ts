@@ -22,6 +22,16 @@ describe("onboarding gates bypass — trava de produção", () => {
     expect(() => assertNoOnboardingGatesBypassInProduction("test", true)).not.toThrow();
   });
 
+  it("aceita 'staging' como rótulo de DEPLOYMENT_ENV, mesmo que NODE_ENV do servidor seja production", () => {
+    // Staging real (Render) roda com NODE_ENV=production por outros motivos
+    // de segurança (TLS, SMTP, R2...) — DEPLOYMENT_ENV=staging é o único
+    // jeito de ligar o bypass ali sem abrir mão dessas outras exigências.
+    // env.ts calcula deploymentEnv = DEPLOYMENT_ENV ?? NODE_ENV antes de
+    // chamar esta função, então "staging" chega aqui mesmo com o processo
+    // tendo NODE_ENV=production.
+    expect(() => assertNoOnboardingGatesBypassInProduction("staging", true)).not.toThrow();
+  });
+
   it("o ambiente de teste atual nao é produção (pré-requisito das checagens abaixo)", () => {
     expect(env.NODE_ENV).not.toBe("production");
   });
