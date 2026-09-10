@@ -1108,6 +1108,16 @@ export class ProviderService {
       });
 
       return createdProfile;
+    }, {
+      // Achado em teste manual (2026-09-10): resolução de categoria nova +
+      // criação da assinatura (createSubscriptionForProvider, com suas
+      // próprias consultas sequenciais de elegibilidade de fundador) dentro
+      // da mesma transação já passavam do timeout padrão do Prisma (5s) em
+      // produção, derrubando a criação de perfil inteira com "Transaction
+      // API error: Transaction not found" — mesmo padrão já usado em
+      // user.service.ts (exclusão de conta) e booking.service.ts (webhook
+      // do Mercado Pago) para transações com múltiplas consultas em série.
+      timeout: 15_000
     }).catch((err) => {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         throw new AppError("Perfil profissional já existe.", StatusCodes.CONFLICT);
