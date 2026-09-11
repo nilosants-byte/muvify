@@ -232,6 +232,7 @@ export class UserService {
             totalReviews: true,
             photoUrl: true,
             presentationVideoUrl: true,
+            presentationVideoThumbUrl: true,
             mpAccountId: true,
             crefNumber: true,
             crefValidatedAt: true,
