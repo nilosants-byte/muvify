@@ -143,6 +143,7 @@ export const ClientProviderCard = React.memo(function ClientProviderCard({
                   thumbnailUrl={resolveMediaUrl(provider.presentationVideoThumbUrl) ?? provider.presentationVideoThumbUrl}
                   height={140}
                   borderRadius={12}
+                  active={visible}
                 />
               )}
 

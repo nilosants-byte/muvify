@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, AppState, DimensionValue, Image, TouchableOpacity, View } from "react-native";
 import { WebView } from "react-native-webview";
+import { useIsFocused } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvText } from "./MvText";
@@ -25,6 +26,12 @@ type Props = {
   aspectRatio?: number;
   width?: number;
   borderRadius?: number;
+  // Callers que mostram este player dentro de um <Modal> devem passar o
+  // mesmo `visible` do modal aqui. RN <Modal visible={false}> só esconde a
+  // view nativa, não desmonta os filhos — sem isso, fechar o modal deixava
+  // o áudio/vídeo tocando escondido indefinidamente. Default true: caller
+  // sem modal (tela cheia) não precisa se preocupar com isso.
+  active?: boolean;
 };
 
 type VideoSource = {
@@ -141,7 +148,7 @@ function buildVideoSource(url: string): VideoSource | null {
   };
 }
 
-export function MvVideoPlayer({ url, thumbnailUrl, height = 200, aspectRatio, width, borderRadius = 12 }: Props) {
+export function MvVideoPlayer({ url, thumbnailUrl, height = 200, aspectRatio, width, borderRadius = 12, active = true }: Props) {
   const { theme } = useMvTheme();
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -156,6 +163,14 @@ export function MvVideoPlayer({ url, thumbnailUrl, height = 200, aspectRatio, wi
     });
     return () => sub.remove();
   }, []);
+
+  // Navegar pra outra tela (voltar, trocar de aba) não desmonta este
+  // componente sozinho — sem isso, o vídeo continuava tocando (com áudio)
+  // escondido depois que o usuário já tinha saído da tela do perfil.
+  const isFocused = useIsFocused();
+  useEffect(() => {
+    if (!isFocused || !active) setPlaying(false);
+  }, [isFocused, active]);
 
   const dimensionStyle: { width: DimensionValue; height?: number; aspectRatio?: number } = aspectRatio
     ? { width: width ?? "100%", aspectRatio }
