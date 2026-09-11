@@ -1,8 +1,34 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 console.log("[start-lan-detached] boot");
+
+// Mesmo cuidado de start-lan.mjs/start-share.mjs: o Metro guarda um cache
+// persistente de "quais arquivos existem no projeto" (haste file map) fora
+// da pasta do projeto, em os.tmpdir() -- não é limpo pela flag -c do
+// "expo start". Quando fica inconsistente, o Metro quebra com "Cannot read
+// properties of undefined (reading 'get')" em DependencyGraph.js e o app
+// nem chega a carregar no Expo Go. Apagar é seguro -- índice temporário,
+// recriado sozinho, não afeta código/git/banco.
+function clearStaleMetroFileMapCache() {
+  const tmpDir = os.tmpdir();
+  try {
+    for (const entry of fs.readdirSync(tmpDir)) {
+      if (entry.startsWith("metro-file-map-") || entry === "metro-cache") {
+        fs.rmSync(path.join(tmpDir, entry), { recursive: true, force: true });
+      }
+    }
+  } catch {
+    // best-effort
+  }
+  try {
+    execSync("watchman watch-del-all", { stdio: "ignore" });
+  } catch {
+    // watchman pode nao estar instalado/rodando
+  }
+}
+clearStaleMetroFileMapCache();
 
 function isPrivateIpv4(address) {
   return (
