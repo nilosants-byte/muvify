@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Image, Modal, Pressable, ScrollView, StatusBar, View } from "react-native";
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, View } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMvTheme } from "../../theme/MvThemeContext";
@@ -296,53 +297,56 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
         visible={passwordModalVisible}
         onRequestClose={() => setPasswordModalVisible(false)}
       >
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "center", padding: 20 }}>
-          <Pressable
-            style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
-            onPress={() => setPasswordModalVisible(false)}
-          />
-          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16, gap: 10 }}>
-            <MvText variant="semi1">Alterar senha</MvText>
-            <MvInput
-              label="Senha atual"
-              value={currentPassword}
-              onChangeText={setCurrentPassword}
-              secureTextEntry
-              autoCapitalize="none"
-            />
-            <MvInput
-              label="Nova senha"
-              value={newPassword}
-              onChangeText={setNewPassword}
-              secureTextEntry
-              autoCapitalize="none"
-            />
-            <MvInput
-              label="Confirmar nova senha"
-              value={confirmNewPassword}
-              onChangeText={setConfirmNewPassword}
-              secureTextEntry
-              autoCapitalize="none"
-            />
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "center", padding: 20 }}
+          onPress={() => setPasswordModalVisible(false)}
+        >
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ width: "100%" }}>
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16, gap: 10 }}>
+                <MvText variant="semi1">Alterar senha</MvText>
+                <MvInput
+                  label="Senha atual"
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+                <MvInput
+                  label="Nova senha"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+                <MvInput
+                  label="Confirmar nova senha"
+                  value={confirmNewPassword}
+                  onChangeText={setConfirmNewPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
 
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <View style={{ flex: 1 }}>
-                <MvButton
-                  variant="outline"
-                  label="Cancelar"
-                  onPress={() => setPasswordModalVisible(false)}
-                />
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <MvButton
+                      variant="outline"
+                      label="Cancelar"
+                      onPress={() => setPasswordModalVisible(false)}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <MvButton
+                      label="Alterar senha"
+                      loading={passwordSaving}
+                      onPress={() => void submitPasswordChange()}
+                    />
+                  </View>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <MvButton
-                  label="Alterar senha"
-                  loading={passwordSaving}
-                  onPress={() => void submitPasswordChange()}
-                />
-              </View>
-            </View>
-          </View>
-        </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
       </Modal>
 
       <Modal
@@ -351,50 +355,53 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
         visible={recoveryModalVisible}
         onRequestClose={() => setRecoveryModalVisible(false)}
       >
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "center", padding: 20 }}>
-          <Pressable
-            style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
-            onPress={() => setRecoveryModalVisible(false)}
-          />
-          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16, gap: 10 }}>
-            <MvText variant="semi1">E-mail de recuperação</MvText>
-            <MvText variant="body4" color="secondary">
-              Defina qual e-mail deve receber confirmações de recuperação de senha.
-            </MvText>
-            <MvInput
-              label="E-mail de recuperação"
-              value={editRecoveryEmail}
-              onChangeText={setEditRecoveryEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder={accountEmail || "email@exemplo.com"}
-            />
-            <MvInput
-              label="Sua senha atual"
-              value={recoveryPassword}
-              onChangeText={setRecoveryPassword}
-              secureTextEntry
-              autoCapitalize="none"
-            />
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "center", padding: 20 }}
+          onPress={() => setRecoveryModalVisible(false)}
+        >
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ width: "100%" }}>
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16, gap: 10 }}>
+                <MvText variant="semi1">E-mail de recuperação</MvText>
+                <MvText variant="body4" color="secondary">
+                  Defina qual e-mail deve receber confirmações de recuperação de senha.
+                </MvText>
+                <MvInput
+                  label="E-mail de recuperação"
+                  value={editRecoveryEmail}
+                  onChangeText={setEditRecoveryEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  placeholder={accountEmail || "email@exemplo.com"}
+                />
+                <MvInput
+                  label="Sua senha atual"
+                  value={recoveryPassword}
+                  onChangeText={setRecoveryPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
 
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <View style={{ flex: 1 }}>
-                <MvButton
-                  variant="outline"
-                  label="Cancelar"
-                  onPress={() => setRecoveryModalVisible(false)}
-                />
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <MvButton
+                      variant="outline"
+                      label="Cancelar"
+                      onPress={() => setRecoveryModalVisible(false)}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <MvButton
+                      label="Salvar e-mail"
+                      loading={recoverySaving}
+                      onPress={() => void submitRecoveryEmail()}
+                    />
+                  </View>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <MvButton
-                  label="Salvar e-mail"
-                  loading={recoverySaving}
-                  onPress={() => void submitRecoveryEmail()}
-                />
-              </View>
-            </View>
-          </View>
-        </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
       </Modal>
 
       <Modal
@@ -403,52 +410,81 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
         visible={twoFactorSetupVisible}
         onRequestClose={() => setTwoFactorSetupVisible(false)}
       >
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "center", padding: 20 }}>
-          <Pressable
-            style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
-            onPress={() => setTwoFactorSetupVisible(false)}
-          />
-          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16, gap: 10 }}>
-            <MvText variant="semi1">Configurar autenticação em dois fatores</MvText>
-            <MvText variant="body4" color="secondary">
-              Escaneie o QR code com seu app autenticador (Google Authenticator, Authy, etc.) e digite o código de 6
-              dígitos gerado.
-            </MvText>
-            {qrCodeDataUrl ? (
-              <View style={{ alignItems: "center", paddingVertical: 8 }}>
-                <Image source={{ uri: qrCodeDataUrl }} style={{ width: 180, height: 180 }} />
-              </View>
-            ) : null}
-            {manualEntryKey ? (
-              <MvText variant="caption" color="secondary" style={{ textAlign: "center" }}>
-                Não consegue escanear? Digite manualmente: {manualEntryKey}
-              </MvText>
-            ) : null}
-            <MvInput
-              label="Código de 6 dígitos"
-              value={confirmCode}
-              onChangeText={(t) => setConfirmCode(t.replace(/\D/g, "").slice(0, 6))}
-              keyboardType="numeric"
-              maxLength={6}
-            />
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <View style={{ flex: 1 }}>
-                <MvButton
-                  variant="outline"
-                  label="Cancelar"
-                  onPress={() => setTwoFactorSetupVisible(false)}
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "center", padding: 20 }}
+          onPress={() => setTwoFactorSetupVisible(false)}
+        >
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ width: "100%" }}>
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16, gap: 10 }}>
+                <MvText variant="semi1">Configurar autenticação em dois fatores</MvText>
+                <MvText variant="body4" color="secondary">
+                  Escaneie o QR code com seu app autenticador (Google Authenticator, Authy, etc.) e digite o código de 6
+                  dígitos gerado.
+                </MvText>
+                {qrCodeDataUrl ? (
+                  <View style={{ alignItems: "center", paddingVertical: 8 }}>
+                    <Image source={{ uri: qrCodeDataUrl }} style={{ width: 180, height: 180 }} />
+                  </View>
+                ) : null}
+                {manualEntryKey ? (
+                  <View style={{ gap: 6 }}>
+                    <MvText variant="caption" color="secondary" style={{ textAlign: "center" }}>
+                      Não consegue escanear? Digite manualmente:
+                    </MvText>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        paddingHorizontal: 12,
+                      }}
+                    >
+                      <MvText variant="body3" style={{ fontFamily: "monospace" as any }} numberOfLines={1}>
+                        {manualEntryKey}
+                      </MvText>
+                      <PressableScale
+                        accessibilityRole="button"
+                        accessibilityLabel="Copiar código"
+                        onPress={async () => {
+                          await Clipboard.setStringAsync(manualEntryKey);
+                          showToast("Código copiado.", "success");
+                        }}
+                        style={{ padding: 6 }}
+                      >
+                        <Ionicons name="copy-outline" size={18} color={theme.primary} />
+                      </PressableScale>
+                    </View>
+                  </View>
+                ) : null}
+                <MvInput
+                  label="Código de 6 dígitos"
+                  value={confirmCode}
+                  onChangeText={(t) => setConfirmCode(t.replace(/\D/g, "").slice(0, 6))}
+                  keyboardType="numeric"
+                  maxLength={6}
                 />
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <MvButton
+                      variant="outline"
+                      label="Cancelar"
+                      onPress={() => setTwoFactorSetupVisible(false)}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <MvButton
+                      label="Confirmar"
+                      loading={confirmingTwoFactor}
+                      onPress={() => void submitTwoFactorConfirm()}
+                    />
+                  </View>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <MvButton
-                  label="Confirmar"
-                  loading={confirmingTwoFactor}
-                  onPress={() => void submitTwoFactorConfirm()}
-                />
-              </View>
-            </View>
-          </View>
-        </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
       </Modal>
 
       <Modal
@@ -480,46 +516,49 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
         visible={disableTwoFactorVisible}
         onRequestClose={() => setDisableTwoFactorVisible(false)}
       >
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "center", padding: 20 }}>
-          <Pressable
-            style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
-            onPress={() => setDisableTwoFactorVisible(false)}
-          />
-          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16, gap: 10 }}>
-            <MvText variant="semi1">Desativar dois fatores</MvText>
-            <MvInput
-              label="Senha atual"
-              value={disablePassword}
-              onChangeText={setDisablePassword}
-              secureTextEntry
-              autoCapitalize="none"
-            />
-            <MvInput
-              label="Código de 6 dígitos"
-              value={disableCode}
-              onChangeText={(t) => setDisableCode(t.replace(/\D/g, "").slice(0, 6))}
-              keyboardType="numeric"
-              maxLength={6}
-            />
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <View style={{ flex: 1 }}>
-                <MvButton
-                  variant="outline"
-                  label="Cancelar"
-                  onPress={() => setDisableTwoFactorVisible(false)}
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "center", padding: 20 }}
+          onPress={() => setDisableTwoFactorVisible(false)}
+        >
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ width: "100%" }}>
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16, gap: 10 }}>
+                <MvText variant="semi1">Desativar dois fatores</MvText>
+                <MvInput
+                  label="Senha atual"
+                  value={disablePassword}
+                  onChangeText={setDisablePassword}
+                  secureTextEntry
+                  autoCapitalize="none"
                 />
-              </View>
-              <View style={{ flex: 1 }}>
-                <MvButton
-                  variant="danger"
-                  label="Desativar"
-                  loading={disablingTwoFactor}
-                  onPress={() => void submitDisableTwoFactor()}
+                <MvInput
+                  label="Código de 6 dígitos"
+                  value={disableCode}
+                  onChangeText={(t) => setDisableCode(t.replace(/\D/g, "").slice(0, 6))}
+                  keyboardType="numeric"
+                  maxLength={6}
                 />
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <MvButton
+                      variant="outline"
+                      label="Cancelar"
+                      onPress={() => setDisableTwoFactorVisible(false)}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <MvButton
+                      variant="danger"
+                      label="Desativar"
+                      loading={disablingTwoFactor}
+                      onPress={() => void submitDisableTwoFactor()}
+                    />
+                  </View>
+                </View>
               </View>
-            </View>
-          </View>
-        </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
       </Modal>
     </>
   );
