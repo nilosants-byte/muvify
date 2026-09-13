@@ -303,6 +303,15 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
   const activeDaysCount = new Set(items.map((i) => i.weekday)).size;
   const selectedDayFull = WEEKDAYS.find((d) => d.id === selectedDay)?.full ?? "";
 
+  // Início e Fim escolhidos livremente nas duas rodas, sem depender uma da
+  // outra (ver nota no bloco das rodas) -- inclui a combinação absurda de
+  // Fim antes/igual ao Início. addSlot() já recusa isso com um toast, mas
+  // usuário reportou tentar exatamente essa combinação e o toque em
+  // "Confirmar" parecer não fazer nada. Desabilitar o botão e avisar em
+  // tela, ali mesmo, junto das rodas, é mais robusto do que depender só do
+  // toast disparar depois do toque -- fica óbvio ANTES de tentar confirmar.
+  const timeRangeInvalid = parseMinutes(startTime) >= parseMinutes(endTime);
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
@@ -528,6 +537,12 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
             );
           })()}
 
+          {timeRangeInvalid ? (
+            <MvText variant="body4" style={{ color: theme.danger }}>
+              O horário de início precisa ser antes do horário de fim.
+            </MvText>
+          ) : null}
+
           {/* Toggle — aplicar em outros dias */}
           <TouchableOpacity
             activeOpacity={0.8}
@@ -598,7 +613,12 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
               <MvButton variant="outline" label="Cancelar" onPress={resetAddForm} />
             </View>
             <View style={{ flex: 1 }}>
-              <MvButton label="Confirmar" loading={saving} onPress={() => void addSlot()} />
+              <MvButton
+                label="Confirmar"
+                loading={saving}
+                disabled={timeRangeInvalid}
+                onPress={() => void addSlot()}
+              />
             </View>
           </View>
         </View>
