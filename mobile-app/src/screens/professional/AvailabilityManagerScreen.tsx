@@ -312,6 +312,22 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
   // toast disparar depois do toque -- fica óbvio ANTES de tentar confirmar.
   const timeRangeInvalid = parseMinutes(startTime) >= parseMinutes(endTime);
 
+  // Mesmo raciocínio do aviso acima, pro caso de sobreposição "por fora"
+  // (o novo horário começando antes E terminando depois de um já
+  // existente, ou qualquer outro cruzamento) -- reportado pelo usuário
+  // como outra combinação que não mostrava nada em tela nem salvava.
+  // addSlot() já recusa isso na hora de confirmar, mas calcular aqui
+  // também, direto no render, deixa o aviso visível o tempo todo enquanto
+  // o usuário mexe nas rodas, sem depender de nenhum toast.
+  const overlapConflict = timeRangeInvalid
+    ? undefined
+    : daySlots.find(
+        (s) =>
+          s.isActive &&
+          parseMinutes(startTime) < parseMinutes(s.endTime) &&
+          parseMinutes(endTime) > parseMinutes(s.startTime)
+      );
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
@@ -541,6 +557,10 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
             <MvText variant="body4" style={{ color: theme.danger }}>
               O horário de início precisa ser antes do horário de fim.
             </MvText>
+          ) : overlapConflict ? (
+            <MvText variant="body4" style={{ color: theme.danger }}>
+              Esse horário se sobrepõe a {overlapConflict.startTime}–{overlapConflict.endTime}, já cadastrado nesse dia.
+            </MvText>
           ) : null}
 
           {/* Toggle — aplicar em outros dias */}
@@ -616,7 +636,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
               <MvButton
                 label="Confirmar"
                 loading={saving}
-                disabled={timeRangeInvalid}
+                disabled={timeRangeInvalid || Boolean(overlapConflict)}
                 onPress={() => void addSlot()}
               />
             </View>
