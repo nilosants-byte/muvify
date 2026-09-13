@@ -2626,8 +2626,12 @@ export const availabilityApi = {
   ) {
     return apiRequest<Availability>("/availability", { method: "POST", token, body });
   },
-  delete(token: string, availabilityId: string, force?: boolean) {
-    return apiRequest<void>(`/availability/${availabilityId}${force ? "?force=true" : ""}`, { method: "DELETE", token });
+  delete(token: string, availabilityId: string, force?: boolean, cancelBookings?: boolean) {
+    const params = new URLSearchParams();
+    if (force) params.set("force", "true");
+    if (cancelBookings) params.set("cancelBookings", "true");
+    const qs = params.toString();
+    return apiRequest<void>(`/availability/${availabilityId}${qs ? `?${qs}` : ""}`, { method: "DELETE", token });
   }
 };
 

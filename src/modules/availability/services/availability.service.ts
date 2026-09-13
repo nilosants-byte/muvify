@@ -6,6 +6,9 @@ import { AppError } from "../../../shared/errors/app-error";
 import { deleteByPattern } from "../../../shared/utils/cache";
 import { assertProviderSubscriptionActive } from "../../../shared/utils/provider-subscription-gate";
 import { toTimeInTimezone, toWeekdayInTimezone } from "../../../shared/utils/timezone";
+import { BookingService } from "../../bookings/services/booking.service";
+
+const bookingService = new BookingService();
 
 export class AvailabilityService {
   async create(userId: string, weekday: number, startTime: string, endTime: string, isActive = true) {
@@ -39,7 +42,12 @@ export class AvailabilityService {
     await deleteByPattern("providers:*");
     return availability;
   }
-  async deleteAvailability(userId: string, availabilityId: string, force = false) {
+  async deleteAvailability(
+    userId: string,
+    availabilityId: string,
+    force = false,
+    cancelBookings = false
+  ) {
     const profile = await prisma.providerProfile.findUnique({ where: { userId }, select: { id: true } });
     if (!profile) throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
     await assertProviderSubscriptionActive(profile.id);
@@ -55,29 +63,48 @@ export class AvailabilityService {
     // que já bloqueia a criação de um bloqueio nesse caso. Aviso não
     // bloqueante: só segue sem confirmação extra (force=true) se houver
     // agendamento futuro afetado.
-    if (!force) {
-      // Frente 6 (segunda camada), Lote 14: sem limite, destoando do padrão
-      // já usado no resto do módulo (e do projeto em geral) pra evitar
-      // listagem sem teto num profissional com histórico grande.
-      const futureBookings = await prisma.booking.findMany({
-        where: {
-          providerId: profile.id,
-          status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
-          scheduledAt: { gt: new Date() }
-        },
-        select: { scheduledAt: true },
-        take: 2000
-      });
-      const affectedCount = futureBookings.filter((booking) => {
-        if (toWeekdayInTimezone(booking.scheduledAt, env.APP_TIMEZONE) !== slot.weekday) return false;
-        const time = toTimeInTimezone(booking.scheduledAt, env.APP_TIMEZONE);
-        return time >= slot.startTime && time < slot.endTime;
-      }).length;
-      if (affectedCount > 0) {
-        throw new AppError(
-          `Existe${affectedCount > 1 ? "m" : ""} ${affectedCount} agendamento${affectedCount > 1 ? "s" : ""} futuro${affectedCount > 1 ? "s" : ""} marcado${affectedCount > 1 ? "s" : ""} dentro desse horário. Confirme novamente se ainda quiser remover esta disponibilidade.`,
-          StatusCodes.CONFLICT
-        );
+    // Frente 6 (segunda camada), Lote 14: sem limite, destoando do padrão
+    // já usado no resto do módulo (e do projeto em geral) pra evitar
+    // listagem sem teto num profissional com histórico grande.
+    const futureBookings = await prisma.booking.findMany({
+      where: {
+        providerId: profile.id,
+        status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+        scheduledAt: { gt: new Date() }
+      },
+      select: { id: true, scheduledAt: true },
+      take: 2000
+    });
+    const affectedBookings = futureBookings.filter((booking) => {
+      if (toWeekdayInTimezone(booking.scheduledAt, env.APP_TIMEZONE) !== slot.weekday) return false;
+      const time = toTimeInTimezone(booking.scheduledAt, env.APP_TIMEZONE);
+      return time >= slot.startTime && time < slot.endTime;
+    });
+
+    if (!force && affectedBookings.length > 0) {
+      const affectedCount = affectedBookings.length;
+      throw new AppError(
+        `Existe${affectedCount > 1 ? "m" : ""} ${affectedCount} agendamento${affectedCount > 1 ? "s" : ""} futuro${affectedCount > 1 ? "s" : ""} marcado${affectedCount > 1 ? "s" : ""} dentro desse horário. Confirme novamente se ainda quiser remover esta disponibilidade.`,
+        StatusCodes.CONFLICT
+      );
+    }
+
+    // force=true por si só nunca mexe nos agendamentos já marcados -- só
+    // remove o horário-modelo recorrente (novos agendamentos deixam de
+    // poder ser feitos nele; os já existentes continuam confirmados
+    // normalmente). cancelBookings=true é a escolha explícita e adicional
+    // de também cancelar (com reembolso integral, mesma regra de sempre
+    // quando é o profissional que cancela) cada sessão futura afetada.
+    // Best-effort por item, igual ao padrão já usado em
+    // cancelActiveStandaloneBookingsForProviderRemoval: uma falha isolada
+    // não deve impedir as demais nem a remoção do horário.
+    if (force && cancelBookings && affectedBookings.length > 0) {
+      for (const booking of affectedBookings) {
+        await bookingService
+          .updateStatus(userId, booking.id, BookingStatus.CANCELLED)
+          .catch((error) =>
+            console.error(`Falha ao cancelar agendamento ${booking.id} ao remover disponibilidade ${availabilityId}:`, error)
+          );
       }
     }
 

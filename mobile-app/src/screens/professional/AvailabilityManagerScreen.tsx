@@ -264,7 +264,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
     }
   }
 
-  async function deleteSlot(id: string, force = false) {
+  async function deleteSlot(id: string, force = false, cancelBookings = false) {
     Alert.alert("Remover horário", "Deseja remover este horário?", [
       { text: "Cancelar", style: "cancel" },
       {
@@ -272,21 +272,34 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
         onPress: async () => {
           try {
             setDeletingId(id);
-            await runWithAuth((token) => availabilityApi.delete(token, id, force));
+            await runWithAuth((token) => availabilityApi.delete(token, id, force, cancelBookings));
             queryClient.setQueryData<Availability[]>(queryKeys.availability.me(), (old) =>
               (old ?? []).filter((item) => item.id !== id)
             );
-            showToast("Horário removido.", "success");
+            showToast(
+              cancelBookings
+                ? "Horário removido e agendamentos cancelados com reembolso integral."
+                : "Horário removido.",
+              "success"
+            );
           } catch (error) {
             // Frente 5 (Descoberta, agendamento e agenda), Lote 6: 409 aqui
             // significa que há agendamento futuro marcado dentro desse
             // horário — pede confirmação extra em vez de bloquear de vez.
+            // Duas opções, não uma: manter as sessões já marcadas (o
+            // padrão mais seguro, já era o único caminho antes) ou
+            // cancelá-las também, com reembolso integral pro aluno.
             if (error instanceof ApiError && error.status === 409 && !force) {
               setDeletingId(null);
-              Alert.alert("Existem agendamentos marcados", error.message, [
-                { text: "Cancelar", style: "cancel" },
-                { text: "Remover mesmo assim", style: "destructive", onPress: () => void deleteSlot(id, true) },
-              ]);
+              Alert.alert(
+                "Existem agendamentos marcados",
+                `${error.message} Você pode remover este horário mantendo essas sessões confirmadas normalmente (elas não são afetadas), ou cancelá-las também agora — nesse caso o aluno é reembolsado integralmente.`,
+                [
+                  { text: "Voltar", style: "cancel" },
+                  { text: "Manter agendamentos e remover", onPress: () => void deleteSlot(id, true, false) },
+                  { text: "Cancelar agendamentos e remover", style: "destructive", onPress: () => void deleteSlot(id, true, true) },
+                ]
+              );
               return;
             }
             handleScreenError({ error, showToast, fallbackMessage: "Falha ao remover horário.", navigation });

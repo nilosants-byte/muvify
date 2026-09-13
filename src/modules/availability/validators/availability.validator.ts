@@ -2,7 +2,12 @@ import { z } from "zod";
 
 export const availabilityIdSchema = z.object({
   params: z.object({ availabilityId: z.string().uuid() }),
-  query: z.object({ force: z.enum(["true", "false"]).optional() }).optional()
+  query: z
+    .object({
+      force: z.enum(["true", "false"]).optional(),
+      cancelBookings: z.enum(["true", "false"]).optional()
+    })
+    .optional()
 });
 
 const timeString = z

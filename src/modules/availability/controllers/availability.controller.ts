@@ -19,7 +19,13 @@ export class AvailabilityController {
   }
   async deleteAvailability(request: Request, response: Response) {
     const force = request.query.force === "true";
-    await availabilityService.deleteAvailability(request.user!.id, request.params.availabilityId, force);
+    const cancelBookings = request.query.cancelBookings === "true";
+    await availabilityService.deleteAvailability(
+      request.user!.id,
+      request.params.availabilityId,
+      force,
+      cancelBookings
+    );
     return response.status(StatusCodes.NO_CONTENT).send();
   }
 }
