@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvText } from "./MvText";
@@ -51,6 +51,29 @@ export function TimeWheelPicker({ value, onChange, unavailableTimes = [] }: Prop
   const [selectedMinute, setSelectedMinute] = useState(() =>
     computeValidMinute(computeValidHour(initH, usedSet), initM, usedSet)
   );
+
+  // `value`/`unavailableTimes` só eram lidos na hora de montar (useState
+  // lazy) -- se o valor mudasse por fora depois disso (ex: a tela ajusta
+  // "Fim" sozinha quando "Início" muda pra algo que invalida a combinação
+  // atual), a roda continuava mostrando o valor antigo, sem avisar o
+  // componente pai: a tela achava que tinha um horário válido selecionado,
+  // mas o valor mostrado na roda era outro. Reagir a mudanças externas de
+  // `value`/`usedSet` aqui mantém os dois sempre em sincronia.
+  useEffect(() => {
+    const { h, m } = parseTime(value);
+    const validH = computeValidHour(h, usedSet);
+    const validM = computeValidMinute(validH, m, usedSet);
+    setSelectedHour((prev) => (prev === validH ? prev : validH));
+    setSelectedMinute((prev) => (prev === validM ? prev : validM));
+    // Se o valor recebido de fora não era válido (ex: ficou dentro de um
+    // horário que passou a estar ocupado) e foi corrigido pra outro aqui,
+    // o componente pai precisa saber -- senão ele continua achando que o
+    // valor é o que mandou, enquanto a roda mostra outro, e confirmar usa
+    // o valor errado (desatualizado) sem avisar nada ao usuário.
+    const corrected = `${pad2(validH)}:${pad2(validM)}`;
+    if (corrected !== value) onChange(corrected);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, usedSet]);
 
   const hourItems = useMemo(
     () =>

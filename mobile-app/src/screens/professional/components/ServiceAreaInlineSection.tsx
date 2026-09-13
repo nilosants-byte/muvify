@@ -585,6 +585,13 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
         })
       );
       savedSnapshotRef.current = buildAreaSnapshot(latitude, longitude, radiusKm, serviceMode, extraLocations);
+      // Atualizar só a ref não é o bastante: o efeito que recalcula "dirty"
+      // (mais abaixo) só reage quando latitude/longitude/radiusKm/etc.
+      // mudam de valor -- salvar não muda nenhum desses valores, só a ref
+      // que eles são comparados contra, então o efeito nunca re-executava
+      // sozinho e o "Sair sem salvar?" continuava aparecendo mesmo logo
+      // depois de um salvamento com sucesso. Avisar aqui, na hora, corrige.
+      onDirtyChange?.(false);
       showToast("Área de atendimento salva.", "success");
       onSaved?.();
     } catch (error) {
