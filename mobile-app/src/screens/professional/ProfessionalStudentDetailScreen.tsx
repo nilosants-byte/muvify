@@ -446,7 +446,9 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
               </View>
 
               <View style={{ flexDirection: "row", gap: 8 }}>
-                <MvButton style={{ flex: 1 }} variant="outline" label="Abrir anamnese completa" onPress={goToAnamnesis} />
+                <View style={{ flex: 1 }}>
+                  <MvButton variant="outline" label="Abrir anamnese completa" onPress={goToAnamnesis} />
+                </View>
               </View>
             </MvCard>
 

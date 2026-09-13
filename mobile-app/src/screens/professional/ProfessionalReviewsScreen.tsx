@@ -141,14 +141,17 @@ export function ProfessionalReviewsScreen({ navigation }: Props) {
                       onChangeText={setResponseText}
                     />
                     <View style={{ flexDirection: "row", gap: 8 }}>
-                      <MvButton variant="ghost" label="Cancelar" onPress={() => { setRespondingTo(null); setResponseText(""); }} style={{ flex: 1 }} />
-                      <MvButton
-                        label="Enviar"
-                        loading={submitting}
-                        disabled={!responseText.trim()}
-                        onPress={() => void submitResponse(review.id)}
-                        style={{ flex: 1 }}
-                      />
+                      <View style={{ flex: 1 }}>
+                        <MvButton variant="ghost" label="Cancelar" onPress={() => { setRespondingTo(null); setResponseText(""); }} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <MvButton
+                          label="Enviar"
+                          loading={submitting}
+                          disabled={!responseText.trim()}
+                          onPress={() => void submitResponse(review.id)}
+                        />
+                      </View>
                     </View>
                   </View>
                 ) : (

@@ -512,25 +512,27 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
           {/* Acesso rápido ao aluno */}
           {isActive ? (
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <MvButton
-                style={{ flex: 1 }}
-                icon="chatbubble-outline"
-                label="Chat"
-                onPress={() => navigation.navigate("ProfessionalChatList", { openBookingId: bookingId })}
-              />
-              {booking.client?.id ? (
+              <View style={{ flex: 1 }}>
                 <MvButton
-                  style={{ flex: 1 }}
-                  variant="outline"
-                  icon="clipboard-outline"
-                  label="Anamnese"
-                  onPress={() =>
-                    navigation.navigate("ProfessionalStudentAnamnesis", {
-                      clientId: booking.client!.id,
-                      clientName: booking.client?.name ?? "Aluno",
-                    })
-                  }
+                  icon="chatbubble-outline"
+                  label="Chat"
+                  onPress={() => navigation.navigate("ProfessionalChatList", { openBookingId: bookingId })}
                 />
+              </View>
+              {booking.client?.id ? (
+                <View style={{ flex: 1 }}>
+                  <MvButton
+                    variant="outline"
+                    icon="clipboard-outline"
+                    label="Anamnese"
+                    onPress={() =>
+                      navigation.navigate("ProfessionalStudentAnamnesis", {
+                        clientId: booking.client!.id,
+                        clientName: booking.client?.name ?? "Aluno",
+                      })
+                    }
+                  />
+                </View>
               ) : null}
             </View>
           ) : null}

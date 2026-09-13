@@ -326,18 +326,20 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
             />
 
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <MvButton
-                variant="outline"
-                style={{ flex: 1 }}
-                label="Cancelar"
-                onPress={() => setPasswordModalVisible(false)}
-              />
-              <MvButton
-                style={{ flex: 1 }}
-                label="Alterar senha"
-                loading={passwordSaving}
-                onPress={() => void submitPasswordChange()}
-              />
+              <View style={{ flex: 1 }}>
+                <MvButton
+                  variant="outline"
+                  label="Cancelar"
+                  onPress={() => setPasswordModalVisible(false)}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <MvButton
+                  label="Alterar senha"
+                  loading={passwordSaving}
+                  onPress={() => void submitPasswordChange()}
+                />
+              </View>
             </View>
           </View>
         </View>
@@ -376,18 +378,20 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
             />
 
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <MvButton
-                variant="outline"
-                style={{ flex: 1 }}
-                label="Cancelar"
-                onPress={() => setRecoveryModalVisible(false)}
-              />
-              <MvButton
-                style={{ flex: 1 }}
-                label="Salvar e-mail"
-                loading={recoverySaving}
-                onPress={() => void submitRecoveryEmail()}
-              />
+              <View style={{ flex: 1 }}>
+                <MvButton
+                  variant="outline"
+                  label="Cancelar"
+                  onPress={() => setRecoveryModalVisible(false)}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <MvButton
+                  label="Salvar e-mail"
+                  loading={recoverySaving}
+                  onPress={() => void submitRecoveryEmail()}
+                />
+              </View>
             </View>
           </View>
         </View>
@@ -428,18 +432,20 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
               maxLength={6}
             />
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <MvButton
-                variant="outline"
-                style={{ flex: 1 }}
-                label="Cancelar"
-                onPress={() => setTwoFactorSetupVisible(false)}
-              />
-              <MvButton
-                style={{ flex: 1 }}
-                label="Confirmar"
-                loading={confirmingTwoFactor}
-                onPress={() => void submitTwoFactorConfirm()}
-              />
+              <View style={{ flex: 1 }}>
+                <MvButton
+                  variant="outline"
+                  label="Cancelar"
+                  onPress={() => setTwoFactorSetupVisible(false)}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <MvButton
+                  label="Confirmar"
+                  loading={confirmingTwoFactor}
+                  onPress={() => void submitTwoFactorConfirm()}
+                />
+              </View>
             </View>
           </View>
         </View>
@@ -496,19 +502,21 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
               maxLength={6}
             />
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <MvButton
-                variant="outline"
-                style={{ flex: 1 }}
-                label="Cancelar"
-                onPress={() => setDisableTwoFactorVisible(false)}
-              />
-              <MvButton
-                variant="danger"
-                style={{ flex: 1 }}
-                label="Desativar"
-                loading={disablingTwoFactor}
-                onPress={() => void submitDisableTwoFactor()}
-              />
+              <View style={{ flex: 1 }}>
+                <MvButton
+                  variant="outline"
+                  label="Cancelar"
+                  onPress={() => setDisableTwoFactorVisible(false)}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <MvButton
+                  variant="danger"
+                  label="Desativar"
+                  loading={disablingTwoFactor}
+                  onPress={() => void submitDisableTwoFactor()}
+                />
+              </View>
             </View>
           </View>
         </View>

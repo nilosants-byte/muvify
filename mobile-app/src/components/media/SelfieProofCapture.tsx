@@ -192,26 +192,28 @@ export function SelfieProofCapture({
               gap: S.gap,
             }}
           >
-            <MvButton
-              accessibilityLabel="Salvar selfie"
-              label="Salvar selfie"
-              disabled={disabled || busy || saving || !draftProof}
-              loading={saving}
-              onPress={saveDraft}
-              style={useStackedActions ? undefined : { flex: 1 }}
-            />
-            <MvButton
-              variant="ghost"
-              label="Tentar novamente"
-              disabled={disabled || busy || saving}
-              loading={busy}
-              onPress={() => {
-                setDraftProof(null);
-                setPreviewUri(null);
-                void captureProof();
-              }}
-              style={useStackedActions ? undefined : { flex: 1 }}
-            />
+            <View style={useStackedActions ? undefined : { flex: 1 }}>
+              <MvButton
+                accessibilityLabel="Salvar selfie"
+                label="Salvar selfie"
+                disabled={disabled || busy || saving || !draftProof}
+                loading={saving}
+                onPress={saveDraft}
+              />
+            </View>
+            <View style={useStackedActions ? undefined : { flex: 1 }}>
+              <MvButton
+                variant="ghost"
+                label="Tentar novamente"
+                disabled={disabled || busy || saving}
+                loading={busy}
+                onPress={() => {
+                  setDraftProof(null);
+                  setPreviewUri(null);
+                  void captureProof();
+                }}
+              />
+            </View>
           </View>
         </View>
       ) : null}
