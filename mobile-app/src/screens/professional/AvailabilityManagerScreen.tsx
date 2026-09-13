@@ -17,7 +17,7 @@ import { ServiceAreaInlineSection } from "./components/ServiceAreaInlineSection"
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
-import { expandRangeToQuarterHours } from "../../utils/agendaFreeSlots";
+import { formatMinutes, parseMinutes } from "../../utils/agendaFreeSlots";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "AvailabilityManager">;
 
@@ -97,6 +97,26 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
   const [selectedDay, setSelectedDay] = useState<number>(1);
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("09:00");
+  const daySlots = items
+    .filter((item) => item.weekday === selectedDay)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+  // Se o usuário mudar o "Início" e o "Fim" já escolhido virar inválido
+  // (fica dentro ou engolindo por fora algum horário já existente), empurra
+  // o "Fim" pra frente automaticamente até o próximo horário livre — sem
+  // isso, o formulário ficaria com uma combinação inválida sem avisar até
+  // o usuário tentar confirmar.
+  useEffect(() => {
+    const overlapsAny = (aMin: number, bMin: number) =>
+      daySlots.some((s) => aMin < parseMinutes(s.endTime) && bMin > parseMinutes(s.startTime));
+    const startMin = parseMinutes(startTime);
+    const currentEndMin = parseMinutes(endTime);
+    if (currentEndMin > startMin && !overlapsAny(startMin, currentEndMin)) return;
+    let candidate = startMin + 15;
+    while (candidate <= 24 * 60 && overlapsAny(startMin, candidate)) candidate += 15;
+    setEndTime(formatMinutes(Math.min(candidate, 24 * 60)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startTime, selectedDay]);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -168,6 +188,32 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
     if (duplicateDay !== undefined) {
       showToast("Já existe um horário idêntico neste dia.", "error");
       return;
+    }
+
+    // O seletor já impede escolher um horário idêntico ou que comece/termine
+    // dentro de um já existente, mas não impedia (antes desta checagem)
+    // um novo horário "engolir" um já cadastrado por fora (ex: já existe
+    // 09:15-10:15 e o usuário tenta 09:00-10:30) -- o servidor recusava,
+    // mas com uma mensagem genérica que não dizia o motivo. Checar aqui
+    // antes, com o horário exato do conflito, evita a viagem à API e dá
+    // uma mensagem que explica o que realmente bloqueou o salvamento.
+    const newStartMin = parseMinutes(paddedStart);
+    const newEndMin = parseMinutes(paddedEnd);
+    for (const day of allDays) {
+      const conflict = items.find((i) =>
+        i.weekday === day &&
+        i.isActive &&
+        newStartMin < parseMinutes(i.endTime) &&
+        newEndMin > parseMinutes(i.startTime)
+      );
+      if (conflict) {
+        const dayLabel = WEEKDAYS.find((w) => w.id === day)?.full ?? "";
+        showToast(
+          `Esse horário se sobrepõe a ${conflict.startTime}–${conflict.endTime}, já cadastrado em ${dayLabel}.`,
+          "error"
+        );
+        return;
+      }
     }
 
     try {
@@ -252,10 +298,6 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
     ]);
   }
 
-  const daySlots = items
-    .filter((item) => item.weekday === selectedDay)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime));
-
   const slotCountByDay: Record<number, number> = {};
   items.forEach((item) => {
     slotCountByDay[item.weekday] = (slotCountByDay[item.weekday] ?? 0) + 1;
@@ -269,9 +311,11 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
       <ProfessionalScreenHeader title="Horários e Locais" onBack={() => navigation.goBack()} />
 
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40, gap: 14 }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <MvText variant="body4" color="secondary">
           Selecione um dia para ver e gerenciar os horários disponíveis.
@@ -439,6 +483,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
         {/* Área de atendimento */}
         <ServiceAreaInlineSection navigation={navigation as any} onDirtyChange={setServiceAreaDirty} />
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Bottom sheet — novo horário */}
       <AddFormSheet
@@ -449,7 +494,23 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
         <View style={{ gap: 14, paddingBottom: 16 }}>
           {/* Horários */}
           {(() => {
-            const usedTimes = daySlots.flatMap((s) => expandRangeToQuarterHours(s.startTime, s.endTime));
+            // "Início" só bloqueia os quartos de hora que já estão dentro de
+            // algum horário existente (comportamento de sempre). "Fim"
+            // precisa de mais cuidado: sem isso, dava pra escolher um "Fim"
+            // que engole por fora um horário já cadastrado (ex: já existe
+            // 09:15-10:15 e o usuário conseguia escolher 09:00-10:30) --
+            // o servidor recusava, mas só depois, com mensagem genérica.
+            // Aqui a opção nem aparece pra escolher.
+            const overlapsAny = (aMin: number, bMin: number) =>
+              daySlots.some((s) => aMin < parseMinutes(s.endTime) && bMin > parseMinutes(s.startTime));
+            const startUnavailable: string[] = [];
+            const endUnavailable: string[] = [];
+            const startMin = parseMinutes(startTime);
+            for (let m = 0; m <= 24 * 60; m += 15) {
+              const label = formatMinutes(m);
+              if (overlapsAny(m, m + 1)) startUnavailable.push(label);
+              if (m <= startMin || overlapsAny(startMin, m)) endUnavailable.push(label);
+            }
             return (
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <View style={{ flex: 1 }}>
@@ -457,7 +518,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
                   <TimeWheelPicker
                     value={startTime}
                     onChange={setStartTime}
-                    unavailableTimes={usedTimes}
+                    unavailableTimes={startUnavailable}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -465,7 +526,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
                   <TimeWheelPicker
                     value={endTime}
                     onChange={setEndTime}
-                    unavailableTimes={usedTimes}
+                    unavailableTimes={endUnavailable}
                   />
                 </View>
               </View>

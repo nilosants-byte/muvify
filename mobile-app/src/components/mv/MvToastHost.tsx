@@ -1,5 +1,5 @@
 import React from "react";
-import { Text, View } from "react-native";
+import { Modal, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { C } from "../../theme/v2tokens";
@@ -24,7 +24,18 @@ export function MvToastHost({
   const textColor = type === "success" ? mvTheme.textOnPrimary : C.white;
   const hasBorder = type === "info";
 
+  // Um <Modal> do React Native sempre renderiza numa camada nativa
+  // propria, acima de QUALQUER outra view da arvore -- nenhum zIndex
+  // daqui alcanca por cima disso. Resultado: um toast disparado enquanto
+  // uma tela tem um modal proprio aberto (ex: bottom sheet de "novo
+  // horario") ficava escondido atras dele, parecendo que o app nao
+  // respondeu ao toque. Envolver o proprio toast num Modal transparente
+  // resolve isso -- ele nasce depois do modal da tela (ja aberto), entao
+  // fica por cima. pointerEvents="box-none" deixa toques fora do balao
+  // do toast passarem direto pro que estiver embaixo.
   return (
+    <Modal visible transparent statusBarTranslucent animationType="none" onRequestClose={() => {}}>
+    <View style={{ flex: 1 }} pointerEvents="box-none">
     <View
       style={{
         position: "absolute",
@@ -32,7 +43,6 @@ export function MvToastHost({
         paddingHorizontal: 20,
         paddingVertical: 12,
         borderRadius: 999,
-        zIndex: 9999,
         maxWidth: 480,
         bottom: Math.max(24, insets.bottom + 16),
         backgroundColor: bg,
@@ -50,5 +60,7 @@ export function MvToastHost({
         {message}
       </Text>
     </View>
+    </View>
+    </Modal>
   );
 }

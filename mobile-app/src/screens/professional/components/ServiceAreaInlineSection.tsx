@@ -30,7 +30,7 @@ import {
 } from "../../../services/location/providerBackgroundLocation";
 import { useAppState } from "../../../state/AppState";
 import { useMvTheme } from "../../../theme/MvThemeContext";
-import { MvCard, MvText } from "../../../components/mv";
+import { MvButton, MvCard, MvText } from "../../../components/mv";
 import { handleScreenError } from "../../shared/api-helpers";
 
 const { height: SCREEN_H } = Dimensions.get("window");
@@ -256,7 +256,13 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
     return [...fromGoogle, ...fromOverpass, ...fromNominatim].slice(0, 6);
   }, [newLocAddressQuery, googleAddrSuggestions, areaVenues, nominatimAddrSuggestions]);
 
-  const extraAddrLoading = areaLoading || googleAddrLoading || nominatimAddrLoading || resolvingCoords;
+  // areaLoading (busca de academias/locais próximos pra sugestão) começa
+  // sozinha assim que o form abre, antes do usuário digitar qualquer
+  // coisa -- usá-la aqui também acendia os dois spinners (nome E endereço)
+  // ao mesmo tempo só de tocar no "+", parecendo um carregamento
+  // duplicado/travado. Cada campo agora só mostra spinner pela busca que
+  // realmente pertence a ele.
+  const extraAddrLoading = googleAddrLoading || nominatimAddrLoading || resolvingCoords;
 
   useEffect(() => {
     const showSub = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
@@ -786,34 +792,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
       </View>
 
       <MvCard>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <MvText variant="semi2">Configuração rápida</MvText>
-          <TouchableOpacity
-            onPress={() => {
-              void save();
-            }}
-            disabled={saving}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: "rgba(34,197,94,0.30)",
-              backgroundColor: theme.primarySubtle,
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              opacity: saving ? 0.7 : 1,
-            }}
-          >
-            {saving ? (
-              <ActivityIndicator size="small" color={theme.primary} />
-            ) : (
-              <Ionicons name="checkmark-done-outline" size={14} color={theme.primary} />
-            )}
-            <MvText variant="badge" style={{ color: theme.textGreen, fontSize: 11 }}>Salvar</MvText>
-          </TouchableOpacity>
-        </View>
+        <MvText variant="semi2">Configuração rápida</MvText>
 
         <View style={{ flexDirection: "row", gap: 6, marginTop: 8 }}>
           <TouchableOpacity
@@ -1128,6 +1107,9 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
 
             {addingExtra ? (
               <View style={{ marginTop: 8, gap: 6 }}>
+                <MvText variant="body4" color="secondary" style={{ fontSize: 11 }}>
+                  Nome e endereço são os dois obrigatórios pra salvar o local.
+                </MvText>
                 <View>
                   <View
                     style={{
@@ -1141,7 +1123,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
                       paddingVertical: 7,
                     }}
                   >
-                    {areaLoading || newLocNameLoading ? (
+                    {newLocNameLoading ? (
                       <ActivityIndicator size="small" color={theme.primary} style={{ marginRight: 6 }} />
                     ) : (
                       <Ionicons name="business-outline" size={12} color={theme.text3} style={{ marginRight: 6 }} />
@@ -1161,7 +1143,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
                           setNameSuggestionOpen(false);
                         }, 420);
                       }}
-                      placeholder="Nome do local (academia, parque, praça, praia...)"
+                      placeholder="Nome do local * (academia, parque, praça, praia...)"
                       placeholderTextColor={theme.text3}
                       style={{ flex: 1, padding: 0, color: theme.text1, fontSize: 12 }}
                     />
@@ -1267,7 +1249,7 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
                             setExtraAddressSuggestionOpen(false);
                           }, 420);
                         }}
-                        placeholder="Endereço ou nome do lugar..."
+                        placeholder="Endereço * (selecione uma sugestão)"
                         placeholderTextColor={theme.text3}
                         style={{ flex: 1, padding: 0, color: theme.text1, fontSize: 12 }}
                       />
@@ -1354,6 +1336,21 @@ export function ServiceAreaInlineSection({ navigation, onSaved, onDirtyChange }:
               </View>
             ) : null}
           </View>
+        </View>
+
+        {/* Antes esse botão era um chip discreto no cabeçalho do card,
+            fácil de confundir com os outros chips pequenos da tela (raio,
+            tipo de atendimento) — mas é o ÚNICO jeito de persistir mapa,
+            raio, tipo de atendimento e locais adicionais. Um MvButton
+            cheio no rodapé, do mesmo peso visual usado pros outros botões
+            de ação principal do app, deixa isso óbvio. */}
+        <View style={{ marginTop: 14 }}>
+          <MvButton
+            label="Salvar alterações da área de atendimento"
+            icon="checkmark-done-outline"
+            loading={saving}
+            onPress={() => { void save(); }}
+          />
         </View>
       </MvCard>
     </View>
