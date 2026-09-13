@@ -5,7 +5,7 @@ import { MvText } from "./MvText";
 import { WheelPickerColumn } from "./WheelPickerColumn";
 
 const HOUR_RANGE = Array.from({ length: 18 }, (_, i) => i + 5); // 05..22
-const MINUTES = [0, 15, 30, 45];
+const MINUTES = [0, 10, 20, 30, 40, 50];
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");

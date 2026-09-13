@@ -49,7 +49,7 @@ import {
   computeOccupiedByBookings,
   computeOffAppClassesForDay,
   computeOffAppOccupiedKeys,
-  expandRangeToQuarterHours,
+  expandRangeToTenMinutes,
   formatMinutes,
   generateDaySlots,
   parseMinutes,
@@ -1229,7 +1229,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                     <TimeWheelPicker
                       value={blockStart}
                       onChange={setBlockStart}
-                      unavailableTimes={todayManualBlocks.flatMap((b) => expandRangeToQuarterHours(b.startTime, b.endTime))}
+                      unavailableTimes={todayManualBlocks.flatMap((b) => expandRangeToTenMinutes(b.startTime, b.endTime))}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -1237,7 +1237,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                     <TimeWheelPicker
                       value={blockEnd}
                       onChange={setBlockEnd}
-                      unavailableTimes={todayManualBlocks.flatMap((b) => expandRangeToQuarterHours(b.startTime, b.endTime))}
+                      unavailableTimes={todayManualBlocks.flatMap((b) => expandRangeToTenMinutes(b.startTime, b.endTime))}
                     />
                   </View>
                 </View>
@@ -1318,7 +1318,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                     <TimeWheelPicker
                       value={availStart}
                       onChange={setAvailStart}
-                      unavailableTimes={dayAvailabilities.flatMap((a) => expandRangeToQuarterHours(a.startTime, a.endTime))}
+                      unavailableTimes={dayAvailabilities.flatMap((a) => expandRangeToTenMinutes(a.startTime, a.endTime))}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -1328,7 +1328,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
                     <TimeWheelPicker
                       value={availEnd}
                       onChange={setAvailEnd}
-                      unavailableTimes={dayAvailabilities.flatMap((a) => expandRangeToQuarterHours(a.startTime, a.endTime))}
+                      unavailableTimes={dayAvailabilities.flatMap((a) => expandRangeToTenMinutes(a.startTime, a.endTime))}
                     />
                   </View>
                 </View>

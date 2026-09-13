@@ -35,6 +35,23 @@ export function expandRangeToQuarterHours(startTime: string, endTime: string): s
   return times;
 }
 
+// TimeWheelPicker passou a oferecer minutos de 10 em 10 (era de 15 em 15) --
+// pedido explícito do usuário nos testes manuais, achando 15 em 15 pouco
+// confortável. Marcas de 15 em 15 não alinham com opções de 10 em 10 (ex:
+// "09:15" nunca bate com nenhum item da roda), então quem usa essa função
+// pra bloquear horários já ocupados precisa de marcas na MESMA grade da
+// roda. Ao contrário de expandRangeToQuarterHours, não inclui o instante
+// final do intervalo — um novo horário podendo começar exatamente onde
+// outro termina é uma adjacência válida (não sobreposta), não um conflito.
+export function expandRangeToTenMinutes(startTime: string, endTime: string): string[] {
+  const start = parseMinutes(startTime);
+  const end = parseMinutes(endTime);
+  if (end <= start) return [];
+  const times: string[] = [];
+  for (let minute = start; minute < end; minute += 10) times.push(formatMinutes(minute));
+  return times;
+}
+
 // Slots de 30min gerados a partir das janelas de disponibilidade recorrente
 // (Availability) do profissional pro dia da semana informado.
 export function generateDaySlots(availabilities: Availability[], weekday: number): string[] {

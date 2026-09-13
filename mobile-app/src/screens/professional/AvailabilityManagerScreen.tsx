@@ -17,7 +17,7 @@ import { ServiceAreaInlineSection } from "./components/ServiceAreaInlineSection"
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
-import { formatMinutes, parseMinutes } from "../../utils/agendaFreeSlots";
+import { expandRangeToTenMinutes, parseMinutes } from "../../utils/agendaFreeSlots";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "AvailabilityManager">;
 
@@ -101,22 +101,6 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
     .filter((item) => item.weekday === selectedDay)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-  // Se o usuário mudar o "Início" e o "Fim" já escolhido virar inválido
-  // (fica dentro ou engolindo por fora algum horário já existente), empurra
-  // o "Fim" pra frente automaticamente até o próximo horário livre — sem
-  // isso, o formulário ficaria com uma combinação inválida sem avisar até
-  // o usuário tentar confirmar.
-  useEffect(() => {
-    const overlapsAny = (aMin: number, bMin: number) =>
-      daySlots.some((s) => aMin < parseMinutes(s.endTime) && bMin > parseMinutes(s.startTime));
-    const startMin = parseMinutes(startTime);
-    const currentEndMin = parseMinutes(endTime);
-    if (currentEndMin > startMin && !overlapsAny(startMin, currentEndMin)) return;
-    let candidate = startMin + 15;
-    while (candidate <= 24 * 60 && overlapsAny(startMin, candidate)) candidate += 15;
-    setEndTime(formatMinutes(Math.min(candidate, 24 * 60)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startTime, selectedDay]);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -507,23 +491,21 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
         <View style={{ gap: 14, paddingBottom: 16 }}>
           {/* Horários */}
           {(() => {
-            // "Início" só bloqueia os quartos de hora que já estão dentro de
-            // algum horário existente (comportamento de sempre). "Fim"
-            // precisa de mais cuidado: sem isso, dava pra escolher um "Fim"
-            // que engole por fora um horário já cadastrado (ex: já existe
-            // 09:15-10:15 e o usuário conseguia escolher 09:00-10:30) --
-            // o servidor recusava, mas só depois, com mensagem genérica.
-            // Aqui a opção nem aparece pra escolher.
-            const overlapsAny = (aMin: number, bMin: number) =>
-              daySlots.some((s) => aMin < parseMinutes(s.endTime) && bMin > parseMinutes(s.startTime));
-            const startUnavailable: string[] = [];
-            const endUnavailable: string[] = [];
-            const startMin = parseMinutes(startTime);
-            for (let m = 0; m <= 24 * 60; m += 15) {
-              const label = formatMinutes(m);
-              if (overlapsAny(m, m + 1)) startUnavailable.push(label);
-              if (m <= startMin || overlapsAny(startMin, m)) endUnavailable.push(label);
-            }
+            // Chegamos a tentar prever na própria roda toda combinação de
+            // Início/Fim que resultaria numa sobreposição (inclusive um
+            // horário novo "engolindo" por fora um já cadastrado) -- mas
+            // isso exigia recalcular o Fim sozinho toda vez que o Início
+            // mudava, e essa dependência cruzada entre as duas rodas
+            // causou mais de uma dessincronia visual confusa (o destaque
+            // de uma roda não acompanhava a da outra). Voltamos pro
+            // comportamento simples e previsível: cada roda só bloqueia os
+            // horários que já estão dentro de ALGUM horário existente
+            // daquele dia -- Início e Fim não dependem um do outro. Uma
+            // sobreposição "por fora" (ex: 09:00-10:30 engolindo um
+            // 09:15-10:15 já cadastrado) ainda é possível de selecionar,
+            // mas addSlot() recusa e explica exatamente qual horário
+            // conflita antes de salvar.
+            const usedTimes = daySlots.flatMap((s) => expandRangeToTenMinutes(s.startTime, s.endTime));
             return (
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <View style={{ flex: 1 }}>
@@ -531,7 +513,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
                   <TimeWheelPicker
                     value={startTime}
                     onChange={setStartTime}
-                    unavailableTimes={startUnavailable}
+                    unavailableTimes={usedTimes}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -539,7 +521,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
                   <TimeWheelPicker
                     value={endTime}
                     onChange={setEndTime}
-                    unavailableTimes={endUnavailable}
+                    unavailableTimes={usedTimes}
                   />
                 </View>
               </View>
