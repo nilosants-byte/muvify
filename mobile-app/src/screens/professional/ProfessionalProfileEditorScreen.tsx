@@ -224,12 +224,17 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       );
       setPresentationVideoUrl(url);
       setVideoLocalUri(null); // troca pra URL real do R2 assim que sobe — a prévia local pode não tocar no WebView
-      setVideoProcessing(false);
       showToast("Vídeo enviado. Salve o perfil para concluir.", "success");
 
       // Miniatura é um "nice to have" — se falhar (formato exótico, etc.),
       // o vídeo em si já está salvo e funcional, então nunca deixamos essa
-      // etapa derrubar o fluxo principal nem mostrar erro pro usuário.
+      // etapa derrubar o fluxo principal nem mostrar erro pro usuário. Mas
+      // videoProcessing só pode virar false DEPOIS dela terminar (sucesso
+      // ou falha): sem isso, dava pra tocar em Salvar no intervalo entre o
+      // vídeo subir e a miniatura terminar de subir, e o perfil salvava com
+      // presentationVideoThumbUrl ainda null pra sempre — a miniatura
+      // terminava de subir alguns segundos depois, mas só atualizava o
+      // estado local, sem nunca ser persistida de fato.
       try {
         const { uri: thumbLocalUri } = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 0 });
         const { url: thumbUrl } = await runWithAuth((token) =>
@@ -242,6 +247,8 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
         setPresentationVideoThumbUrl(thumbUrl);
       } catch {
         setPresentationVideoThumbUrl(null);
+      } finally {
+        setVideoProcessing(false);
       }
     } catch (error) {
       setVideoProcessing(false);
@@ -468,6 +475,12 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
                 height={180}
                 borderRadius={10}
               />
+              {videoProcessing && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4 }}>
+                  <ActivityIndicator size="small" color={theme.primary} />
+                  <MvText variant="body4" color="secondary">Gerando miniatura do vídeo…</MvText>
+                </View>
+              )}
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <View style={{ flex: 1 }}>
                   <MvButton variant="outline" label="Trocar vídeo" onPress={() => void doPickPresentationVideo()} />
