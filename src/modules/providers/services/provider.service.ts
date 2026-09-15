@@ -541,23 +541,12 @@ export class ProviderService {
       throw new AppError("Perfil profissional não encontrado.", StatusCodes.NOT_FOUND);
     }
 
-    if (provider.crefValidationStatus === CrefValidationStatus.REJECTED && provider.crefReviewedAt) {
-      // Frente 3 (Cadastro/onboarding), Lote 3: crefRejectionCount era só
-      // armazenado e nunca influenciava nada - cooldown crescente é uma
-      // penalidade automática proporcional ao histórico, sem depender de um
-      // admin notar manualmente o número de rejeições.
-      const cooldownDays =
-        provider.crefRejectionCount <= 1 ? 7 : provider.crefRejectionCount === 2 ? 14 : 30;
-      const msSinceRejection = Date.now() - provider.crefReviewedAt.getTime();
-      const daysSinceRejection = msSinceRejection / (1000 * 60 * 60 * 24);
-      if (daysSinceRejection < cooldownDays) {
-        const daysLeft = Math.ceil(cooldownDays - daysSinceRejection);
-        throw new AppError(
-          `Resubmissao de CREF disponivel em ${daysLeft} dia(s) apos a rejeicao.`,
-          StatusCodes.TOO_MANY_REQUESTS
-        );
-      }
-    }
+    // Decisão de produto (teste manual QA, 2026-09-15): reenvio de CREF após
+    // rejeição é sempre imediato, sem período de espera - o profissional deve
+    // poder corrigir e reenviar na hora para voltar à fila de avaliação do
+    // admin. crefRejectionCount continua sendo incrementado e exibido pro
+    // admin (ver reviewProviderCref) como sinal de reincidência, só não
+    // bloqueia mais o reenvio automaticamente.
 
     // Frente 3 (Cadastro/onboarding), Lote 3: se o client não reenviar
     // `credentials` (ex: uma resubmissão que só corrige o número do CREF),

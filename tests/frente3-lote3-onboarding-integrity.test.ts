@@ -10,7 +10,7 @@ import { PresentialPackageService } from "../src/modules/presential-packages/ser
 // Épico de Frentes, Frente 3 (Cadastro/onboarding), Lote 3:
 // (1) resubmissão de CREF sem reenviar `credentials` preserva os documentos
 //     já enviados, em vez de apagá-los.
-// (2) cooldown de resubmissão cresce a cada rejeição sucessiva.
+// (2) reenvio de CREF após rejeição é sempre imediato, sem cooldown.
 // (3) admin ganha uma ação de verdade pra trocar o role de um usuário
 //     (CLIENT/PROVIDER), com audit log.
 // (4) anamnese completa passa a ser exigida no servidor pra agendamento
@@ -93,11 +93,15 @@ describe("Frente 3, Lote 3 — integridade de onboarding (profissional e cliente
     expect(resubmitted.crefValidationStatus).toBe("IN_REVIEW");
   });
 
-  it("cooldown de resubmissão cresce a cada rejeição sucessiva", async () => {
+  it("reenvio de CREF após rejeição é sempre imediato, mesmo com várias rejeições anteriores", async () => {
+    // Decisão de produto (teste manual QA, 2026-09-15): reverteu o cooldown
+    // crescente (7/14/30 dias) que existia aqui antes — o profissional deve
+    // poder corrigir e reenviar o CREF na hora, sem período de espera,
+    // independente de quantas vezes já foi rejeitado.
     const user = await prisma.user.create({
       data: {
-        name: "Cooldown Crescente",
-        email: `${uid("cooldown")}@test.com`,
+        name: "Reenvio Imediato",
+        email: `${uid("immediate")}@test.com`,
         password: "x",
         phone: `11${Date.now().toString().slice(-9)}2`,
         role: "PROVIDER"
@@ -107,28 +111,27 @@ describe("Frente 3, Lote 3 — integridade de onboarding (profissional e cliente
     const provider = await prisma.providerProfile.create({
       data: {
         userId: user.id,
-        displayName: "Cooldown Test",
+        displayName: "Reenvio Imediato Test",
         bio: "test",
         experienceYears: 2,
         priceCents: 10000,
         crefValidationStatus: "REJECTED",
         crefRejectionCount: 2,
-        // 10 dias atrás - já passou do cooldown antigo fixo de 7 dias, mas
-        // não do cooldown crescente esperado pra 2 rejeições (14 dias).
-        crefReviewedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)
+        // Rejeitado há poucos minutos - com o cooldown antigo, isso bloquearia
+        // o reenvio por até 14 dias.
+        crefReviewedAt: new Date(Date.now() - 5 * 60 * 1000)
       }
     });
     providerIds.push(provider.id);
 
-    await expect(
-      providerService.upsertOwnCredentials(user.id, {
-        crefNumber: `COOL-${uid("x")}`,
-        credentials: [
-          { name: "frente", uri: "https://example.com/front.jpg" },
-          { name: "verso", uri: "https://example.com/back.jpg" }
-        ]
-      })
-    ).rejects.toThrow(/dispon[íi]vel em/i);
+    const resubmitted = await providerService.upsertOwnCredentials(user.id, {
+      crefNumber: `IMM-${uid("x")}`,
+      credentials: [
+        { name: "frente", uri: "https://example.com/front.jpg" },
+        { name: "verso", uri: "https://example.com/back.jpg" }
+      ]
+    });
+    expect(resubmitted.crefValidationStatus).toBe("IN_REVIEW");
   });
 
   it("admin troca o role de um usuário e registra no audit log", async () => {
