@@ -188,25 +188,6 @@ app.get("/health", async (_request, response) => {
         };
   return response.status(readinessOk ? 200 : 503).json(body);
 });
-// Diagnostico TEMPORARIO (remover apos uso): revela so host/usuario da
-// conexao real do banco que este processo esta usando, pra descobrir por que
-// contas criadas via API nao aparecem no banco que a equipe acha que esta
-// configurado. Nunca expoe a senha.
-app.get("/qa-db-diagnostic", (request, response) => {
-  if (request.query.token !== "muvify-qa-2026-09-16") {
-    return response.status(404).end();
-  }
-  try {
-    const url = new URL(process.env.DATABASE_URL ?? "");
-    return response.json({
-      host: url.host,
-      username: url.username,
-      database: url.pathname
-    });
-  } catch {
-    return response.status(500).json({ error: "DATABASE_URL invalida ou ausente" });
-  }
-});
 
 app.get("/metrics", metricsHandler);
 app.use(publicRoutes);
