@@ -355,9 +355,19 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
 
   const goToAnamnesis = () => {
     if (!detail?.student?.id) return;
+    // Frente 4 (segunda camada): a tela de anamnese oferece um atalho pra
+    // "solicitar via chat" quando o aluno ainda não preencheu — precisa de
+    // uma conversa pra abrir. Prioriza um contrato de consultoria ativo
+    // (mesmo padrão já usado no botão "Chat com o aluno" logo abaixo), com
+    // fallback pro agendamento presencial mais recente.
+    const activeContract = detail.consultancyContracts.find(
+      (contract) => contract.status === "ACTIVE" || contract.status === "DELIVERED"
+    );
     navigation.navigate("ProfessionalStudentAnamnesis", {
       clientId: detail.student.id,
       clientName: detail.student.name,
+      openContractId: activeContract?.id,
+      openBookingId: activeContract ? undefined : studentBookings[0]?.id,
     });
   };
 

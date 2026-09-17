@@ -157,7 +157,7 @@ export function ProfessionalStudentAnamnesisScreen({ navigation, route }: Props)
   const { showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
-  const { clientId, clientName } = route.params;
+  const { clientId, clientName, openContractId, openBookingId } = route.params;
 
   const anamnesisQuery = useAuthQuery(
     queryKeys.providers.studentAnamnesis(clientId),
@@ -231,6 +231,16 @@ export function ProfessionalStudentAnamnesisScreen({ navigation, route }: Props)
           <MvText variant="body3" color="secondary" style={{ textAlign: "center" }}>
             {clientName} ainda não preencheu a anamnese. Você pode solicitar via chat para se preparar melhor para a aula.
           </MvText>
+          {openContractId || openBookingId ? (
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate("ProfessionalChatList", { openContractId, openBookingId })
+              }
+              style={{ marginTop: 4, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder }}
+            >
+              <MvText variant="body4" style={{ color: theme.primary }}>💬 Solicitar via chat</MvText>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : (
         <ScrollView

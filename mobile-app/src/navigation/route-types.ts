@@ -137,7 +137,12 @@ export type ProfessionalStackParamList = {
   FinancialHistory: undefined;
   FinancialGoals: undefined;
   ProfessionalStudentDetail: { clientId: string };
-  ProfessionalStudentAnamnesis: { clientId: string; clientName: string };
+  ProfessionalStudentAnamnesis: {
+    clientId: string;
+    clientName: string;
+    openContractId?: string;
+    openBookingId?: string;
+  };
   AddExternalStudent: undefined;
   ExternalStudentInviteCreated: {
     inviteId: string;
