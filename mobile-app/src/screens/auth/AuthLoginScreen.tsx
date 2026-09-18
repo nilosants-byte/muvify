@@ -210,9 +210,10 @@ export function AuthLoginScreen({ navigation }: Props) {
           accessibilityRole="button"
           accessibilityLabel="Tenho um convite"
           testID="button.auth.login.claim-invite"
-          style={{ alignItems: "center", marginTop: 16, minHeight: 44, justifyContent: "center" }}
+          style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 16, minHeight: 44 }}
         >
-          <MvText variant="label" style={{ color: theme.text3 }}>Tenho um convite</MvText>
+          <Ionicons name="ticket-outline" size={16} color={theme.primary} />
+          <MvText variant="label" style={{ color: theme.primary }}>Tenho um convite</MvText>
         </PressableScale>
       </ScrollView>
     </KeyboardAvoidingView>

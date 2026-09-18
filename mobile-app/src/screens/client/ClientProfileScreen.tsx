@@ -508,6 +508,7 @@ export function ClientProfileScreen({ navigation }: Props) {
             <MenuRow testID="button.profile.my-disputes" icon="shield-outline" label="Minhas disputas" subtitle="Casos em análise ou resolvidos" onPress={() => goToStack("MyDisputes")} />
             <MenuRow icon="clipboard-outline" label="Ficha de saúde" subtitle={anamnesisNeedsAttention ? "Requer atenção" : "Anamnese e histórico"} badge={anamnesisNeedsAttention ? "!" : undefined} onPress={() => goToStack("ClientAnamnesis")} />
             <MenuRow icon="heart-outline" label="Profissionais favoritos" subtitle="Personais salvos" onPress={() => navigation.navigate("Favorites")} />
+            <MenuRow icon="ticket-outline" label="Tenho um convite" subtitle="Resgatar código de um profissional" onPress={() => goToStack("ClaimInvite")} />
             <MenuRow icon="help-circle-outline" label="Ajuda e suporte" subtitle="Fale com a equipe" onPress={() => goToStack("Support")} />
           </View>
         </View>
