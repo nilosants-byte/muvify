@@ -358,6 +358,23 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
 
   const displayExercises = filteredPrebuilt;
 
+  // Reportado no teste manual QA: nada no cartão do exercício indicava que
+  // ele já tinha sido escolhido — só a contagem "X exercícios
+  // selecionado(s)" no topo, sem nenhuma pista de QUAL exercício já foi
+  // adicionado nem em que ordem (importa porque a ordem reflete no treino
+  // final). Um exercício pode legitimamente ser adicionado mais de uma vez
+  // (ex: bi-set), então guarda todas as posições, não só a primeira.
+  const selectedPositionsByExerciseId = useMemo(() => {
+    const map = new Map<string, number[]>();
+    newPlanExercises.forEach((item, index) => {
+      if (!item.exerciseId) return;
+      const positions = map.get(item.exerciseId) ?? [];
+      positions.push(index + 1);
+      map.set(item.exerciseId, positions);
+    });
+    return map;
+  }, [newPlanExercises]);
+
   const addToNewPlanBuilder = useCallback(
     (exercise: Exercise) => {
       setShowNewPlanBuilder(true);
@@ -786,19 +803,34 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={{ gap: 8, marginTop: 10, paddingBottom: 2 }}
               >
-                {["Hipertrofia", "Emagrecimento", "Força", "Resistência", "Mobilidade", "Condicionamento"].map((obj) => (
-                  <TouchableOpacity
-                    key={obj}
-                    onPress={() => setNewPlanTitle((t) => t ? `${t} — ${obj}` : obj)}
-                    style={{
-                      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-                      borderWidth: 1, borderColor: "rgba(34,197,94,0.30)",
-                      backgroundColor: theme.primarySubtle,
-                    }}
-                  >
-                    <MvText variant="semi3" style={{ color: theme.textGreen, fontSize: 12 }}>{obj}</MvText>
-                  </TouchableOpacity>
-                ))}
+                {["Hipertrofia", "Emagrecimento", "Força", "Resistência", "Mobilidade", "Condicionamento"].map((obj) => {
+                  // Reportado no teste manual QA: clicar várias vezes no mesmo
+                  // chip repetia a palavra no título ("Treino — Hipertrofia —
+                  // Hipertrofia — Hipertrofia..."). Vira toggle: clicar de novo
+                  // remove; o chip também reflete se já está incluído no
+                  // título, algo que antes não tinha nenhum indicativo visual.
+                  const segments = newPlanTitle.split(" — ").map((s) => s.trim()).filter(Boolean);
+                  const isSelected = segments.includes(obj);
+                  return (
+                    <TouchableOpacity
+                      key={obj}
+                      onPress={() =>
+                        setNewPlanTitle((t) => {
+                          const current = t.split(" — ").map((s) => s.trim()).filter(Boolean);
+                          const next = current.includes(obj) ? current.filter((s) => s !== obj) : [...current, obj];
+                          return next.join(" — ");
+                        })
+                      }
+                      style={{
+                        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+                        borderWidth: 1, borderColor: isSelected ? theme.primary : "rgba(34,197,94,0.30)",
+                        backgroundColor: isSelected ? theme.primary : theme.primarySubtle,
+                      }}
+                    >
+                      <MvText variant="semi3" style={{ color: isSelected ? theme.textOnPrimary : theme.textGreen, fontSize: 12 }}>{obj}</MvText>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
               {editPlanId || targetContractId ? (
                 <View style={{ marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: "rgba(33,150,243,0.08)", borderWidth: 1, borderColor: "rgba(33,150,243,0.25)" }}>
@@ -953,6 +985,8 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7 }}>
                 {displayExercises.map((exercise) => {
                   const media = resolveExerciseMedia(exercise.mediaUrl, exercise.mediaType);
+                  const positions = selectedPositionsByExerciseId.get(exercise.id) ?? [];
+                  const isSelected = positions.length > 0;
                   return (
                     <TouchableOpacity
                       key={exercise.id}
@@ -961,9 +995,9 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                       style={{
                         width: "22%",
                         borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: theme.border,
-                        backgroundColor: theme.bg,
+                        borderWidth: isSelected ? 1.5 : 1,
+                        borderColor: isSelected ? theme.textGreen : theme.border,
+                        backgroundColor: isSelected ? theme.primarySubtle : theme.bg,
                         padding: 8,
                         alignItems: "center",
                         gap: 5,
@@ -971,16 +1005,43 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                         justifyContent: "flex-start",
                       }}
                     >
-                      {/* Thumbnail — toque direto faz preview de mídia */}
-                      {media ? (
-                        <TouchableOpacity onPress={() => openMediaPreview(media, exercise.name)} activeOpacity={0.85}>
-                          <ExerciseThumb theme={theme as Record<string, any>} media={media} />
-                        </TouchableOpacity>
-                      ) : (
-                        <View style={{ width: 44, height: 44, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: theme.chipBg, borderWidth: 1, borderColor: theme.border }}>
-                          <Ionicons name="barbell-outline" size={20} color={theme.text3} />
-                        </View>
-                      )}
+                      {/* Thumbnail — toque direto faz preview de mídia. O
+                          numerozinho no canto mostra a posição (ou posições,
+                          se o mesmo exercício foi adicionado mais de uma vez
+                          de propósito, ex: bi-set) em que entrou no treino. */}
+                      <View>
+                        {media ? (
+                          <TouchableOpacity onPress={() => openMediaPreview(media, exercise.name)} activeOpacity={0.85}>
+                            <ExerciseThumb theme={theme as Record<string, any>} media={media} />
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={{ width: 44, height: 44, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: theme.chipBg, borderWidth: 1, borderColor: theme.border }}>
+                            <Ionicons name="barbell-outline" size={20} color={theme.text3} />
+                          </View>
+                        )}
+                        {isSelected ? (
+                          <View
+                            style={{
+                              position: "absolute",
+                              top: -6,
+                              right: -6,
+                              minWidth: 18,
+                              height: 18,
+                              paddingHorizontal: 3,
+                              borderRadius: 9,
+                              backgroundColor: theme.textGreen,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              borderWidth: 1.5,
+                              borderColor: theme.bg,
+                            }}
+                          >
+                            <MvText style={{ fontSize: 9, fontWeight: "700", color: theme.textOnPrimary }}>
+                              {positions.join(",")}
+                            </MvText>
+                          </View>
+                        ) : null}
+                      </View>
                       <MvText
                         numberOfLines={2}
                         style={{ fontFamily: "DMSans_400Regular", fontSize: 10, textAlign: "center", color: theme.text1, lineHeight: 13 }}
@@ -988,7 +1049,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                         {exercise.name}
                       </MvText>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                        <Ionicons name="add-circle" size={14} color={theme.textGreen} />
+                        <Ionicons name={isSelected ? "checkmark-circle" : "add-circle"} size={14} color={theme.textGreen} />
                       </View>
                     </TouchableOpacity>
                   );
