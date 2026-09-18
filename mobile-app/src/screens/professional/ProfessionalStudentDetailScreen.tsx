@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
@@ -123,6 +123,61 @@ function getInitials(name: string) {
   return parts.length === 1
     ? (parts[0]?.slice(0, 2) ?? "AL").toUpperCase()
     : `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
+}
+
+// Pedido do teste manual QA: as ações de cada contrato/pacote ("Criar
+// treino", "Cancelar", "Chat") eram links de texto colorido empilhados,
+// sem nenhum tratamento de botão — davam a impressão de "jogado". Um
+// chip compacto (ícone + rótulo, com cor por intenção) deixa claro que
+// são ações de verdade, sem competir em peso visual com o MvButton
+// principal da tela (que é full-width, pesado demais pra várias ações
+// lado a lado dentro de um cartão de lista).
+function ActionChip({
+  icon,
+  label,
+  tone = "neutral",
+  onPress,
+  disabled,
+  loading,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  tone?: "primary" | "danger" | "neutral";
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const { theme } = useMvTheme();
+  const palette =
+    tone === "primary"
+      ? { bg: theme.primarySubtle, border: theme.primarySubtleBorder, fg: theme.textGreen }
+      : tone === "danger"
+        ? { bg: "transparent", border: theme.mode === "dark" ? "rgba(239,68,68,0.30)" : "rgba(220,38,38,0.25)", fg: theme.danger }
+        : { bg: theme.inputBg, border: theme.border, fg: theme.text2 };
+  return (
+    <TouchableOpacity
+      disabled={disabled || loading}
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: palette.bg,
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      {loading ? <ActivityIndicator size="small" color={palette.fg} /> : <Ionicons name={icon} size={14} color={palette.fg} />}
+      <MvText variant="caption" style={{ color: palette.fg, fontWeight: "600" }}>
+        {label}
+      </MvText>
+    </TouchableOpacity>
+  );
 }
 
 function AssessmentRow({
@@ -584,12 +639,12 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                           </MvText>
                           <MvBadge label={badge.label} variant={badge.variant} />
                         </View>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                          <MvText variant="caption" color="secondary">
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          <MvText variant="caption" color="secondary" style={{ flex: 1 }}>
                             Contratado em {formatDate(contract.createdAt)}
                             {contract.validUntil ? ` · válido até ${formatDate(contract.validUntil)}` : ""}
                           </MvText>
-                          <MvText variant="body4" style={{ color: theme.textGreen }}>
+                          <MvText variant="semi3" style={{ color: theme.textGreen, flexShrink: 0 }}>
                             {formatCurrencyBRL(contract.paymentAmountCents / 100)}
                           </MvText>
                         </View>
@@ -626,6 +681,7 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                                   </MvText>
                                 </View>
                                 <TouchableOpacity
+                                  accessibilityLabel={`Editar ${plan.title}`}
                                   onPress={() =>
                                     navigation.navigate("TrainingCreation", {
                                       contractId: contract.id,
@@ -634,72 +690,75 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                                       contractValidUntil: contract.validUntil ?? undefined,
                                     })
                                   }
+                                  style={{
+                                    width: 30,
+                                    height: 30,
+                                    borderRadius: 9,
+                                    backgroundColor: theme.primarySubtle,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
                                 >
-                                  <MvText variant="body4" style={{ color: theme.textGreen }}>
-                                    Editar
-                                  </MvText>
+                                  <Ionicons name="pencil-outline" size={14} color={theme.textGreen} />
                                 </TouchableOpacity>
                               </View>
                             ))}
                           </View>
                         ) : null}
 
-                        {contract.isVigente ? (
-                          <TouchableOpacity
-                            onPress={() => {
-                              const goToCreation = () =>
-                                navigation.navigate("TrainingCreation", {
-                                  contractId: contract.id,
-                                  clientId: detail.student.id,
-                                  contractValidUntil: contract.validUntil ?? undefined,
-                                });
-                              // Frente 4 (Criação/entrega/evolução do treino), Lote 6:
-                              // entregar uma renovação desativa automaticamente a ficha
-                              // atual (Lote 3) - sem aviso, o profissional podia achar
-                              // que as duas fichas ficariam vigentes ao mesmo tempo.
-                              if (contract.trainingPlans.length > 0) {
-                                Alert.alert(
-                                  "Substituir ficha atual?",
-                                  "Ao entregar um novo treino, a ficha vigente deste aluno será desativada automaticamente.",
-                                  [
-                                    { text: "Cancelar", style: "cancel" },
-                                    { text: "Continuar", onPress: goToCreation },
-                                  ]
-                                );
-                                return;
-                              }
-                              goToCreation();
-                            }}
-                            style={{ marginTop: 4 }}
-                          >
-                            <MvText variant="body4" style={{ color: theme.textGreen }}>
-                              + Criar novo treino
-                            </MvText>
-                          </TouchableOpacity>
-                        ) : null}
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                          {contract.isVigente ? (
+                            <ActionChip
+                              icon="add-circle-outline"
+                              label="Criar novo treino"
+                              tone="primary"
+                              onPress={() => {
+                                const goToCreation = () =>
+                                  navigation.navigate("TrainingCreation", {
+                                    contractId: contract.id,
+                                    clientId: detail.student.id,
+                                    contractValidUntil: contract.validUntil ?? undefined,
+                                  });
+                                // Frente 4 (Criação/entrega/evolução do treino), Lote 6:
+                                // entregar uma renovação desativa automaticamente a ficha
+                                // atual (Lote 3) - sem aviso, o profissional podia achar
+                                // que as duas fichas ficariam vigentes ao mesmo tempo.
+                                if (contract.trainingPlans.length > 0) {
+                                  Alert.alert(
+                                    "Substituir ficha atual?",
+                                    "Ao entregar um novo treino, a ficha vigente deste aluno será desativada automaticamente.",
+                                    [
+                                      { text: "Cancelar", style: "cancel" },
+                                      { text: "Continuar", onPress: goToCreation },
+                                    ]
+                                  );
+                                  return;
+                                }
+                                goToCreation();
+                              }}
+                            />
+                          ) : null}
 
-                        {contract.status === "ACTIVE" || contract.status === "DELIVERED" ? (
-                          <TouchableOpacity
-                            disabled={cancellingContractId === contract.id}
-                            onPress={() => confirmCancelContract(contract.id)}
-                            style={{ marginTop: 4 }}
-                          >
-                            <MvText variant="body4" style={{ color: theme.danger }}>
-                              {cancellingContractId === contract.id ? "Cancelando..." : "Cancelar consultoria"}
-                            </MvText>
-                          </TouchableOpacity>
-                        ) : null}
-                        {/* Frente 9 (segunda camada), Lote 13: BookingDetailProfessional
-                            já tem um botão de chat visível (openBookingId) -
-                            consultoria não tinha nenhum equivalente aqui. */}
-                        <TouchableOpacity
-                          onPress={() => navigation.navigate("ProfessionalChatList", { openContractId: contract.id })}
-                          style={{ marginTop: 4 }}
-                        >
-                          <MvText variant="body4" style={{ color: theme.textGreen }}>
-                            💬 Chat com o aluno
-                          </MvText>
-                        </TouchableOpacity>
+                          {/* Frente 9 (segunda camada), Lote 13: BookingDetailProfessional
+                              já tem um botão de chat visível (openBookingId) -
+                              consultoria não tinha nenhum equivalente aqui. */}
+                          <ActionChip
+                            icon="chatbubble-ellipses-outline"
+                            label="Chat com o aluno"
+                            tone="neutral"
+                            onPress={() => navigation.navigate("ProfessionalChatList", { openContractId: contract.id })}
+                          />
+
+                          {contract.status === "ACTIVE" || contract.status === "DELIVERED" ? (
+                            <ActionChip
+                              icon="close-circle-outline"
+                              label="Cancelar consultoria"
+                              tone="danger"
+                              loading={cancellingContractId === contract.id}
+                              onPress={() => confirmCancelContract(contract.id)}
+                            />
+                          ) : null}
+                        </View>
                       </View>
                     );
                   })}
@@ -739,15 +798,15 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                         {pkg.validUntil ? ` · válido até ${formatDate(pkg.validUntil)}` : ""}
                       </MvText>
                       {pkg.status === "ACTIVE" ? (
-                        <TouchableOpacity
-                          disabled={cancellingPackageId === pkg.id}
-                          onPress={() => confirmCancelPackage(pkg.id)}
-                          style={{ marginTop: 2 }}
-                        >
-                          <MvText variant="body4" style={{ color: theme.danger }}>
-                            {cancellingPackageId === pkg.id ? "Cancelando..." : "Cancelar pacote"}
-                          </MvText>
-                        </TouchableOpacity>
+                        <View style={{ flexDirection: "row", marginTop: 4 }}>
+                          <ActionChip
+                            icon="close-circle-outline"
+                            label="Cancelar pacote"
+                            tone="danger"
+                            loading={cancellingPackageId === pkg.id}
+                            onPress={() => confirmCancelPackage(pkg.id)}
+                          />
+                        </View>
                       ) : null}
                     </View>
                   ))}
