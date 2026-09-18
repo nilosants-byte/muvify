@@ -2,7 +2,6 @@ import React, { useCallback, useState } from "react";
 import { RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppState } from "../../../state/AppState";
 import { useAuthQuery } from "../../../hooks/useAuthQuery";
 import { queryKeys } from "../../../lib/queryKeys";
@@ -12,6 +11,7 @@ import { PressableScale } from "../../../components/polish/PressableScale";
 import { ClientBottomNavV2, ClientV2Tab } from "../../../components/navigation/ClientBottomNavV2";
 import { useMvTheme } from "../../../theme/MvThemeContext";
 import { hapticCta } from "../../../utils/haptics";
+import { ClientHomeHeader } from "./ClientHomeHeader";
 
 // Bloco 3 (exclusividade de marketplace): mostrada no lugar do mapa/busca/
 // categorias enquanto o cliente tem um vínculo ativo — nenhuma navegação
@@ -20,7 +20,6 @@ import { hapticCta } from "../../../utils/haptics";
 // que já existem, não duplicam o conteúdo inteiro.
 export function ClientHomeLocked() {
   const { theme } = useMvTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { activeEngagement } = useAppState();
 
@@ -90,8 +89,9 @@ export function ClientHomeLocked() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.home-locked">
+      <ClientHomeHeader />
       <ScrollView
-        contentContainerStyle={{ paddingTop: insets.top + 14, paddingHorizontal: 20, paddingBottom: 140, gap: 14 }}
+        contentContainerStyle={{ paddingTop: 14, paddingHorizontal: 20, paddingBottom: 140, gap: 14 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
