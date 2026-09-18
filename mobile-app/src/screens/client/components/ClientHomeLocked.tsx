@@ -76,7 +76,7 @@ export function ClientHomeLocked() {
   if (!activeEngagement?.hasActive) return null;
 
   const providerInitials = activeEngagement.providerName.trim().slice(0, 2).toUpperCase();
-  const latestPlan = myTrainingQuery.data?.contracts
+  const latestPlan = (myTrainingQuery.data?.contracts ?? [])
     .flatMap((c) => c.trainingPlans ?? [])
     .find((p) => p.isActive);
   const myChat = chatQuery.data?.find((c: any) => c.providerId === activeEngagement.providerId);
