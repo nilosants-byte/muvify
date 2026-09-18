@@ -384,6 +384,19 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
     [showToast]
   );
 
+  // Reportado no teste manual QA: tocar 3x no mesmo exercício adicionava 3
+  // vezes, sem nenhum jeito de desfazer um clique equivocado a não ser
+  // rolar até o final da lista de exercícios do treino e remover de lá.
+  // Remove a última ocorrência adicionada (mesma lógica de "desfazer o
+  // último clique", não a primeira nem uma aleatória).
+  const removeOneFromNewPlanBuilder = useCallback((exercise: Exercise) => {
+    setNewPlanExercises((current) => {
+      const lastIndex = current.map((item) => item.exerciseId).lastIndexOf(exercise.id);
+      if (lastIndex === -1) return current;
+      return current.filter((_, index) => index !== lastIndex);
+    });
+  }, []);
+
   function resetNewPlanBuilder() {
     setShowNewPlanBuilder(false);
     setNewPlanTitle("");
@@ -1025,10 +1038,10 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                               position: "absolute",
                               top: -6,
                               right: -6,
-                              minWidth: 18,
-                              height: 18,
+                              minWidth: 20,
+                              height: 20,
                               paddingHorizontal: 3,
-                              borderRadius: 9,
+                              borderRadius: 10,
                               backgroundColor: theme.textGreen,
                               alignItems: "center",
                               justifyContent: "center",
@@ -1036,7 +1049,17 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                               borderColor: theme.bg,
                             }}
                           >
-                            <MvText style={{ fontSize: 9, fontWeight: "700", color: theme.textOnPrimary }}>
+                            <MvText
+                              style={{
+                                fontSize: 9,
+                                lineHeight: 12,
+                                fontWeight: "700",
+                                color: theme.textOnPrimary,
+                                includeFontPadding: false,
+                                textAlign: "center",
+                                textAlignVertical: "center",
+                              }}
+                            >
                               {positions.join(",")}
                             </MvText>
                           </View>
@@ -1048,7 +1071,19 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                       >
                         {exercise.name}
                       </MvText>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                        {isSelected ? (
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              removeOneFromNewPlanBuilder(exercise);
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityLabel={`Remover ${exercise.name} do treino`}
+                          >
+                            <Ionicons name="remove-circle" size={16} color={theme.danger} />
+                          </TouchableOpacity>
+                        ) : null}
                         <Ionicons name={isSelected ? "checkmark-circle" : "add-circle"} size={14} color={theme.textGreen} />
                       </View>
                     </TouchableOpacity>
