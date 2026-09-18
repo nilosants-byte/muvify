@@ -32,7 +32,11 @@ export class ConsultancyController {
   }
 
   async claimExternalStudentInvite(request: Request, response: Response) {
-    const contract = await consultancyService.claimExternalStudentInvite(request.user!.id, request.params.token);
+    const contract = await consultancyService.claimExternalStudentInvite(
+      request.user!.id,
+      request.params.token,
+      Boolean(request.body?.confirmSwitch)
+    );
     return response.json(contract);
   }
 

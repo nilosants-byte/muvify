@@ -3658,10 +3658,10 @@ export const consultancyApi = {
       token
     });
   },
-  claimExternalStudentInvite(token: string, inviteToken: string) {
+  claimExternalStudentInvite(token: string, inviteToken: string, confirmSwitch?: boolean) {
     return apiRequest<ConsultancyContract>(
       `/consultancy/external-students/invites/${encodeURIComponent(inviteToken)}/claim`,
-      { method: "POST", token }
+      { method: "POST", token, body: { confirmSwitch } }
     );
   },
   // Bloco 4 (aluno externo): check-in periódico trimestral (90 dias).

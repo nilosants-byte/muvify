@@ -196,7 +196,7 @@ describe("Raio-X focado — realinhamento com o Will, Lote Médio-Alto", () => {
       }
     });
 
-    const newContract = await consultancyService.createExternalStudentContract(newProvider.userId, { clientId: client });
+    const newContract = await consultancyService.createExternalStudentContract(newProvider.userId, { clientId: client, confirmSwitch: true });
     expect(newContract.providerId).toBe(newProvider.providerId);
 
     // Não tentou (e não conseguiria) cancelar — booking continua intocado,

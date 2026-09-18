@@ -212,7 +212,7 @@ describe("Raio-X focado — realinhamento com o Will, Lote Alto", () => {
     // aceita PENDING_PAYMENT.
     await expect(consultancyService.cancelContract(client, oldContract.id)).rejects.toThrow(/não pode mais ser cancelado/i);
 
-    const newContract = await consultancyService.createExternalStudentContract(newProvider.userId, { clientId: client });
+    const newContract = await consultancyService.createExternalStudentContract(newProvider.userId, { clientId: client, confirmSwitch: true });
     expect(newContract.providerId).toBe(newProvider.providerId);
 
     const oldContractAfter = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: oldContract.id } });
@@ -259,7 +259,7 @@ describe("Raio-X focado — realinhamento com o Will, Lote Alto", () => {
       }
     });
 
-    const newContract = await consultancyService.createExternalStudentContract(newProvider.userId, { clientId: client });
+    const newContract = await consultancyService.createExternalStudentContract(newProvider.userId, { clientId: client, confirmSwitch: true });
     expect(newContract.providerId).toBe(newProvider.providerId);
 
     const oldPackageAfter = await prisma.presentialPackage.findUniqueOrThrow({ where: { id: oldPackage.id } });

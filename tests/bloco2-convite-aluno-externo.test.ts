@@ -256,7 +256,7 @@ describe("Bloco 2 — convite do aluno externo", () => {
       phone: "11966666666"
     });
 
-    const newContract = await consultancyService.claimExternalStudentInvite(switchClient.id, inviteToken);
+    const newContract = await consultancyService.claimExternalStudentInvite(switchClient.id, inviteToken, true);
     expect(newContract.providerId).toBe(providerId);
     expect(newContract.status).toBe(ConsultancyContractStatus.ACTIVE);
 
@@ -271,6 +271,73 @@ describe("Bloco 2 — convite do aluno externo", () => {
     await prisma.consultancyRequest.deleteMany({ where: { clientId: switchClient.id } });
     await prisma.booking.deleteMany({ where: { clientId: switchClient.id } });
     await prisma.user.deleteMany({ where: { id: switchClient.id } });
+    await prisma.providerProfile.deleteMany({ where: { id: oldProvider.id } });
+    await prisma.user.deleteMany({ where: { id: oldProviderUser.id } });
+    await prisma.serviceCategory.deleteMany({ where: { id: category.id } });
+  });
+
+  // Raio-X focado (aviso de troca de profissional): o aviso vermelho + a
+  // caixinha de confirmação que o app mostra quando aceitar o convite vai
+  // trocar o vínculo ativo eram só decorativos — o servidor trocava do
+  // mesmo jeito mesmo sem "confirmSwitch". Esse teste garante que sem essa
+  // confirmação explícita, a troca é recusada e nada muda.
+  it("recusa a troca de profissional sem confirmação explícita (confirmSwitch)", async () => {
+    const oldProviderUser = await prisma.user.create({
+      data: {
+        name: "Provider Antigo (Sem Confirmação)",
+        email: `${uid("old_prov_noconfirm")}@test.com`,
+        password: "x",
+        phone: `11${Date.now().toString().slice(-9)}9`,
+        role: "PROVIDER"
+      }
+    });
+    const oldProvider = await prisma.providerProfile.create({
+      data: { userId: oldProviderUser.id, displayName: "Provider Antigo", bio: "test", experienceYears: 2, priceCents: 10000 }
+    });
+    const category = await prisma.serviceCategory.create({ data: { name: `Bloco2NoConfirm_${Date.now()}`, description: "t" } });
+
+    const switchClientNoConfirm = await prisma.user.create({
+      data: {
+        name: "Switch Client Sem Confirmação",
+        email: `${uid("switch_client_noconfirm")}@test.com`,
+        password: "x",
+        phone: `11${Date.now().toString().slice(-9)}8`,
+        role: "CLIENT"
+      }
+    });
+
+    const oldBooking = await prisma.booking.create({
+      data: {
+        clientId: switchClientNoConfirm.id,
+        providerId: oldProvider.id,
+        categoryId: category.id,
+        scheduledAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        priceCents: 10000,
+        status: BookingStatus.CONFIRMED
+      }
+    });
+
+    const { invite, inviteToken } = await consultancyService.createExternalStudentInvite(providerUserId, {
+      studentName: "Switch Client Sem Confirmação",
+      channel: "WHATSAPP",
+      phone: "11955555555"
+    });
+
+    // Sem o terceiro argumento (confirmSwitch) — mesma chamada que uma API
+    // direta faria se o app nunca tivesse mostrado/processado o aviso.
+    await expect(
+      consultancyService.claimExternalStudentInvite(switchClientNoConfirm.id, inviteToken)
+    ).rejects.toThrow(/já tem outro profissional ativo/i);
+
+    const inviteAfter = await prisma.externalStudentInvite.findUniqueOrThrow({ where: { id: invite.id } });
+    expect(inviteAfter.status).toBe(ExternalStudentInviteStatus.PENDING);
+
+    const oldBookingAfter = await prisma.booking.findUniqueOrThrow({ where: { id: oldBooking.id } });
+    expect(oldBookingAfter.status).toBe(BookingStatus.CONFIRMED);
+
+    await prisma.externalStudentInvite.deleteMany({ where: { id: invite.id } });
+    await prisma.booking.deleteMany({ where: { clientId: switchClientNoConfirm.id } });
+    await prisma.user.deleteMany({ where: { id: switchClientNoConfirm.id } });
     await prisma.providerProfile.deleteMany({ where: { id: oldProvider.id } });
     await prisma.user.deleteMany({ where: { id: oldProviderUser.id } });
     await prisma.serviceCategory.deleteMany({ where: { id: category.id } });
@@ -353,7 +420,7 @@ describe("Bloco 2 — convite do aluno externo", () => {
       phone: "11977777777"
     });
 
-    const newContract = await consultancyService.claimExternalStudentInvite(switchClient2.id, inviteToken);
+    const newContract = await consultancyService.claimExternalStudentInvite(switchClient2.id, inviteToken, true);
     expect(newContract.providerId).toBe(providerId);
 
     const oldContractAfter = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: oldContract.id } });

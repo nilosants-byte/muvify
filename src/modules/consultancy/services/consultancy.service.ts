@@ -1696,7 +1696,7 @@ export class ConsultancyService {
   // automático (decisão tomada no debate do produto: mesmo quando o convite
   // chega por telefone/e-mail já cadastrado, a pessoa do outro lado precisa
   // clicar "confirmar").
-  async claimExternalStudentInvite(userId: string, rawToken: string) {
+  async claimExternalStudentInvite(userId: string, rawToken: string, confirmSwitch = false) {
     const tokenHash = hashRefreshToken(normalizeExternalStudentInviteToken(rawToken));
     const invite = await prisma.externalStudentInvite.findUnique({
       where: { tokenHash },
@@ -1721,7 +1721,8 @@ export class ConsultancyService {
     }
 
     const contract = await this.createExternalStudentContract(invite.provider.userId, {
-      clientId: userId
+      clientId: userId,
+      confirmSwitch
     });
 
     // Trava de uso único por update condicional atômico (mesmo idioma já
@@ -1790,7 +1791,7 @@ export class ConsultancyService {
   // presential-package.service.ts (purchaseCombo), só pra satisfazer as FKs
   // obrigatórias do contrato — a oferta fica isActive: false e nunca aparece
   // em busca, catálogo ou promoções (que sempre filtram isActive: true).
-  async createExternalStudentContract(userId: string, input: { clientId: string }) {
+  async createExternalStudentContract(userId: string, input: { clientId: string; confirmSwitch?: boolean }) {
     const provider = await this.providerProfileByUserId(userId);
     // Raio-X pós-épico (achado crítico do Bloco 6): faltava aqui — o
     // convite podia ser criado com assinatura ativa e confirmado até 7 dias
@@ -1834,6 +1835,20 @@ export class ConsultancyService {
     // o novo — depois de criado, getActiveEngagementSummary passaria a
     // enxergar o novo contrato em vez do antigo.
     const previousEngagement = await getActiveEngagementSummary(client.id);
+
+    // Raio-X focado (aviso de troca de profissional): o aviso vermelho +
+    // checkbox de ciência que o app mostra quando isso vai trocar o vínculo
+    // ativo do aluno com outro profissional era só decorativo - o servidor
+    // fazia a troca de qualquer jeito, mesmo sem esse "confirmSwitch" nunca
+    // ter sido enviado (ex: chamada direta à API). Agora exige o sinal
+    // explícito antes de mexer no vínculo de outro profissional.
+    if (previousEngagement.hasActive && previousEngagement.providerId !== provider.id && !input.confirmSwitch) {
+      throw new AppError(
+        "Você já tem outro profissional ativo. Confirme a troca para continuar.",
+        StatusCodes.CONFLICT,
+        { code: "PROVIDER_SWITCH_CONFIRMATION_REQUIRED" }
+      );
+    }
 
     const now = new Date();
     const checkInDueAt = new Date(now.getTime() + EXTERNAL_CHECK_IN_INTERVAL_MS);

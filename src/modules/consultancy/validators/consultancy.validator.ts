@@ -290,7 +290,19 @@ export const createExternalStudentInviteSchema = z.object({
 export const externalStudentInviteTokenParamSchema = z.object({
   params: z.object({
     token: externalStudentInviteTokenSchema
-  })
+  }),
+  // Raio-X focado (aviso de troca de profissional): o app mostra um aviso +
+  // checkbox de confirmação quando aceitar o convite vai trocar o vínculo
+  // ativo do aluno com outro profissional - antes disso não era exigido
+  // nada além do próprio token, então a troca acontecia mesmo se alguém
+  // chamasse a API direto sem nunca ver esse aviso. confirmSwitch default
+  // false: só passa quando o aluno realmente confirmou a troca na tela.
+  body: z
+    .object({
+      confirmSwitch: z.boolean().optional().default(false)
+    })
+    .optional()
+    .default({})
 });
 
 export const externalStudentInviteIdParamSchema = z.object({

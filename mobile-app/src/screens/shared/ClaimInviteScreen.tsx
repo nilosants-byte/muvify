@@ -64,18 +64,21 @@ export function ClaimInviteScreen({ navigation, route }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const claimInvite = useAuthMutation((authToken) => consultancyApi.claimExternalStudentInvite(authToken, token), {
-    onSuccess: async () => {
-      hapticCta();
-      showToast("Vínculo confirmado! Sua ficha de treino já aparece em Meu Treino.", "success");
-      // Realinhamento com o Will (2026-08-25, Bloco 2): aceitar o convite
-      // agora pode trocar de profissional — precisa atualizar o resumo de
-      // vínculo ativo pra Home/navegação refletirem o profissional novo.
-      await refreshActiveEngagement();
-      navigation.navigate("ClientTabs", { screen: "MyTraining" });
-    },
-    onError: (error) => handleScreenError({ error, showToast, fallbackMessage: "Falha ao confirmar o convite.", navigation })
-  });
+  const claimInvite = useAuthMutation(
+    (authToken) => consultancyApi.claimExternalStudentInvite(authToken, token, consentChecked),
+    {
+      onSuccess: async () => {
+        hapticCta();
+        showToast("Vínculo confirmado! Sua ficha de treino já aparece em Meu Treino.", "success");
+        // Realinhamento com o Will (2026-08-25, Bloco 2): aceitar o convite
+        // agora pode trocar de profissional — precisa atualizar o resumo de
+        // vínculo ativo pra Home/navegação refletirem o profissional novo.
+        await refreshActiveEngagement();
+        navigation.navigate("ClientTabs", { screen: "MyTraining" });
+      },
+      onError: (error) => handleScreenError({ error, showToast, fallbackMessage: "Falha ao confirmar o convite.", navigation })
+    }
+  );
 
   const providerInitials = preview?.provider.displayName?.trim().slice(0, 2).toUpperCase() ?? "";
 
