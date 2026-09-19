@@ -268,9 +268,13 @@ describe("Frente 4, Lote 3 — integridade da ficha de consultoria", () => {
       title: "Ficha 1",
       exercises: []
     });
+    // Achado no teste manual QA: a desativação automática só acontece numa
+    // renovação de verdade (ciclo já vencido) - entregar mais um treino
+    // enquanto o ciclo atual ainda está vigente agora COEXISTE (pacote de
+    // treinos), então este teste precisa expirar a ficha 1 antes.
     await prisma.trainingPlan.updateMany({
       where: { contractId: contract.id },
-      data: { createdAt: new Date(Date.now() - 15_000) }
+      data: { createdAt: new Date(Date.now() - 15_000), validUntil: new Date(Date.now() - 1_000) }
     });
 
     await consultancyService.deliverContract(providerUserId, contract.id, {
@@ -283,5 +287,39 @@ describe("Frente 4, Lote 3 — integridade da ficha de consultoria", () => {
 
     const activeCount = await prisma.trainingPlan.count({ where: { contractId: contract.id, isActive: true } });
     expect(activeCount).toBe(1);
+  });
+
+  // Achado no teste manual QA (2026-09-18): um personal normalmente monta
+  // vários treinos diferentes (peito, perna, cardio...) pro mesmo aluno
+  // escolher qual fazer no dia - o teste acima cobre a renovação de
+  // verdade (ciclo vencido); este cobre o caso novo: adicionar mais um
+  // treino DENTRO do mesmo ciclo pago não cobra de novo e não desativa
+  // os outros - todos coexistem até o ciclo vencer.
+  it("entregar um segundo treino dentro do mesmo ciclo pago não cobra de novo nem desativa o primeiro", async () => {
+    const paymentCreateSpy = vi.spyOn(Payment.prototype, "create");
+
+    const offer = await makeOffer();
+    const contract = await makeContract(offer.id);
+    const { plan: firstPlan } = await consultancyService.deliverContract(providerUserId, contract.id, {
+      title: "Treino A - Peito",
+      exercises: []
+    });
+    expect(paymentCreateSpy).not.toHaveBeenCalled();
+
+    const { plan: secondPlan } = await consultancyService.deliverContract(providerUserId, contract.id, {
+      title: "Treino B - Pernas",
+      exercises: []
+    });
+    expect(paymentCreateSpy).not.toHaveBeenCalled();
+
+    const plan1After = await prisma.trainingPlan.findUniqueOrThrow({ where: { id: firstPlan.id } });
+    const plan2After = await prisma.trainingPlan.findUniqueOrThrow({ where: { id: secondPlan.id } });
+    expect(plan1After.isActive).toBe(true);
+    expect(plan2After.isActive).toBe(true);
+    // Os dois treinos do mesmo pacote pago vencem juntos.
+    expect(plan2After.validUntil?.getTime()).toBe(plan1After.validUntil?.getTime());
+
+    const activeCount = await prisma.trainingPlan.count({ where: { contractId: contract.id, isActive: true } });
+    expect(activeCount).toBe(2);
   });
 });

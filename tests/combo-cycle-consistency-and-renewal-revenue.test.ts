@@ -358,7 +358,16 @@ describe("Consistência de combo e visibilidade financeira de renovação (Rodad
     });
     contractIds.push(contract.id);
 
-    await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 1", exercises: [] });
+    const firstDelivery = await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 1", exercises: [] });
+    // Achado no teste manual QA: entregar uma 2a ficha ENQUANTO a 1a ainda
+    // está vigente agora só adiciona ao mesmo pacote pago, sem cobrar de
+    // novo (pacote de treinos = uma cobrança só). Pra este teste continuar
+    // exercitando renovação de verdade, força o ciclo atual a já ter
+    // vencido antes da 2a entrega.
+    await prisma.trainingPlan.update({
+      where: { id: firstDelivery.plan.id },
+      data: { validUntil: new Date(Date.now() - 60_000) }
+    });
 
     vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: MOCK_MP_ID_BASE + 201, status: "approved" } as any);
     await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 2 (renovação)", exercises: [] });

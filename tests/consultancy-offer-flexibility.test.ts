@@ -327,11 +327,15 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
       acknowledgedImmediateExecution: true
     });
 
-    const { contract: afterFirst } = await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
+    const { contract: afterFirst, plan: plan1 } = await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
       title: "Ficha 1",
       exercises: [{ name: "Agachamento", repetitionsSets: "4x10", load: "40kg" }]
     });
     expect(afterFirst.status).toBe("DELIVERED");
+    // Achado no teste manual QA: entregar a 2a ficha enquanto a 1a ainda
+    // está vigente agora só adiciona ao mesmo pacote pago, sem cobrar de
+    // novo. Este teste quer exercitar uma renovação de verdade.
+    await prisma.trainingPlan.update({ where: { id: plan1.id }, data: { validUntil: new Date(Date.now() - 1_000) } });
 
     paymentCreateSpy.mockClear();
     paymentCreateSpy.mockResolvedValue({ id: MOCK_MP_ID_BASE + 2, status: "approved" } as any);
@@ -366,10 +370,13 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
       paymentMethod: "CREDIT_CARD" as any,
       acknowledgedImmediateExecution: true
     });
-    await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
+    const { plan: plan1 } = await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
       title: "Ficha 1",
       exercises: [{ name: "Agachamento", repetitionsSets: "4x10", load: "40kg" }]
     });
+    // Expira o ciclo atual pra continuar exercitando uma renovação de
+    // verdade (cobrança) em vez de uma adição gratuita ao mesmo pacote.
+    await prisma.trainingPlan.update({ where: { id: plan1.id }, data: { validUntil: new Date(Date.now() - 1_000) } });
 
     paymentCreateSpy.mockResolvedValue({ id: 6002, status: "rejected", status_detail: "cc_rejected_other_reason" } as any);
 
@@ -403,10 +410,14 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
       where: { id: contract!.id },
       data: { status: "ACTIVE", paymentStatus: "CAPTURED", paymentCapturedAt: new Date() }
     });
-    await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
+    const { plan: plan1 } = await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
       title: "Ficha 1",
       exercises: [{ name: "Agachamento", repetitionsSets: "4x10", load: "40kg" }]
     });
+    // Expira o ciclo atual - senão a 2a entrega vira adição gratuita ao
+    // pacote atual (sem tentar cobrar nada), nunca chegando a exercitar o
+    // bloqueio de renovação automática via Pix que este teste verifica.
+    await prisma.trainingPlan.update({ where: { id: plan1.id }, data: { validUntil: new Date(Date.now() - 1_000) } });
 
     await expect(
       consultancyService.deliverContract(clientProviderUserId, contract!.id, {

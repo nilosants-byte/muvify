@@ -3514,10 +3514,43 @@ export class ConsultancyService {
       planValidUntil = parsed;
     }
 
-    // Frente B (liberdade de ofertas): a partir da 2a ficha, cada entrega
-    // cobra de novo (mesmo valor combinado na assinatura) - sem ficha nova,
-    // sem cobranca nova. Cobra ANTES de salvar (fail-loud, mesmo principio
-    // da primeira entrega) - se a cobranca falhar, a entrega inteira falha.
+    // Achado no teste manual QA (2026-09-18): um personal normalmente monta
+    // VÁRIOS treinos diferentes pro mesmo aluno de uma vez (peito, perna,
+    // cardio...) pro aluno escolher qual fazer no dia — o modelo antigo
+    // tratava toda entrega depois da primeira como uma renovação paga E
+    // desativava a ficha anterior, então só existia UM treino por vez (e um
+    // "pacote" de 3 treinos cobrava 3x). Agora só é renovação de verdade
+    // quando o ciclo pago atual já venceu (nenhuma ficha ativa ainda
+    // vigente) — entregar mais um treino DENTRO do ciclo já pago não cobra
+    // de novo e não desativa os outros, todos coexistem até o ciclo vencer.
+    const activePlans = isFirstDelivery
+      ? []
+      : await prisma.trainingPlan.findMany({
+          where: { contractId: contract.id, isActive: true },
+          select: { id: true, validUntil: true }
+        });
+    const currentCycleStillValid = activePlans.some((p) => !p.validUntil || p.validUntil > now);
+    const chargesRenewal = !isFirstDelivery && !currentCycleStillValid;
+    const isFreeAdditionToCurrentCycle = !isFirstDelivery && currentCycleStillValid;
+
+    // Ficha adicionada dentro do mesmo ciclo pago vence junto com as outras
+    // do pacote — não faz sentido cada treino do mesmo pacote ter uma data
+    // de vencimento diferente (e os jobs de lembrete/vencimento de ficha só
+    // olham a ficha mais recente do contrato pra decidir o destino do
+    // contrato inteiro, então todas precisam compartilhar a mesma data).
+    if (isFreeAdditionToCurrentCycle) {
+      const sharedValidUntil = activePlans.reduce<Date | null>(
+        (latest, p) => (p.validUntil && (!latest || p.validUntil > latest) ? p.validUntil : latest),
+        null
+      );
+      if (sharedValidUntil) planValidUntil = sharedValidUntil;
+    }
+
+    // Frente B (liberdade de ofertas): a partir da 2a ficha, cada RENOVAÇÃO
+    // cobra de novo (mesmo valor combinado na assinatura) - sem ficha nova
+    // (fora do ciclo atual), sem cobranca nova. Cobra ANTES de salvar
+    // (fail-loud, mesmo principio da primeira entrega) - se a cobranca
+    // falhar, a entrega inteira falha.
     let renewalMpPaymentId: string | null = null;
     // Raio-X de pagamentos, Lote 4: trava leve por contrato ao redor de
     // "contar fichas -> cobrar renovação -> criar a ficha nova". Sem isso,
@@ -3620,16 +3653,18 @@ export class ConsultancyService {
           );
         }
 
-        const existingPlansCount = await prisma.trainingPlan.count({ where: { contractId: contract.id } });
-        const renewalPayment = await this.chargeFichaRenewal({
-          contractId: contract.id,
-          providerId: provider.id,
-          clientId: contract.client.id,
-          paymentMethod: contract.paymentMethod!,
-          amountCents: contract.paymentAmountCents,
-          renewalIndex: existingPlansCount
-        });
-        renewalMpPaymentId = String(renewalPayment.id);
+        if (chargesRenewal) {
+          const existingPlansCount = await prisma.trainingPlan.count({ where: { contractId: contract.id } });
+          const renewalPayment = await this.chargeFichaRenewal({
+            contractId: contract.id,
+            providerId: provider.id,
+            clientId: contract.client.id,
+            paymentMethod: contract.paymentMethod!,
+            amountCents: contract.paymentAmountCents,
+            renewalIndex: existingPlansCount
+          });
+          renewalMpPaymentId = String(renewalPayment.id);
+        }
       }
 
       result = await prisma.$transaction(async (tx) => {
@@ -3660,8 +3695,11 @@ export class ConsultancyService {
         // Frente 4 (Criação/entrega/evolução do treino), Lote 3: sem isso,
         // entregar uma renovação antes da ficha anterior vencer deixava as
         // duas "vigentes" ao mesmo tempo pro cliente - ele podia concluir
-        // (e ganhar XP/gerar post/histórico) a ficha já substituída.
-        if (!isFirstDelivery) {
+        // (e ganhar XP/gerar post/histórico) a ficha já substituída. Só se
+        // aplica quando É de fato uma renovação (ciclo anterior vencido) -
+        // uma ficha adicionada dentro do mesmo ciclo pago (ver
+        // isFreeAdditionToCurrentCycle acima) deve coexistir com as outras.
+        if (chargesRenewal) {
           await tx.trainingPlan.updateMany({
             where: { contractId: contract.id, isActive: true, id: { not: plan.id } },
             data: { isActive: false }
@@ -3704,14 +3742,16 @@ export class ConsultancyService {
       title: isFirstDelivery ? "Treino personalizado disponível" : "Novo treino disponível",
       body: isFirstDelivery
         ? `Seu treino foi entregue e já está liberado em Seu Treino. Válido até ${planValidUntilLabel}.`
-        : `Seu profissional liberou mais um treino (R$ ${chargedAmountLabel} cobrado no seu cartão). Válido até ${planValidUntilLabel}.`,
+        : chargesRenewal
+          ? `Seu profissional liberou mais um treino (R$ ${chargedAmountLabel} cobrado no seu cartão). Válido até ${planValidUntilLabel}.`
+          : `Seu profissional adicionou mais um treino ao seu pacote atual, sem cobrança extra. Válido até ${planValidUntilLabel}.`,
       data: {
         type: "CONSULTANCY_TRAINING_DELIVERED",
         contractId: contract.id
       }
     });
 
-    if (!isFirstDelivery) {
+    if (chargesRenewal) {
       void notificationService
         .sendToUsers([userId], {
           preferenceType: "CONSULTANCY",

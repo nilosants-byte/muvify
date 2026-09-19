@@ -719,14 +719,16 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                                     clientId: detail.student.id,
                                     contractValidUntil: contract.validUntil ?? undefined,
                                   });
-                                // Frente 4 (Criação/entrega/evolução do treino), Lote 6:
-                                // entregar uma renovação desativa automaticamente a ficha
-                                // atual (Lote 3) - sem aviso, o profissional podia achar
-                                // que as duas fichas ficariam vigentes ao mesmo tempo.
-                                if (contract.trainingPlans.length > 0) {
+                                // Achado no teste manual QA (2026-09-18): entregar um treino
+                                // adicional enquanto o ciclo pago atual ainda está vigente
+                                // NÃO substitui nem cobra de novo (o aluno passa a ter vários
+                                // treinos pra escolher) — só vira renovação de verdade (com
+                                // cobrança) quando não sobra nenhuma ficha ainda vigente.
+                                const hasValidActivePlan = contract.trainingPlans.some((plan) => plan.isVigente);
+                                if (!hasValidActivePlan && contract.trainingPlans.length > 0) {
                                   Alert.alert(
-                                    "Substituir ficha atual?",
-                                    "Ao entregar um novo treino, a ficha vigente deste aluno será desativada automaticamente.",
+                                    "Renovar ficha do aluno?",
+                                    "O ciclo atual já venceu — entregar um novo treino agora gera uma nova cobrança pro aluno (mesmo valor da consultoria) e inicia um novo ciclo.",
                                     [
                                       { text: "Cancelar", style: "cancel" },
                                       { text: "Continuar", onPress: goToCreation },

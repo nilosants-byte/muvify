@@ -224,7 +224,14 @@ describe("Confiabilidade da conexão MP do profissional (Lote 5 do raio-x)", () 
       }
     });
 
-    await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 1", exercises: [] });
+    const { plan: plan1 } = await consultancyService.deliverContract(providerUserId, contract.id, {
+      title: "Ficha 1",
+      exercises: []
+    });
+    // Achado no teste manual QA: entregar a 2a ficha com o ciclo ainda
+    // vigente vira adição sem cobrança - este teste quer testar a
+    // renovação de verdade (cobrada), então força o ciclo a já ter vencido.
+    await prisma.trainingPlan.update({ where: { id: plan1.id }, data: { validUntil: new Date(Date.now() - 1_000) } });
 
     await expect(
       consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 2", exercises: [] })

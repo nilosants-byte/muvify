@@ -197,10 +197,13 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
 
     // Recua o createdAt da 1a ficha pra fora da janela de 10s do guard
     // contra duplo clique, simulando uma renovação de verdade (não um clique
-    // duplicado do mesmo evento).
+    // duplicado do mesmo evento). Também expira o validUntil - achado no
+    // teste manual QA: entregar a 2a ficha enquanto a 1a ainda está vigente
+    // agora só adiciona ao mesmo pacote pago, sem cobrar de novo. Este teste
+    // quer exercitar uma renovação de verdade (ciclo já vencido).
     await prisma.trainingPlan.updateMany({
       where: { contractId: contract.id },
-      data: { createdAt: new Date(Date.now() - 15_000) }
+      data: { createdAt: new Date(Date.now() - 15_000), validUntil: new Date(Date.now() - 1_000) }
     });
 
     const renewalResult = await consultancyService.deliverContract(providerUserId, contract.id, {
@@ -223,9 +226,11 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
 
     // Duplo clique bloquearia a 2a ficha se entregue nos primeiros 10s — força
     // o relógio pra frente ajustando createdAt da 1a ficha manualmente.
+    // validUntil também precisa expirar - senão a 2a entrega vira adição
+    // gratuita ao pacote atual (comportamento novo), não renovação paga.
     await prisma.trainingPlan.updateMany({
       where: { contractId: contract.id },
-      data: { createdAt: new Date(Date.now() - 15_000) }
+      data: { createdAt: new Date(Date.now() - 15_000), validUntil: new Date(Date.now() - 1_000) }
     });
 
     // Raio-X Rodada 2, Lote 4: entregar (e cobrar) a próxima ficha enquanto a
