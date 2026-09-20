@@ -73,6 +73,7 @@ describe("Frente 6, Lote 10 — corrida no cooldown de preço da oferta", () => 
         title: `Oferta ${uid("offer")}`,
         billingCycle: OfferBillingCycle.MONTHLY,
         priceCents: 10000,
+        fichaValidityDays: 30,
         // Cooldown já expirado - a primeira troca de preço deveria ser permitida.
         basePriceUpdatedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000)
       }
