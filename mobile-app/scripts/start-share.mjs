@@ -162,7 +162,7 @@ function waitForCloudflaredUrl(cloudflaredProc) {
   });
 }
 
-function startExpo(metroTunnelUrl, metroPort) {
+function startExpo(metroTunnelUrl, metroPort, { clear } = {}) {
   const hostname = new URL(metroTunnelUrl).hostname;
   const env = {
     ...process.env,
@@ -175,7 +175,11 @@ function startExpo(metroTunnelUrl, metroPort) {
     ? path.join(process.cwd(), "node_modules", ".bin", "expo.cmd")
     : path.join(process.cwd(), "node_modules", ".bin", "expo");
 
-  const expoArgs = ["start", "--go", "--host", "lan", "--port", String(metroPort), "--clear"];
+  const expoArgs = ["start", "--go", "--host", "lan", "--port", String(metroPort)];
+  // Ver o comentario de attemptStartShare mais abaixo: parece caro ("Bundler
+  // cache is empty, rebuilding"), mas medido na pratica e mais rapido e
+  // confiavel do que tentar reaproveitar o cache velho aqui.
+  if (clear) expoArgs.push("--clear");
 
   if (fs.existsSync(localExpoBin)) {
     if (process.platform === "win32") {
@@ -257,11 +261,22 @@ function waitForMetroReady(metroPort, expoProc, timeoutMs = 180_000) {
   });
 }
 
-async function main() {
+// Chega a ser contraintuitivo, mas foi medido na prática: tentar "economizar
+// tempo" reaproveitando o cache velho do Metro (sem limpar watchman/haste
+// map) trava a inicialização por 3+ minutos sem nunca ficar pronta -- o
+// watchman fica com estado preso depois que killStaleMetroAndTunnelProcesses
+// mata processos à força, e sem "watch-del-all" o crawl inicial do Metro
+// nunca termina. Limpando tudo do zero (forceClear), a mesma subida
+// completa em ~30s. Por isso forceClear fica true sempre -- não é uma rede
+// de segurança "só pro caso de erro", é o caminho realmente mais rápido
+// aqui. O parametro continua existindo só pra permitir o retry abaixo.
+async function attemptStartShare({ forceClear }) {
   console.log("[start:share] Limpando processos antigos do Metro/túnel, se houver...");
   killStaleMetroAndTunnelProcesses();
-  console.log("[start:share] Limpando cache antigo de arquivos do Metro, se houver...");
-  clearStaleMetroFileMapCache();
+  if (forceClear) {
+    console.log("[start:share] Limpando cache do Metro do zero (retry apos falha)...");
+    clearStaleMetroFileMapCache();
+  }
   // Depois de um taskkill, o Windows leva um instante pra liberar a porta de
   // verdade (netstat pode continuar mostrando LISTENING por alguns segundos
   // mesmo com o processo já encerrado) -- sem essa espera, resolveMetroPort()
@@ -275,14 +290,39 @@ async function main() {
   const metroTunnelUrl = await waitForCloudflaredUrl(cloudflaredProc);
   const expoGoUrl = `exp://${new URL(metroTunnelUrl).hostname}`;
 
-  const expoProc = startExpo(metroTunnelUrl, metroPort);
+  const expoProc = startExpo(metroTunnelUrl, metroPort, { clear: forceClear });
 
   console.log("[start:share] Tunnel criado, aguardando o Metro terminar de inicializar antes de liberar o link...");
-  await waitForMetroReady(metroPort, expoProc);
+  try {
+    await waitForMetroReady(metroPort, expoProc);
+  } catch (error) {
+    try { expoProc.kill(); } catch { /* noop */ }
+    try { cloudflaredProc.kill(); } catch { /* noop */ }
+    throw error;
+  }
 
   console.log(`[start:share] Metro tunnel: ${metroTunnelUrl}`);
   console.log(`[start:share] Expo Go URL: ${expoGoUrl}`);
   console.log(`[start:share] Backend (do .env): ${process.env.EXPO_PUBLIC_API_BASE_URL ?? "(nao definido)"}`);
+
+  return { expoProc, cloudflaredProc };
+}
+
+async function main() {
+  let started;
+  try {
+    started = await attemptStartShare({ forceClear: true });
+  } catch (error) {
+    // Falha mesmo limpando tudo do zero é incomum (ex: cloudflared
+    // engasgou na primeira tentativa) -- vale tentar mais uma vez antes
+    // de desistir de vez.
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`[start:share] Primeira tentativa falhou (${reason}).`);
+    console.warn("[start:share] Tentando de novo...");
+    started = await attemptStartShare({ forceClear: true });
+  }
+
+  const { expoProc, cloudflaredProc } = started;
 
   function shutdown() {
     try {
