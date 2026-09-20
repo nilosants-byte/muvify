@@ -124,6 +124,15 @@ function startCloudflaredForMetro(metroPort) {
 function waitForCloudflaredUrl(cloudflaredProc) {
   return new Promise((resolve, reject) => {
     let resolved = false;
+    // Sem isso, quando o cloudflared morre antes de achar a URL, só
+    // sobrava o código de saída (ex: "encerrou com codigo 1") sem
+    // nenhuma pista do motivo real -- guarda as últimas linhas pra
+    // conseguir mostrar o erro de verdade no reject.
+    const recentLines = [];
+    function remember(line) {
+      recentLines.push(String(line));
+      if (recentLines.length > 20) recentLines.shift();
+    }
 
     const timeout = setTimeout(() => {
       if (resolved) return;
@@ -132,6 +141,7 @@ function waitForCloudflaredUrl(cloudflaredProc) {
     }, 45_000);
 
     function tryResolve(line) {
+      remember(line);
       const match = String(line).match(CLOUDFLARED_PATTERN);
       if (!match || resolved) return;
       resolved = true;
@@ -146,7 +156,8 @@ function waitForCloudflaredUrl(cloudflaredProc) {
       if (resolved) return;
       resolved = true;
       clearTimeout(timeout);
-      reject(new Error(`cloudflared encerrou com codigo ${code ?? "desconhecido"}.`));
+      const details = recentLines.length ? `\n${recentLines.join("\n")}` : " (sem saida capturada)";
+      reject(new Error(`cloudflared encerrou com codigo ${code ?? "desconhecido"}.${details}`));
     });
   });
 }
@@ -196,6 +207,56 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// O link do túnel fica pronto (cloudflared responde) bem antes do Metro
+// terminar de montar o haste map/dependency graph -- e o handler de
+// "/status" do Expo só responde depois que `getMetroBundler().ready()`
+// resolve, ou seja, é o sinal certo de "Metro realmente pronto para
+// servir bundle/asset". Sem esperar por isso, o Expo Go conecta assim
+// que recebe o link, cai bem no meio da inicialização e quebra com
+// "Cannot read properties of undefined (reading 'get'/'exists')" dentro
+// do Metro (DependencyGraph.js / Assets.js) -- e como o Expo Go não
+// reconecta sozinho depois, nem "Reload JS" resolve.
+function waitForMetroReady(metroPort, expoProc, timeoutMs = 180_000) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const deadline = Date.now() + timeoutMs;
+
+    function finish(fn, arg) {
+      if (settled) return;
+      settled = true;
+      expoProc.off("exit", onExpoExit);
+      fn(arg);
+    }
+
+    function onExpoExit(code) {
+      finish(reject, new Error(`O processo do Expo encerrou (codigo ${code ?? "desconhecido"}) antes do Metro ficar pronto.`));
+    }
+    expoProc.once("exit", onExpoExit);
+
+    async function poll() {
+      if (settled) return;
+      if (Date.now() > deadline) {
+        finish(reject, new Error("Timeout esperando o Metro ficar pronto (endpoint /status nao respondeu a tempo)."));
+        return;
+      }
+      try {
+        const res = await fetch(`http://127.0.0.1:${metroPort}/status`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (res.ok) {
+          finish(resolve);
+          return;
+        }
+      } catch {
+        // Metro ainda nem esta escutando na porta, ou ainda inicializando -- tenta de novo.
+      }
+      setTimeout(poll, 1000);
+    }
+
+    poll();
+  });
+}
+
 async function main() {
   console.log("[start:share] Limpando processos antigos do Metro/túnel, se houver...");
   killStaleMetroAndTunnelProcesses();
@@ -214,11 +275,14 @@ async function main() {
   const metroTunnelUrl = await waitForCloudflaredUrl(cloudflaredProc);
   const expoGoUrl = `exp://${new URL(metroTunnelUrl).hostname}`;
 
+  const expoProc = startExpo(metroTunnelUrl, metroPort);
+
+  console.log("[start:share] Tunnel criado, aguardando o Metro terminar de inicializar antes de liberar o link...");
+  await waitForMetroReady(metroPort, expoProc);
+
   console.log(`[start:share] Metro tunnel: ${metroTunnelUrl}`);
   console.log(`[start:share] Expo Go URL: ${expoGoUrl}`);
   console.log(`[start:share] Backend (do .env): ${process.env.EXPO_PUBLIC_API_BASE_URL ?? "(nao definido)"}`);
-
-  const expoProc = startExpo(metroTunnelUrl, metroPort);
 
   function shutdown() {
     try {
