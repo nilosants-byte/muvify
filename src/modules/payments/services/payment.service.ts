@@ -1986,7 +1986,7 @@ export class PaymentService {
       if (trainingPlanRenewal && trainingPlanRenewal.contract) {
         // Fechamento pós-Frente 12: mesma lacuna do ConsultancyContract acima,
         // mas pra renovação de ficha - cada renovação cobra o mesmo valor do
-        // contrato original (ver chargeFichaRenewal em consultancy.service.ts).
+        // contrato original (ver chargeFichaRenewalCycle em consultancy.service.ts).
         const totalAmount = trainingPlanRenewal.contract.paymentAmountCents;
         const refundedAmountCentsPlan =
           refundedAmountReais != null && refundedAmountReais > 0

@@ -512,10 +512,9 @@ export class ConsultancyService {
       if (providerTokenMissing) {
         failureReason = "Conexão do profissional com o Mercado Pago precisa ser reconectada.";
       } else if (contract.paymentMethod === ConsultancyPaymentMethod.PIX) {
-        // Renovação automática continua card-only, mesma restrição de
-        // chargeFichaRenewal - só que aqui vira um estado de falha
-        // retentável (com aviso), não um erro síncrono que bloqueia a
-        // entrega inteira.
+        // Renovação automática continua card-only (mesma restrição de
+        // sempre) - só que aqui vira um estado de falha retentável (com
+        // aviso), não um erro síncrono que bloqueia a entrega inteira.
         failureReason =
           "Consultoria paga via Pix não suporta renovação automática de ficha. Peça ao aluno para cadastrar um cartão.";
       } else {

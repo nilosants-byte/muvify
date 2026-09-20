@@ -759,32 +759,17 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                               icon="add-circle-outline"
                               label="Criar novo treino"
                               tone="primary"
-                              onPress={() => {
-                                const goToCreation = () =>
-                                  navigation.navigate("TrainingCreation", {
-                                    contractId: contract.id,
-                                    clientId: detail.student.id,
-                                    contractValidUntil: contract.validUntil ?? undefined,
-                                  });
-                                // Achado no teste manual QA (2026-09-18): entregar um treino
-                                // adicional enquanto o ciclo pago atual ainda está vigente
-                                // NÃO substitui nem cobra de novo (o aluno passa a ter vários
-                                // treinos pra escolher) — só vira renovação de verdade (com
-                                // cobrança) quando não sobra nenhuma ficha ainda vigente.
-                                const hasValidActivePlan = contract.trainingPlans.some((plan) => plan.isVigente);
-                                if (!hasValidActivePlan && contract.trainingPlans.length > 0) {
-                                  Alert.alert(
-                                    "Renovar ficha do aluno?",
-                                    "O ciclo atual já venceu — entregar um novo treino agora gera uma nova cobrança pro aluno (mesmo valor da consultoria) e inicia um novo ciclo.",
-                                    [
-                                      { text: "Cancelar", style: "cancel" },
-                                      { text: "Continuar", onPress: goToCreation },
-                                    ]
-                                  );
-                                  return;
-                                }
-                                goToCreation();
-                              }}
+                              onPress={() =>
+                                // Cobrança de ficha por calendário fixo: entregar um treino
+                                // (novo ou adicional) nunca cobra na hora, então não há mais
+                                // aviso de "isso vai gerar cobrança" aqui — a cobrança, quando
+                                // houver, acontece depois sozinha, na data agendada.
+                                navigation.navigate("TrainingCreation", {
+                                  contractId: contract.id,
+                                  clientId: detail.student.id,
+                                  contractValidUntil: contract.validUntil ?? undefined,
+                                })
+                              }
                             />
                           ) : null}
 

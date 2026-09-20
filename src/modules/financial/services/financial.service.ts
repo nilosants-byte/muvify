@@ -1403,7 +1403,8 @@ export class FinancialService {
       // Raio-X de pagamentos, Rodada 2, Lote 4: renovações de ficha (2ª ficha
       // em diante) somem da lista de repasses — só a 1ª cobrança do contrato
       // (via contractTransactions acima) aparecia. Cada renovação cobra o
-      // mesmo valor do contrato original (ver chargeFichaRenewal), então o
+      // mesmo valor do contrato original (ver chargeFichaRenewalCycle em
+      // consultancy.service.ts), então o
       // split (providerAmountCents/platformAmountCents) do contrato se
       // aplica igual a cada renovação.
       prisma.trainingPlan.findMany({
