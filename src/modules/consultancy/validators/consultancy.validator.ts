@@ -83,6 +83,10 @@ export const createProviderOfferSchema = z.object({
     presentialSessionsPerCycle: z.number().int().min(1).max(60).optional(),
     comboPresentialShareCents: z.number().int().min(100).max(10_000_000).optional(),
     comboConsultancyShareCents: z.number().int().min(100).max(10_000_000).optional(),
+    // Obrigatório pra ofertas com consultoria (não-PRESENTIAL) — a cobrança
+    // de renovação agora é agendada em cima desse valor (ver
+    // validateOfferInput no service, que aplica essa regra por kind; aqui
+    // só garante o tipo/faixa, quem sabe o kind é o service).
     fichaValidityDays: z.number().int().min(1).max(365).optional(),
     offerServiceMode: providerServiceModeSchema.optional()
   })

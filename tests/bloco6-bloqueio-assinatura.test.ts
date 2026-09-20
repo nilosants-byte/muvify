@@ -173,7 +173,8 @@ describe("Bloco 6 — bloqueio por assinatura inativa", () => {
       kind: "ONLINE_CONSULTANCY",
       title: "Oferta teste",
       billingCycle: "MONTHLY",
-      priceCents: 20000
+      priceCents: 20000,
+      fichaValidityDays: 30
     } as any);
     expect(offer).toBeTruthy();
   });

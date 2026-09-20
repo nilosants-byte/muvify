@@ -134,7 +134,8 @@ describe("Frente 5 (segunda camada) — ofertas e treino (backend)", () => {
       presentialPackageMode: "FLEXIBLE_CREDITS" as any,
       presentialSessionsPerCycle: 8,
       presentialHasFixedTerm: true,
-      presentialTotalCycles: 3
+      presentialTotalCycles: 3,
+      fichaValidityDays: 30
     } as any);
     offerIds.push(offer.id);
     expect(offer.kind).toBe("COMBO");
@@ -227,6 +228,7 @@ describe("Frente 5 (segunda camada) — ofertas e treino (backend)", () => {
         title: `Oferta ${uid("offer")}`,
         billingCycle: "MONTHLY" as any,
         priceCents: 10000,
+        fichaValidityDays: 30,
         basePriceUpdatedAt: new Date() // cooldown recém-iniciado, ainda ativo
       }
     });
@@ -480,7 +482,8 @@ describe("Frente 5 (segunda camada), Lote 7 — integridade de oferta com histó
     l7OfferIds.push(freshOffer.id);
     const changed = await consultancyService.updateProviderOffer(l7ProviderUserId, freshOffer.id, {
       kind: "ONLINE_CONSULTANCY",
-      billingCycle: "MONTHLY"
+      billingCycle: "MONTHLY",
+      fichaValidityDays: 30
     } as any);
     expect(changed.kind).toBe("ONLINE_CONSULTANCY");
   });

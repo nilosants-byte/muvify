@@ -1556,6 +1556,26 @@ model ConsultancyContract {
   // externo inadimplente).
   externalCheckInDueAt         DateTime?
   externalCheckInReminderSentAt DateTime?
+  // Cobrança de ficha por calendário fixo (não mais por entrega): achado em
+  // teste manual QA que entregar a ficha do próximo ciclo ANTES do
+  // vencimento fazia a cobrança daquele ciclo nunca disparar (o sistema via
+  // como "adição gratuita" em vez de início de ciclo novo). nextBillingAt é
+  // a data única e agendada da próxima cobrança - substitui a antiga lógica
+  // de inferir o vencimento a partir da ficha mais recente. lastBilledContentAt
+  // marca até quando o conteúdo entregue já está coberto por uma cobrança -
+  // usado pra decidir se há algo novo a cobrar (não cobra ciclo vazio).
+  nextBillingAt                  DateTime?
+  lastBilledContentAt            DateTime?
+  nextRenewalCycleIndex          Int       @default(1)
+  consecutiveFailedRenewalCycles Int       @default(0)
+  lastRenewalFailureReason       String?
+  // Substituem TrainingPlan.expiryReminderSentAt/expiredNoticeSentAt/
+  // lastEscalationSentAt: com nextBillingAt como vencimento único do
+  // contrato, não precisa mais inferir "a ficha mais recente" pra saber
+  // quando avisar/escalonar.
+  fichaReminderSentAt            DateTime?
+  fichaExpiredNoticeSentAt       DateTime?
+  fichaEscalationSentAt          DateTime?
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   request                 ConsultancyRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
@@ -1578,6 +1598,7 @@ model ConsultancyContract {
   // table scan hoje (poucos contratos externos), cresce sem isso conforme o
   // volume de alunos externos aumenta.
   @@index([origin, status, externalCheckInDueAt])
+  @@index([status, nextBillingAt])
 }
 
 enum ExternalStudentInviteStatus {

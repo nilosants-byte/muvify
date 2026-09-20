@@ -146,7 +146,8 @@ describe("Liberdade de ofertas — Frente B (validade de ficha + rota HTTP de of
         presentialHasFixedTerm: true,
         presentialTotalCycles: 1,
         comboPresentialShareCents: 40000,
-        comboConsultancyShareCents: 20000
+        comboConsultancyShareCents: 20000,
+        fichaValidityDays: 30
       });
 
     expect(res.status).toBe(201);

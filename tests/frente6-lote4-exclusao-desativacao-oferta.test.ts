@@ -165,7 +165,8 @@ describe("Frente 6, Lote 4 — exclusão/desativação de oferta", () => {
         kind: ServiceOfferKind.ONLINE_CONSULTANCY,
         title: `Consultoria ${uid("offer")}`,
         billingCycle: OfferBillingCycle.MONTHLY,
-        priceCents: 20000
+        priceCents: 20000,
+        fichaValidityDays: 30
       }
     });
     offerIds.push(offer.id);

@@ -826,6 +826,21 @@ export class ConsultancyService {
       );
     }
 
+    // Cobrança de ficha por calendário fixo: a renovação agora é cobrada
+    // automaticamente em cima de fichaValidityDays, então toda oferta com
+    // entrega de ficha precisa desse valor - sem ele não há calendário pra
+    // agendar a cobrança. Decisão explícita do usuário: obrigatório daqui
+    // pra frente (app ainda não publicado, sem oferta antiga pra migrar).
+    if (
+      kind !== ServiceOfferKind.PRESENTIAL &&
+      (typeof input.fichaValidityDays === "undefined" || input.fichaValidityDays === null)
+    ) {
+      throw new AppError(
+        "Informe a validade da ficha (em dias) — obrigatório para ofertas com consultoria (consultoria, especializada ou combo).",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
     // Frente C (liberdade de ofertas): local de atendimento por oferta - so
     // pode restringir (nunca expandir) o que o perfil do profissional ja
     // permite. Se o perfil so tem atendimento em local fixo, nenhuma oferta
