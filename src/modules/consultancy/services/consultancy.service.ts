@@ -30,7 +30,7 @@ import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/pl
 import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
 import { hashRefreshToken } from "../../../shared/utils/refresh-token";
 import { assertNoActiveEngagementWithOtherProvider, getActiveEngagementSummary } from "../../../shared/utils/client-engagement";
-import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { requireProviderMpAccessToken, resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
@@ -524,6 +524,262 @@ export class ConsultancyService {
     }
 
     return mpPay;
+  }
+
+  // Cobrança de ficha por calendário fixo (achado em teste manual QA
+  // 2026-09-20): entregar a ficha do próximo ciclo ANTES do vencimento
+  // fazia a cobrança daquele ciclo nunca disparar (o sistema via como
+  // "adição gratuita" em vez de início de ciclo novo). Substitui o modelo
+  // de "cobra quando o profissional entrega depois do vencimento" por
+  // "cobra automaticamente na data agendada (nextBillingAt)", só quando
+  // há conteúdo novo desde a última cobrança (não cobra ciclo vazio - se
+  // não há nada novo, o job de aviso/escalonamento cuida do contrato).
+  // Reaproveita o mesmo padrão já testado do pacote presencial
+  // (chargeCycle/chargeDueCycles): idempotency key por ciclo/tentativa,
+  // retry diário, cancela depois de 3 falhas seguidas, isola falha por
+  // candidato no cron (ver chargeDueFichaRenewals).
+  private async chargeFichaRenewalCycle(
+    contractId: string
+  ): Promise<"CHARGED" | "SKIPPED_NO_NEW_CONTENT" | "SKIPPED_LOCKED" | "FAILED" | "CANCELLED"> {
+    const MAX_CONSECUTIVE_FAILED_RENEWAL_CYCLES = 3;
+    const RENEWAL_RETRY_THROTTLE_MS = 24 * 60 * 60 * 1000;
+
+    // Mesmo idioma de renewalDeliveryLockedAt já usado em deliverContract -
+    // reaproveita a MESMA trava como mutex entre "entregar ficha" e "cobrar
+    // ciclo", garantindo que os dois nunca rodem ao mesmo tempo pro mesmo
+    // contrato (sem isso, dava pra ler "sem conteúdo novo" bem no meio de
+    // uma entrega que ainda não commitou).
+    const now = new Date();
+    const staleThreshold = new Date(now.getTime() - 30_000);
+    const claimed = await prisma.consultancyContract.updateMany({
+      where: {
+        id: contractId,
+        OR: [{ renewalDeliveryLockedAt: null }, { renewalDeliveryLockedAt: { lt: staleThreshold } }]
+      },
+      data: { renewalDeliveryLockedAt: now }
+    });
+    if (claimed.count === 0) return "SKIPPED_LOCKED";
+
+    try {
+      const contract = await prisma.consultancyContract.findUniqueOrThrow({
+        where: { id: contractId },
+        include: { client: true, provider: true }
+      });
+
+      const referencePoint = contract.lastBilledContentAt ?? contract.deliveredAt ?? contract.createdAt;
+      const hasNewContent =
+        (await prisma.trainingPlan.count({
+          where: { contractId, createdAt: { gt: referencePoint } }
+        })) > 0;
+      if (!hasNewContent) return "SKIPPED_NO_NEW_CONTENT";
+
+      // Renovação automática (sem cliente/profissional olhando a tela) usa
+      // a forma "soft" - provider desconectado do MP vira falha tratada
+      // (mensagem de reconexão), não uma exceção não tratada dentro do
+      // cron. Mesmo raciocínio de chargeCycle pra renovação.
+      const providerAccessToken = await resolveProviderMpAccessToken(contract.providerId);
+      const providerTokenMissing = !providerAccessToken;
+
+      let mpPay: Awaited<ReturnType<Payment["create"]>> | null = null;
+      let failureReason: string | null = null;
+
+      if (providerTokenMissing) {
+        failureReason = "Conexão do profissional com o Mercado Pago precisa ser reconectada.";
+      } else if (contract.paymentMethod === ConsultancyPaymentMethod.PIX) {
+        // Renovação automática continua card-only, mesma restrição de
+        // chargeFichaRenewal - só que aqui vira um estado de falha
+        // retentável (com aviso), não um erro síncrono que bloqueia a
+        // entrega inteira.
+        failureReason =
+          "Consultoria paga via Pix não suporta renovação automática de ficha. Peça ao aluno para cadastrar um cartão.";
+      } else {
+        try {
+          const paymentData = await this.resolveClientPaymentData(contract.clientId, contract.paymentMethod!);
+          if (!paymentData.mpCardId || !paymentData.mpCustomerId) {
+            failureReason = "Cliente sem método de pagamento configurado.";
+          } else {
+            const split = contract.provider.mpAccountId
+              ? {
+                  collector: { id: Number(contract.provider.mpAccountId) },
+                  marketplace_fee: platformFeeAmount(contract.paymentAmountCents) / 100
+                }
+              : {};
+            const tokenResult = await mpCardTokenClient.create({
+              body: { customer_id: paymentData.mpCustomerId, card_id: paymentData.mpCardId }
+            });
+            mpPay = await mpPaymentClient.create({
+              body: {
+                transaction_amount: contract.paymentAmountCents / 100,
+                token: String(tokenResult.id),
+                installments: 1,
+                payer: { type: "customer", id: paymentData.mpCustomerId, email: paymentData.clientEmail },
+                description: `Consultoria #${contract.id} - renovação de ficha`,
+                metadata: { domain: "CONSULTANCY_FICHA_RENEWAL", contractId: contract.id },
+                ...split
+              },
+              requestOptions: {
+                idempotencyKey: `consultancy:${contract.id}:ficha-renewal:cycle:${contract.nextRenewalCycleIndex}:attempt:${contract.consecutiveFailedRenewalCycles}`,
+                ...{ accessToken: providerAccessToken }
+              }
+            });
+          }
+        } catch (error) {
+          failureReason = error instanceof AppError ? error.message : "Falha ao cobrar a renovação da ficha.";
+        }
+      }
+
+      if (mpPay?.status === "approved") {
+        const previousBoundary = contract.nextBillingAt ?? now;
+        const newNextBillingAt = new Date(previousBoundary.getTime() + contract.fichaValidityDays! * 24 * 60 * 60 * 1000);
+        const mpPayId = String(mpPay.id);
+
+        await prisma.$transaction(async (tx) => {
+          const activePlans = await tx.trainingPlan.findMany({
+            where: { contractId, isActive: true },
+            select: { id: true, createdAt: true }
+          });
+          const newIds = activePlans.filter((p) => p.createdAt > referencePoint).map((p) => p.id);
+          const staleIds = activePlans.filter((p) => p.createdAt <= referencePoint).map((p) => p.id);
+
+          if (staleIds.length) {
+            await tx.trainingPlan.updateMany({ where: { id: { in: staleIds } }, data: { isActive: false } });
+          }
+          if (newIds.length) {
+            await tx.trainingPlan.updateMany({
+              where: { id: { in: newIds } },
+              data: { validUntil: newNextBillingAt, renewalMpPaymentId: mpPayId }
+            });
+          }
+          await tx.consultancyContract.update({
+            where: { id: contractId },
+            data: {
+              nextBillingAt: newNextBillingAt,
+              lastBilledContentAt: now,
+              nextRenewalCycleIndex: { increment: 1 },
+              consecutiveFailedRenewalCycles: 0,
+              lastRenewalFailureReason: null
+            }
+          });
+        });
+
+        const chargedAmountLabel = (contract.paymentAmountCents / 100).toFixed(2).replace(".", ",");
+        const validUntilLabel = newNextBillingAt.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+        void notificationService
+          .sendToUsers([contract.clientId], {
+            preferenceType: "CONSULTANCY",
+            title: "Ficha renovada",
+            body: `Cobrança de R$ ${chargedAmountLabel} confirmada — sua ficha continua válida até ${validUntilLabel}.`,
+            data: { type: "CONSULTANCY_FICHA_RENEWED", contractId }
+          })
+          .catch((error) => console.error("Falha ao notificar aluno sobre renovação de ficha:", error));
+        void notificationService
+          .sendToUsers([contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: "Ficha renovada",
+            body: `Cobrança de R$ ${chargedAmountLabel} confirmada pro seu aluno — válida até ${validUntilLabel}.`,
+            data: { type: "CONSULTANCY_FICHA_RENEWED", contractId }
+          })
+          .catch((error) => console.error("Falha ao notificar profissional sobre renovação de ficha:", error));
+
+        return "CHARGED";
+      }
+
+      const reason = failureReason ?? `Pagamento recusado (${mpPay?.status ?? "desconhecido"}).`;
+      const failedCount = contract.consecutiveFailedRenewalCycles + 1;
+      const shouldCancel = failedCount >= MAX_CONSECUTIVE_FAILED_RENEWAL_CYCLES;
+
+      await prisma.consultancyContract.update({
+        where: { id: contractId },
+        data: {
+          status: shouldCancel ? ConsultancyContractStatus.CANCELLED : contract.status,
+          consecutiveFailedRenewalCycles: failedCount,
+          lastRenewalFailureReason: reason,
+          nextBillingAt: shouldCancel ? contract.nextBillingAt : new Date(now.getTime() + RENEWAL_RETRY_THROTTLE_MS)
+        }
+      });
+
+      if (shouldCancel) {
+        // Mesmo padrão de escalateExpiredFichaContracts: se este contrato é
+        // a metade de consultoria de um combo, a metade presencial continua
+        // ativa - o aluno precisa saber que só a consultoria acabou.
+        const linkedPackage = await prisma.presentialPackage.findFirst({
+          where: { consultancyContractId: contractId },
+          select: { id: true, status: true }
+        });
+        const isComboHalf =
+          linkedPackage !== null && linkedPackage.status !== "CANCELLED" && linkedPackage.status !== "EXPIRED";
+
+        void notificationService
+          .sendToUsers([contract.clientId, contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: isComboHalf ? "Consultoria do seu combo foi encerrada" : "Consultoria encerrada automaticamente",
+            body: isComboHalf
+              ? `Não conseguimos cobrar a renovação após ${MAX_CONSECUTIVE_FAILED_RENEWAL_CYCLES} tentativas — a consultoria foi encerrada. Isso afeta só a parte de consultoria do combo — a parte presencial continua normalmente.`
+              : `Não conseguimos cobrar a renovação após ${MAX_CONSECUTIVE_FAILED_RENEWAL_CYCLES} tentativas — a consultoria foi encerrada automaticamente.`,
+            data: isComboHalf
+              ? { type: "COMBO_CONSULTANCY_AUTO_CANCELLED", contractId, packageId: linkedPackage!.id }
+              : { type: "CONSULTANCY_AUTO_CANCELLED", contractId }
+          })
+          .catch((error) => console.error("Falha ao notificar cancelamento por falha de cobrança:", error));
+      } else {
+        void notificationService
+          .sendToUsers([contract.clientId], {
+            preferenceType: "CONSULTANCY",
+            title: "Não conseguimos cobrar a renovação da sua ficha",
+            body: providerTokenMissing
+              ? "Aguardando seu profissional resolver uma pendência com o Mercado Pago para renovar sua ficha."
+              : "Atualize seu método de pagamento para manter sua ficha em dia.",
+            data: { type: "CONSULTANCY_FICHA_RENEWAL_FAILED", contractId }
+          })
+          .catch((error) => console.error("Falha ao notificar aluno sobre falha de renovação:", error));
+        void notificationService
+          .sendToUsers([contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: providerTokenMissing ? "Reconecte sua conta Mercado Pago" : "Pagamento de aluno pendente",
+            body: providerTokenMissing
+              ? "Não conseguimos cobrar a renovação de um aluno porque sua conexão com o Mercado Pago precisa ser refeita."
+              : "A renovação da ficha de um aluno está pendente — o pagamento dele precisa ser atualizado.",
+            data: { type: "CONSULTANCY_FICHA_RENEWAL_FAILED", contractId }
+          })
+          .catch((error) => console.error("Falha ao notificar profissional sobre falha de renovação:", error));
+      }
+
+      return shouldCancel ? "CANCELLED" : "FAILED";
+    } finally {
+      await prisma.consultancyContract
+        .updateMany({ where: { id: contractId }, data: { renewalDeliveryLockedAt: null } })
+        .catch((error) => console.error("Falha ao liberar trava de cobrança de ficha:", error));
+    }
+  }
+
+  // Job periódico (payment-jobs.ts, junto de presentialPackageService.
+  // chargeDueCycles - é dinheiro se movendo, mesmo padrão de isolamento por
+  // candidato). "Vencido" aqui é só nextBillingAt <= now - a decisão de
+  // cobrar ou não (há conteúdo novo?) fica inteira dentro de
+  // chargeFichaRenewalCycle.
+  async chargeDueFichaRenewals() {
+    const now = new Date();
+    const candidates = await prisma.consultancyContract.findMany({
+      where: {
+        status: ConsultancyContractStatus.DELIVERED,
+        fichaValidityDays: { not: null },
+        nextBillingAt: { lte: now },
+        provider: { user: { suspendedAt: null } }
+      },
+      select: { id: true }
+    });
+
+    for (const candidate of candidates) {
+      try {
+        await this.chargeFichaRenewalCycle(candidate.id);
+      } catch (error) {
+        console.error(`[consultancy] chargeDueFichaRenewals falhou para ${candidate.id}:`, error);
+        Sentry.captureException(error, {
+          tags: { area: "consultancy-ficha-billing" },
+          extra: { contractId: candidate.id, phase: "charge_due_ficha_renewals" }
+        });
+      }
+    }
   }
 
   private assertPromotionConfig(params: {
