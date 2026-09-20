@@ -322,4 +322,54 @@ describe("Frente 4, Lote 3 — integridade da ficha de consultoria", () => {
     const activeCount = await prisma.trainingPlan.count({ where: { contractId: contract.id, isActive: true } });
     expect(activeCount).toBe(2);
   });
+
+  // Pedido do usuário no teste manual QA: poder excluir um treino entregue
+  // por engano, sem precisar esperar o ciclo vencer. Cobre também a
+  // correção da detecção de ciclo: excluir não deve "esquecer" que aquele
+  // ciclo já foi pago (senão a próxima entrega, ainda dentro do mesmo
+  // ciclo, cobraria de novo por engano).
+  it("deleteTrainingPlan remove um treino sem afetar a cobrança do ciclo em andamento", async () => {
+    const paymentCreateSpy = vi.spyOn(Payment.prototype, "create");
+
+    const offer = await makeOffer();
+    const contract = await makeContract(offer.id);
+    const { plan: firstPlan } = await consultancyService.deliverContract(providerUserId, contract.id, {
+      title: "Treino A - Peito",
+      exercises: []
+    });
+    const { plan: secondPlan } = await consultancyService.deliverContract(providerUserId, contract.id, {
+      title: "Treino B - Pernas",
+      exercises: []
+    });
+    expect(paymentCreateSpy).not.toHaveBeenCalled();
+
+    await consultancyService.deleteTrainingPlan(providerUserId, secondPlan.id);
+
+    const deletedPlan = await prisma.trainingPlan.findUniqueOrThrow({ where: { id: secondPlan.id } });
+    expect(deletedPlan.isActive).toBe(false);
+    const remainingPlan = await prisma.trainingPlan.findUniqueOrThrow({ where: { id: firstPlan.id } });
+    expect(remainingPlan.isActive).toBe(true);
+
+    // Ainda dentro do mesmo ciclo pago (o excluído não "libera" cobrança nova).
+    const { plan: thirdPlan } = await consultancyService.deliverContract(providerUserId, contract.id, {
+      title: "Treino C - Cardio",
+      exercises: []
+    });
+    expect(paymentCreateSpy).not.toHaveBeenCalled();
+    expect(thirdPlan.validUntil?.getTime()).toBe(remainingPlan.validUntil?.getTime());
+  });
+
+  it("deleteTrainingPlan rejeita quando há contestação em aberto sobre a própria ficha", async () => {
+    const offer = await makeOffer();
+    const contract = await makeContract(offer.id);
+    const { plan } = await consultancyService.deliverContract(providerUserId, contract.id, {
+      title: "Treino contestado",
+      exercises: []
+    });
+    await consultancyService.contestDelivery(clientId, contract.id, "Ficha incompleta.");
+
+    await expect(consultancyService.deleteTrainingPlan(providerUserId, plan.id)).rejects.toThrow(
+      /contestação em aberto/i
+    );
+  });
 });

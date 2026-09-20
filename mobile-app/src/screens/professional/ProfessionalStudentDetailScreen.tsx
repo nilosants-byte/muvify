@@ -310,6 +310,34 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
     );
   }
 
+  const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
+
+  function confirmDeleteTrainingPlan(planId: string, planTitle: string) {
+    Alert.alert(
+      "Remover treino?",
+      `"${planTitle}" será removido e o aluno não verá mais essa opção pra treinar. Os outros treinos do pacote continuam normais.`,
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Remover treino",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setDeletingPlanId(planId);
+              await runWithAuth((token) => consultancyApi.deleteProviderPlan(token, planId));
+              showToast("Treino removido.", "success");
+              void studentDetailQuery.refetch();
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Falha ao remover o treino." });
+            } finally {
+              setDeletingPlanId(null);
+            }
+          }
+        }
+      ]
+    );
+  }
+
   const answers = detail?.anamnesis?.answers;
   const isAnamnesisComplete = detail?.anamnesis?.status === "COMPLETED";
   const physicalAssessment = detail?.physicalAssessment;
@@ -700,6 +728,25 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                                   }}
                                 >
                                   <Ionicons name="pencil-outline" size={14} color={theme.textGreen} />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  accessibilityLabel={`Remover ${plan.title}`}
+                                  disabled={deletingPlanId === plan.id}
+                                  onPress={() => confirmDeleteTrainingPlan(plan.id, plan.title)}
+                                  style={{
+                                    width: 30,
+                                    height: 30,
+                                    borderRadius: 9,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    opacity: deletingPlanId === plan.id ? 0.5 : 1,
+                                  }}
+                                >
+                                  {deletingPlanId === plan.id ? (
+                                    <ActivityIndicator size="small" color={theme.danger} />
+                                  ) : (
+                                    <Ionicons name="trash-outline" size={14} color={theme.danger} />
+                                  )}
                                 </TouchableOpacity>
                               </View>
                             ))}

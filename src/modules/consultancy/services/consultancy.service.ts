@@ -2420,7 +2420,15 @@ export class ConsultancyService {
       select: {
         id: true,
         providerId: true,
-        contractId: true
+        contractId: true,
+        title: true,
+        contract: {
+          select: {
+            clientId: true,
+            status: true,
+            origin: true
+          }
+        }
       }
     });
 
@@ -2428,17 +2436,59 @@ export class ConsultancyService {
       throw new AppError("Treino não encontrado.", StatusCodes.NOT_FOUND);
     }
 
-    if (existing.contractId) {
-      throw new AppError(
-        "Não é possível remover treino vinculado a contrato.",
-        StatusCodes.BAD_REQUEST
-      );
+    // Achado no teste manual QA: o profissional pode entregar vários
+    // treinos pro mesmo aluno (ver deliverContract) e precisa poder remover
+    // um que criou por engano ou que não faz mais sentido, sem precisar
+    // esperar o ciclo vencer. Mesmas checagens de updateTrainingPlan
+    // (CREF/assinatura/contrato ativo/sem contestação em aberto) — só que
+    // aqui é pra excluir em vez de editar.
+    if (existing.contract) {
+      if (existing.contract.origin !== ConsultancyContractOrigin.EXTERNAL) {
+        this.ensureProviderCrefApproved(
+          provider,
+          `Seu CREF ainda não foi aprovado. ${CREF_APPROVAL_REQUIRED_MESSAGE}`
+        );
+      }
+      if (
+        existing.contract.status !== ConsultancyContractStatus.ACTIVE &&
+        existing.contract.status !== ConsultancyContractStatus.DELIVERED
+      ) {
+        throw new AppError(
+          "Contrato não está mais ativo — não é possível remover fichas vinculadas a ele.",
+          StatusCodes.BAD_REQUEST
+        );
+      }
+
+      const openContest = await prisma.disputeCase.findFirst({
+        where: { trainingPlanId: existing.id, type: "DELIVERY_CONTESTED", status: "OPEN" },
+        select: { id: true }
+      });
+      if (openContest) {
+        throw new AppError(
+          "Existe uma contestação em aberto sobre esta ficha. Aguarde a resolução antes de removê-la.",
+          StatusCodes.CONFLICT
+        );
+      }
     }
 
     await prisma.trainingPlan.update({
       where: { id: existing.id },
       data: { isActive: false }
     });
+
+    if (existing.contract) {
+      void notificationService
+        .sendToUsers([existing.contract.clientId], {
+          preferenceType: "CONSULTANCY",
+          title: "Treino removido",
+          body: `Seu profissional removeu o treino "${existing.title}". Os outros treinos do seu pacote continuam disponíveis.`,
+          data: {
+            type: "CONSULTANCY_TRAINING_REMOVED",
+            trainingPlanId: existing.id
+          }
+        })
+        .catch((error) => console.error("Falha ao notificar aluno sobre remoção de treino:", error));
+    }
   }
 
   async createConsultancyRequest(
@@ -3523,10 +3573,14 @@ export class ConsultancyService {
     // quando o ciclo pago atual já venceu (nenhuma ficha ativa ainda
     // vigente) — entregar mais um treino DENTRO do ciclo já pago não cobra
     // de novo e não desativa os outros, todos coexistem até o ciclo vencer.
+    // Não filtra por isActive: uma ficha apagada pelo profissional (ver
+    // deleteTrainingPlan) ainda "ocupa" o ciclo pago que ela representava -
+    // apagar não deveria dar desconto pro aluno nem fazer a próxima entrega
+    // cobrar de novo por engano dentro do mesmo ciclo já pago.
     const activePlans = isFirstDelivery
       ? []
       : await prisma.trainingPlan.findMany({
-          where: { contractId: contract.id, isActive: true },
+          where: { contractId: contract.id },
           select: { id: true, validUntil: true }
         });
     const currentCycleStillValid = activePlans.some((p) => !p.validUntil || p.validUntil > now);
