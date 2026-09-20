@@ -81,6 +81,7 @@ export function startPaymentJobs() {
       await runWithTimeout(() => bookingService.resolveExpiredNoShowReports(), "resolveExpiredNoShowReports");
       await runWithTimeout(() => consultancyService.autoRefundExpiredContracts(), "autoRefundExpiredContracts");
       await runWithTimeout(() => presentialPackageService.chargeDueCycles(), "presentialPackageChargeDueCycles");
+      await runWithTimeout(() => consultancyService.chargeDueFichaRenewals(), "consultancyChargeDueFichaRenewals");
       await runWithTimeout(
         () => presentialPackageService.generateDueCardFixedPeriods(),
         "presentialPackageGenerateDueCardFixedPeriods"

@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
-import { CardToken } from "mercadopago";
+import { CardToken, Payment } from "mercadopago";
 import { prisma } from "../src/config/prisma";
 import { PaymentService } from "../src/modules/payments/services/payment.service";
 import { ConsultancyService } from "../src/modules/consultancy/services/consultancy.service";
@@ -224,18 +224,25 @@ describe("Confiabilidade da conexão MP do profissional (Lote 5 do raio-x)", () 
       }
     });
 
-    const { plan: plan1 } = await consultancyService.deliverContract(providerUserId, contract.id, {
+    await consultancyService.deliverContract(providerUserId, contract.id, {
       title: "Ficha 1",
       exercises: []
     });
-    // Achado no teste manual QA: entregar a 2a ficha com o ciclo ainda
-    // vigente vira adição sem cobrança - este teste quer testar a
-    // renovação de verdade (cobrada), então força o ciclo a já ter vencido.
-    await prisma.trainingPlan.update({ where: { id: plan1.id }, data: { validUntil: new Date(Date.now() - 1_000) } });
+    // Cobrança de ficha por calendário fixo: entregar a 2a ficha nunca
+    // cobra por si só (nem lança exceção nenhuma) - quem tenta cobrar,
+    // de forma tolerante a falha, é chargeDueFichaRenewals.
+    const paymentCreateSpy = vi.spyOn(Payment.prototype, "create");
+    await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 2", exercises: [] });
 
-    await expect(
-      consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 2", exercises: [] })
-    ).rejects.toThrow(/conexão deste profissional com o Mercado Pago/);
+    await prisma.consultancyContract.update({
+      where: { id: contract.id },
+      data: { nextBillingAt: new Date(Date.now() - 1_000) }
+    });
+    await expect(consultancyService.chargeDueFichaRenewals()).resolves.not.toThrow();
+
+    expect(paymentCreateSpy).not.toHaveBeenCalled();
+    const contractAfter = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract.id } });
+    expect(contractAfter.lastRenewalFailureReason).toMatch(/conexão do profissional com o Mercado Pago/i);
 
     await prisma.trainingPlan.deleteMany({ where: { contractId: contract.id } });
     await prisma.consultancyContract.deleteMany({ where: { id: contract.id } });

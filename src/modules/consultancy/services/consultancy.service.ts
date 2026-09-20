@@ -452,80 +452,6 @@ export class ConsultancyService {
     });
   }
 
-  // Frente B (liberdade de ofertas): cobra a renovacao de uma ficha (2a
-  // entrega em diante) - cobranca de verdade, na hora, sem reserva previa
-  // (a entrega e a cobranca sao o mesmo evento). Pix nao suporta cobranca
-  // sincrona no momento da entrega (precisaria de QR code + confirmacao
-  // assincrona por webhook) - por isso so cartao (credito ou debito) e
-  // aceito pra renovacao de ficha; Pix continua funcionando normalmente
-  // so pra primeira cobranca do contrato.
-  private async chargeFichaRenewal(input: {
-    contractId: string;
-    providerId: string;
-    clientId: string;
-    paymentMethod: ConsultancyPaymentMethod;
-    amountCents: number;
-    renewalIndex: number;
-  }) {
-    if (input.paymentMethod === ConsultancyPaymentMethod.PIX) {
-      throw new AppError(
-        "Consultoria paga via Pix não suporta renovação automática de ficha. Peça ao aluno para cadastrar um cartão antes de entregar uma nova ficha.",
-        StatusCodes.BAD_REQUEST
-      );
-    }
-
-    const paymentData = await this.resolveClientPaymentData(input.clientId, input.paymentMethod);
-    if (!paymentData.mpCardId || !paymentData.mpCustomerId) {
-      throw new AppError("Método de pagamento do cliente não configurado.", StatusCodes.BAD_REQUEST);
-    }
-
-    const provider = await prisma.providerProfile.findUnique({
-      where: { id: input.providerId },
-      select: { mpAccountId: true }
-    });
-    // Raio-X de pagamentos, Rodada 2, Lote 1: requireProviderMpAccessToken
-    // agora cobre esse caso centralizadamente (token invalidado ou nunca
-    // resolvido) — antes só o subcaso de token já explicitamente invalidado
-    // tinha essa guarda aqui, deixando o caso mais amplo cair no fallback
-    // sem split.
-    const providerAccessToken = await requireProviderMpAccessToken(input.providerId);
-    const split = provider?.mpAccountId
-      ? {
-          collector: { id: Number(provider.mpAccountId) },
-          marketplace_fee: platformFeeAmount(input.amountCents) / 100
-        }
-      : {};
-
-    const tokenResult = await mpCardTokenClient.create({
-      body: { customer_id: paymentData.mpCustomerId, card_id: paymentData.mpCardId }
-    });
-
-    const mpPay = await mpPaymentClient.create({
-      body: {
-        transaction_amount: input.amountCents / 100,
-        token: String(tokenResult.id),
-        installments: 1,
-        payer: { type: "customer", id: paymentData.mpCustomerId, email: paymentData.clientEmail },
-        description: `Consultoria #${input.contractId} - renovação de ficha`,
-        metadata: { domain: "CONSULTANCY_FICHA_RENEWAL", contractId: input.contractId },
-        ...split
-      },
-      requestOptions: {
-        idempotencyKey: `consultancy:${input.contractId}:ficha-renewal:${input.renewalIndex}`,
-        ...{ accessToken: providerAccessToken }
-      }
-    });
-
-    if (mpPay.status !== "approved") {
-      throw new AppError(
-        `Não foi possível cobrar a renovação da ficha (status: ${mpPay.status}/${mpPay.status_detail}). Peça ao aluno para revisar o método de pagamento e tente novamente.`,
-        StatusCodes.BAD_REQUEST
-      );
-    }
-
-    return mpPay;
-  }
-
   // Cobrança de ficha por calendário fixo (achado em teste manual QA
   // 2026-09-20): entregar a ficha do próximo ciclo ANTES do vencimento
   // fazia a cobrança daquele ciclo nunca disparar (o sistema via como
@@ -3835,48 +3761,20 @@ export class ConsultancyService {
       planValidUntil = parsed;
     }
 
-    // Achado no teste manual QA (2026-09-18): um personal normalmente monta
-    // VÁRIOS treinos diferentes pro mesmo aluno de uma vez (peito, perna,
-    // cardio...) pro aluno escolher qual fazer no dia — o modelo antigo
-    // tratava toda entrega depois da primeira como uma renovação paga E
-    // desativava a ficha anterior, então só existia UM treino por vez (e um
-    // "pacote" de 3 treinos cobrava 3x). Agora só é renovação de verdade
-    // quando o ciclo pago atual já venceu (nenhuma ficha ativa ainda
-    // vigente) — entregar mais um treino DENTRO do ciclo já pago não cobra
-    // de novo e não desativa os outros, todos coexistem até o ciclo vencer.
-    // Não filtra por isActive: uma ficha apagada pelo profissional (ver
-    // deleteTrainingPlan) ainda "ocupa" o ciclo pago que ela representava -
-    // apagar não deveria dar desconto pro aluno nem fazer a próxima entrega
-    // cobrar de novo por engano dentro do mesmo ciclo já pago.
-    const activePlans = isFirstDelivery
-      ? []
-      : await prisma.trainingPlan.findMany({
-          where: { contractId: contract.id },
-          select: { id: true, validUntil: true }
-        });
-    const currentCycleStillValid = activePlans.some((p) => !p.validUntil || p.validUntil > now);
-    const chargesRenewal = !isFirstDelivery && !currentCycleStillValid;
-    const isFreeAdditionToCurrentCycle = !isFirstDelivery && currentCycleStillValid;
-
-    // Ficha adicionada dentro do mesmo ciclo pago vence junto com as outras
-    // do pacote — não faz sentido cada treino do mesmo pacote ter uma data
-    // de vencimento diferente (e os jobs de lembrete/vencimento de ficha só
-    // olham a ficha mais recente do contrato pra decidir o destino do
-    // contrato inteiro, então todas precisam compartilhar a mesma data).
-    if (isFreeAdditionToCurrentCycle) {
-      const sharedValidUntil = activePlans.reduce<Date | null>(
-        (latest, p) => (p.validUntil && (!latest || p.validUntil > latest) ? p.validUntil : latest),
-        null
-      );
-      if (sharedValidUntil) planValidUntil = sharedValidUntil;
+    // Cobrança de ficha por calendário fixo (decisão do usuário, 2026-09-20):
+    // deliverContract vira SÓ entrega de conteúdo - nunca cobra renovação
+    // aqui. Um personal normalmente monta vários treinos diferentes pro
+    // mesmo aluno (peito, perna, cardio...) pro aluno escolher qual fazer
+    // no dia, e pode entregar/editar a qualquer momento sem isso afetar o
+    // calendário de cobrança. Toda entrega depois da primeira compartilha o
+    // vencimento do ciclo atual (contract.nextBillingAt) - quem decide
+    // quando cobrar de novo (e só cobra se algo novo foi entregue) é o job
+    // chargeDueFichaRenewals, agendado, independente do momento exato da
+    // entrega (ver chargeFichaRenewalCycle).
+    if (!isFirstDelivery && contract.nextBillingAt) {
+      planValidUntil = contract.nextBillingAt;
     }
 
-    // Frente B (liberdade de ofertas): a partir da 2a ficha, cada RENOVAÇÃO
-    // cobra de novo (mesmo valor combinado na assinatura) - sem ficha nova
-    // (fora do ciclo atual), sem cobranca nova. Cobra ANTES de salvar
-    // (fail-loud, mesmo principio da primeira entrega) - se a cobranca
-    // falhar, a entrega inteira falha.
-    let renewalMpPaymentId: string | null = null;
     // Raio-X de pagamentos, Lote 4: trava leve por contrato ao redor de
     // "contar fichas -> cobrar renovação -> criar a ficha nova". Sem isso,
     // duas solicitações de entrega quase simultâneas podiam ler a mesma
@@ -3977,19 +3875,6 @@ export class ConsultancyService {
             StatusCodes.CONFLICT
           );
         }
-
-        if (chargesRenewal) {
-          const existingPlansCount = await prisma.trainingPlan.count({ where: { contractId: contract.id } });
-          const renewalPayment = await this.chargeFichaRenewal({
-            contractId: contract.id,
-            providerId: provider.id,
-            clientId: contract.client.id,
-            paymentMethod: contract.paymentMethod!,
-            amountCents: contract.paymentAmountCents,
-            renewalIndex: existingPlansCount
-          });
-          renewalMpPaymentId = String(renewalPayment.id);
-        }
       }
 
       result = await prisma.$transaction(async (tx) => {
@@ -4004,7 +3889,6 @@ export class ConsultancyService {
             isPrebuilt: false,
             isActive: true,
             validUntil: planValidUntil,
-            renewalMpPaymentId,
             exercises: {
               create: normalizedExercises
             }
@@ -4017,20 +3901,9 @@ export class ConsultancyService {
           }
         });
 
-        // Frente 4 (Criação/entrega/evolução do treino), Lote 3: sem isso,
-        // entregar uma renovação antes da ficha anterior vencer deixava as
-        // duas "vigentes" ao mesmo tempo pro cliente - ele podia concluir
-        // (e ganhar XP/gerar post/histórico) a ficha já substituída. Só se
-        // aplica quando É de fato uma renovação (ciclo anterior vencido) -
-        // uma ficha adicionada dentro do mesmo ciclo pago (ver
-        // isFreeAdditionToCurrentCycle acima) deve coexistir com as outras.
-        if (chargesRenewal) {
-          await tx.trainingPlan.updateMany({
-            where: { contractId: contract.id, isActive: true, id: { not: plan.id } },
-            data: { isActive: false }
-          });
-        }
-
+        // Desativação de fichas anteriores só acontece quando um ciclo é
+        // de fato pago de novo (ver chargeFichaRenewalCycle) - deliverContract
+        // nunca desativa nada, é só entrega de conteúdo.
         const updatedContract = isFirstDelivery
           ? await tx.consultancyContract.update({
               where: { id: contract.id },
@@ -4039,7 +3912,19 @@ export class ConsultancyService {
                 deliveredAt: now,
                 ...(shouldCaptureNow
                   ? { paymentStatus: ConsultancyPaymentStatus.CAPTURED, paymentCapturedAt: now }
-                  : {})
+                  : {}),
+                // Inicializa o calendário de cobrança agendada - primeiro
+                // vencimento igual à vigência desta ficha. Sem
+                // fichaValidityDays (raro, ver validateOfferInput) o
+                // contrato fica sem cobrança recorrente, só entrega livre.
+                // lastBilledContentAt usa o createdAt de verdade da própria
+                // ficha (gerado pelo banco dentro desta transação), não um
+                // "now" capturado em JS antes dela - evita que a ficha 1
+                // conte como "conteúdo novo ainda não coberto" na primeira
+                // checagem de chargeFichaRenewalCycle por causa de alguns
+                // milissegundos de diferença entre o relógio do processo e
+                // o timestamp que o banco realmente gravou.
+                ...(usesFichaValidity ? { nextBillingAt: planValidUntil, lastBilledContentAt: plan.createdAt } : {})
               },
               include: { offer: true }
             })
@@ -4060,32 +3945,18 @@ export class ConsultancyService {
     }
 
     const planValidUntilLabel = planValidUntil.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-    const chargedAmountLabel = (contract.paymentAmountCents / 100).toFixed(2).replace(".", ",");
 
     await notificationService.sendToUsers([contract.client.id], {
       preferenceType: "CONSULTANCY",
       title: isFirstDelivery ? "Treino personalizado disponível" : "Novo treino disponível",
       body: isFirstDelivery
         ? `Seu treino foi entregue e já está liberado em Seu Treino. Válido até ${planValidUntilLabel}.`
-        : chargesRenewal
-          ? `Seu profissional liberou mais um treino (R$ ${chargedAmountLabel} cobrado no seu cartão). Válido até ${planValidUntilLabel}.`
-          : `Seu profissional adicionou mais um treino ao seu pacote atual, sem cobrança extra. Válido até ${planValidUntilLabel}.`,
+        : `Seu profissional adicionou mais um treino ao seu pacote atual, sem cobrança extra. Válido até ${planValidUntilLabel}.`,
       data: {
         type: "CONSULTANCY_TRAINING_DELIVERED",
         contractId: contract.id
       }
     });
-
-    if (chargesRenewal) {
-      void notificationService
-        .sendToUsers([userId], {
-          preferenceType: "CONSULTANCY",
-          title: "Ficha renovada",
-          body: `Cobrança de R$ ${chargedAmountLabel} confirmada — nova ficha liberada, válida até ${planValidUntilLabel}.`,
-          data: { type: "CONSULTANCY_FICHA_RENEWED", contractId: contract.id }
-        })
-        .catch((error) => console.error("Falha ao notificar profissional sobre renovação de ficha:", error));
-    }
 
     return result;
   }

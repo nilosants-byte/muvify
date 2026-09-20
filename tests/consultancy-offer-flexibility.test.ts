@@ -315,11 +315,11 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
     });
   }
 
-  it("2ª ficha entregue cobra de novo (mesmo valor) e calcula a validade a partir de fichaValidityDays", async () => {
+  it("renovação de ficha acontece pelo calendário agendado (não pela entrega), calculada a partir de fichaValidityDays", async () => {
     vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_test" } as any);
     const paymentCreateSpy = vi
       .spyOn(Payment.prototype, "create")
-      .mockResolvedValue({ id: MOCK_MP_ID_BASE + 1, status: "approved" } as any);
+      .mockResolvedValue({ id: MOCK_MP_ID_BASE + 2, status: "approved" } as any);
 
     const req = await makeRespondedRequest();
     const { contract } = await consultancyService.decideRequest(clientId, req.id, {
@@ -328,29 +328,40 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
       acknowledgedImmediateExecution: true
     });
 
-    const { contract: afterFirst, plan: plan1 } = await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
+    const { contract: afterFirst } = await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
       title: "Ficha 1",
       exercises: [{ name: "Agachamento", repetitionsSets: "4x10", load: "40kg" }]
     });
     expect(afterFirst.status).toBe("DELIVERED");
-    // Achado no teste manual QA: entregar a 2a ficha enquanto a 1a ainda
-    // está vigente agora só adiciona ao mesmo pacote pago, sem cobrar de
-    // novo. Este teste quer exercitar uma renovação de verdade.
-    await prisma.trainingPlan.update({ where: { id: plan1.id }, data: { validUntil: new Date(Date.now() - 1_000) } });
 
+    // decideRequest já chamou Payment.create uma vez pra autorizar o hold
+    // inicial (capture:false) - zera o contador aqui pra medir só o que
+    // acontece a partir da entrega da 2ª ficha em diante.
     paymentCreateSpy.mockClear();
-    paymentCreateSpy.mockResolvedValue({ id: MOCK_MP_ID_BASE + 2, status: "approved" } as any);
 
+    // Cobrança de ficha por calendário fixo (achado em teste manual QA):
+    // entregar uma segunda ficha nunca cobra por si só, mesmo com o ciclo
+    // atual vencido - quem decide cobrar é chargeDueFichaRenewals, agendado.
     const { plan: plan2 } = await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
       title: "Ficha 2 - progressão",
       exercises: [{ name: "Agachamento", repetitionsSets: "4x12", load: "50kg" }]
     });
+    expect(paymentCreateSpy).not.toHaveBeenCalled();
+
+    // Simula a passagem do tempo até o vencimento do ciclo atual.
+    await prisma.consultancyContract.update({
+      where: { id: contract!.id },
+      data: { nextBillingAt: new Date(Date.now() - 1_000) }
+    });
+
+    await consultancyService.chargeDueFichaRenewals();
 
     expect(paymentCreateSpy).toHaveBeenCalledTimes(1);
-    expect(plan2.title).toBe("Ficha 2 - progressão");
-    expect(plan2.validUntil).not.toBeNull();
+    const contractAfter = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract!.id } });
+    const plan2After = await prisma.trainingPlan.findUniqueOrThrow({ where: { id: plan2.id } });
+    expect(plan2After.validUntil!.getTime()).toBe(contractAfter.nextBillingAt!.getTime());
     const daysUntilExpiry = Math.round(
-      (new Date(plan2.validUntil!).getTime() - Date.now()) / (24 * 60 * 60 * 1000)
+      (contractAfter.nextBillingAt!.getTime() - Date.now()) / (24 * 60 * 60 * 1000)
     );
     expect(daysUntilExpiry).toBeGreaterThanOrEqual(29);
     expect(daysUntilExpiry).toBeLessThanOrEqual(30);
@@ -359,7 +370,7 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
     expect(plansCount).toBe(2);
   });
 
-  it("se a cobrança da renovação falhar, a ficha nova não é salva", async () => {
+  it("se a cobrança automática de renovação falhar, a ficha entregue continua salva e visível", async () => {
     vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_test" } as any);
     const paymentCreateSpy = vi
       .spyOn(Payment.prototype, "create")
@@ -371,28 +382,35 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
       paymentMethod: "CREDIT_CARD" as any,
       acknowledgedImmediateExecution: true
     });
-    const { plan: plan1 } = await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
+    await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
       title: "Ficha 1",
       exercises: [{ name: "Agachamento", repetitionsSets: "4x10", load: "40kg" }]
     });
-    // Expira o ciclo atual pra continuar exercitando uma renovação de
-    // verdade (cobrança) em vez de uma adição gratuita ao mesmo pacote.
-    await prisma.trainingPlan.update({ where: { id: plan1.id }, data: { validUntil: new Date(Date.now() - 1_000) } });
+    await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
+      title: "Ficha 2",
+      exercises: [{ name: "Agachamento", repetitionsSets: "4x12", load: "50kg" }]
+    });
 
     paymentCreateSpy.mockResolvedValue({ id: 6002, status: "rejected", status_detail: "cc_rejected_other_reason" } as any);
+    await prisma.consultancyContract.update({
+      where: { id: contract!.id },
+      data: { nextBillingAt: new Date(Date.now() - 1_000) }
+    });
 
-    await expect(
-      consultancyService.deliverContract(clientProviderUserId, contract!.id, {
-        title: "Ficha 2 que não deve salvar",
-        exercises: [{ name: "Agachamento", repetitionsSets: "4x12", load: "50kg" }]
-      })
-    ).rejects.toThrow();
+    await consultancyService.chargeDueFichaRenewals();
 
+    // As duas fichas continuam salvas - cobrança automática nunca desfaz
+    // conteúdo já entregue, só afeta o calendário/contador de falhas.
     const plansCount = await prisma.trainingPlan.count({ where: { contractId: contract!.id } });
-    expect(plansCount).toBe(1);
+    expect(plansCount).toBe(2);
+
+    const contractAfter = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract!.id } });
+    expect(contractAfter.status).toBe("DELIVERED");
+    expect(contractAfter.consecutiveFailedRenewalCycles).toBe(1);
+    expect(contractAfter.lastRenewalFailureReason).toMatch(/recusado/i);
   });
 
-  it("consultoria paga por Pix não permite renovação automática de ficha", async () => {
+  it("consultoria paga por Pix não permite renovação automática de ficha (falha tratada, sem tentar cobrar)", async () => {
     vi.spyOn(Payment.prototype, "create").mockResolvedValue({
       id: 7001,
       status: "pending",
@@ -411,21 +429,29 @@ describe("Consultoria — renovação de ficha cobra a cada entrega (Frente B)",
       where: { id: contract!.id },
       data: { status: "ACTIVE", paymentStatus: "CAPTURED", paymentCapturedAt: new Date() }
     });
-    const { plan: plan1 } = await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
+    await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
       title: "Ficha 1",
       exercises: [{ name: "Agachamento", repetitionsSets: "4x10", load: "40kg" }]
     });
-    // Expira o ciclo atual - senão a 2a entrega vira adição gratuita ao
-    // pacote atual (sem tentar cobrar nada), nunca chegando a exercitar o
-    // bloqueio de renovação automática via Pix que este teste verifica.
-    await prisma.trainingPlan.update({ where: { id: plan1.id }, data: { validUntil: new Date(Date.now() - 1_000) } });
+    // Entregar uma segunda ficha continua livre mesmo pago por Pix - é a
+    // cobrança automática (não a entrega) que bloqueia renovação via Pix.
+    await consultancyService.deliverContract(clientProviderUserId, contract!.id, {
+      title: "Ficha 2 via Pix",
+      exercises: [{ name: "Agachamento", repetitionsSets: "4x12", load: "50kg" }]
+    });
 
-    await expect(
-      consultancyService.deliverContract(clientProviderUserId, contract!.id, {
-        title: "Ficha 2 via Pix",
-        exercises: [{ name: "Agachamento", repetitionsSets: "4x12", load: "50kg" }]
-      })
-    ).rejects.toThrow(/Pix/);
+    const paymentCreateSpy = vi.spyOn(Payment.prototype, "create");
+    await prisma.consultancyContract.update({
+      where: { id: contract!.id },
+      data: { nextBillingAt: new Date(Date.now() - 1_000) }
+    });
+
+    await consultancyService.chargeDueFichaRenewals();
+
+    expect(paymentCreateSpy).not.toHaveBeenCalled();
+    const contractAfter = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract!.id } });
+    expect(contractAfter.consecutiveFailedRenewalCycles).toBe(1);
+    expect(contractAfter.lastRenewalFailureReason).toMatch(/Pix/i);
   });
 
   it("aluno pode encerrar a consultoria depois de já ter recebido fichas, sem nenhum reembolso", async () => {

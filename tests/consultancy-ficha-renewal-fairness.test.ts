@@ -185,65 +185,56 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
   });
 
   it("renovação salva o mpPaymentId da própria cobrança na ficha (não reaproveita o da primeira)", async () => {
-    // A 1a entrega não chama a MP (a cobrança original já foi feita na
-    // aceitação da proposta; o fixture já cria o contrato com paymentStatus
-    // CAPTURED). Só a renovação (2a ficha em diante) cobra de verdade.
-    vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: 2002, status: "approved" } as any);
-
+    // Cobrança de ficha por calendário fixo: deliverContract nunca cobra -
+    // quem cobra e estampa renewalMpPaymentId na ficha é
+    // chargeDueFichaRenewals, quando o ciclo agendado vence.
     const offer = await makeOfferWithFichaValidity(30);
     const contract = await makeActiveContract(offer.id);
 
     await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 1", exercises: [] });
-
-    // Recua o createdAt da 1a ficha pra fora da janela de 10s do guard
-    // contra duplo clique, simulando uma renovação de verdade (não um clique
-    // duplicado do mesmo evento). Também expira o validUntil - achado no
-    // teste manual QA: entregar a 2a ficha enquanto a 1a ainda está vigente
-    // agora só adiciona ao mesmo pacote pago, sem cobrar de novo. Este teste
-    // quer exercitar uma renovação de verdade (ciclo já vencido).
-    await prisma.trainingPlan.updateMany({
-      where: { contractId: contract.id },
-      data: { createdAt: new Date(Date.now() - 15_000), validUntil: new Date(Date.now() - 1_000) }
-    });
-
     const renewalResult = await consultancyService.deliverContract(providerUserId, contract.id, {
       title: "Ficha 2 (renovação)",
       exercises: []
     });
+
+    vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: 2002, status: "approved" } as any);
+    await prisma.consultancyContract.update({
+      where: { id: contract.id },
+      data: { nextBillingAt: new Date(Date.now() - 1_000) }
+    });
+    await consultancyService.chargeDueFichaRenewals();
 
     const savedPlan = await prisma.trainingPlan.findUniqueOrThrow({ where: { id: (renewalResult as any).plan.id } });
     expect(savedPlan.renewalMpPaymentId).toBe("2002");
   });
 
   it("contestar a renovação mais recente funciona mesmo já tendo contestado uma ficha anterior", async () => {
-    // A 1a entrega não chama a MP (contrato já criado com paymentStatus
-    // CAPTURED no fixture) — só a renovação (ficha 2) cobra de verdade.
     const offer = await makeOfferWithFichaValidity(30);
     const contract = await makeActiveContract(offer.id);
 
     await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 1", exercises: [] });
     const disputeOnFicha1 = await consultancyService.contestDelivery(clientId, contract.id, "Ficha 1 estava ruim");
 
-    // Duplo clique bloquearia a 2a ficha se entregue nos primeiros 10s — força
-    // o relógio pra frente ajustando createdAt da 1a ficha manualmente.
-    // validUntil também precisa expirar - senão a 2a entrega vira adição
-    // gratuita ao pacote atual (comportamento novo), não renovação paga.
-    await prisma.trainingPlan.updateMany({
-      where: { contractId: contract.id },
-      data: { createdAt: new Date(Date.now() - 15_000), validUntil: new Date(Date.now() - 1_000) }
-    });
-
-    // Raio-X Rodada 2, Lote 4: entregar (e cobrar) a próxima ficha enquanto a
-    // contestação da ficha mais recente ainda está em aberto passou a ser
-    // bloqueado — resolve a disputa da ficha 1 antes de entregar a ficha 2,
-    // simulando o admin já ter julgado o caso.
+    // Raio-X Rodada 2, Lote 4: entregar a próxima ficha enquanto a
+    // contestação da ficha mais recente ainda está em aberto é bloqueado —
+    // resolve a disputa da ficha 1 antes de entregar a ficha 2, simulando o
+    // admin já ter julgado o caso.
     await prisma.disputeCase.update({
       where: { id: disputeOnFicha1.id },
       data: { status: "RESOLVED", resolution: "DENIED", resolutionNote: "Julgado improcedente.", resolvedAt: new Date() }
     });
 
-    vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: 3002, status: "approved" } as any);
     await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 2", exercises: [] });
+
+    // Cobrança de ficha por calendário fixo: deliverContract não cobra -
+    // força o vencimento e deixa chargeDueFichaRenewals estampar o
+    // mpPaymentId da renovação na ficha 2 antes de contestá-la.
+    vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: 3002, status: "approved" } as any);
+    await prisma.consultancyContract.update({
+      where: { id: contract.id },
+      data: { nextBillingAt: new Date(Date.now() - 1_000) }
+    });
+    await consultancyService.chargeDueFichaRenewals();
 
     // Contestar a ficha 2 (mais recente) deve funcionar, mesmo já existindo
     // uma disputa DELIVERY_CONTESTED pra ficha 1 nesse mesmo contrato.

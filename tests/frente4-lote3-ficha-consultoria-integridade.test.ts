@@ -259,28 +259,29 @@ describe("Frente 4, Lote 3 — integridade da ficha de consultoria", () => {
     expect(detail.trainingPlan!.exercises[0].name).toBe("Agachamento");
   });
 
-  it("entregar renovação desativa a ficha anterior automaticamente", async () => {
-    vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: 3003, status: "approved" } as any);
-
+  it("cobrança de renovação bem-sucedida desativa a ficha anterior automaticamente", async () => {
     const offer = await makeOffer();
     const contract = await makeContract(offer.id);
     const { plan: firstPlan } = await consultancyService.deliverContract(providerUserId, contract.id, {
       title: "Ficha 1",
       exercises: []
     });
-    // Achado no teste manual QA: a desativação automática só acontece numa
-    // renovação de verdade (ciclo já vencido) - entregar mais um treino
-    // enquanto o ciclo atual ainda está vigente agora COEXISTE (pacote de
-    // treinos), então este teste precisa expirar a ficha 1 antes.
-    await prisma.trainingPlan.updateMany({
-      where: { contractId: contract.id },
-      data: { createdAt: new Date(Date.now() - 15_000), validUntil: new Date(Date.now() - 1_000) }
-    });
-
+    // Cobrança de ficha por calendário fixo: deliverContract nunca
+    // desativa nada (é só entrega de conteúdo) - a desativação da ficha
+    // anterior só acontece dentro de chargeFichaRenewalCycle, quando o
+    // ciclo é de fato pago de novo.
     await consultancyService.deliverContract(providerUserId, contract.id, {
       title: "Ficha 2 (renovação)",
       exercises: []
     });
+
+    vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_test" } as any);
+    vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: 3003, status: "approved" } as any);
+    await prisma.consultancyContract.update({
+      where: { id: contract.id },
+      data: { nextBillingAt: new Date(Date.now() - 1_000) }
+    });
+    await consultancyService.chargeDueFichaRenewals();
 
     const oldPlan = await prisma.trainingPlan.findUniqueOrThrow({ where: { id: firstPlan.id } });
     expect(oldPlan.isActive).toBe(false);

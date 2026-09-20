@@ -195,15 +195,19 @@ describe("Financeiro — reembolso parcial nos repasses e renovação de ficha n
     });
     contractIds.push(contract.id);
 
-    const { plan: plan1 } = await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 1", exercises: [] });
-    // Achado no teste manual QA: entregar a 2a ficha enquanto a 1a ainda
-    // está vigente agora só adiciona ao mesmo pacote pago, sem cobrar de
-    // novo. Este teste quer exercitar uma renovação de verdade (cobrada).
-    await prisma.trainingPlan.update({ where: { id: plan1.id }, data: { validUntil: new Date(Date.now() - 1_000) } });
+    await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 1", exercises: [] });
+    // Cobrança de ficha por calendário fixo: entregar a 2a ficha nunca
+    // cobra por si só - quem cobra é chargeDueFichaRenewals, quando o
+    // ciclo agendado (nextBillingAt) vence.
+    await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 2 (renovação)", exercises: [] });
 
     vi.spyOn(CardToken.prototype, "create").mockResolvedValueOnce({ id: "tok_test" } as any);
     vi.spyOn(Payment.prototype, "create").mockResolvedValueOnce({ id: 9301, status: "approved" } as any);
-    await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 2 (renovação)", exercises: [] });
+    await prisma.consultancyContract.update({
+      where: { id: contract.id },
+      data: { nextBillingAt: new Date(Date.now() - 1_000) }
+    });
+    await consultancyService.chargeDueFichaRenewals();
     vi.restoreAllMocks();
 
     const now = new Date();
