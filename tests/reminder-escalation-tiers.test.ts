@@ -228,21 +228,17 @@ describe("Escalonamento de lembretes de cobrança vencendo", () => {
       vi.spyOn(NotificationService.prototype, "sendToUsers").mockResolvedValue(undefined as any);
       const now = new Date();
       const contract = await makeDeliveredContract();
-      const plan = await prisma.trainingPlan.create({
+      await prisma.consultancyContract.update({
+        where: { id: contract.id },
         data: {
-          providerId,
-          contractId: contract.id,
-          title: "Ficha pré-vencimento",
-          isPrebuilt: false,
-          isActive: true,
-          validUntil: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000),
-          expiryReminderSentAt: new Date(now.getTime() - 25 * 60 * 60 * 1000)
+          nextBillingAt: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000),
+          fichaReminderSentAt: new Date(now.getTime() - 25 * 60 * 60 * 1000)
         }
       });
 
       await consultancyService.sendFichaExpiryReminders(now);
-      const fromDb = await prisma.trainingPlan.findUniqueOrThrow({ where: { id: plan.id } });
-      expect(fromDb.expiryReminderSentAt?.getTime()).toBe(now.getTime());
+      const fromDb = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract.id } });
+      expect(fromDb.fichaReminderSentAt?.getTime()).toBe(now.getTime());
     });
 
     it("vencendo em 2 dias com último aviso há 5h: não repete ainda", async () => {
@@ -250,21 +246,17 @@ describe("Escalonamento de lembretes de cobrança vencendo", () => {
       const now = new Date();
       const lastSent = new Date(now.getTime() - 5 * 60 * 60 * 1000);
       const contract = await makeDeliveredContract();
-      const plan = await prisma.trainingPlan.create({
+      await prisma.consultancyContract.update({
+        where: { id: contract.id },
         data: {
-          providerId,
-          contractId: contract.id,
-          title: "Ficha pré-vencimento 2",
-          isPrebuilt: false,
-          isActive: true,
-          validUntil: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000),
-          expiryReminderSentAt: lastSent
+          nextBillingAt: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000),
+          fichaReminderSentAt: lastSent
         }
       });
 
       await consultancyService.sendFichaExpiryReminders(now);
-      const fromDb = await prisma.trainingPlan.findUniqueOrThrow({ where: { id: plan.id } });
-      expect(fromDb.expiryReminderSentAt?.getTime()).toBe(lastSent.getTime());
+      const fromDb = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract.id } });
+      expect(fromDb.fichaReminderSentAt?.getTime()).toBe(lastSent.getTime());
     });
   });
 
@@ -311,66 +303,54 @@ describe("Escalonamento de lembretes de cobrança vencendo", () => {
       const now = new Date();
       const lastEscalation = new Date(now.getTime() - 25 * 60 * 60 * 1000);
       const contract = await makeExpiredDeliveredContract();
-      const plan = await prisma.trainingPlan.create({
+      await prisma.consultancyContract.update({
+        where: { id: contract.id },
         data: {
-          providerId,
-          contractId: contract.id,
-          title: "Ficha vencida fase estendida",
-          isPrebuilt: false,
-          isActive: true,
-          validUntil: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000),
-          expiredNoticeSentAt: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000),
-          lastEscalationSentAt: lastEscalation
+          nextBillingAt: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000),
+          fichaExpiredNoticeSentAt: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000),
+          fichaEscalationSentAt: lastEscalation
         }
       });
 
       await consultancyService.escalateExpiredFichaContracts(now);
-      const fromDb = await prisma.trainingPlan.findUniqueOrThrow({ where: { id: plan.id } });
-      expect(fromDb.lastEscalationSentAt?.getTime()).toBe(lastEscalation.getTime());
+      const fromDb = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract.id } });
+      expect(fromDb.fichaEscalationSentAt?.getTime()).toBe(lastEscalation.getTime());
     });
 
     it("vencida há 4 dias (fase estendida) com última escalada há 73h: escala de novo", async () => {
       vi.spyOn(NotificationService.prototype, "sendToUsers").mockResolvedValue(undefined as any);
       const now = new Date();
       const contract = await makeExpiredDeliveredContract();
-      const plan = await prisma.trainingPlan.create({
+      await prisma.consultancyContract.update({
+        where: { id: contract.id },
         data: {
-          providerId,
-          contractId: contract.id,
-          title: "Ficha vencida fase estendida 2",
-          isPrebuilt: false,
-          isActive: true,
-          validUntil: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000),
-          expiredNoticeSentAt: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000),
-          lastEscalationSentAt: new Date(now.getTime() - 73 * 60 * 60 * 1000)
+          nextBillingAt: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000),
+          fichaExpiredNoticeSentAt: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000),
+          fichaEscalationSentAt: new Date(now.getTime() - 73 * 60 * 60 * 1000)
         }
       });
 
       await consultancyService.escalateExpiredFichaContracts(now);
-      const fromDb = await prisma.trainingPlan.findUniqueOrThrow({ where: { id: plan.id } });
-      expect(fromDb.lastEscalationSentAt?.getTime()).toBe(now.getTime());
+      const fromDb = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract.id } });
+      expect(fromDb.fichaEscalationSentAt?.getTime()).toBe(now.getTime());
     });
 
     it("vencida há 2 dias (ainda fase inicial) com última escalada há 25h: escala de novo (throttle ainda é 24h)", async () => {
       vi.spyOn(NotificationService.prototype, "sendToUsers").mockResolvedValue(undefined as any);
       const now = new Date();
       const contract = await makeExpiredDeliveredContract();
-      const plan = await prisma.trainingPlan.create({
+      await prisma.consultancyContract.update({
+        where: { id: contract.id },
         data: {
-          providerId,
-          contractId: contract.id,
-          title: "Ficha vencida fase inicial",
-          isPrebuilt: false,
-          isActive: true,
-          validUntil: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
-          expiredNoticeSentAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
-          lastEscalationSentAt: new Date(now.getTime() - 25 * 60 * 60 * 1000)
+          nextBillingAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+          fichaExpiredNoticeSentAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+          fichaEscalationSentAt: new Date(now.getTime() - 25 * 60 * 60 * 1000)
         }
       });
 
       await consultancyService.escalateExpiredFichaContracts(now);
-      const fromDb = await prisma.trainingPlan.findUniqueOrThrow({ where: { id: plan.id } });
-      expect(fromDb.lastEscalationSentAt?.getTime()).toBe(now.getTime());
+      const fromDb = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract.id } });
+      expect(fromDb.fichaEscalationSentAt?.getTime()).toBe(now.getTime());
     });
   });
 });

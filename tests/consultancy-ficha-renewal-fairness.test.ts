@@ -277,40 +277,29 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
   });
 
   it("escalateExpiredFichaContracts avisa quando a ficha vence sem ação e encerra automaticamente após 7 dias", async () => {
+    // Cobrança de ficha por calendário fixo: o vencimento do contrato agora
+    // vive em ConsultancyContract.nextBillingAt/fichaExpiredNoticeSentAt,
+    // não mais inferido a partir de TrainingPlan.validUntil/expiredNoticeSentAt.
     const offer = await makeOfferWithFichaValidity(10);
     const contractEscalating = await makeActiveContract(offer.id);
     await prisma.consultancyContract.update({
       where: { id: contractEscalating.id },
-      data: { status: ConsultancyContractStatus.DELIVERED, deliveredAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000) }
-    });
-    await prisma.trainingPlan.create({
       data: {
-        providerId,
-        contractId: contractEscalating.id,
-        title: "Ficha vencida há 3 dias",
-        isPrebuilt: false,
-        isActive: true,
-        createdAt: new Date(Date.now() - 13 * 24 * 60 * 60 * 1000),
-        validUntil: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-        expiredNoticeSentAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+        status: ConsultancyContractStatus.DELIVERED,
+        deliveredAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+        nextBillingAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        fichaExpiredNoticeSentAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
       }
     });
 
     const contractToCancel = await makeActiveContract(offer.id);
     await prisma.consultancyContract.update({
       where: { id: contractToCancel.id },
-      data: { status: ConsultancyContractStatus.DELIVERED, deliveredAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000) }
-    });
-    await prisma.trainingPlan.create({
       data: {
-        providerId,
-        contractId: contractToCancel.id,
-        title: "Ficha vencida há 8 dias",
-        isPrebuilt: false,
-        isActive: true,
-        createdAt: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000),
-        validUntil: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
-        expiredNoticeSentAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
+        status: ConsultancyContractStatus.DELIVERED,
+        deliveredAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+        nextBillingAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+        fichaExpiredNoticeSentAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
       }
     });
 
@@ -318,8 +307,7 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
 
     const afterEscalating = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contractEscalating.id } });
     expect(afterEscalating.status).toBe(ConsultancyContractStatus.DELIVERED);
-    const escalatingPlan = await prisma.trainingPlan.findFirstOrThrow({ where: { contractId: contractEscalating.id } });
-    expect(escalatingPlan.lastEscalationSentAt).not.toBeNull();
+    expect(afterEscalating.fichaEscalationSentAt).not.toBeNull();
 
     const afterCancel = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contractToCancel.id } });
     expect(afterCancel.status).toBe(ConsultancyContractStatus.CANCELLED);

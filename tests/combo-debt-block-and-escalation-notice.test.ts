@@ -208,7 +208,12 @@ describe("purchaseCombo bloqueia dívida pendente + aviso de combo no encerramen
         fichaValidityDays: 10,
         deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
         immediateExecutionAcknowledgedAt: new Date(),
-        deliveredAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000)
+        deliveredAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+        // Cobrança de ficha por calendário fixo: vencimento vive direto no
+        // contrato agora (nextBillingAt/fichaExpiredNoticeSentAt), não mais
+        // inferido de TrainingPlan.validUntil/expiredNoticeSentAt.
+        nextBillingAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+        fichaExpiredNoticeSentAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
       }
     });
     contractIds.push(contract.id);
@@ -230,19 +235,6 @@ describe("purchaseCombo bloqueia dívida pendente + aviso de combo no encerramen
       }
     });
     packageIds.push(pkg.id);
-
-    await prisma.trainingPlan.create({
-      data: {
-        providerId,
-        contractId: contract.id,
-        title: "Ficha vencida há 8 dias (combo)",
-        isPrebuilt: false,
-        isActive: true,
-        createdAt: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000),
-        validUntil: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
-        expiredNoticeSentAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
-      }
-    });
 
     const notifySpy = vi.spyOn(NotificationService.prototype, "sendToUsers").mockResolvedValue(undefined as any);
 

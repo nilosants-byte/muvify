@@ -210,12 +210,14 @@ describe("Frente 6, Lote 2 — vigência/config do contrato congelada na compra"
 
     await consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 1", exercises: [] });
 
-    const plan = await prisma.trainingPlan.findFirstOrThrow({ where: { contractId: contract.id } });
-    await prisma.trainingPlan.update({
-      where: { id: plan.id },
+    // Cobrança de ficha por calendário fixo: vencimento vive direto no
+    // contrato agora (nextBillingAt/fichaExpiredNoticeSentAt), não mais em
+    // TrainingPlan.validUntil/expiredNoticeSentAt.
+    await prisma.consultancyContract.update({
+      where: { id: contract.id },
       data: {
-        validUntil: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
-        expiredNoticeSentAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
+        nextBillingAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+        fichaExpiredNoticeSentAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
       }
     });
 
