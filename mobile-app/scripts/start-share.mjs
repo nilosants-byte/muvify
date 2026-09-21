@@ -116,7 +116,20 @@ function startCloudflaredForMetro(metroPort) {
   const cloudflaredCmd = resolveCloudflaredCommand();
   return spawn(
     cloudflaredCmd,
-    ["tunnel", "--url", `http://127.0.0.1:${metroPort}`, "--no-autoupdate"],
+    [
+      "tunnel",
+      "--url",
+      `http://127.0.0.1:${metroPort}`,
+      "--no-autoupdate",
+      // Prevenção: o cloudflared já tenta de novo sozinho em erro de
+      // conexão/protocolo (retry interno, sem precisar reiniciar o
+      // processo), mas o padrão é só 5 tentativas - pouco pra uma sessão
+      // de teste manual de horas numa rede instável. Sobe bem mais alto
+      // antes de desistir e encerrar o processo de vez (o que aí sim
+      // aciona a reconexão automática do nosso lado, ver main()).
+      "--retries",
+      "50"
+    ],
     { stdio: ["ignore", "pipe", "pipe"] }
   );
 }
@@ -308,56 +321,93 @@ async function attemptStartShare({ forceClear }) {
   return { expoProc, cloudflaredProc };
 }
 
-async function main() {
-  let started;
+async function startOnce() {
   try {
-    started = await attemptStartShare({ forceClear: true });
+    return await attemptStartShare({ forceClear: true });
   } catch (error) {
     // Falha mesmo limpando tudo do zero é incomum (ex: cloudflared
     // engasgou na primeira tentativa) -- vale tentar mais uma vez antes
     // de desistir de vez.
     const reason = error instanceof Error ? error.message : String(error);
-    console.warn(`[start:share] Primeira tentativa falhou (${reason}).`);
+    console.warn(`[start:share] Tentativa falhou (${reason}).`);
     console.warn("[start:share] Tentando de novo...");
-    started = await attemptStartShare({ forceClear: true });
+    return attemptStartShare({ forceClear: true });
   }
+}
 
-  const { expoProc, cloudflaredProc } = started;
-  let shuttingDown = false;
+// Espera o pipeline (Metro+túnel) terminar por QUALQUER motivo e diz qual foi:
+// "user" (Ctrl+C, encerramento normal), "expo" (Metro/Expo caiu sozinho) ou
+// "cloudflared" (túnel caiu sozinho, Metro continua de pé). Cada motivo tem
+// uma resposta diferente em main() - só "user" não tenta se autocorrigir.
+function waitForPipelineDeath(expoProc, cloudflaredProc, shutdownRef) {
+  return new Promise((resolve) => {
+    function onExpoExit(code) {
+      if (shutdownRef.value) return resolve({ reason: "user", code });
+      resolve({ reason: "expo", code });
+    }
+    function onCloudflaredExit(code) {
+      if (shutdownRef.value) return resolve({ reason: "user", code });
+      resolve({ reason: "cloudflared", code });
+    }
+    expoProc.once("exit", onExpoExit);
+    cloudflaredProc.once("exit", onCloudflaredExit);
+  });
+}
 
-  function shutdown() {
-    shuttingDown = true;
-    try {
-      expoProc.kill();
-    } catch {
-      // noop
+async function main() {
+  // Autocorreção: se o túnel (ou o próprio Metro) cair sozinho no meio da
+  // sessão -- achado no teste manual QA, instabilidade de rede/timeout do
+  // trycloudflare.com --, sobe tudo de novo automaticamente com um link
+  // novo, em vez de só avisar e desistir. MAX_CONSECUTIVE_RESTARTS evita um
+  // loop infinito martelando o Cloudflare se a rede estiver genuinamente
+  // fora do ar; o contador só zera depois de uma sessão que ficou de pé por
+  // um tempo razoável (MIN_HEALTHY_UPTIME_MS), pra uma queda isolada depois
+  // de horas de uso não herdar o contador de tentativas de horas atrás.
+  const MAX_CONSECUTIVE_RESTARTS = 5;
+  const MIN_HEALTHY_UPTIME_MS = 60_000;
+  const RESTART_BACKOFF_MS = 3_000;
+  let consecutiveRestarts = 0;
+
+  for (;;) {
+    const startedAt = Date.now();
+    const { expoProc, cloudflaredProc } = await startOnce();
+
+    const shutdownRef = { value: false };
+    function shutdown() {
+      shutdownRef.value = true;
+      try { expoProc.kill(); } catch { /* noop */ }
+      try { cloudflaredProc.kill(); } catch { /* noop */ }
     }
-    try {
-      cloudflaredProc.kill();
-    } catch {
-      // noop
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+
+    const { reason, code } = await waitForPipelineDeath(expoProc, cloudflaredProc, shutdownRef);
+    process.off("SIGINT", shutdown);
+    process.off("SIGTERM", shutdown);
+    shutdown();
+
+    if (reason === "user") {
+      process.exit(code ?? 0);
     }
+
+    if (Date.now() - startedAt >= MIN_HEALTHY_UPTIME_MS) {
+      consecutiveRestarts = 0;
+    }
+    consecutiveRestarts += 1;
+
+    const culprit = reason === "cloudflared" ? "O túnel do cloudflared" : "O Metro/Expo";
+    console.error(`[start:share] ${culprit} caiu sozinho (código ${code ?? "desconhecido"}).`);
+
+    if (consecutiveRestarts > MAX_CONSECUTIVE_RESTARTS) {
+      console.error(
+        `[start:share] Já tentou reconectar ${MAX_CONSECUTIVE_RESTARTS} vezes seguidas sem sucesso — desistindo. Verifique sua conexão de internet e rode "npm run start:share" de novo.`
+      );
+      process.exit(1);
+    }
+
+    console.warn(`[start:share] Reconectando automaticamente (tentativa ${consecutiveRestarts}/${MAX_CONSECUTIVE_RESTARTS})...`);
+    await sleep(RESTART_BACKOFF_MS);
   }
-
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
-
-  expoProc.on("exit", (code) => {
-    shutdown();
-    process.exit(code ?? 0);
-  });
-
-  // Achado no teste manual QA: o túnel do cloudflared pode cair sozinho
-  // (instabilidade de rede, timeout do trycloudflare.com) enquanto o Metro
-  // continua rodando normalmente - sem isso, o link parava de funcionar
-  // silenciosamente, sem nenhum aviso, e só se descobria tentando abrir no
-  // Expo Go e vendo um erro de DNS do Cloudflare bem depois.
-  cloudflaredProc.on("exit", (code) => {
-    if (shuttingDown) return;
-    console.error(`[start:share] O túnel do cloudflared caiu sozinho (código ${code ?? "desconhecido"}) - o link parou de funcionar. Encerrando; rode "npm run start:share" de novo pra gerar um link novo.`);
-    shutdown();
-    process.exit(1);
-  });
 }
 
 main().catch((error) => {
