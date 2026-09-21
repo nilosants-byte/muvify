@@ -323,8 +323,10 @@ async function main() {
   }
 
   const { expoProc, cloudflaredProc } = started;
+  let shuttingDown = false;
 
   function shutdown() {
+    shuttingDown = true;
     try {
       expoProc.kill();
     } catch {
@@ -343,6 +345,18 @@ async function main() {
   expoProc.on("exit", (code) => {
     shutdown();
     process.exit(code ?? 0);
+  });
+
+  // Achado no teste manual QA: o túnel do cloudflared pode cair sozinho
+  // (instabilidade de rede, timeout do trycloudflare.com) enquanto o Metro
+  // continua rodando normalmente - sem isso, o link parava de funcionar
+  // silenciosamente, sem nenhum aviso, e só se descobria tentando abrir no
+  // Expo Go e vendo um erro de DNS do Cloudflare bem depois.
+  cloudflaredProc.on("exit", (code) => {
+    if (shuttingDown) return;
+    console.error(`[start:share] O túnel do cloudflared caiu sozinho (código ${code ?? "desconhecido"}) - o link parou de funcionar. Encerrando; rode "npm run start:share" de novo pra gerar um link novo.`);
+    shutdown();
+    process.exit(1);
   });
 }
 
