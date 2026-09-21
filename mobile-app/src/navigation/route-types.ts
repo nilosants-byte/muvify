@@ -151,7 +151,7 @@ export type ProfessionalStackParamList = {
     channel: "WHATSAPP" | "EMAIL";
   };
   Notifications: undefined;
-  TrainingCreation: { contractId?: string; clientId?: string; editPlanId?: string; contractValidUntil?: string } | undefined;
+  TrainingCreation: { contractId?: string; clientId?: string; editPlanId?: string } | undefined;
   Support: undefined;
   Privacy: undefined;
   Security: undefined;

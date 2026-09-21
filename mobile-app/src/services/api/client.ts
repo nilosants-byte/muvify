@@ -3566,7 +3566,6 @@ export const consultancyApi = {
       title: string;
       description?: string;
       isActive: boolean;
-      validUntil: string;
       exercises: Array<{
         sortOrder?: number;
         exerciseId?: string;
@@ -3597,7 +3596,6 @@ export const consultancyApi = {
     body: {
       title: string;
       description?: string;
-      validUntil?: string;
       exercises: Array<{
         sortOrder?: number;
         exerciseId?: string;

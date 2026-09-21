@@ -2452,7 +2452,6 @@ export class ConsultancyService {
       description?: string;
       isActive?: boolean;
       exercises?: ExerciseInput[];
-      validUntil?: string;
     }
   ) {
     const provider = await this.providerProfileByUserId(userId);
@@ -2473,10 +2472,7 @@ export class ConsultancyService {
         contract: {
           select: {
             clientId: true,
-            paymentCapturedAt: true,
-            createdAt: true,
             status: true,
-            billingCycle: true,
             origin: true
           }
         }
@@ -2528,32 +2524,6 @@ export class ConsultancyService {
       );
     }
 
-    let planValidUntil: Date | undefined;
-    if (typeof input.validUntil !== "undefined") {
-      if (!existing.contract) {
-        throw new AppError(
-          "Vigência só se aplica a treinos vinculados a um contrato de consultoria.",
-          StatusCodes.BAD_REQUEST
-        );
-      }
-      const parsed = new Date(input.validUntil);
-      if (Number.isNaN(parsed.getTime())) {
-        throw new AppError("Data de vigência do treino inválida.", StatusCodes.BAD_REQUEST);
-      }
-      const now = new Date();
-      const contractValidUntil = consultancyValidUntil(existing.contract);
-      if (parsed <= now) {
-        throw new AppError("A vigência do treino deve ser uma data futura.", StatusCodes.BAD_REQUEST);
-      }
-      if (parsed > contractValidUntil) {
-        throw new AppError(
-          "A vigência do treino não pode ultrapassar a vigência da consultoria contratada.",
-          StatusCodes.BAD_REQUEST
-        );
-      }
-      planValidUntil = parsed;
-    }
-
     const updated = await prisma.$transaction(async (tx) => {
       const normalizedExercises = input.exercises
         ? await this.normalizePlanExercises(provider.id, input.exercises, tx)
@@ -2575,7 +2545,6 @@ export class ConsultancyService {
           ...(typeof input.isActive !== "undefined"
             ? { isActive: input.isActive }
             : {}),
-          ...(planValidUntil ? { validUntil: planValidUntil } : {}),
           ...(normalizedExercises
             ? {
                 exercises: {
@@ -3677,7 +3646,6 @@ export class ConsultancyService {
       title: string;
       description?: string;
       exercises: ExerciseInput[];
-      validUntil?: string;
     }
   ) {
     const provider = await this.providerProfileByUserId(userId);
@@ -3727,38 +3695,19 @@ export class ConsultancyService {
     }
 
     const now = new Date();
-    // A vigencia do treino nunca pode passar da vigencia da propria consultoria
-    // contratada. Se o profissional nao informar uma data, o treino herda a
-    // vigencia inteira da consultoria (ele pode escalonar vigencias diferentes
-    // pra treinos diferentes conforme o aluno evolui, mas nunca alem do contrato).
-    //
-    // Frente B (liberdade de ofertas): se a oferta configurou uma validade
-    // padrao de ficha (fichaValidityDays), essa passa a ser a vigencia
-    // padrao do treino - e deixa de ser limitada pela vigencia do contrato,
-    // porque nesse modelo o contrato continua indefinidamente conforme as
-    // fichas vao sendo renovadas (nao ha mais um "fim" fixo do contrato).
+    // Cobrança de ficha por calendário fixo (decisão do usuário, 2026-09-20):
+    // a vigência da ficha é sempre automática, nunca escolhida manualmente -
+    // o profissional não pode mais escalonar/burlar o calendário configurado
+    // na oferta escolhendo uma data qualquer na entrega. Se a oferta
+    // configurou fichaValidityDays (obrigatório pra ofertas com consultoria),
+    // essa é a vigência da primeira ficha. Sem isso (raro, oferta antiga),
+    // cai na vigência da própria consultoria contratada.
     const contractValidUntil = consultancyValidUntil(contract);
     const usesFichaValidity = Boolean(contract.fichaValidityDays);
     const defaultValidUntil = usesFichaValidity
       ? new Date(now.getTime() + contract.fichaValidityDays! * 24 * 60 * 60 * 1000)
       : contractValidUntil;
     let planValidUntil = defaultValidUntil;
-    if (input.validUntil) {
-      const parsed = new Date(input.validUntil);
-      if (Number.isNaN(parsed.getTime())) {
-        throw new AppError("Data de vigência do treino inválida.", StatusCodes.BAD_REQUEST);
-      }
-      if (parsed <= now) {
-        throw new AppError("A vigência do treino deve ser uma data futura.", StatusCodes.BAD_REQUEST);
-      }
-      if (!usesFichaValidity && parsed > contractValidUntil) {
-        throw new AppError(
-          "A vigência do treino não pode ultrapassar a vigência da consultoria contratada.",
-          StatusCodes.BAD_REQUEST
-        );
-      }
-      planValidUntil = parsed;
-    }
 
     // Cobrança de ficha por calendário fixo (decisão do usuário, 2026-09-20):
     // deliverContract vira SÓ entrega de conteúdo - nunca cobra renovação

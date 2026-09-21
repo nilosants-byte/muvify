@@ -18,6 +18,7 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar, MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { formatCurrencyBRL } from "../../utils/formatters";
@@ -205,6 +206,7 @@ function AssessmentRow({
 
 export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
   const { showToast, runWithAuth } = useAppState();
+  const queryClient = useQueryClient();
   const { theme } = useMvTheme();
 
   const iconColor = theme.mode === "dark" ? "#D8E0D8" : "#394239";
@@ -326,6 +328,26 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
               setDeletingPlanId(planId);
               await runWithAuth((token) => consultancyApi.deleteProviderPlan(token, planId));
               showToast("Treino removido.", "success");
+              // Atualização otimista: sem isso, o treino ficava visível na
+              // tela por vários segundos depois da exclusão já confirmada,
+              // esperando o refetch completo terminar (achado em teste
+              // manual QA, mais perceptível em conexão mais lenta/túnel).
+              queryClient.setQueryData(
+                queryKeys.providers.dashboardStudentDetail(clientId),
+                (old: { detail: ProviderStudentManagementDetail; studentBookings: Booking[] } | undefined) => {
+                  if (!old) return old;
+                  return {
+                    ...old,
+                    detail: {
+                      ...old.detail,
+                      consultancyContracts: old.detail.consultancyContracts.map((contract) => ({
+                        ...contract,
+                        trainingPlans: contract.trainingPlans.filter((plan) => plan.id !== planId)
+                      }))
+                    }
+                  };
+                }
+              );
               void studentDetailQuery.refetch();
             } catch (error) {
               handleScreenError({ error, showToast, fallbackMessage: "Falha ao remover o treino." });
@@ -715,7 +737,6 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                                       contractId: contract.id,
                                       clientId: detail.student.id,
                                       editPlanId: plan.id,
-                                      contractValidUntil: contract.validUntil ?? undefined,
                                     })
                                   }
                                   style={{
@@ -767,7 +788,6 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
                                 navigation.navigate("TrainingCreation", {
                                   contractId: contract.id,
                                   clientId: detail.student.id,
-                                  contractValidUntil: contract.validUntil ?? undefined,
                                 })
                               }
                             />

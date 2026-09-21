@@ -27,7 +27,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvCard, MvDatePicker, MvInput, MvMediaPreviewModal, MvText } from "../../components/mv";
+import { MvButton, MvCard, MvInput, MvMediaPreviewModal, MvText } from "../../components/mv";
 import { handleScreenError } from "../shared/api-helpers";
 import { StepProgressBar } from "../../components/professional/UXReformComponents";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
@@ -253,11 +253,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
   const [editingPlanTitle, setEditingPlanTitle] = useState("");
   const [editingPlanDescription, setEditingPlanDescription] = useState("");
   const [editingPlanExercises, setEditingPlanExercises] = useState<DraftPlanExercise[]>([]);
-  // Frente 5 (segunda camada), Lote 6: entrando por aqui (lista "Treinos
-  // criados") não existia campo de vigência nenhum — só entrando pela tela
-  // do aluno (editPlanId, acima) dava pra mudar a data. Unifica as duas
-  // capacidades.
-  const [editingPlanValidUntil, setEditingPlanValidUntil] = useState<Date | null>(null);
   const [savingEditedPlan, setSavingEditedPlan] = useState(false);
   const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
   const [expandedPlanIds, setExpandedPlanIds] = useState<Record<string, boolean>>({});
@@ -266,8 +261,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewState>(null);
   const [step, setStep] = useState(0);
   const targetContractId = route.params?.contractId;
-  const contractValidUntil = route.params?.contractValidUntil ? new Date(route.params.contractValidUntil) : null;
-  const [newPlanValidUntil, setNewPlanValidUntil] = useState<Date | null>(contractValidUntil);
 
   const listIndicatorProps = useMemo(
     () => ({
@@ -329,7 +322,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
     setNewPlanTitle(target.title);
     setNewPlanDescription(target.description ?? "");
     setNewPlanExercises(target.exercises.map((item, index) => toDraftExerciseFromPlanItem(item, index)));
-    setNewPlanValidUntil(target.validUntil ? new Date(target.validUntil) : contractValidUntil);
     setShowNewPlanBuilder(true);
   }, [editPlanId, trainingQuery.data]);
 
@@ -414,7 +406,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
     setEditingPlanTitle(plan.title);
     setEditingPlanDescription(plan.description ?? "");
     setEditingPlanExercises(draftItems);
-    setEditingPlanValidUntil(plan.validUntil ? new Date(plan.validUntil) : null);
     setExpandedPlanIds((current) => ({ ...current, [plan.id]: true }));
   }
 
@@ -448,7 +439,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
 
   function resetInlinePlanEdit() {
     setEditingPlanId(null);
-    setEditingPlanValidUntil(null);
     setEditingPlanTitle("");
     setEditingPlanDescription("");
     setEditingPlanExercises([]);
@@ -569,7 +559,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
             title: newPlanTitle.trim(),
             description: newPlanDescription.trim() || undefined,
             exercises: exercisesPayload,
-            ...(newPlanValidUntil ? { validUntil: newPlanValidUntil.toISOString() } : {}),
           })
         );
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -582,7 +571,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
             title: newPlanTitle.trim(),
             description: newPlanDescription.trim() || undefined,
             exercises: exercisesPayload,
-            validUntil: newPlanValidUntil ? newPlanValidUntil.toISOString() : undefined,
           })
         );
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -639,7 +627,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
             restLabel: exercise.restLabel.trim() || undefined,
             demoVideoUrl: exercise.demoVideoUrl?.trim() || undefined,
           })),
-          ...(editingPlanValidUntil ? { validUntil: editingPlanValidUntil.toISOString() } : {}),
         })
       );
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -855,22 +842,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                 </View>
               ) : null}
 
-              {editPlanId || targetContractId ? (
-                <View style={{ marginTop: 10 }}>
-                  <MvText variant="body4" color="secondary" style={{ marginBottom: 6 }}>
-                    Vigência do treino
-                  </MvText>
-                  <MvDatePicker
-                    value={newPlanValidUntil ?? contractValidUntil ?? new Date()}
-                    onChange={setNewPlanValidUntil}
-                  />
-                  {contractValidUntil ? (
-                    <MvText variant="caption" color="secondary" style={{ marginTop: 4 }}>
-                      Não pode passar de {contractValidUntil.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" })}, quando a consultoria contratada vence.
-                    </MvText>
-                  ) : null}
-                </View>
-              ) : null}
             </MvCard>
 
             {providerPlans.length > 0 ? (
@@ -1366,18 +1337,6 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
                             ) : null}
                           </ScrollView>
                         </View>
-
-                        {plan.contractId ? (
-                          <View>
-                            <MvText variant="body4" color="secondary" style={{ marginBottom: 6 }}>
-                              Vigência do treino
-                            </MvText>
-                            <MvDatePicker
-                              value={editingPlanValidUntil ?? new Date()}
-                              onChange={setEditingPlanValidUntil}
-                            />
-                          </View>
-                        ) : null}
 
                         <View style={{ flexDirection: "row", gap: 8 }}>
                           <View style={{ flex: 1 }}>
