@@ -428,6 +428,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
     if (activeTab !== "day") return [];
     const items: TimelineItem[] = [];
     const matchedBookingIds = new Set<string>();
+    const matchedBlockIds = new Set<string>();
     // Frente 5 (Descoberta, agendamento e agenda), Lote 3: usar só a grade
     // de 30min (occupiedSlotKeys, que também só cobre PENDING/CONFIRMED)
     // pra decidir se um horário tem booking deixava de fora tanto sessões
@@ -453,7 +454,10 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
           const slotMin = parseMinutes(slot);
           return slotMin >= parseMinutes(b.startTime) && slotMin < parseMinutes(b.endTime);
         });
-        if (block) items.push({ kind: "blocked", time: slot, block });
+        if (block) {
+          items.push({ kind: "blocked", time: slot, block });
+          matchedBlockIds.add(block.id);
+        }
       } else if (!isOffApp) {
         // Slots ocupados por aluno fora do app nao viram "free" aqui — o item
         // "external" correspondente ja e adicionado abaixo, uma vez por aula.
@@ -471,6 +475,16 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
       const d = new Date(booking.scheduledAt);
       const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
       items.push({ kind: "booking", time, booking });
+    });
+    // Achado em teste manual QA: bloqueio criado fora da grade de
+    // disponibilidade cadastrada (ex: nenhum horário configurado nesse dia
+    // da semana, ou início/fim fora das janelas já cadastradas) ficava
+    // "fantasma" — contava no card "Bloqueios", mas nunca aparecia na
+    // timeline, então não tinha como removê-lo pela tela. Mesmo raciocínio
+    // do fallback de booking acima, aplicado a bloqueio.
+    todayManualBlocks.forEach((block) => {
+      if (matchedBlockIds.has(block.id)) return;
+      items.push({ kind: "blocked", time: block.startTime, block });
     });
     return items.sort((a, b) => a.time.localeCompare(b.time));
   }, [activeTab, allDaySlots, todayBlockedKeys, offAppOccupiedKeys, visibleBookings, todayManualBlocks, offAppClassesForDay]);
