@@ -40,6 +40,7 @@
     "e2e:seed": "tsx scripts/create-qa-users.ts",
     "qa:seed-students": "tsx scripts/qa-seed-students.ts",
     "qa:seed-agenda": "tsx scripts/qa-seed-agenda.ts",
+    "qa:attendance-code": "tsx scripts/qa-get-attendance-code.ts",
     "qa:cleanup-students": "tsx scripts/qa-cleanup-students.ts",
     "e2e:mobile:all": "npm --prefix mobile-app run e2e:all",
     "e2e:mobile:smoke": "npm --prefix mobile-app run e2e:smoke",
