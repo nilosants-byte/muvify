@@ -6,7 +6,7 @@ const completionProofSchema = z.object({
     .trim()
     .min(20, "Selfie em base64 obrigatoria.")
     .max(2_000_000, "Selfie acima do tamanho maximo permitido.")
-    .regex(/^data:image\/(jpeg|jpg|png|webp);base64,[a-zA-Z0-9+/=]+$/, "Formato de imagem base64 invalido."),
+    .regex(/^(data:image\/(jpeg|jpg|png|webp);base64,)?[a-zA-Z0-9+/=]+$/, "Formato de imagem base64 invalido."),
   mimeType: z.enum(["image/jpeg", "image/jpg", "image/png", "image/webp"]),
   cameraFacing: z.enum(["FRONT", "BACK"])
 });
