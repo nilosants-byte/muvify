@@ -58,9 +58,26 @@ describe("Frente 7, Lote 1 — fuso horário do módulo financeiro", () => {
   });
 
   it("receita lançada às 23h30 de Brasília no último dia do mês é classificada no mês certo, não no seguinte (dashboard e relatório)", async () => {
-    // 2026-07-31T23:30:00 em America/Sao_Paulo (UTC-3) = 2026-08-01T02:30:00Z.
-    // Com o bug antigo (fuso do processo/UTC), isso cairia em agosto.
-    const paidAt = new Date("2026-08-01T02:30:00.000Z");
+    // Achado em teste manual (2026-09-27): os dois meses eram fixos
+    // ("2026-07"/"2026-08"), mas getReport(providerUserId, 2) devolve os
+    // ÚLTIMOS 2 meses relativos a HOJE — conforme a data real avança, a
+    // janela sai de julho/agosto e o teste passa a falhar sozinho, sem
+    // nenhuma mudança de código (mesmo problema já visto antes noutro
+    // arquivo desta suíte). Usa mês anterior/mês atual, sempre relativos a
+    // "agora", pra nunca ficar obsoleto.
+    const now = new Date();
+    const targetMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const nextMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const targetMonthKey = `${targetMonth.getFullYear()}-${String(targetMonth.getMonth() + 1).padStart(2, "0")}`;
+    const nextMonthKey = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}`;
+    const lastDayOfTargetMonth = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+    const lastDayKey = `${targetMonthKey}-${String(lastDayOfTargetMonth).padStart(2, "0")}`;
+    const firstDayOfNextMonthKey = `${nextMonthKey}-01`;
+
+    // 23h30 de Brasília (UTC-3) no último dia do mês-alvo = 02h30 UTC do
+    // primeiro dia do mês seguinte. Com o bug antigo (fuso do
+    // processo/UTC), isso cairia no mês seguinte.
+    const paidAt = new Date(Date.UTC(nextMonth.getFullYear(), nextMonth.getMonth(), 1, 2, 30, 0));
     const income = await prisma.financialIncome.create({
       data: {
         providerId,
@@ -71,17 +88,17 @@ describe("Frente 7, Lote 1 — fuso horário do módulo financeiro", () => {
     });
     incomeIds.push(income.id);
 
-    const julyDashboard = await financialService.getDashboard(providerUserId, "2026-07");
-    expect(julyDashboard.dailyRevenue["2026-07-31"]).toBe(15000);
+    const targetDashboard = await financialService.getDashboard(providerUserId, targetMonthKey);
+    expect(targetDashboard.dailyRevenue[lastDayKey]).toBe(15000);
 
-    const augustDashboard = await financialService.getDashboard(providerUserId, "2026-08");
-    expect(augustDashboard.dailyRevenue["2026-08-01"]).toBeUndefined();
+    const nextDashboard = await financialService.getDashboard(providerUserId, nextMonthKey);
+    expect(nextDashboard.dailyRevenue[firstDayOfNextMonthKey]).toBeUndefined();
 
     const report = await financialService.getReport(providerUserId, 2);
-    const julyEntry = report.months.find((r) => r.month === "2026-07");
-    const augustEntry = report.months.find((r) => r.month === "2026-08");
-    expect(julyEntry?.revenueCents ?? 0).toBeGreaterThanOrEqual(15000);
-    expect(augustEntry?.revenueCents ?? 0).toBe(0);
+    const targetEntry = report.months.find((r) => r.month === targetMonthKey);
+    const nextEntry = report.months.find((r) => r.month === nextMonthKey);
+    expect(targetEntry?.revenueCents ?? 0).toBeGreaterThanOrEqual(15000);
+    expect(nextEntry?.revenueCents ?? 0).toBe(0);
   });
 
   it("receita lançada de madrugada (00h30 de Brasília) no primeiro dia do mês é classificada nesse mês, não no anterior", async () => {

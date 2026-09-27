@@ -667,7 +667,7 @@ export class FinancialService {
   async createStudent(userId: string, input: CreateStudentInput) {
     const provider = await getProviderByUserId(userId);
     try {
-      return await prisma.financialStudent.create({
+      const created = await prisma.financialStudent.create({
         data: {
           providerId: provider.id,
           name: input.name.trim(),
@@ -683,6 +683,11 @@ export class FinancialService {
           ...(input.weeklySchedule !== undefined ? { weeklySchedule: input.weeklySchedule as any } : {})
         } as any
       });
+      // Achado em teste manual: o app insere a resposta desta chamada
+      // direto na tela (sem recarregar a lista), mas só `getStudentsPage`
+      // calculava `billableThisMonth` — o aluno recém-criado aparecia como
+      // "Sem cobrança neste mês" (sem o toggle de Pago) até a tela recarregar.
+      return { ...created, billableThisMonth: isStudentBillableForMonth(created, currentMonth()) };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         throw new AppError("Já existe um aluno com este nome no seu perfil.", StatusCodes.CONFLICT);
@@ -697,7 +702,7 @@ export class FinancialService {
     if (!student || student.providerId !== provider.id) {
       throw new AppError("Aluno não encontrado.", StatusCodes.NOT_FOUND);
     }
-    return prisma.financialStudent.update({
+    const updated = await prisma.financialStudent.update({
       where: { id: studentId },
       data: {
         name: input.name?.trim(),
@@ -714,6 +719,9 @@ export class FinancialService {
         ...(input.weeklySchedule !== undefined ? { weeklySchedule: input.weeklySchedule } : {})
       } as any
     });
+    // Mesmo achado de createStudent acima — a tela também insere esta
+    // resposta direto no lugar do registro antigo, sem recarregar a lista.
+    return { ...updated, billableThisMonth: isStudentBillableForMonth(updated, currentMonth()) };
   }
 
   async deleteStudent(userId: string, studentId: string) {
@@ -1154,17 +1162,28 @@ export class FinancialService {
     months = safeMon;
     const provider = await getProviderByUserId(userId);
     const thisMonth = currentMonth();
-    const result: Array<{
+
+    type MonthResult = {
       month: string;
       revenueCents: number;
       appRevenueCents: number;
       expensesCents: number;
       netCents: number;
       classes: number;
-    }> = [];
+    };
 
-    for (let i = months - 1; i >= 0; i--) {
-      const month = addMonthsToKey(thisMonth, -i);
+    // Achado em teste manual: com 36 meses, este método rodava um mês de
+    // cada vez (`for` com `await` dentro, sequencial) — ~8 queries por mês
+    // uma atrás da outra, virando 36 idas e voltas ao banco em série. Contra
+    // um Postgres hospedado remotamente, isso passava de 40s facilmente
+    // (Relatório Anual ficava "girando" quase 1 minuto). Processar em lotes
+    // paralelos resolve sem estourar o pool de conexões do processo
+    // (connection_limit=20, ver src/config/prisma.ts): 4 meses × ~8 queries
+    // cada fica em ~32 conexões simultâneas nesse lote — folga suficiente
+    // pra não monopolizar o pool de outras requisições concorrentes.
+    const MONTH_CHUNK_SIZE = 4;
+
+    async function computeMonth(month: string): Promise<MonthResult> {
       const { from, to } = monthBounds(month);
 
       const [incomes, expenses, consultancyDeliveries, appBookings, appContracts, appPackageCycles, renewalPlans] = await Promise.all([
@@ -1235,7 +1254,19 @@ export class FinancialService {
         + appContracts.reduce((s, c) => s + effectiveConsultancyNetCents(c), 0)
         + appPackageCycles.reduce((s, c) => s + effectiveCycleNetCents(c), 0)
         + renewalPlans.reduce((s, p) => s + effectiveRenewalNetCents(p), 0);
-      result.push({ month, revenueCents: rev, appRevenueCents: appRev, expensesCents: exp, netCents: rev + appNetRev - exp, classes });
+      return { month, revenueCents: rev, appRevenueCents: appRev, expensesCents: exp, netCents: rev + appNetRev - exp, classes };
+    }
+
+    const monthKeys: string[] = [];
+    for (let i = months - 1; i >= 0; i--) {
+      monthKeys.push(addMonthsToKey(thisMonth, -i));
+    }
+
+    const result: MonthResult[] = [];
+    for (let start = 0; start < monthKeys.length; start += MONTH_CHUNK_SIZE) {
+      const chunk = monthKeys.slice(start, start + MONTH_CHUNK_SIZE);
+      const chunkResults = await Promise.all(chunk.map((month) => computeMonth(month)));
+      result.push(...chunkResults);
     }
 
     const bestMonth = [...result].sort((a, b) => b.revenueCents - a.revenueCents)[0] ?? null;
@@ -1274,7 +1305,12 @@ export class FinancialService {
     // valor original cobrado (fato histórico, nunca muda) — a coluna
     // valor_estornado_cliente fecha a conta completa em caso de estorno
     // parcial: bruto = comissão + líquido + estornado.
-    const header = "data,tipo,metodo,status,valor_bruto,comissao_plataforma,valor_liquido,valor_estornado_cliente";
+    // Achado em teste manual: "tipo" só distingue a categoria (ex:
+    // "Consultoria"), não qual oferta específica gerou a receita — dois
+    // preços diferentes do mesmo tipo ficavam indistinguíveis no extrato.
+    // "servico" resolve isso sem expor nenhum dado do aluno (decisão do
+    // Danilo: nome do aluno fica de fora, dado sensível de terceiro).
+    const header = "data,tipo,servico,metodo,status,valor_bruto,comissao_plataforma,valor_liquido,valor_estornado_cliente";
     const typeLabel: Record<string, string> = {
       PRESENTIAL: "Sessão avulsa",
       CONSULTANCY: "Consultoria",
@@ -1286,6 +1322,7 @@ export class FinancialService {
       return [
         escapeCsv(date),
         escapeCsv(typeLabel[p.type] ?? p.type),
+        escapeCsv(p.offerTitle ?? ""),
         escapeCsv(p.method),
         escapeCsv(p.status),
         (p.amountCents / 100).toFixed(2),
@@ -1344,7 +1381,7 @@ export class FinancialService {
           method: true,
           status: true,
           capturedAt: true,
-          booking: { select: { scheduledAt: true } }
+          booking: { select: { scheduledAt: true, offer: { select: { title: true } } } }
         },
         orderBy: { capturedAt: "desc" },
         take: queryTake
@@ -1369,7 +1406,8 @@ export class FinancialService {
           paymentStatus: true,
           paymentMethod: true,
           paymentCapturedAt: true,
-          createdAt: true
+          createdAt: true,
+          offer: { select: { title: true } }
         },
         orderBy: { paymentCapturedAt: "desc" },
         take: queryTake
@@ -1395,7 +1433,7 @@ export class FinancialService {
           // effectiveCycleRevenueCents, mas essa função nunca olhava o campo).
           refundedAmountCents: true,
           capturedAt: true,
-          package: { select: { paymentMethod: true } }
+          package: { select: { paymentMethod: true, offer: { select: { title: true } } } }
         },
         orderBy: { capturedAt: "desc" },
         take: queryTake
@@ -1422,7 +1460,13 @@ export class FinancialService {
           // com receita cheia no Extrato/CSV.
           refundedAmountCents: true,
           contract: {
-            select: { paymentAmountCents: true, providerAmountCents: true, platformAmountCents: true, paymentMethod: true }
+            select: {
+              paymentAmountCents: true,
+              providerAmountCents: true,
+              platformAmountCents: true,
+              paymentMethod: true,
+              offer: { select: { title: true } }
+            }
           }
         },
         orderBy: { createdAt: "desc" },
@@ -1478,7 +1522,8 @@ export class FinancialService {
       method:              p.method as string,
       status:              p.status as string,
       capturedAt:          p.capturedAt?.toISOString() ?? null,
-      scheduledAt:         p.booking.scheduledAt.toISOString() as string | null
+      scheduledAt:         p.booking.scheduledAt.toISOString() as string | null,
+      offerTitle:          p.booking.offer?.title ?? null
     }));
 
     const contractTransactions = contracts.map(c => {
@@ -1494,7 +1539,8 @@ export class FinancialService {
         method:              (c.paymentMethod ?? "CREDIT_CARD") as string,
         status:              c.paymentStatus as string,
         capturedAt:          (c.paymentCapturedAt ?? c.createdAt).toISOString(),
-        scheduledAt:         null as string | null
+        scheduledAt:         null as string | null,
+        offerTitle:          c.offer?.title ?? null
       };
     });
 
@@ -1511,7 +1557,8 @@ export class FinancialService {
         method:              (cycle.package.paymentMethod ?? "CREDIT_CARD") as string,
         status:              "CAPTURED" as string,
         capturedAt:          cycle.capturedAt!.toISOString(),
-        scheduledAt:         null as string | null
+        scheduledAt:         null as string | null,
+        offerTitle:          cycle.package.offer?.title ?? null
       };
     });
 
@@ -1530,7 +1577,8 @@ export class FinancialService {
           method:              (plan.contract!.paymentMethod ?? "CREDIT_CARD") as string,
           status:              "CAPTURED" as string,
           capturedAt:          plan.createdAt.toISOString(),
-          scheduledAt:         null as string | null
+          scheduledAt:         null as string | null,
+          offerTitle:          plan.contract!.offer?.title ?? null
         };
       });
 

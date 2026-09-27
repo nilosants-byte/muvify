@@ -144,7 +144,7 @@ describe("Financeiro — reembolso parcial nos repasses e renovação de ficha n
 
     const csv = await financialService.exportTransactionsCsv(providerUserId);
     const csvLines = csv.split("\n");
-    expect(csvLines[0]).toBe("data,tipo,metodo,status,valor_bruto,comissao_plataforma,valor_liquido,valor_estornado_cliente");
+    expect(csvLines[0]).toBe("data,tipo,servico,metodo,status,valor_bruto,comissao_plataforma,valor_liquido,valor_estornado_cliente");
     const csvLine = csvLines.find((line) => line.includes("6.00") && line.includes("54.00"));
     expect(csvLine).toBeDefined();
     expect(csvLine).toContain("40.00");
