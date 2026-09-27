@@ -604,15 +604,33 @@ export class UserService {
       return { ticketId: ticket.id, delivered: false, queued: true };
     }
 
-    await emailService.sendSupportMessageEmail({
-      to: supportRecipient,
-      userName: user.name,
-      userEmail: user.email,
-      userRole: user.role,
-      subject: emailSubject,
-      message: normalizedMessage,
-      recoveryEmail: recovery.recoveryEmail
-    });
+    // Achado em teste manual (2026-09-27): o ticket já é criado (linha
+    // acima) e é a fonte de verdade real - o admin enxerga e responde por
+    // ele direto (não depende deste e-mail de aviso interno). Mas essa
+    // chamada de SMTP síncrona, sem try/catch, derrubava a requisição
+    // inteira com "Erro interno do servidor" numa falha transitória de
+    // envio - o usuário via um erro genérico mesmo com o chamado já salvo
+    // de verdade (visível em "Meus chamados"), sem saber que na real deu
+    // certo. Mesmo princípio já usado 2 linhas acima pro caso de SMTP
+    // desligado: falha no aviso por e-mail nunca deve derrubar o chamado.
+    try {
+      await emailService.sendSupportMessageEmail({
+        to: supportRecipient,
+        userName: user.name,
+        userEmail: user.email,
+        userRole: user.role,
+        subject: emailSubject,
+        message: normalizedMessage,
+        recoveryEmail: recovery.recoveryEmail
+      });
+    } catch (error) {
+      console.error("[SUPPORT_QUEUE] Falha ao enviar e-mail de aviso de suporte (ticket já salvo).", {
+        ticketId: ticket.id,
+        userId: user.id
+      });
+      Sentry.captureException(error, { tags: { area: "users", phase: "support_message_email" }, extra: { ticketId: ticket.id } });
+      return { ticketId: ticket.id, delivered: false, queued: true };
+    }
 
     return { ticketId: ticket.id, delivered: true, queued: false };
   }

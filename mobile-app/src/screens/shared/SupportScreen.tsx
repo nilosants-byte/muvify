@@ -97,9 +97,10 @@ export function SupportScreen({ navigation }: { navigation?: any }) {
               <Ionicons name="mail-outline" size={18} color={theme.textGreen} />
             </View>
             <View style={{ flex: 1 }}>
-              <MvText variant="semi3">E-mail</MvText>
-              <MvText variant="body4" color="secondary" numberOfLines={1}>Resposta em até 2 dias úteis</MvText>
+              <MvText variant="semi3">Enviar e-mail direto</MvText>
+              <MvText variant="body4" color="secondary" numberOfLines={1}>Abre o app de e-mail do celular</MvText>
             </View>
+            <Ionicons name="open-outline" size={16} color={theme.text3} />
           </PressableScale>
         </View>
 
