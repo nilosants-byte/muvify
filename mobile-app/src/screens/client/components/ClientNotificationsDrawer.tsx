@@ -330,6 +330,19 @@ export function ClientNotificationsDrawer({
                     </Text>
                   </View>
                 </View>
+                {/* Achado em teste manual (2026-09-27): a tela cheia de
+                  notificações (NotificationsScreen, com paginação e mais
+                  categorias) não tinha nenhum botão em lugar nenhum do app
+                  que levasse até ela - só era alcançada como destino de
+                  reserva de push sem link específico (root-stack.tsx). */}
+                <TouchableOpacity
+                  onPress={() => { onClose(); navigation?.navigate("Notifications"); }}
+                  style={{ marginTop: 10 }}
+                >
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.primary }}>
+                    Ver central completa ›
+                  </Text>
+                </TouchableOpacity>
               </View>
               <TouchableOpacity
                 onPress={onClose}

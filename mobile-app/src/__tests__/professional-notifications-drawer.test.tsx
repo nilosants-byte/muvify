@@ -55,3 +55,34 @@ describe("ProfessionalNotificationsDrawer — STUDENT_POST_MENTION", () => {
     );
   });
 });
+
+// Achado em teste manual (2026-09-27): a tela cheia de notificações
+// (NotificationsScreen, registrada em ProfessionalStack) não tinha nenhum
+// botão em lugar nenhum do app que levasse até ela - só era alcançada como
+// destino de reserva de push sem link específico (root-stack.tsx).
+describe("ProfessionalNotificationsDrawer — link pra central completa", () => {
+  it("\"Ver central completa\" fecha o drawer e navega pra tela cheia de notificações", async () => {
+    (useAppState as jest.Mock).mockReturnValue({
+      runWithAuth: jest.fn(async (operation: (token: string) => Promise<unknown>) => operation("token-test")),
+      user: { id: "provider-user-1" }
+    });
+    jest.spyOn(notificationsApi, "inbox").mockResolvedValue([]);
+
+    const navigateSpy = jest.fn();
+    const onClose = jest.fn();
+
+    const { findByText } = render(
+      <ProfessionalNotificationsDrawer
+        visible
+        navigation={{ navigate: navigateSpy }}
+        onClose={onClose}
+      />
+    );
+
+    const link = await findByText("Ver central completa ›");
+    fireEvent.press(link);
+
+    expect(onClose).toHaveBeenCalled();
+    expect(navigateSpy).toHaveBeenCalledWith("Notifications");
+  });
+});
