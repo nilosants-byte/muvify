@@ -1172,102 +1172,194 @@ export class FinancialService {
       classes: number;
     };
 
-    // Achado em teste manual: com 36 meses, este método rodava um mês de
-    // cada vez (`for` com `await` dentro, sequencial) — ~8 queries por mês
-    // uma atrás da outra, virando 36 idas e voltas ao banco em série. Contra
-    // um Postgres hospedado remotamente, isso passava de 40s facilmente
-    // (Relatório Anual ficava "girando" quase 1 minuto). Processar em lotes
-    // paralelos resolve sem estourar o pool de conexões do processo
-    // (connection_limit=20, ver src/config/prisma.ts): 4 meses × ~8 queries
-    // cada fica em ~32 conexões simultâneas nesse lote — folga suficiente
-    // pra não monopolizar o pool de outras requisições concorrentes.
-    const MONTH_CHUNK_SIZE = 4;
+    const monthKeys: string[] = [];
+    for (let i = months - 1; i >= 0; i--) {
+      monthKeys.push(addMonthsToKey(thisMonth, -i));
+    }
 
-    async function computeMonth(month: string): Promise<MonthResult> {
-      const { from, to } = monthBounds(month);
+    // Achado em teste manual (2026-09-27): a primeira correção deste método
+    // trocou "36 meses em série" por "lotes de 4 em paralelo" — parecia
+    // certo (assumindo connection_limit=20, ver src/config/prisma.ts), mas
+    // o banco real (Supabase via pgbouncer, .env.qa-staging) está com
+    // connection_limit=10: 4 meses × ~8 queries cada estourava esse pool
+    // pequeno e deixava TODA a API mais lenta (Home, Consultoria, Gestão de
+    // Alunos e Financeiro competindo pelas mesmas conexões). A correção de
+    // verdade é buscar cada fonte de dado UMA VEZ pro período inteiro (não
+    // uma vez por mês) e agrupar por mês em JS depois — de ~8 queries × 36
+    // meses (288 idas ao banco) pra ~8 queries no total, não importa quantos
+    // meses forem pedidos.
+    const rangeFrom = monthBounds(monthKeys[0]).from;
+    const rangeTo = monthBounds(monthKeys[monthKeys.length - 1]).to;
+    // Teto generoso pro período inteiro (era 2000 POR MÊS antes) - gera o
+    // mesmo comportamento de corte em contas com volume atípico, sem
+    // multiplicar por 36 sem necessidade.
+    const RANGE_TAKE = 6000;
 
-      const [incomes, expenses, consultancyDeliveries, appBookings, appContracts, appPackageCycles, renewalPlans] = await Promise.all([
-        getEffectiveIncomes(provider.id, month),
-        getEffectiveExpenses(provider.id, month),
-        // Épico de Frentes, Frente 7, Lote 6: mesmo critério de getDashboard
-        // - "aulas" conta sessão presencial concluída + entrega de ficha.
-        prisma.trainingPlan.count({
-          where: { providerId: provider.id, createdAt: { gte: from, lte: to } }
-        }),
-        // Épico de Frentes, Frente 7, Lote 2: aggregate() somava priceCents
-        // direto, sem descontar sessão reembolsada depois via disputa
-        // (Payment.status/refundedAmountCents) - trocado por findMany +
-        // effectiveBookingRevenueCents, mesmo tratamento de getDashboard.
-        prisma.booking.findMany({
-          where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: from, lte: to } },
-          select: { priceCents: true, payment: { select: { status: true, refundedAmountCents: true, providerAmountCents: true } } },
-          take: 2000
-        }),
-        // Épico de Frentes, Frente 12, Lote 1: aggregate() com paymentStatus
-        // CAPTURED sumia com o contrato inteiro num reembolso parcial - trocado
-        // por findMany + effectiveConsultancyRevenueCents, mesmo tratamento
-        // de getDashboard.
-        prisma.consultancyContract.findMany({
-          where: {
-            providerId: provider.id,
-            origin: ConsultancyContractOrigin.MARKETPLACE,
-            paymentStatus: { in: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] },
-            paymentCapturedAt: { gte: from, lte: to }
-          },
-          select: { paymentAmountCents: true, providerAmountCents: true, refundedAmountCents: true },
-          take: 2000
-        }),
-        prisma.presentialPackageCycle.findMany({
-          where: { package: { providerId: provider.id }, capturedAt: { gte: from, lte: to } },
-          select: { amountCents: true, providerAmountCents: true, refundedAmountCents: true },
-          take: 2000
-        }),
-        // Raio-X de pagamentos, Rodada 3, Lote 4: getReport ficou de fora do
-        // conserto que getDashboard/getPayouts já receberam na Rodada 2 —
-        // renovações de ficha (2ª ficha em diante) somem do relatório anual.
-        // Épico de Frentes, Frente 12, Lote 1: filtro `refundedAt: null`
-        // sumia com a renovação inteira num reembolso parcial - agora sempre
-        // entra, effectiveRenewalRevenueCents desconta só a fração devolvida.
-        prisma.trainingPlan.findMany({
-          where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: from, lte: to } },
-          select: { refundedAmountCents: true, contract: { select: { paymentAmountCents: true, providerAmountCents: true } } },
-          take: 2000
-        })
-      ]);
+    const [
+      realIncomes,
+      incomeTemplates,
+      realExpenses,
+      expenseTemplates,
+      trainingPlans,
+      appBookings,
+      appContracts,
+      appPackageCycles,
+      renewalPlans
+    ] = await Promise.all([
+      prisma.financialIncome.findMany({
+        where: { providerId: provider.id, paidAt: { gte: rangeFrom, lte: rangeTo } },
+        select: { amountCents: true, paidAt: true },
+        take: RANGE_TAKE
+      }),
+      // Candidatos a projeção "virtual" em qualquer mês do período: já
+      // existiam antes do último mês pedido e não terminaram antes do
+      // primeiro - o filtro exato por mês é feito em JS abaixo (mesma
+      // regra de getEffectiveIncomes, só que pra N meses de uma vez).
+      prisma.financialIncome.findMany({
+        where: {
+          providerId: provider.id,
+          recurrence: FinancialRecurrence.RECURRING,
+          paidAt: { lt: monthBounds(monthKeys[monthKeys.length - 1]).from },
+          OR: [{ recurrenceEndDate: null }, { recurrenceEndDate: { gte: rangeFrom } }]
+        },
+        select: { amountCents: true, paidAt: true, recurrenceEndDate: true },
+        take: RANGE_TAKE
+      }),
+      prisma.financialExpense.findMany({
+        where: { providerId: provider.id, paidAt: { gte: rangeFrom, lte: rangeTo } },
+        select: { amountCents: true, paidAt: true },
+        take: RANGE_TAKE
+      }),
+      prisma.financialExpense.findMany({
+        where: {
+          providerId: provider.id,
+          recurrence: FinancialRecurrence.RECURRING,
+          paidAt: { lt: monthBounds(monthKeys[monthKeys.length - 1]).from },
+          OR: [{ recurrenceEndDate: null }, { recurrenceEndDate: { gte: rangeFrom } }]
+        },
+        select: { amountCents: true, paidAt: true, recurrenceEndDate: true },
+        take: RANGE_TAKE
+      }),
+      // Épico de Frentes, Frente 7, Lote 6: mesmo critério de getDashboard
+      // - "aulas" conta sessão presencial concluída + entrega de ficha.
+      prisma.trainingPlan.findMany({
+        where: { providerId: provider.id, createdAt: { gte: rangeFrom, lte: rangeTo } },
+        select: { createdAt: true },
+        take: RANGE_TAKE
+      }),
+      // Épico de Frentes, Frente 7, Lote 2: aggregate() somava priceCents
+      // direto, sem descontar sessão reembolsada depois via disputa
+      // (Payment.status/refundedAmountCents) - trocado por findMany +
+      // effectiveBookingRevenueCents, mesmo tratamento de getDashboard.
+      prisma.booking.findMany({
+        where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: rangeFrom, lte: rangeTo } },
+        select: { priceCents: true, scheduledAt: true, payment: { select: { status: true, refundedAmountCents: true, providerAmountCents: true } } },
+        take: RANGE_TAKE
+      }),
+      // Épico de Frentes, Frente 12, Lote 1: aggregate() com paymentStatus
+      // CAPTURED sumia com o contrato inteiro num reembolso parcial - trocado
+      // por findMany + effectiveConsultancyRevenueCents, mesmo tratamento
+      // de getDashboard.
+      prisma.consultancyContract.findMany({
+        where: {
+          providerId: provider.id,
+          origin: ConsultancyContractOrigin.MARKETPLACE,
+          paymentStatus: { in: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] },
+          paymentCapturedAt: { gte: rangeFrom, lte: rangeTo }
+        },
+        select: { paymentAmountCents: true, providerAmountCents: true, refundedAmountCents: true, paymentCapturedAt: true },
+        take: RANGE_TAKE
+      }),
+      prisma.presentialPackageCycle.findMany({
+        where: { package: { providerId: provider.id }, capturedAt: { gte: rangeFrom, lte: rangeTo } },
+        select: { amountCents: true, providerAmountCents: true, refundedAmountCents: true, capturedAt: true },
+        take: RANGE_TAKE
+      }),
+      // Raio-X de pagamentos, Rodada 3, Lote 4: getReport ficou de fora do
+      // conserto que getDashboard/getPayouts já receberam na Rodada 2 —
+      // renovações de ficha (2ª ficha em diante) somem do relatório anual.
+      // Épico de Frentes, Frente 12, Lote 1: filtro `refundedAt: null`
+      // sumia com a renovação inteira num reembolso parcial - agora sempre
+      // entra, effectiveRenewalRevenueCents desconta só a fração devolvida.
+      prisma.trainingPlan.findMany({
+        where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: rangeFrom, lte: rangeTo } },
+        select: { refundedAmountCents: true, createdAt: true, contract: { select: { paymentAmountCents: true, providerAmountCents: true } } },
+        take: RANGE_TAKE
+      })
+    ]);
+
+    const monthSet = new Set(monthKeys);
+    function bucket<T>(rows: T[], dateOf: (row: T) => Date): Map<string, T[]> {
+      const byMonth = new Map<string, T[]>();
+      for (const row of rows) {
+        const key = monthKeyOf(dateOf(row));
+        if (!monthSet.has(key)) continue;
+        if (!byMonth.has(key)) byMonth.set(key, []);
+        byMonth.get(key)!.push(row);
+      }
+      return byMonth;
+    }
+
+    const incomesByMonth = bucket(realIncomes, (r) => r.paidAt);
+    const expensesByMonth = bucket(realExpenses, (r) => r.paidAt);
+    const trainingPlansByMonth = bucket(trainingPlans, (r) => r.createdAt);
+    const bookingsByMonth = bucket(appBookings, (r) => r.scheduledAt);
+    const contractsByMonth = bucket(appContracts, (r) => r.paymentCapturedAt!);
+    const packageCyclesByMonth = bucket(appPackageCycles, (r) => r.capturedAt!);
+    const renewalsByMonth = bucket(renewalPlans, (r) => r.createdAt);
+
+    // Projeção "virtual" das recorrências: mesma regra de
+    // getEffectiveIncomes/getEffectiveExpenses (paidAt < início do mês E
+    // (sem data de término OU término >= início do mês)), só que testada
+    // contra todos os meses pedidos de uma vez, em JS, em vez de uma
+    // consulta nova por mês.
+    function addVirtualProjections(
+      templates: Array<{ amountCents: number; paidAt: Date; recurrenceEndDate: Date | null }>,
+      byMonth: Map<string, { amountCents: number }[]>
+    ) {
+      for (const month of monthKeys) {
+        const { from } = monthBounds(month);
+        for (const t of templates) {
+          if (t.paidAt >= from) continue;
+          if (t.recurrenceEndDate && t.recurrenceEndDate < from) continue;
+          if (!byMonth.has(month)) byMonth.set(month, []);
+          byMonth.get(month)!.push({ amountCents: t.amountCents });
+        }
+      }
+    }
+    addVirtualProjections(incomeTemplates, incomesByMonth);
+    addVirtualProjections(expenseTemplates, expensesByMonth);
+
+    const result: MonthResult[] = monthKeys.map((month) => {
+      const incomes = incomesByMonth.get(month) ?? [];
+      const expenses = expensesByMonth.get(month) ?? [];
+      const consultancyDeliveries = (trainingPlansByMonth.get(month) ?? []).length;
+      const monthBookings = bookingsByMonth.get(month) ?? [];
+      const monthContracts = contractsByMonth.get(month) ?? [];
+      const monthPackageCycles = packageCyclesByMonth.get(month) ?? [];
+      const monthRenewals = renewalsByMonth.get(month) ?? [];
 
       const rev       = incomes.reduce((s, i) => s + i.amountCents, 0);
-      const renewalRev = renewalPlans.reduce((s, p) => s + effectiveRenewalRevenueCents(p), 0);
+      const renewalRev = monthRenewals.reduce((s, p) => s + effectiveRenewalRevenueCents(p), 0);
       const appRev =
-        appBookings.reduce((s, b) => s + effectiveBookingRevenueCents(b), 0)
-        + appContracts.reduce((s, c) => s + effectiveConsultancyRevenueCents(c), 0)
-        + appPackageCycles.reduce((s, c) => s + effectiveCycleRevenueCents(c), 0)
+        monthBookings.reduce((s, b) => s + effectiveBookingRevenueCents(b), 0)
+        + monthContracts.reduce((s, c) => s + effectiveConsultancyRevenueCents(c), 0)
+        + monthPackageCycles.reduce((s, c) => s + effectiveCycleRevenueCents(c), 0)
         + renewalRev;
       const exp    = expenses.reduce((s, e) => s + e.amountCents, 0);
-      const classes = appBookings.length + consultancyDeliveries;
+      const classes = monthBookings.length + consultancyDeliveries;
       // Frente 3 (segunda camada), Lote 2: "Lucro"/"Lucro líquido" no Extrato
       // e no Relatório Anual vinham deste netCents — antes calculado como
       // receita BRUTA menos despesas manuais, sem descontar a comissão da
       // plataforma. appNetRev usa os helpers *NetCents (mesma proporção já
       // usada no Financeiro/CSV), então netCents agora é o lucro de verdade.
       const appNetRev =
-        appBookings.reduce((s, b) => s + effectiveBookingNetCents(b), 0)
-        + appContracts.reduce((s, c) => s + effectiveConsultancyNetCents(c), 0)
-        + appPackageCycles.reduce((s, c) => s + effectiveCycleNetCents(c), 0)
-        + renewalPlans.reduce((s, p) => s + effectiveRenewalNetCents(p), 0);
+        monthBookings.reduce((s, b) => s + effectiveBookingNetCents(b), 0)
+        + monthContracts.reduce((s, c) => s + effectiveConsultancyNetCents(c), 0)
+        + monthPackageCycles.reduce((s, c) => s + effectiveCycleNetCents(c), 0)
+        + monthRenewals.reduce((s, p) => s + effectiveRenewalNetCents(p), 0);
       return { month, revenueCents: rev, appRevenueCents: appRev, expensesCents: exp, netCents: rev + appNetRev - exp, classes };
-    }
-
-    const monthKeys: string[] = [];
-    for (let i = months - 1; i >= 0; i--) {
-      monthKeys.push(addMonthsToKey(thisMonth, -i));
-    }
-
-    const result: MonthResult[] = [];
-    for (let start = 0; start < monthKeys.length; start += MONTH_CHUNK_SIZE) {
-      const chunk = monthKeys.slice(start, start + MONTH_CHUNK_SIZE);
-      const chunkResults = await Promise.all(chunk.map((month) => computeMonth(month)));
-      result.push(...chunkResults);
-    }
+    });
 
     const bestMonth = [...result].sort((a, b) => b.revenueCents - a.revenueCents)[0] ?? null;
     const avgRevenue =
