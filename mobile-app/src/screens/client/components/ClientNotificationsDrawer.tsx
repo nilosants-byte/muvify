@@ -383,6 +383,7 @@ export function ClientNotificationsDrawer({
 
           {/* Lista de notificações */}
           <FlatList
+            style={{ flex: 1 }}
             data={visibleNotifications}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingBottom: insets.bottom + 100 }}
