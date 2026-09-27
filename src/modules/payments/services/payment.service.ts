@@ -102,6 +102,49 @@ function normalizeNickname(nickname?: string | null) {
   return value.length ? value : "Cartao";
 }
 
+// Achado em teste manual (2026-09-27): o SDK do Mercado Pago (RestClient,
+// ver node_modules/mercadopago/dist/utils/restClient) lança direto o corpo
+// JSON de erro da API (`throw await response.json()`) quando a resposta não
+// é 2xx - um objeto puro com `status`/`message` em inglês, nunca uma
+// instância de Error. Sem tratamento, esse `status` numérico (400-499) fazia
+// o middleware de erro genérico (error.middleware.ts) devolver a mensagem
+// crua da MP direto pro usuário (ex: "Payment method response is empty" ao
+// tentar salvar um cartão de teste inválido) - som de erro de preenchimento,
+// quando na verdade é a MP recusando o cartão. Mesma ideia de tradução que
+// já existia só no client-side tokenizeMpCard (ProviderPaymentMethodScreen),
+// agora espelhada aqui pro passo de anexar o token ao customer.
+const MP_CARD_ERROR_MAP: Record<string, string> = {
+  "payment method response is empty": "Não foi possível validar este cartão. Confira os dados e tente novamente, ou use outro cartão.",
+  "invalid card number": "Número do cartão inválido.",
+  "invalid expiration date": "Data de validade inválida.",
+  "invalid cvv": "Código de segurança (CVV) inválido.",
+  "invalid cardholder name": "Nome do titular inválido.",
+  "invalid identification number": "CPF inválido.",
+  "card_number invalid": "Número do cartão inválido.",
+  "expiration_month invalid": "Mês de validade inválido.",
+  "expiration_year invalid": "Ano de validade inválido.",
+  "security_code invalid": "Código de segurança inválido.",
+  "cardholder.name invalid": "Nome do titular inválido.",
+  "cardholder.identification.number invalid": "CPF inválido.",
+  "cc_rejected_bad_filled_card_number": "Número do cartão preenchido incorretamente.",
+  "cc_rejected_bad_filled_date": "Data de validade preenchida incorretamente.",
+  "cc_rejected_bad_filled_security_code": "Código de segurança preenchido incorretamente.",
+  "cc_rejected_bad_filled_other": "Dados do cartão inválidos.",
+  "cc_rejected_insufficient_amount": "Saldo insuficiente no cartão.",
+  "cc_rejected_card_disabled": "Cartão bloqueado ou inativo.",
+  "cc_rejected_other_reason": "Cartão recusado. Tente outro cartão."
+};
+
+function translateMpCardError(error: unknown): string {
+  const shape = error as { message?: string; cause?: Array<{ code?: string | number; description?: string }> } | undefined;
+  const raw = shape?.cause?.[0]?.description ?? shape?.message ?? "";
+  const lower = raw.toLowerCase();
+  for (const [key, msg] of Object.entries(MP_CARD_ERROR_MAP)) {
+    if (lower.includes(key)) return msg;
+  }
+  return "Não foi possível salvar o cartão. Verifique os dados e tente novamente.";
+}
+
 const notificationService = new NotificationService();
 const presentialPackageService = new PresentialPackageService();
 const mpPayment = new Payment(mp);
@@ -415,10 +458,15 @@ export class PaymentService {
   async setupCustomerPaymentMethod(userId: string, cardToken: string) {
     const { customerId } = await this.ensureCustomerForUser(userId);
 
-    const savedCard = await mpCustomerCard.create({
-      customerId,
-      body: { token: cardToken }
-    });
+    let savedCard;
+    try {
+      savedCard = await mpCustomerCard.create({
+        customerId,
+        body: { token: cardToken }
+      });
+    } catch (error) {
+      throw new AppError(translateMpCardError(error), StatusCodes.BAD_REQUEST);
+    }
 
     const mpCardId = String(savedCard.id);
     await this.upsertCustomerPaymentMethodFromMp({
@@ -457,10 +505,15 @@ export class PaymentService {
 
     const { user, customerId } = await this.ensureCustomerForUser(userId);
 
-    const savedCard = await mpCustomerCard.create({
-      customerId,
-      body: { token: input.cardToken }
-    });
+    let savedCard;
+    try {
+      savedCard = await mpCustomerCard.create({
+        customerId,
+        body: { token: input.cardToken }
+      });
+    } catch (error) {
+      throw new AppError(translateMpCardError(error), StatusCodes.BAD_REQUEST);
+    }
 
     await this.upsertCustomerPaymentMethodFromMp({
       userId: user.id,
