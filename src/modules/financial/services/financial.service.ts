@@ -409,27 +409,55 @@ export class FinancialService {
     const { from, to } = monthBounds(m);
 
     const lastMonthKey = addMonthsToKey(m, -1);
-    const { from: lastMonthFrom, to: lastMonthTo } = monthBounds(lastMonthKey);
+    const { from: lastMonthFrom } = monthBounds(lastMonthKey);
+
+    // Achado em teste manual (2026-09-27), mesma causa raiz já corrigida em
+    // getReport: bookings/contratos/ciclos/renovações/receitas manuais eram
+    // buscados 2x (mês atual + mês anterior, só pra calcular growthPct) -
+    // cada fonte agora busca o range combinado [mês anterior, mês atual] UMA
+    // vez e separa por mês em JS, mesmo princípio de getReport (de ~20
+    // consultas concorrentes por carregamento pra ~14 - o pool do banco em
+    // staging é pequeno e compartilhado com o resto do app, ver
+    // src/config/prisma.ts).
+    const monthKeys = [lastMonthKey, m];
+    const monthSet = new Set(monthKeys);
+    const rangeFrom = lastMonthFrom;
+    const rangeTo = to;
+    const RANGE_TAKE = 4000;
 
     const [
-      incomes,
+      realIncomes,
+      incomeTemplates,
       expenses,
       consultancyDeliveries,
       activeStudents,
       goal,
-      lastMonthIncomes,
-      completedBookings,
+      appBookingsRange,
       confirmedBookingsAgg,
-      lastMonthCompletedBookingsAgg,
-      capturedContracts,
-      lastMonthCapturedContractsAgg,
-      capturedPackageCycles,
-      lastMonthCapturedPackageCyclesAgg,
-      renewalPlans,
-      lastMonthRenewalPlans,
+      appContractsRange,
+      appPackageCyclesRange,
+      renewalPlansRange,
       outstandingDebtAgg
     ] = await Promise.all([
-      getEffectiveIncomes(provider.id, m),
+      prisma.financialIncome.findMany({
+        where: { providerId: provider.id, paidAt: { gte: rangeFrom, lte: rangeTo } },
+        select: { amountCents: true, paidAt: true },
+        take: RANGE_TAKE,
+      }),
+      // Candidatos a projeção "virtual" nos 2 meses do range - mesma regra
+      // de getEffectiveIncomes, testada em JS pra cada mês abaixo.
+      prisma.financialIncome.findMany({
+        where: {
+          providerId: provider.id,
+          recurrence: FinancialRecurrence.RECURRING,
+          paidAt: { lt: from },
+          OR: [{ recurrenceEndDate: null }, { recurrenceEndDate: { gte: rangeFrom } }]
+        },
+        select: { amountCents: true, paidAt: true, recurrenceEndDate: true },
+        take: RANGE_TAKE,
+      }),
+      // Despesas não entram no cálculo de growthPct (só receita) - sem
+      // duplicação a eliminar aqui, continua buscando só o mês atual.
       getEffectiveExpenses(provider.id, m),
       // Épico de Frentes, Frente 7, Lote 6: "aulas/sessões" do mês passa a
       // contar sessões reais já rastreadas pelo app - presencial concluída
@@ -448,30 +476,25 @@ export class FinancialService {
       prisma.financialGoal.findUnique({
         where: { providerId_month: { providerId: provider.id, month: m } }
       }),
-      // mês anterior: receitas manuais (real + projeção de recorrentes)
-      getEffectiveIncomes(provider.id, lastMonthKey),
-      // agendamentos COMPLETADOS: receita realizada pelo app (com datas para
-      // breakdown diário; payment.status/refundedAmountCents pra descontar
-      // sessões reembolsadas depois via disputa - ver effectiveBookingRevenueCents)
+      // agendamentos COMPLETADOS (mês atual + mês anterior, num range só):
+      // receita realizada pelo app (com datas para breakdown diário;
+      // payment.status/refundedAmountCents pra descontar sessões
+      // reembolsadas depois via disputa - ver effectiveBookingRevenueCents)
       prisma.booking.findMany({
-        where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: from, lte: to } },
+        where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: rangeFrom, lte: rangeTo } },
         select: { priceCents: true, scheduledAt: true, payment: { select: { status: true, refundedAmountCents: true } } },
-        take: 2000,
+        take: RANGE_TAKE,
       }),
-      // agendamentos CONFIRMADOS: receita prevista (ainda não realizada)
+      // agendamentos CONFIRMADOS: receita prevista (ainda não realizada) -
+      // só existe pro mês atual, não entra em growthPct.
       prisma.booking.aggregate({
         where: { providerId: provider.id, status: BookingStatus.CONFIRMED, scheduledAt: { gte: from, lte: to } },
         _sum: { priceCents: true }
       }),
-      // mês anterior: agendamentos completados pelo app
-      prisma.booking.findMany({
-        where: { providerId: provider.id, status: BookingStatus.COMPLETED, scheduledAt: { gte: lastMonthFrom, lte: lastMonthTo } },
-        select: { priceCents: true, payment: { select: { status: true, refundedAmountCents: true } } },
-        take: 2000,
-      }),
-      // consultorias com pagamento capturado (receita realizada pelo app, com
-      // data para breakdown diário); PARTIALLY_REFUNDED entra também -
-      // refundedAmountCents desconta só a fração devolvida (Frente 12, Lote 1)
+      // consultorias com pagamento capturado (mês atual + anterior, num
+      // range só), com data para breakdown diário; PARTIALLY_REFUNDED entra
+      // também - refundedAmountCents desconta só a fração devolvida
+      // (Frente 12, Lote 1)
       prisma.consultancyContract.findMany({
         where: {
           providerId: provider.id,
@@ -481,35 +504,19 @@ export class FinancialService {
           // entrar em nenhum relatório financeiro/de comissão.
           origin: ConsultancyContractOrigin.MARKETPLACE,
           paymentStatus: { in: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] },
-          paymentCapturedAt: { gte: from, lte: to }
+          paymentCapturedAt: { gte: rangeFrom, lte: rangeTo }
         },
         select: { paymentAmountCents: true, paymentCapturedAt: true, refundedAmountCents: true },
-        take: 2000,
+        take: RANGE_TAKE,
       }),
-      // mês anterior: consultorias com pagamento capturado
-      prisma.consultancyContract.findMany({
-        where: {
-          providerId: provider.id,
-          origin: ConsultancyContractOrigin.MARKETPLACE,
-          paymentStatus: { in: [ConsultancyPaymentStatus.CAPTURED, ConsultancyPaymentStatus.PARTIALLY_REFUNDED] },
-          paymentCapturedAt: { gte: lastMonthFrom, lte: lastMonthTo }
-        },
-        select: { paymentAmountCents: true, refundedAmountCents: true },
-        take: 2000,
-      }),
-      // ciclos de pacote presencial capturados (receita real - nunca o valor
-      // total do pacote, so o que de fato foi cobrado), com data para breakdown
-      // diário; refundedAmountCents desconta o que voltou pro cliente via disputa
+      // ciclos de pacote presencial capturados (mês atual + anterior, num
+      // range só) - receita real, nunca o valor total do pacote, só o que
+      // de fato foi cobrado, com data para breakdown diário;
+      // refundedAmountCents desconta o que voltou pro cliente via disputa
       prisma.presentialPackageCycle.findMany({
-        where: { package: { providerId: provider.id }, capturedAt: { gte: from, lte: to } },
+        where: { package: { providerId: provider.id }, capturedAt: { gte: rangeFrom, lte: rangeTo } },
         select: { amountCents: true, capturedAt: true, refundedAmountCents: true },
-        take: 2000,
-      }),
-      // mês anterior: ciclos de pacote presencial capturados
-      prisma.presentialPackageCycle.findMany({
-        where: { package: { providerId: provider.id }, capturedAt: { gte: lastMonthFrom, lte: lastMonthTo } },
-        select: { amountCents: true, refundedAmountCents: true },
-        take: 2000,
+        take: RANGE_TAKE,
       }),
       // Raio-X de pagamentos, Rodada 2, Lote 4: renovações de ficha (2ª ficha
       // em diante) cobram de novo, mas a receita nunca aparecia aqui — só a
@@ -519,16 +526,11 @@ export class FinancialService {
       // Lote 1: filtro `refundedAt: null` sumia com a renovação inteira num
       // reembolso parcial - agora sempre entra, e refundedAmountCents
       // desconta só a fração devolvida (effectiveRenewalRevenueCents).
+      // Mês atual + anterior, num range só.
       prisma.trainingPlan.findMany({
-        where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: from, lte: to } },
+        where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: rangeFrom, lte: rangeTo } },
         select: { createdAt: true, refundedAmountCents: true, contract: { select: { paymentAmountCents: true } } },
-        take: 2000
-      }),
-      // mês anterior: renovações de ficha
-      prisma.trainingPlan.findMany({
-        where: { providerId: provider.id, renewalMpPaymentId: { not: null }, createdAt: { gte: lastMonthFrom, lte: lastMonthTo } },
-        select: { refundedAmountCents: true, contract: { select: { paymentAmountCents: true } } },
-        take: 2000
+        take: RANGE_TAKE
       }),
       // Frente 3 (segunda camada), Lote 7: dívida do profissional (nasce
       // quando uma disputa é resolvida com reembolso ao cliente, e o valor
@@ -541,6 +543,43 @@ export class FinancialService {
         _sum: { amountCents: true }
       })
     ]);
+
+    function bucketByMonth<T>(rows: T[], dateOf: (row: T) => Date): Map<string, T[]> {
+      const byMonth = new Map<string, T[]>();
+      for (const row of rows) {
+        const key = monthKeyOf(dateOf(row));
+        if (!monthSet.has(key)) continue;
+        if (!byMonth.has(key)) byMonth.set(key, []);
+        byMonth.get(key)!.push(row);
+      }
+      return byMonth;
+    }
+
+    const incomesByMonth = bucketByMonth(realIncomes, (r) => r.paidAt);
+    for (const month of monthKeys) {
+      const { from: monthFrom } = monthBounds(month);
+      for (const t of incomeTemplates) {
+        if (t.paidAt >= monthFrom) continue;
+        if (t.recurrenceEndDate && t.recurrenceEndDate < monthFrom) continue;
+        if (!incomesByMonth.has(month)) incomesByMonth.set(month, []);
+        incomesByMonth.get(month)!.push({ amountCents: t.amountCents, paidAt: clampDayToMonth(t.paidAt, month) });
+      }
+    }
+    const bookingsByMonth = bucketByMonth(appBookingsRange, (r) => r.scheduledAt);
+    const contractsByMonth = bucketByMonth(appContractsRange, (r) => r.paymentCapturedAt!);
+    const packageCyclesByMonth = bucketByMonth(appPackageCyclesRange, (r) => r.capturedAt!);
+    const renewalsByMonth = bucketByMonth(renewalPlansRange, (r) => r.createdAt);
+
+    const incomes = incomesByMonth.get(m) ?? [];
+    const lastMonthIncomes = incomesByMonth.get(lastMonthKey) ?? [];
+    const completedBookings = bookingsByMonth.get(m) ?? [];
+    const lastMonthCompletedBookingsAgg = bookingsByMonth.get(lastMonthKey) ?? [];
+    const capturedContracts = contractsByMonth.get(m) ?? [];
+    const lastMonthCapturedContractsAgg = contractsByMonth.get(lastMonthKey) ?? [];
+    const capturedPackageCycles = packageCyclesByMonth.get(m) ?? [];
+    const lastMonthCapturedPackageCyclesAgg = packageCyclesByMonth.get(lastMonthKey) ?? [];
+    const renewalPlans = renewalsByMonth.get(m) ?? [];
+    const lastMonthRenewalPlans = renewalsByMonth.get(lastMonthKey) ?? [];
 
     const appBookingRevenueCents     = completedBookings.reduce((s, b) => s + effectiveBookingRevenueCents(b), 0);
     const appConsultancyRevenueCents = capturedContracts.reduce((s, c) => s + effectiveConsultancyRevenueCents(c), 0);
