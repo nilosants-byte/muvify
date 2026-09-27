@@ -806,7 +806,6 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
 
       {/* Lista de notificações */}
       <FlatList
-        style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 100, gap: 8 }}
         data={filteredNotifications}
         keyExtractor={(item) => item.id}
