@@ -81,36 +81,6 @@ export function SupportScreen({ navigation }: { navigation?: any }) {
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Canais rápidos de contato */}
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <PressableScale
-            scale={0.96}
-            onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
-            style={{
-              flex: 1, flexDirection: "row", alignItems: "center", gap: 10,
-              borderRadius: 14, borderWidth: 1,
-              borderColor: theme.border, backgroundColor: theme.cardBg,
-              paddingHorizontal: 14, paddingVertical: 14,
-            }}
-          >
-            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="mail-outline" size={18} color={theme.textGreen} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <MvText variant="semi3">Enviar e-mail direto</MvText>
-              <MvText variant="body4" color="secondary" numberOfLines={1}>Abre o app de e-mail do celular</MvText>
-            </View>
-            <Ionicons name="open-outline" size={16} color={theme.text3} />
-          </PressableScale>
-        </View>
-
-        {/* Separador */}
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
-          <MvText variant="body4" color="secondary">ou envie uma mensagem</MvText>
-          <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
-        </View>
-
         {/* Estado de confirmação pós-envio */}
         {sent ? (
           <View style={{
@@ -162,6 +132,36 @@ export function SupportScreen({ navigation }: { navigation?: any }) {
             />
           </MvCard>
         )}
+
+        {/* Separador */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
+          <MvText variant="body4" color="secondary">ou entre em contato direto</MvText>
+          <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
+        </View>
+
+        {/* Canal alternativo: e-mail */}
+        <View>
+          <PressableScale
+            scale={0.96}
+            onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
+            style={{
+              flexDirection: "row", alignItems: "center", gap: 10,
+              borderRadius: 14, borderWidth: 1,
+              borderColor: theme.border, backgroundColor: theme.cardBg,
+              paddingHorizontal: 14, paddingVertical: 14,
+            }}
+          >
+            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="mail-outline" size={18} color={theme.textGreen} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <MvText variant="semi3">Enviar e-mail direto</MvText>
+              <MvText variant="body4" color="secondary" numberOfLines={1}>Abre o app de e-mail do celular</MvText>
+            </View>
+            <Ionicons name="open-outline" size={16} color={theme.text3} />
+          </PressableScale>
+        </View>
 
         {myTickets.length > 0 ? (
           <View style={{ gap: 10 }}>
