@@ -356,6 +356,7 @@ export function ClientNotificationsDrawer({
           {/* Filtros por categoria */}
           <FlatList
             horizontal
+            style={{ height: 44, flexGrow: 0, flexShrink: 0 }}
             data={CATEGORIES}
             keyExtractor={(item) => item}
             showsHorizontalScrollIndicator={false}

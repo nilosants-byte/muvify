@@ -776,6 +776,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
       {/* Filtros de categoria */}
       <FlatList
         horizontal
+        style={{ height: 64, flexGrow: 0, flexShrink: 0 }}
         data={SCREEN_CATEGORIES}
         keyExtractor={(item) => item}
         showsHorizontalScrollIndicator={false}
