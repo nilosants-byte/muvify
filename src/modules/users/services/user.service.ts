@@ -1181,11 +1181,25 @@ export class UserService {
     const LIST_LIMIT = 500;
     const take = LIST_LIMIT + 1;
 
+    // Achado em teste manual (2026-09-28): a senha era conferida só DEPOIS
+    // da consulta pesada abaixo (dezenas de tabelas) já ter rodado - errar a
+    // senha esperava o mesmo tempo de uma exportação de verdade antes de
+    // avisar o erro. Confere antes, com uma consulta mínima.
+    if (password !== undefined) {
+      const authUser = await prisma.user.findUnique({ where: { id: userId }, select: { password: true } });
+      if (!authUser) {
+        throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
+      }
+      const validPassword = await compareHash(password, authUser.password);
+      if (!validPassword) {
+        throw new AppError("Senha incorreta. Confirme sua senha para exportar seus dados.", StatusCodes.UNAUTHORIZED);
+      }
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
-        password: true,
         name: true,
         email: true,
         phone: true,
@@ -1558,13 +1572,6 @@ export class UserService {
 
     if (!user) {
       throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
-    }
-
-    if (password !== undefined) {
-      const validPassword = await compareHash(password, user.password);
-      if (!validPassword) {
-        throw new AppError("Senha incorreta. Confirme sua senha para exportar seus dados.", StatusCodes.UNAUTHORIZED);
-      }
     }
 
     const bookings = this.sliceTruncated(user.bookings, LIST_LIMIT);
