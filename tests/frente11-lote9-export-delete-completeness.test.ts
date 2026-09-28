@@ -53,7 +53,8 @@ describe("Frente 11, Lote 9 — completude de exportMyData e deleteMe", () => {
         email: `${uid("f11l9_client")}@test.com`,
         password: hashed,
         phone: `11${Date.now().toString().slice(-9)}1`,
-        role: "CLIENT"
+        role: "CLIENT",
+        document: encryptSensitiveText("11122233344")
       }
     });
     clientId = client.id;
@@ -184,9 +185,35 @@ describe("Frente 11, Lote 9 — completude de exportMyData e deleteMe", () => {
     const consultancyMessage = await prisma.consultancyMessage.findFirstOrThrow({ where: { contractId } });
     await prisma.consultancyMessageReport.create({ data: { messageId: consultancyMessage.id, reporterId: providerUserId, reason: "Motivo da denúncia de chat de consultoria." } });
     await prisma.crefDocumentUpload.create({ data: { storageKey: `cref-documents/${randomUUID()}.enc`, uploadedByUser: providerUserId } });
+
+    // Auditoria de completude (2026-09-28): categorias achadas fora de
+    // exportMyData numa revisão do que a Política de Privacidade promete
+    // ("todos os dados") vs. o que o método de fato selecionava.
+    await prisma.userNotification.create({ data: { userId: clientId, title: "Título de notificação", body: "Corpo da notificação." } });
+    await prisma.exercise.create({ data: { providerId, name: "Supino reto", category: "Peito" } });
+    await prisma.trainingPlan.create({ data: { providerId, contractId, title: "Ficha de teste", isPrebuilt: false } });
+    await prisma.providerCalendarEvent.create({
+      data: { providerId, title: "Evento da agenda", startsAt: new Date(), endsAt: new Date(Date.now() + 3600_000) }
+    });
+    await prisma.onlineConsultancySetting.create({ data: { providerId, enabled: true } });
+    await prisma.providerSubscription.create({ data: { providerId, status: "ACTIVE", isFounder: true } });
+    await prisma.externalStudentInvite.create({
+      data: {
+        providerId, tokenHash: randomUUID(), studentName: "Aluno Externo", channel: "WHATSAPP",
+        phone: "11999998888", status: "CLAIMED", expiresAt: new Date(Date.now() + 7 * 86400_000),
+        claimedAt: new Date(), claimedByUserId: otherClientId
+      }
+    });
   });
 
   afterAll(async () => {
+    await prisma.externalStudentInvite.deleteMany({ where: { providerId } });
+    await prisma.providerSubscription.deleteMany({ where: { providerId } });
+    await prisma.onlineConsultancySetting.deleteMany({ where: { providerId } });
+    await prisma.providerCalendarEvent.deleteMany({ where: { providerId } });
+    await prisma.trainingPlan.deleteMany({ where: { providerId } });
+    await prisma.exercise.deleteMany({ where: { providerId } });
+    await prisma.userNotification.deleteMany({ where: { userId: clientId } });
     await prisma.financialStudent.deleteMany({ where: { providerId } });
     await prisma.providerManualBlock.deleteMany({ where: { providerId } });
     await prisma.providerBankAccount.deleteMany({ where: { providerId } });
@@ -249,6 +276,8 @@ describe("Frente 11, Lote 9 — completude de exportMyData e deleteMe", () => {
     expect(result.completionEvidences.length).toBeGreaterThan(0);
     expect(result.completionEvidences[0].imageBase64).toBe("dGVzdGU=");
     expect(result.feedPostReports.length).toBeGreaterThan(0);
+    expect(result.notifications.length).toBeGreaterThan(0);
+    expect(result.profile.document).toBe("11122233344");
   });
 
   it("exportMyData do PROFISSIONAL inclui conta bancária, bloco manual, aluno financeiro e denúncias/uploads de CREF", async () => {
@@ -263,6 +292,14 @@ describe("Frente 11, Lote 9 — completude de exportMyData e deleteMe", () => {
     expect(result.bookingMessageReports.length).toBeGreaterThan(0);
     expect(result.consultancyMessageReports.length).toBeGreaterThan(0);
     expect(result.crefDocumentUploads.length).toBeGreaterThan(0);
+    expect(result.providerData!.exercisesCreated.length).toBeGreaterThan(0);
+    expect(result.providerData!.trainingPlansAuthored.length).toBeGreaterThan(0);
+    expect(result.providerData!.calendarEvents.length).toBeGreaterThan(0);
+    expect(result.providerData!.manualBlocks.length).toBeGreaterThan(0);
+    expect(result.providerData!.externalStudentInvites.length).toBeGreaterThan(0);
+    expect(result.providerData!.subscription).not.toBeNull();
+    expect(result.providerData!.subscription!.isFounder).toBe(true);
+    expect(result.providerData!.profile.onlineConsultancyEnabled).toBe(true);
   });
 
   it("deleteMe toca todas as categorias conhecidas de dado pessoal", async () => {

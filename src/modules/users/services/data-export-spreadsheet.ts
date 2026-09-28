@@ -174,6 +174,13 @@ const DISPUTE_TYPE: Record<string, string> = {
   CONFIRMATION_DEADLOCK: "Confirmação travada"
 };
 const DISPUTE_STATUS: Record<string, string> = { OPEN: "Em análise", RESOLVED: "Resolvida" };
+const SUBSCRIPTION_STATUS: Record<string, string> = {
+  TRIALING: "Período de teste",
+  PENDING_PAYMENT: "Aguardando pagamento",
+  ACTIVE: "Ativa",
+  PAST_DUE: "Pagamento em atraso",
+  CANCELED: "Cancelada"
+};
 const DISPUTE_RESOLUTION: Record<string, string> = {
   REFUNDED: "Reembolsado",
   DENIED: "Reembolso negado",
@@ -280,7 +287,15 @@ export async function buildDataExportWorkbook(data: ExportPayload): Promise<Buff
     ["Última atualização do cadastro", fmtDateTime(data.profile.updatedAt)],
     ["Termos de uso aceitos em", fmtDateTime(data.profile.termsAcceptedAt)],
     ["Política de privacidade aceita em", fmtDateTime(data.profile.privacyPolicyAcceptedAt)],
-    ["Versão dos termos aceita", data.profile.termsVersion]
+    ["Versão dos termos aceita", data.profile.termsVersion],
+    ["Apelido", data.profile.apelido],
+    ["CPF", data.profile.document],
+    ["E-mail verificado em", fmtDateTime(data.profile.emailVerifiedAt)],
+    ["E-mail de recuperação", data.profile.recoveryEmail],
+    ["Autenticação em duas etapas", yesNo(data.profile.twoFactorEnabled)],
+    ["Faltas registradas (no-show)", data.profile.noShowStrikes],
+    ["Conta suspensa em", fmtDateTime(data.profile.suspendedAt)],
+    ["Motivo da suspensão", data.profile.suspensionReason]
   ];
   const provider = data.providerData;
   if (provider) {
@@ -296,7 +311,35 @@ export async function buildDataExportWorkbook(data: ExportPayload): Promise<Buff
       ["Número do CREF", p.crefNumber],
       ["Situação do CREF", translate(CREF_STATUS, p.crefValidationStatus)],
       ["Especialidades", Array.isArray(p.specialties) ? p.specialties.map(String).join(", ") : p.specialties ? String(p.specialties) : ""],
-      ["Categorias", (p.categories ?? []).join(", ")]
+      ["Categorias", (p.categories ?? []).join(", ")],
+      ["Nota média", p.averageRating],
+      ["Total de avaliações", p.totalReviews],
+      ["Antecedência mínima para agendar", p.minBookingNoticeHours != null ? `${p.minBookingNoticeHours}h` : ""],
+      ["Duração padrão da sessão", p.sessionDurationMinutes != null ? `${p.sessionDurationMinutes} min` : ""],
+      ["Consultoria online habilitada", yesNo(p.onlineConsultancyEnabled)],
+      ["Conta conectada ao Mercado Pago", yesNo(p.mpAccountId)],
+      ["CREF enviado em", fmtDateTime(p.crefHistory?.submittedAt)],
+      ["CREF analisado em", fmtDateTime(p.crefHistory?.reviewedAt)],
+      ["CREF aprovado em", fmtDateTime(p.crefHistory?.validatedAt)],
+      ["CREF — reprovações anteriores", p.crefHistory?.rejectionCount ?? 0],
+      ["Motivo da última reprovação do CREF", p.crefHistory?.rejectionReason],
+      ["", ""],
+      ["ÁREA DE ATENDIMENTO", ""],
+      ["Raio de atendimento", provider.location?.serviceRadiusKm != null ? `${provider.location.serviceRadiusKm} km` : ""],
+      ["Latitude", provider.location?.latitude],
+      ["Longitude", provider.location?.longitude]
+    );
+    const sub = provider.subscription;
+    profileRows.push(
+      ["", ""],
+      ["MINHA ASSINATURA MUVIFY", ""],
+      ["Situação", sub ? translate(SUBSCRIPTION_STATUS, sub.status) : "Sem assinatura"],
+      ["Plano fundador", sub ? yesNo(sub.isFounder) : ""],
+      ["Valor mensal", sub ? cents(sub.priceCents) : ""],
+      ["Trial até", sub ? fmtDateTime(sub.trialEndsAt) : ""],
+      ["Próxima cobrança", sub ? fmtDateTime(sub.nextBillingAt) : ""],
+      ["Cancelamento agendado", sub ? yesNo(sub.cancelAtPeriodEnd) : ""],
+      ["Cancelada em", sub ? fmtDateTime(sub.canceledAt) : ""]
     );
     if (provider.bankAccount) {
       const b = provider.bankAccount;
@@ -322,7 +365,7 @@ export async function buildDataExportWorkbook(data: ExportPayload): Promise<Buff
   for (const [label, value] of profileRows) {
     const row = profileSheet.addRow([label, value === undefined || value === null ? "" : (value as ExcelJS.CellValue)]);
     row.getCell(2).alignment = { vertical: "top", wrapText: true, horizontal: "left" };
-    if (label === "Valor base da sessão") row.getCell(2).numFmt = MONEY_FORMAT;
+    if (label === "Valor base da sessão" || label === "Valor mensal") row.getCell(2).numFmt = MONEY_FORMAT;
     if (value === "" && label) row.getCell(1).font = { bold: true };
   }
   sheetOf.set("profile", "Meus dados");
@@ -442,6 +485,21 @@ export async function buildDataExportWorkbook(data: ExportPayload): Promise<Buff
     { header: "Mensagem automática", value: (m) => yesNo(m.automatica), width: 20 }
   ], "chatMessages");
 
+  type Notif = (typeof data.notifications)[number];
+  addTable<Notif>("Notificações recebidas", data.notifications, [
+    { header: "Recebida em", value: (n) => fmtDateTime(n.createdAt), width: 20 },
+    { header: "Título", value: (n) => n.title, width: 34 },
+    { header: "Mensagem", value: (n) => n.body, width: 60 },
+    { header: "Lida em", value: (n) => fmtDateTime(n.readAt), width: 20 }
+  ], "notifications");
+
+  type ClaimedInvite = (typeof data.externalInvitesClaimed)[number];
+  addTable<ClaimedInvite>("Vínculos aceitos", data.externalInvitesClaimed, [
+    { header: "Aceito em", value: (i) => fmtDateTime(i.claimedAt), width: 20 },
+    { header: "Situação", value: (i) => translate({ PENDING: "Pendente", CLAIMED: "Aceito", EXPIRED: "Expirado", CANCELLED: "Cancelado" }, i.status), width: 18 },
+    { header: "Gerado em", value: (i) => fmtDateTime(i.createdAt), width: 20 }
+  ], "externalInvitesClaimed");
+
   type Ticket = (typeof data.supportTickets)[number];
   addTable<Ticket>("Chamados de suporte", data.supportTickets, [
     { header: "Enviado em", value: (t) => fmtDateTime(t.createdAt), width: 20 },
@@ -472,6 +530,49 @@ export async function buildDataExportWorkbook(data: ExportPayload): Promise<Buff
       { header: "Fim", value: (s) => s.endTime, width: 10 },
       { header: "Ativo", value: (s) => yesNo(s.isActive), width: 10 }
     ], "provider.availabilities");
+
+    type Exer = (typeof provider.exercisesCreated)[number];
+    addTable<Exer>("Exercícios criados", provider.exercisesCreated, [
+      { header: "Nome", value: (e) => e.name, width: 30 },
+      { header: "Categoria", value: (e) => e.category, width: 22 },
+      { header: "Descrição", value: (e) => e.description, width: 44 },
+      { header: "Séries/repetições padrão", value: (e) => e.defaultRepetitionsSets, width: 26 },
+      { header: "Criado em", value: (e) => fmtDateTime(e.createdAt), width: 20 }
+    ], "provider.exercisesCreated");
+
+    type Plan = (typeof provider.trainingPlansAuthored)[number];
+    addTable<Plan>("Fichas de treino criadas", provider.trainingPlansAuthored, [
+      { header: "Título", value: (t) => t.title, width: 32 },
+      { header: "Descrição", value: (t) => t.description, width: 44 },
+      { header: "Criada em", value: (t) => fmtDateTime(t.createdAt), width: 20 },
+      { header: "Exercícios", value: (t) => (t.exercises ?? []).map((e) => e.name).join("; "), width: 60 }
+    ], "provider.trainingPlansAuthored");
+
+    type CalEvent = (typeof provider.calendarEvents)[number];
+    addTable<CalEvent>("Agenda pessoal", provider.calendarEvents, [
+      { header: "Título", value: (e) => e.title, width: 30 },
+      { header: "Descrição", value: (e) => e.description, width: 44 },
+      { header: "Início", value: (e) => fmtDateTime(e.startsAt), width: 20 },
+      { header: "Fim", value: (e) => fmtDateTime(e.endsAt), width: 20 }
+    ], "provider.calendarEvents");
+
+    type Block = (typeof provider.manualBlocks)[number];
+    addTable<Block>("Bloqueios manuais na agenda", provider.manualBlocks, [
+      { header: "Data", value: (b) => b.date, width: 14 },
+      { header: "Início", value: (b) => b.startTime, width: 10 },
+      { header: "Fim", value: (b) => b.endTime, width: 10 },
+      { header: "Motivo", value: (b) => b.label, width: 30 },
+      { header: "Local", value: (b) => b.location, width: 26 }
+    ], "provider.manualBlocks");
+
+    type Invite = (typeof provider.externalStudentInvites)[number];
+    addTable<Invite>("Convites a alunos externos", provider.externalStudentInvites, [
+      { header: "Nome do aluno", value: (i) => i.studentName, width: 30 },
+      { header: "Canal", value: (i) => translate({ WHATSAPP: "WhatsApp", EMAIL: "E-mail" }, i.channel), width: 14 },
+      { header: "Situação", value: (i) => translate({ PENDING: "Pendente", CLAIMED: "Aceito", EXPIRED: "Expirado", CANCELLED: "Cancelado" }, i.status), width: 16 },
+      { header: "Enviado em", value: (i) => fmtDateTime(i.createdAt), width: 20 },
+      { header: "Aceito em", value: (i) => fmtDateTime(i.claimedAt), width: 20 }
+    ], "provider.externalStudentInvites");
 
     type Received = (typeof provider.bookingsReceived)[number];
     addTable<Received>("Sessões recebidas", provider.bookingsReceived, [
@@ -557,12 +658,19 @@ export async function buildDataExportWorkbook(data: ExportPayload): Promise<Buff
     { label: "Disputas", key: "disputes", count: countOf(data.disputes) },
     { label: "Cartões salvos", key: "customerPaymentMethods", count: countOf(data.customerPaymentMethods) },
     { label: "Mensagens de conversas", key: "chatMessages", count: messages.length },
+    { label: "Notificações recebidas", key: "notifications", count: countOf(data.notifications) },
+    { label: "Vínculos aceitos com profissionais fora do app", key: "externalInvitesClaimed", count: countOf(data.externalInvitesClaimed) },
     { label: "Chamados de suporte", key: "supportTickets", count: countOf(data.supportTickets) }
   ];
   if (provider) {
     sections.push(
       { label: "Minhas ofertas", key: "provider.serviceOffers", count: countOf(provider.serviceOffers) },
       { label: "Horários de atendimento", key: "provider.availabilities", count: countOf(provider.availabilities) },
+      { label: "Exercícios criados", key: "provider.exercisesCreated", count: countOf(provider.exercisesCreated) },
+      { label: "Fichas de treino criadas", key: "provider.trainingPlansAuthored", count: countOf(provider.trainingPlansAuthored) },
+      { label: "Agenda pessoal", key: "provider.calendarEvents", count: countOf(provider.calendarEvents) },
+      { label: "Bloqueios manuais na agenda", key: "provider.manualBlocks", count: countOf(provider.manualBlocks) },
+      { label: "Convites enviados a alunos externos", key: "provider.externalStudentInvites", count: countOf(provider.externalStudentInvites) },
       { label: "Sessões recebidas", key: "provider.bookingsReceived", count: countOf(provider.bookingsReceived) },
       { label: "Consultorias vendidas", key: "provider.consultancyContractsAsProvider", count: countOf(provider.consultancyContractsAsProvider) },
       { label: "Pacotes vendidos", key: "provider.presentialPackagesOffered", count: countOf(provider.presentialPackagesOffered) },

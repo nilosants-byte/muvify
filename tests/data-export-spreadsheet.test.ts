@@ -121,6 +121,54 @@ describe("Planilha de exportação de dados pessoais", () => {
     expect(profile["Especialidades"]).toBe("Hipertrofia, Funcional");
   });
 
+  it("achados da auditoria de completude (2026-09-28) também aparecem na planilha: notificações, vínculos aceitos e o lado profissional novo", async () => {
+    const workbook = await load(await buildDataExportWorkbook(emptyPayload({
+      notifications: [{ id: "n1", title: "Aviso", body: "Corpo do aviso", data: null, readAt: null, createdAt: new Date("2026-09-20T12:00:00Z") }],
+      externalInvitesClaimed: [{ id: "ei1", providerId: "p1", status: "CLAIMED", claimedAt: new Date("2026-09-01T12:00:00Z"), createdAt: new Date("2026-08-01T12:00:00Z") }],
+      profile: { ...emptyPayload().profile, role: "PROVIDER" },
+      providerData: {
+        profile: {
+          id: "p1", displayName: "Personal Ana", bio: "bio", experienceYears: 5, priceCents: 12000, serviceMode: "BOTH",
+          crefNumber: "123456-G/SP", crefValidationStatus: "APPROVED", specialties: [], categories: [],
+          createdAt: new Date(), updatedAt: new Date(),
+          averageRating: 4.8, totalReviews: 12, minBookingNoticeHours: 12, sessionDurationMinutes: 60,
+          presentationVideoUrl: null, presentationVideoThumbUrl: null, mpAccountId: "mp-123",
+          onlineConsultancyEnabled: true,
+          crefHistory: { submittedAt: new Date("2026-01-01T12:00:00Z"), reviewedAt: new Date("2026-01-05T12:00:00Z"), validatedAt: new Date("2026-01-05T12:00:00Z"), rejectionReason: null, rejectionCount: 0 }
+        },
+        location: { latitude: -23.5, longitude: -46.6, serviceRadiusKm: 10, fixedLocations: [], excludedLocations: [] },
+        subscription: { status: "ACTIVE", isFounder: true, priceCents: 2990, priceLockedUntil: null, trialEndsAt: null, nextBillingAt: new Date("2026-10-24T00:00:00Z"), cancelAtPeriodEnd: false, canceledAt: null, lastChargeAt: null, lastChargeStatus: null, createdAt: new Date() },
+        exercisesCreated: [{ id: "e1", name: "Supino reto", category: "Peito", description: null, defaultRepetitionsSets: "3x10", defaultRestLabel: null, mediaUrl: null, createdAt: new Date() }],
+        trainingPlansAuthored: [{ id: "t1", title: "Ficha A", description: null, createdAt: new Date(), exercises: [{ id: "e1", name: "Supino reto", repetitionsSets: "3x10", load: null, sortOrder: 0 }] }],
+        calendarEvents: [{ id: "c1", title: "Evento", description: null, startsAt: new Date("2026-09-25T12:00:00Z"), endsAt: new Date("2026-09-25T13:00:00Z") }],
+        manualBlocks: [{ id: "b1", date: "2026-09-26", startTime: "08:00", endTime: "09:00", label: "Bloqueio", location: null }],
+        externalStudentInvites: [{ id: "ei2", studentName: "Aluno X", channel: "WHATSAPP", phone: "11999998888", email: null, status: "CLAIMED", expiresAt: new Date(), claimedAt: new Date(), cancelledAt: null, createdAt: new Date() }],
+        availabilities: [], serviceOffers: [], bookingsReceived: [], reviewsReceived: [], consultancyRequestsReceived: [],
+        consultancyContractsAsProvider: [], presentialPackagesOffered: [], disputeCases: [], bankAccount: null, debtRecords: [],
+        financialStudents: [], financialIncomes: [], financialExpenses: [], financialGoals: []
+      }
+    })));
+
+    expect(workbook.getWorksheet("Notificações recebidas")!.getRow(2).getCell(2).value).toBe("Aviso");
+    expect(workbook.getWorksheet("Vínculos aceitos")!.getRow(2).getCell(2).value).toBe("Aceito");
+    expect(workbook.getWorksheet("Exercícios criados")!.getRow(2).getCell(1).value).toBe("Supino reto");
+    expect(workbook.getWorksheet("Fichas de treino criadas")!.getRow(2).getCell(4).value).toBe("Supino reto");
+    expect(workbook.getWorksheet("Agenda pessoal")!.getRow(2).getCell(1).value).toBe("Evento");
+    expect(workbook.getWorksheet("Bloqueios manuais na agenda")!.getRow(2).getCell(4).value).toBe("Bloqueio");
+    expect(workbook.getWorksheet("Convites a alunos externos")!.getRow(2).getCell(3).value).toBe("Aceito");
+
+    const profile: Record<string, unknown> = {};
+    workbook.getWorksheet("Meus dados")!.eachRow((r, i) => { if (i > 1) profile[String(r.getCell(1).value)] = r.getCell(2).value; });
+    expect(profile["Consultoria online habilitada"]).toBe("Sim");
+    expect(profile["Situação"]).toBe("Ativa");
+    expect(profile["Plano fundador"]).toBe("Sim");
+
+    const summaryRows: Record<string, string> = {};
+    workbook.getWorksheet("Resumo")!.eachRow((r, i) => { if (i > 1) summaryRows[String(r.getCell(1).value)] = String(r.getCell(3).value); });
+    expect(summaryRows["Notificações recebidas"]).toBe('Aba "Notificações recebidas"');
+    expect(summaryRows["Fichas de treino criadas"]).toBe('Aba "Fichas de treino criadas"');
+  });
+
   it("'Leia-me' só avisa do limite de 500 registros quando alguma lista foi cortada", async () => {
     const text = async (payload: unknown) => {
       const workbook = await load(await buildDataExportWorkbook(payload as any));

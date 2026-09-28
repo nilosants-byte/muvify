@@ -1189,6 +1189,28 @@ export class UserService {
         termsVersion: true,
         createdAt: true,
         updatedAt: true,
+        // Auditoria de completude (2026-09-28): campos do próprio titular que
+        // ficaram de fora da exportação. Segredos (senha, segredo do 2FA,
+        // tokens) e dados internos (hash de documento, bloqueio jurídico)
+        // continuam fora de propósito - ver tests/data-export-coverage.test.ts.
+        apelido: true,
+        emailVerifiedAt: true,
+        document: true,
+        recoveryEmailEncrypted: true,
+        twoFactorEnabled: true,
+        twoFactorEnabledAt: true,
+        noShowStrikes: true,
+        suspendedAt: true,
+        suspensionReason: true,
+        notifications: {
+          select: { id: true, title: true, body: true, data: true, readAt: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take
+        },
+        claimedExternalStudentInvites: {
+          select: { id: true, providerId: true, status: true, claimedAt: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
+        },
         bookings: {
           select: {
             id: true,
@@ -1402,6 +1424,63 @@ export class UserService {
             specialties: true,
             createdAt: true,
             updatedAt: true,
+            // Auditoria de completude (2026-09-28): localização, configuração de
+            // atendimento, histórico do CREF e mídia própria ficavam de fora.
+            // Tokens do Mercado Pago (mpAccessToken/mpRefreshToken) são
+            // segredos e continuam fora de propósito.
+            latitude: true,
+            longitude: true,
+            serviceRadiusKm: true,
+            fixedLocations: true,
+            excludedLocations: true,
+            minBookingNoticeHours: true,
+            sessionDurationMinutes: true,
+            averageRating: true,
+            totalReviews: true,
+            presentationVideoUrl: true,
+            presentationVideoThumbUrl: true,
+            mpAccountId: true,
+            crefSubmittedAt: true,
+            crefReviewedAt: true,
+            crefValidatedAt: true,
+            crefRejectionReason: true,
+            crefRejectionCount: true,
+            subscription: {
+              select: {
+                status: true, isFounder: true, priceCents: true, priceLockedUntil: true, trialEndsAt: true,
+                nextBillingAt: true, cancelAtPeriodEnd: true, canceledAt: true, lastChargeAt: true,
+                lastChargeStatus: true, createdAt: true
+              }
+            },
+            onlineConsultancySetting: { select: { enabled: true } },
+            exercises: {
+              select: { id: true, name: true, category: true, description: true, defaultRepetitionsSets: true, defaultRestLabel: true, mediaUrl: true, createdAt: true },
+              orderBy: { createdAt: "desc" },
+              take
+            },
+            trainingPlans: {
+              select: {
+                id: true, title: true, description: true, createdAt: true,
+                exercises: { select: { id: true, name: true, repetitionsSets: true, load: true, sortOrder: true } }
+              },
+              orderBy: { createdAt: "desc" },
+              take
+            },
+            calendarEvents: {
+              select: { id: true, title: true, description: true, startsAt: true, endsAt: true, createdAt: true },
+              orderBy: { startsAt: "desc" },
+              take
+            },
+            manualBlocks: {
+              select: { id: true, date: true, startTime: true, endTime: true, label: true, location: true, createdAt: true },
+              orderBy: { createdAt: "desc" },
+              take
+            },
+            externalStudentInvites: {
+              select: { id: true, studentName: true, channel: true, phone: true, email: true, status: true, expiresAt: true, claimedAt: true, cancelledAt: true, createdAt: true },
+              orderBy: { createdAt: "desc" },
+              take
+            },
             categoryLinks: {
               select: { category: { select: { name: true } } }
             },
@@ -1486,6 +1565,13 @@ export class UserService {
     const sessions = this.sliceTruncated(user.sessions, LIST_LIMIT);
     const xpTransactions = this.sliceTruncated(user.xpTransactions, LIST_LIMIT);
     const completionEvidences = this.sliceTruncated(user.completionEvidences, LIST_LIMIT);
+    const notifications = this.sliceTruncated(user.notifications, LIST_LIMIT);
+    const recovery = await this.resolveRecoveryEmail(user.id, user.email, user.recoveryEmailEncrypted);
+    const providerExercises = user.providerProfile ? this.sliceTruncated(user.providerProfile.exercises, LIST_LIMIT) : null;
+    const providerTrainingPlans = user.providerProfile ? this.sliceTruncated(user.providerProfile.trainingPlans, LIST_LIMIT) : null;
+    const providerCalendarEvents = user.providerProfile ? this.sliceTruncated(user.providerProfile.calendarEvents, LIST_LIMIT) : null;
+    const providerManualBlocks = user.providerProfile ? this.sliceTruncated(user.providerProfile.manualBlocks, LIST_LIMIT) : null;
+    const providerExternalInvites = user.providerProfile ? this.sliceTruncated(user.providerProfile.externalStudentInvites, LIST_LIMIT) : null;
 
     const providerBookings = user.providerProfile ? this.sliceTruncated(user.providerProfile.bookings, LIST_LIMIT) : null;
     const providerReviews = user.providerProfile ? this.sliceTruncated(user.providerProfile.reviews, LIST_LIMIT) : null;
@@ -1547,8 +1633,20 @@ export class UserService {
         privacyPolicyAcceptedAt: user.privacyPolicyAcceptedAt,
         termsVersion: user.termsVersion,
         createdAt: user.createdAt,
-        updatedAt: user.updatedAt
+        updatedAt: user.updatedAt,
+        apelido: user.apelido,
+        // `document` (CPF) é guardado cifrado - devolve o valor real ao titular.
+        document: user.document ? decryptSensitiveText(user.document) : null,
+        emailVerifiedAt: user.emailVerifiedAt,
+        recoveryEmail: recovery.custom ? recovery.recoveryEmail : null,
+        twoFactorEnabled: user.twoFactorEnabled,
+        twoFactorEnabledAt: user.twoFactorEnabledAt,
+        noShowStrikes: user.noShowStrikes,
+        suspendedAt: user.suspendedAt,
+        suspensionReason: user.suspensionReason
       },
+      notifications: notifications.items,
+      externalInvitesClaimed: user.claimedExternalStudentInvites,
       bookings: bookings.items,
       reviews: user.reviews,
       consultancyRequests: user.consultancyRequestsSent,
@@ -1603,8 +1701,36 @@ export class UserService {
               specialties: user.providerProfile.specialties,
               categories: user.providerProfile.categoryLinks.map((c) => c.category.name),
               createdAt: user.providerProfile.createdAt,
-              updatedAt: user.providerProfile.updatedAt
+              updatedAt: user.providerProfile.updatedAt,
+              averageRating: user.providerProfile.averageRating,
+              totalReviews: user.providerProfile.totalReviews,
+              minBookingNoticeHours: user.providerProfile.minBookingNoticeHours,
+              sessionDurationMinutes: user.providerProfile.sessionDurationMinutes,
+              presentationVideoUrl: user.providerProfile.presentationVideoUrl,
+              presentationVideoThumbUrl: user.providerProfile.presentationVideoThumbUrl,
+              mpAccountId: user.providerProfile.mpAccountId,
+              onlineConsultancyEnabled: user.providerProfile.onlineConsultancySetting?.enabled ?? false,
+              crefHistory: {
+                submittedAt: user.providerProfile.crefSubmittedAt,
+                reviewedAt: user.providerProfile.crefReviewedAt,
+                validatedAt: user.providerProfile.crefValidatedAt,
+                rejectionReason: user.providerProfile.crefRejectionReason,
+                rejectionCount: user.providerProfile.crefRejectionCount
+              }
             },
+            location: {
+              latitude: user.providerProfile.latitude,
+              longitude: user.providerProfile.longitude,
+              serviceRadiusKm: user.providerProfile.serviceRadiusKm,
+              fixedLocations: user.providerProfile.fixedLocations,
+              excludedLocations: user.providerProfile.excludedLocations
+            },
+            subscription: user.providerProfile.subscription,
+            exercisesCreated: providerExercises!.items,
+            trainingPlansAuthored: providerTrainingPlans!.items,
+            calendarEvents: providerCalendarEvents!.items,
+            manualBlocks: providerManualBlocks!.items,
+            externalStudentInvites: providerExternalInvites!.items,
             availabilities: user.providerProfile.availabilities,
             serviceOffers: user.providerProfile.serviceOffers,
             bookingsReceived: providerBookings!.items,
@@ -1647,6 +1773,12 @@ export class UserService {
         sessions: sessions.truncated,
         xpTransactions: xpTransactions.truncated,
         completionEvidences: completionEvidences.truncated,
+        notifications: notifications.truncated,
+        providerExercisesCreated: providerExercises?.truncated ?? false,
+        providerTrainingPlansAuthored: providerTrainingPlans?.truncated ?? false,
+        providerCalendarEvents: providerCalendarEvents?.truncated ?? false,
+        providerManualBlocks: providerManualBlocks?.truncated ?? false,
+        providerExternalStudentInvites: providerExternalInvites?.truncated ?? false,
         providerBookingsReceived: providerBookings?.truncated ?? false,
         providerReviewsReceived: providerReviews?.truncated ?? false,
         providerConsultancyRequestsReceived: providerConsultancyRequests?.truncated ?? false,
