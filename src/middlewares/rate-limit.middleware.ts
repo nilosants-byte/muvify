@@ -110,6 +110,26 @@ export const uploadRateLimiter = rateLimit({
   }
 });
 
+// Debatido em teste manual (2026-09-28): exportMyData usava uploadRateLimiter
+// (20/hora) - generoso demais pra uma consulta pesada (percorre dezenas de
+// tabelas pra montar a exportação de dados pessoais). Limite dedicado e mais
+// apertado: 3 por dia por usuário, o bastante pra corrigir um erro de
+// digitação na senha sem travar, mas sem viabilizar repetição por curiosidade
+// nem sobrecarregar o banco. Não bloqueia o direito em si - quem precisar de
+// mais pode pedir pelo canal de privacidade (Política de Privacidade, item 10).
+export const dataExportRateLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: userOrIpKey,
+  store: makeStore("rl:data-export:"),
+  message: {
+    message: "Limite de exportações atingido por hoje. Tente novamente amanhã, ou peça pelo canal de privacidade (muvifyadm@gmail.com)."
+  }
+});
+
 // Lista de espera pré-lançamento: endpoint público, sem autenticação,
 // exposto em landing page divulgada em massa (vídeos do YouTube) - alvo
 // natural de spam de bot. Mais apertado que authRateLimiter (20/15min)

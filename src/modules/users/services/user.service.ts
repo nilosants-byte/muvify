@@ -1171,7 +1171,13 @@ export class UserService {
     return { items: items.slice(0, limit), truncated: items.length > limit };
   }
 
-  async exportMyData(userId: string) {
+  // `password`: exigida no caminho de autoexportação do titular (achado em
+  // teste manual, 2026-09-28: dados sensíveis - anamnese, PIX, conta
+  // bancária decifrados - saíam sem nenhuma confirmação extra além do login
+  // já ativo). Fica opcional porque admin.service.ts reaproveita este mesmo
+  // método pra exportar dados de OUTRO usuário (autorizado por papel de
+  // admin + audit log próprios, não pela senha do titular).
+  async exportMyData(userId: string, password?: string) {
     const LIST_LIMIT = 500;
     const take = LIST_LIMIT + 1;
 
@@ -1179,6 +1185,7 @@ export class UserService {
       where: { id: userId },
       select: {
         id: true,
+        password: true,
         name: true,
         email: true,
         phone: true,
@@ -1553,6 +1560,13 @@ export class UserService {
       throw new AppError("Usuário não encontrado.", StatusCodes.NOT_FOUND);
     }
 
+    if (password !== undefined) {
+      const validPassword = await compareHash(password, user.password);
+      if (!validPassword) {
+        throw new AppError("Senha incorreta. Confirme sua senha para exportar seus dados.", StatusCodes.UNAUTHORIZED);
+      }
+    }
+
     const bookings = this.sliceTruncated(user.bookings, LIST_LIMIT);
     const consultancyContracts = this.sliceTruncated(user.consultancyContracts, LIST_LIMIT);
     const trainingPlanCompletions = this.sliceTruncated(user.trainingPlanCompletions, LIST_LIMIT);
@@ -1796,8 +1810,8 @@ export class UserService {
   // pedido, independente do formato escolhido), só que entregue como
   // planilha legível pra quem não é técnico. Devolve em base64 pra trafegar
   // no mesmo JSON que o resto da API, sem tratar binário no cliente.
-  async exportMyDataSpreadsheet(userId: string) {
-    const data = await this.exportMyData(userId);
+  async exportMyDataSpreadsheet(userId: string, password?: string) {
+    const data = await this.exportMyData(userId, password);
     const buffer = await buildDataExportWorkbook(data);
     const day = new Date().toISOString().slice(0, 10);
     return {

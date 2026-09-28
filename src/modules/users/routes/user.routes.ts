@@ -3,11 +3,12 @@ import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
-import { uploadRateLimiter, writeRateLimiter } from "../../../middlewares/rate-limit.middleware";
+import { dataExportRateLimiter, uploadRateLimiter, writeRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { UserController } from "../controllers/user.controller";
 import {
   changeMyPasswordSchema,
   deleteMeSchema,
+  exportMyDataSchema,
   recordConsentSchema,
   sendSupportMessageSchema,
   switchOrAddOfferSchema,
@@ -88,8 +89,8 @@ userRoutes.post(
 userRoutes.get("/me/support-tickets", userController.listMySupportTickets);
 
 userRoutes.delete("/me", uploadRateLimiter, validate(deleteMeSchema), userController.deleteMe);
-userRoutes.get("/me/data-export", uploadRateLimiter, userController.exportMyData);
-userRoutes.get("/me/data-export/spreadsheet", uploadRateLimiter, userController.exportMyDataSpreadsheet);
+userRoutes.post("/me/data-export", dataExportRateLimiter, validate(exportMyDataSchema), userController.exportMyData);
+userRoutes.post("/me/data-export/spreadsheet", dataExportRateLimiter, validate(exportMyDataSchema), userController.exportMyDataSpreadsheet);
 userRoutes.get("/me/disputes", userController.myDisputes);
 // Épico de Frentes, Frente 11, Lote 2: único endpoint autenticado do
 // módulo sem rate limiter nenhum.

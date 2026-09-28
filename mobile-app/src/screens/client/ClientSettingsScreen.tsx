@@ -144,6 +144,8 @@ export function ClientSettingsScreen({ navigation }: Props) {
   // disparar exportações duplicadas.
   const exportingRef = useRef(false);
   const [exporting, setExporting] = useState(false);
+  const [showExportPasswordModal, setShowExportPasswordModal] = useState(false);
+  const [pendingExportFormat, setPendingExportFormat] = useState<"spreadsheet" | "json" | null>(null);
 
   // O arquivo técnico (JSON) é a cópia completa e serve pra levar os dados a
   // outro serviço, mas é ilegível pra quem não é técnico - a planilha é a
@@ -151,30 +153,37 @@ export function ClientSettingsScreen({ navigation }: Props) {
   function askExportFormat() {
     if (exportingRef.current) return;
     Alert.alert("Baixar meus dados", "Em qual formato você quer receber seus dados?", [
-      { text: "Planilha (mais fácil de ler)", onPress: () => void handleExportData("spreadsheet") },
-      { text: "Arquivo técnico (JSON)", onPress: () => void handleExportData("json") },
+      { text: "Planilha (mais fácil de ler)", onPress: () => { setPendingExportFormat("spreadsheet"); setShowExportPasswordModal(true); } },
+      { text: "Arquivo técnico (JSON)", onPress: () => { setPendingExportFormat("json"); setShowExportPasswordModal(true); } },
       { text: "Cancelar", style: "cancel" }
     ]);
   }
 
-  async function handleExportData(format: "spreadsheet" | "json") {
-    if (exportingRef.current) return;
+  // Achado em teste manual (2026-09-28): a exportação sai com dados sensíveis
+  // em texto aberto (anamnese, conta bancária decifrados) - confirmar a
+  // senha de novo evita que qualquer pessoa com o celular desbloqueado baixe
+  // tudo isso sem nenhuma fricção extra além do login já ativo.
+  async function handleConfirmExportPassword(password: string) {
+    const format = pendingExportFormat;
+    if (!format || exportingRef.current) return;
     exportingRef.current = true;
     setExporting(true);
     try {
       if (format === "spreadsheet") {
-        const file = await runWithAuth((token) => userApi.exportMyDataSpreadsheet(token));
+        const file = await runWithAuth((token) => userApi.exportMyDataSpreadsheet(token, password));
         await shareBase64FileAsFile(file.base64, {
           filename: file.filename,
           mimeType: file.mimeType,
           dialogTitle: "Meus dados — Muvify"
         });
       } else {
-        const data = await runWithAuth((token) => userApi.exportMyData(token));
+        const data = await runWithAuth((token) => userApi.exportMyData(token, password));
         await shareExportedDataAsFile(data);
       }
+      setShowExportPasswordModal(false);
+      setPendingExportFormat(null);
     } catch (error) {
-      Alert.alert("Erro", "Não foi possível exportar seus dados.");
+      Alert.alert("Erro", extractApiMessage(error, "Não foi possível exportar seus dados."));
     } finally {
       exportingRef.current = false;
       setExporting(false);
@@ -384,6 +393,17 @@ export function ClientSettingsScreen({ navigation }: Props) {
         loading={deletingAccount}
         onCancel={() => setShowDeletePasswordModal(false)}
         onConfirm={(password) => void handleConfirmDeleteAccount(password)}
+      />
+
+      <MvPasswordConfirmModal
+        visible={showExportPasswordModal}
+        title="Confirme sua senha"
+        message="Seus dados incluem informações sensíveis (como anamnese). Digite sua senha para confirmar a exportação."
+        confirmLabel="Baixar meus dados"
+        confirmVariant="primary"
+        loading={exporting}
+        onCancel={() => { setShowExportPasswordModal(false); setPendingExportFormat(null); }}
+        onConfirm={(password) => void handleConfirmExportPassword(password)}
       />
     </View>
   );

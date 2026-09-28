@@ -78,6 +78,15 @@ export const deleteMeSchema = z.object({
   })
 });
 
+// Achado em teste manual (2026-09-28): exportar dados pessoais não exigia
+// senha - qualquer pessoa com o celular desbloqueado baixava dados sensíveis
+// (anamnese, PIX, conta bancária decifrados) sem nenhuma confirmação extra.
+export const exportMyDataSchema = z.object({
+  body: z.object({
+    password: z.string().min(1).max(72, "Senha obrigatória para confirmar a exportação dos seus dados.")
+  })
+});
+
 export const userPhotoParamsSchema = z.object({
   params: z.object({
     userId: z.string().uuid()

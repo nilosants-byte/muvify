@@ -11,6 +11,10 @@ interface MvPasswordConfirmModalProps {
   title: string;
   message: string;
   confirmLabel?: string;
+  // "danger" (padrão) é certo pra ações destrutivas como excluir a conta.
+  // Confirmações não destrutivas (ex.: exportar dados pessoais) usam
+  // "primary" pra não parecer um alerta de perigo que não existe.
+  confirmVariant?: "danger" | "primary";
   loading?: boolean;
   onCancel: () => void;
   onConfirm: (password: string) => void;
@@ -24,6 +28,7 @@ export function MvPasswordConfirmModal({
   title,
   message,
   confirmLabel = "Confirmar",
+  confirmVariant = "danger",
   loading = false,
   onCancel,
   onConfirm,
@@ -81,7 +86,7 @@ export function MvPasswordConfirmModal({
                 </View>
                 <View style={{ flex: 1 }}>
                   <MvButton
-                    variant="danger"
+                    variant={confirmVariant}
                     label={confirmLabel}
                     onPress={handleConfirm}
                     loading={loading}
