@@ -110,6 +110,28 @@ export const uploadRateLimiter = rateLimit({
   }
 });
 
+// Debatido em teste manual (2026-09-28): curtir, seguir/deixar de seguir,
+// comentar e favoritar usavam o MESMO balde de 20/hora que upload de mídia,
+// pagamento, agendamento e exclusão de conta - uma pessoa navegando o feed
+// da comunidade (curtir ~15 posts, comentar em alguns, seguir 2
+// profissionais) esgota essa cota em minutos de uso normal, e fica sem
+// crédito pra agendar uma sessão ou enviar uma foto pelo resto da hora.
+// Essas ações são baratas (não mexem em mídia/pagamento) e fazem parte do
+// uso esperado de um feed social - limite bem mais generoso, pensado só
+// pra barrar automação/spam de verdade, não engajamento normal.
+export const socialInteractionRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: userOrIpKey,
+  store: makeStore("rl:social:"),
+  message: {
+    message: "Muitas interações em pouco tempo. Tente novamente em instantes."
+  }
+});
+
 // Debatido em teste manual (2026-09-28): exportMyData usava uploadRateLimiter
 // (20/hora) - generoso demais pra uma consulta pesada (percorre dezenas de
 // tabelas pra montar a exportação de dados pessoais). Limite dedicado e mais

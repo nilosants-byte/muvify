@@ -2,7 +2,7 @@ import { UserRole } from "@prisma/client";
 import { Router } from "express";
 import { ensureAuthenticated } from "../../../middlewares/auth.middleware";
 import { ensureRole } from "../../../middlewares/role.middleware";
-import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
+import { socialInteractionRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { validate } from "../../../middlewares/validate.middleware";
 import { FavoriteController } from "../controllers/favorite.controller";
 import { favoriteParamSchema, favoriteSchema } from "../validators/favorite.validator";
@@ -16,5 +16,5 @@ favoriteRoutes.use(ensureAuthenticated);
 // em FavoriteService.add.
 favoriteRoutes.get("/", ensureRole(UserRole.CLIENT), favoriteController.list);
 favoriteRoutes.get("/favorited-by-me", ensureRole(UserRole.PROVIDER), favoriteController.countFavoritedByMe);
-favoriteRoutes.post("/", ensureRole(UserRole.CLIENT), uploadRateLimiter, validate(favoriteSchema), favoriteController.add);
-favoriteRoutes.delete("/:providerId", ensureRole(UserRole.CLIENT), uploadRateLimiter, validate(favoriteParamSchema), favoriteController.remove);
+favoriteRoutes.post("/", ensureRole(UserRole.CLIENT), socialInteractionRateLimiter, validate(favoriteSchema), favoriteController.add);
+favoriteRoutes.delete("/:providerId", ensureRole(UserRole.CLIENT), socialInteractionRateLimiter, validate(favoriteParamSchema), favoriteController.remove);
