@@ -1789,6 +1789,9 @@ export const userApi = {
   exportMyData(token: string) {
     return apiRequest<Record<string, unknown>>("/users/me/data-export", { token });
   },
+  exportMyDataSpreadsheet(token: string) {
+    return apiRequest<{ filename: string; mimeType: string; base64: string }>("/users/me/data-export/spreadsheet", { token });
+  },
 };
 
 export const adminApi = {
@@ -3164,6 +3167,7 @@ export type FinancialPayoutItem = {
   status: string;
   capturedAt: string | null;
   scheduledAt: string | null;
+  offerTitle: string | null;
 };
 
 export type FinancialPayouts = {

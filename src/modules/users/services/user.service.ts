@@ -37,6 +37,7 @@ import { BookingService } from "../../bookings/services/booking.service";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { getActiveEngagementSummary } from "../../../shared/utils/client-engagement";
 import { ProviderSubscriptionService } from "../../providers/services/provider-subscription.service";
+import { buildDataExportWorkbook } from "./data-export-spreadsheet";
 
 const presentialPackageService = new PresentialPackageService();
 const consultancyService = new ConsultancyService();
@@ -1655,6 +1656,22 @@ export class UserService {
         providerFinancialIncomes: providerFinancialIncomes?.truncated ?? false,
         providerFinancialExpenses: providerFinancialExpenses?.truncated ?? false
       }
+    };
+  }
+
+  // Mesma exportação de exportMyData (mesmos dados, mesmo registro de
+  // auditoria e e-mail de confirmação - uma exportação continua sendo UM
+  // pedido, independente do formato escolhido), só que entregue como
+  // planilha legível pra quem não é técnico. Devolve em base64 pra trafegar
+  // no mesmo JSON que o resto da API, sem tratar binário no cliente.
+  async exportMyDataSpreadsheet(userId: string) {
+    const data = await this.exportMyData(userId);
+    const buffer = await buildDataExportWorkbook(data);
+    const day = new Date().toISOString().slice(0, 10);
+    return {
+      filename: `muvify-meus-dados-${day}.xlsx`,
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      base64: buffer.toString("base64")
     };
   }
 

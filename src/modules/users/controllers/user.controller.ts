@@ -109,6 +109,11 @@ export class UserController {
     return response.json(data);
   }
 
+  async exportMyDataSpreadsheet(request: Request, response: Response) {
+    const file = await userService.exportMyDataSpreadsheet(request.user!.id);
+    return response.json(file);
+  }
+
   async recordConsent(request: Request, response: Response) {
     const result = await userService.recordConsent(request.user!.id, {
       ...request.body,

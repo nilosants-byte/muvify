@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Linking, Platform, ScrollView, Share, StatusB
 import { authApi, providerSubscriptionApi, userApi } from "../../services/api/client";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
-import { shareExportedDataAsFile } from "../../utils/exportDataFile";
+import { shareBase64FileAsFile, shareExportedDataAsFile } from "../../utils/exportDataFile";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
@@ -142,13 +142,34 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
   const exportingRef = useRef(false);
   const [exporting, setExporting] = useState(false);
 
-  async function handleExportData() {
+  // O arquivo técnico (JSON) é a cópia completa e serve pra levar os dados a
+  // outro serviço, mas é ilegível pra quem não é técnico - a planilha é a
+  // versão organizada por assunto, em português.
+  function askExportFormat() {
+    if (exportingRef.current) return;
+    Alert.alert("Baixar meus dados", "Em qual formato você quer receber seus dados?", [
+      { text: "Planilha (mais fácil de ler)", onPress: () => void handleExportData("spreadsheet") },
+      { text: "Arquivo técnico (JSON)", onPress: () => void handleExportData("json") },
+      { text: "Cancelar", style: "cancel" }
+    ]);
+  }
+
+  async function handleExportData(format: "spreadsheet" | "json") {
     if (exportingRef.current) return;
     exportingRef.current = true;
     setExporting(true);
     try {
-      const data = await runWithAuth((token) => userApi.exportMyData(token));
-      await shareExportedDataAsFile(data);
+      if (format === "spreadsheet") {
+        const file = await runWithAuth((token) => userApi.exportMyDataSpreadsheet(token));
+        await shareBase64FileAsFile(file.base64, {
+          filename: file.filename,
+          mimeType: file.mimeType,
+          dialogTitle: "Meus dados — Muvify"
+        });
+      } else {
+        const data = await runWithAuth((token) => userApi.exportMyData(token));
+        await shareExportedDataAsFile(data);
+      }
     } catch {
       Alert.alert("Erro", "Não foi possível exportar seus dados.");
     } finally {
@@ -341,7 +362,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
             label={exporting ? "Preparando seus dados..." : "Baixar meus dados"}
             sub={exporting ? "Aguarde, não toque de novo" : "Exportar todas as suas informações"}
             right={exporting ? <ActivityIndicator size="small" color={theme.primary} /> : undefined}
-            onPress={exporting ? undefined : () => void handleExportData()}
+            onPress={exporting ? undefined : askExportFormat}
           />
           <MenuItem icon="trash-outline" label="Excluir minha conta" sub="Remover permanentemente todos os dados" onPress={handleDeleteAccount} danger />
         </View>

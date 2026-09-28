@@ -89,6 +89,7 @@ userRoutes.get("/me/support-tickets", userController.listMySupportTickets);
 
 userRoutes.delete("/me", uploadRateLimiter, validate(deleteMeSchema), userController.deleteMe);
 userRoutes.get("/me/data-export", uploadRateLimiter, userController.exportMyData);
+userRoutes.get("/me/data-export/spreadsheet", uploadRateLimiter, userController.exportMyDataSpreadsheet);
 userRoutes.get("/me/disputes", userController.myDisputes);
 // Épico de Frentes, Frente 11, Lote 2: único endpoint autenticado do
 // módulo sem rate limiter nenhum.

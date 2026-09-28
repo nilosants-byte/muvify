@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  Alert, Share,
+  Alert,
   ScrollView, StatusBar, TouchableOpacity, View,
 } from "react-native";
 import { PressableScale } from "../../components/polish/PressableScale";
@@ -25,6 +25,7 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvCard, MvDatePicker, MvInput, MvModalSheet, MvText } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatCurrencyBRL, maskPriceInput } from "../../utils/formatters";
+import { shareCsvAsFile } from "../../utils/exportDataFile";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
@@ -236,7 +237,10 @@ export function FinancialHistoryScreen({ navigation }: Props) {
     try {
       setExportingCsv(true);
       const csv = await runWithAuth((token) => financialApi.exportTransactionsCsv(token));
-      await Share.share({ message: csv, title: "Transações financeiras" });
+      // Achado em teste manual: ia como texto corrido dentro da mensagem do
+      // Share.share, ilegível (colava tudo junto). Agora gera um .csv de
+      // verdade, abrível em qualquer planilha.
+      await shareCsvAsFile(csv, "muvify-transacoes", "Transações financeiras");
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao exportar transações.", navigation });
     } finally {
@@ -430,6 +434,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
     Alert.alert("Remover receita", message, [
       { text: "Cancelar", style: "cancel" },
       { text: "Remover", style: "destructive", onPress: async () => {
+        showToast("Removendo lançamento...", "info");
         try {
           const beforeMonth = toLocalMonthKey(new Date(item.paidAt));
           await runWithAuth(t => financialApi.deleteIncome(t, item.id, beforeMonth));
@@ -503,6 +508,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
     Alert.alert("Remover despesa", message, [
       { text: "Cancelar", style: "cancel" },
       { text: "Remover", style: "destructive", onPress: async () => {
+        showToast("Removendo lançamento...", "info");
         try {
           const beforeMonth = toLocalMonthKey(new Date(item.paidAt));
           await runWithAuth(t => financialApi.deleteExpense(t, item.id, beforeMonth));
