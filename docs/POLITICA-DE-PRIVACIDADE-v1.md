@@ -1,7 +1,7 @@
 # POLÍTICA DE PRIVACIDADE — MUVIFY
 **Versão:** 2026.05 (mesma versão canônica exposta em `src/config/legal.ts`/`CURRENT_TERMS_VERSION` e no app)
 **Data de vigência:** pendente de definição formal — ver nota abaixo
-**Última atualização:** 2026-08-05 (Épico de Frentes, Frente 11 — auditoria completa de privacidade/LGPD)
+**Última atualização:** 2026-09-28 (teste manual pré-lançamento: exportação de dados passa a ser planilha por padrão — JSON sob solicitação; prazo de resposta corrigido de "15 dias úteis" para "15 dias", alinhado ao art. 19 da LGPD — pendente de confirmação jurídica formal)
 
 ---
 
@@ -407,11 +407,11 @@ Em conformidade com os arts. 17 a 22 da LGPD, o titular tem os seguintes direito
 
 | Direito | Descrição | Como exercer no Muvify |
 |---|---|---|
-| **Confirmação de tratamento** | Saber se tratamos dados seus | Resposta em até 15 dias úteis via canal de privacidade |
-| **Acesso** | Obter cópia de todos os seus dados pessoais | No Aplicativo: Configurações → Exportar meus dados (JSON) |
+| **Confirmação de tratamento** | Saber se tratamos dados seus | Resposta em até 15 dias via canal de privacidade |
+| **Acesso** | Obter cópia de todos os seus dados pessoais | No Aplicativo: Configurações → Baixar meus dados (planilha organizada por assunto); versão técnica em JSON disponível mediante solicitação pelo canal de privacidade |
 | **Retificação** | Corrigir dados incompletos, inexatos ou desatualizados | No Aplicativo: Editar perfil; ou via canal de privacidade para campos não editáveis |
 | **Anonimização, bloqueio ou eliminação** | Para dados desnecessários, excessivos ou tratados em desconformidade com a LGPD | Via canal de privacidade; ou exclusão total pelo Aplicativo |
-| **Portabilidade** | Receber seus dados em formato estruturado e interoperável | No Aplicativo: Configurações → Exportar meus dados (formato JSON) |
+| **Portabilidade** | Receber seus dados em formato estruturado e interoperável | No Aplicativo: Configurações → Baixar meus dados (planilha, formato estruturado e interoperável); versão técnica em JSON disponível mediante solicitação pelo canal de privacidade |
 | **Eliminação** | Solicitar eliminação de dados tratados com base em consentimento, ressalvadas as exceções legais | No Aplicativo: Configurações → Excluir minha conta; ou via canal de privacidade |
 | **Informação sobre compartilhamento** | Saber com quais entidades compartilhamos seus dados | Esta Política (item 6); e via canal de privacidade para casos específicos |
 | **Informação sobre recusa de consentimento** | Conhecer as consequências de não fornecer consentimento | Descrito em cada formulário de coleta |
@@ -422,7 +422,7 @@ Em conformidade com os arts. 17 a 22 da LGPD, o titular tem os seguintes direito
 
 ### 10.1 Exercício dos Direitos
 
-Para exercer qualquer direito listado acima, entre em contato pelo canal oficial de privacidade (**muvifyadm@gmail.com**) ou pelo canal de suporte indicado no Aplicativo — a designação formal de um Encarregado (DPO) está em andamento (item 16). Responderemos em até **15 (quinze) dias úteis**, podendo esse prazo ser prorrogado uma vez, com justificativa fundamentada.
+Para exercer qualquer direito listado acima, entre em contato pelo canal oficial de privacidade (**muvifyadm@gmail.com**) ou pelo canal de suporte indicado no Aplicativo — a designação formal de um Encarregado (DPO) está em andamento (item 16). Responderemos em até **15 (quinze) dias**, podendo esse prazo ser prorrogado uma vez, com justificativa fundamentada.
 
 Para confirmar sua identidade antes de atender sua solicitação, poderemos solicitar documentos de identificação.
 
