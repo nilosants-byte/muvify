@@ -1,6 +1,6 @@
-﻿import React, { useState } from "react";
+﻿import React, { useRef, useState } from "react";
 import Constants from "expo-constants";
-import { Alert, Modal, Pressable, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,7 +19,7 @@ type Props = NativeStackScreenProps<ClientStackParamList, "ClientSettings">;
 
 // Componente de linha de configuração V2
 function ConfigRow({
-  icon, title, subtitle, value, toggle, onToggle, onPress, badge, danger = false, testID,
+  icon, title, subtitle, value, toggle, onToggle, onPress, badge, danger = false, testID, loading = false,
 }: {
   icon: React.ComponentProps<typeof Ionicons>["name"];
   title: string;
@@ -31,6 +31,7 @@ function ConfigRow({
   badge?: string;
   danger?: boolean;
   testID?: string;
+  loading?: boolean;
 }) {
   const { theme } = useMvTheme();
   const iconColor = danger ? theme.danger : theme.primary;
@@ -57,7 +58,9 @@ function ConfigRow({
         </View>
       )}
       {value && !isToggle && !badge && <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.primary }}>{value}</Text>}
-      {isToggle ? (
+      {loading ? (
+        <ActivityIndicator size="small" color={theme.primary} />
+      ) : isToggle ? (
         <MvToggle value={toggle!} onValueChange={onToggle ?? (() => {})} accessibilityLabel={title} />
       ) : !badge && onPress ? (
         <Ionicons name={danger ? "log-out-outline" : "chevron-forward"} size={14} color={theme.labelColor} />
@@ -136,12 +139,24 @@ export function ClientSettingsScreen({ navigation }: Props) {
     }
   }
 
+  // Mesmo achado da tela do profissional (2026-09-28): sem nenhum sinal de
+  // que a exportação estava em andamento, o usuário podia tocar de novo e
+  // disparar exportações duplicadas.
+  const exportingRef = useRef(false);
+  const [exporting, setExporting] = useState(false);
+
   async function handleExportData() {
+    if (exportingRef.current) return;
+    exportingRef.current = true;
+    setExporting(true);
     try {
       const data = await runWithAuth((token) => userApi.exportMyData(token));
       await shareExportedDataAsFile(data);
     } catch (error) {
       Alert.alert("Erro", "Não foi possível exportar seus dados.");
+    } finally {
+      exportingRef.current = false;
+      setExporting(false);
     }
   }
 
@@ -224,9 +239,10 @@ export function ClientSettingsScreen({ navigation }: Props) {
           />
           <ConfigRow
             icon="download-outline"
-            title="Baixar meus dados"
-            subtitle="Exportar todas as suas informações"
-            onPress={() => void handleExportData()}
+            title={exporting ? "Preparando seus dados..." : "Baixar meus dados"}
+            subtitle={exporting ? "Aguarde, não toque de novo" : "Exportar todas as suas informações"}
+            loading={exporting}
+            onPress={exporting ? undefined : () => void handleExportData()}
           />
           <ConfigRow
             testID="button.settings.delete-account"
@@ -313,10 +329,11 @@ export function ClientSettingsScreen({ navigation }: Props) {
       </ScreenEntrance>
 
       {/* Modal "Como funciona o Muvify?" — reutiliza AuthOnboardingScreen com botão de fechar */}
+      {/* presentationStyle="pageSheet" removido: quebra a correção de
+          toast-atrás-de-modal no iOS (ver ProfessionalConsultancyOffersScreen.tsx). */}
       <Modal
         visible={showHowItWorks}
         animationType="slide"
-        presentationStyle="pageSheet"
         onRequestClose={() => setShowHowItWorks(false)}
         statusBarTranslucent
       >

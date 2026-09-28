@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { Alert, Linking, Platform, ScrollView, Share, StatusBar, TouchableOpacity, View } from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Linking, Platform, ScrollView, Share, StatusBar, TouchableOpacity, View } from "react-native";
 import { authApi, providerSubscriptionApi, userApi } from "../../services/api/client";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
@@ -133,12 +133,27 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
     }
   }
 
+  // Achado em teste manual (2026-09-28): tocar em "Baixar meus dados" não
+  // mostrava nada até a tela de compartilhamento aparecer - o usuário não
+  // tinha como saber que estava em andamento e podia tocar de novo,
+  // disparando exportações duplicadas (cada uma grava um registro de
+  // auditoria e enfileira um e-mail de confirmação). A ref trava toques
+  // seguidos antes mesmo do estado re-renderizar.
+  const exportingRef = useRef(false);
+  const [exporting, setExporting] = useState(false);
+
   async function handleExportData() {
+    if (exportingRef.current) return;
+    exportingRef.current = true;
+    setExporting(true);
     try {
       const data = await runWithAuth((token) => userApi.exportMyData(token));
       await shareExportedDataAsFile(data);
     } catch {
       Alert.alert("Erro", "Não foi possível exportar seus dados.");
+    } finally {
+      exportingRef.current = false;
+      setExporting(false);
     }
   }
 
@@ -321,7 +336,13 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
           <MenuItem icon="star-outline" label="Minhas avaliações" onPress={() => goToStack("ProfessionalReviews")} />
           <MenuItem icon="lock-closed-outline" label="Segurança" onPress={() => goToStack("Security")} />
           <MenuItem icon="document-text-outline" label="Privacidade" onPress={() => goToStack("Privacy")} />
-          <MenuItem icon="download-outline" label="Baixar meus dados" sub="Exportar todas as suas informações" onPress={() => void handleExportData()} />
+          <MenuItem
+            icon="download-outline"
+            label={exporting ? "Preparando seus dados..." : "Baixar meus dados"}
+            sub={exporting ? "Aguarde, não toque de novo" : "Exportar todas as suas informações"}
+            right={exporting ? <ActivityIndicator size="small" color={theme.primary} /> : undefined}
+            onPress={exporting ? undefined : () => void handleExportData()}
+          />
           <MenuItem icon="trash-outline" label="Excluir minha conta" sub="Remover permanentemente todos os dados" onPress={handleDeleteAccount} danger />
         </View>
 
