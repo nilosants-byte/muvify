@@ -89,7 +89,10 @@ userRoutes.post(
 userRoutes.get("/me/support-tickets", userController.listMySupportTickets);
 
 userRoutes.delete("/me", uploadRateLimiter, validate(deleteMeSchema), userController.deleteMe);
-userRoutes.post("/me/data-export", dataExportRateLimiter, validate(exportMyDataSchema), userController.exportMyData);
+// Decisão do usuário (2026-09-28): o app só oferece mais a planilha
+// self-service - o JSON técnico segue existindo (alimenta a própria
+// planilha e o export do admin), mas deixou de ter rota self-service; quem
+// precisar dele pede pelo canal de privacidade e um admin exporta.
 userRoutes.post("/me/data-export/spreadsheet", dataExportRateLimiter, validate(exportMyDataSchema), userController.exportMyDataSpreadsheet);
 userRoutes.get("/me/disputes", userController.myDisputes);
 // Épico de Frentes, Frente 11, Lote 2: único endpoint autenticado do

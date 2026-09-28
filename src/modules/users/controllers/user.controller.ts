@@ -104,12 +104,6 @@ export class UserController {
     return response.status(204).send();
   }
 
-  async exportMyData(request: Request, response: Response) {
-    const { password } = request.body as { password: string };
-    const data = await userService.exportMyData(request.user!.id, password);
-    return response.json(data);
-  }
-
   async exportMyDataSpreadsheet(request: Request, response: Response) {
     const { password } = request.body as { password: string };
     const file = await userService.exportMyDataSpreadsheet(request.user!.id, password);

@@ -271,26 +271,28 @@ describe("users — extended profile, security and preferences", () => {
   // ── Data export ───────────────────────────────────────────────────────────
   // Achado em teste manual (2026-09-28): exportar dados pessoais não exigia
   // confirmar a senha - virou POST com senha no corpo, mesmo padrão já usado
-  // pra excluir a conta.
-  it("POST /users/me/data-export com a senha correta retorna a exportação", async () => {
+  // pra excluir a conta. Decisão do usuário no mesmo dia: a rota JSON
+  // self-service (/me/data-export) foi removida - a planilha
+  // (/me/data-export/spreadsheet) é a única exportação self-service agora.
+  it("POST /users/me/data-export/spreadsheet com a senha correta retorna a exportação", async () => {
     const res = await request(app)
-      .post("/api/users/me/data-export")
+      .post("/api/users/me/data-export/spreadsheet")
       .set("Authorization", `Bearer ${token}`)
       .send({ password: PASSWORD });
     expect(res.status).toBe(200);
   });
 
-  it("POST /users/me/data-export sem senha é rejeitado (400)", async () => {
+  it("POST /users/me/data-export/spreadsheet sem senha é rejeitado (400)", async () => {
     const res = await request(app)
-      .post("/api/users/me/data-export")
+      .post("/api/users/me/data-export/spreadsheet")
       .set("Authorization", `Bearer ${token}`)
       .send({});
     expect(res.status).toBe(400);
   });
 
-  it("POST /users/me/data-export com senha errada é rejeitado (401)", async () => {
+  it("POST /users/me/data-export/spreadsheet com senha errada é rejeitado (401)", async () => {
     const res = await request(app)
-      .post("/api/users/me/data-export")
+      .post("/api/users/me/data-export/spreadsheet")
       .set("Authorization", `Bearer ${token}`)
       .send({ password: "WrongPassword" });
     expect(res.status).toBe(401);
@@ -300,7 +302,7 @@ describe("users — extended profile, security and preferences", () => {
   // já consomem a cota diária (3/dia) - esta é a 4ª, deve ser bloqueada.
   it("4ª exportação no mesmo dia é bloqueada pelo limite de frequência (429)", async () => {
     const res = await request(app)
-      .post("/api/users/me/data-export")
+      .post("/api/users/me/data-export/spreadsheet")
       .set("Authorization", `Bearer ${token}`)
       .send({ password: PASSWORD });
     expect(res.status).toBe(429);

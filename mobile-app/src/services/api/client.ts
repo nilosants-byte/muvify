@@ -1786,9 +1786,6 @@ export const userApi = {
   deleteMe(token: string, password: string) {
     return apiRequest<void>("/users/me", { method: "DELETE", token, body: { password } });
   },
-  exportMyData(token: string, password: string) {
-    return apiRequest<Record<string, unknown>>("/users/me/data-export", { method: "POST", token, body: { password } });
-  },
   exportMyDataSpreadsheet(token: string, password: string) {
     return apiRequest<{ filename: string; mimeType: string; base64: string }>("/users/me/data-export/spreadsheet", { method: "POST", token, body: { password } });
   },

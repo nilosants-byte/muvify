@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Linking, Platform, ScrollView, Share, StatusB
 import { authApi, providerSubscriptionApi, userApi } from "../../services/api/client";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
-import { shareBase64FileAsFile, shareExportedDataAsFile } from "../../utils/exportDataFile";
+import { shareBase64FileAsFile } from "../../utils/exportDataFile";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
@@ -142,18 +142,17 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
   const exportingRef = useRef(false);
   const [exporting, setExporting] = useState(false);
   const [showExportPasswordModal, setShowExportPasswordModal] = useState(false);
-  const [pendingExportFormat, setPendingExportFormat] = useState<"spreadsheet" | "json" | null>(null);
 
-  // O arquivo técnico (JSON) é a cópia completa e serve pra levar os dados a
-  // outro serviço, mas é ilegível pra quem não é técnico - a planilha é a
-  // versão organizada por assunto, em português.
+  // Decisão do usuário (2026-09-28): a planilha passa a ser a única opção
+  // de exportação self-service no app - o JSON técnico não tem utilidade
+  // pra quem não é técnico, e a LGPD não exige esse formato específico (só
+  // "estruturado e interoperável", que a planilha também cumpre). O JSON
+  // continua existindo (usado internamente pela própria planilha e pelo
+  // painel do admin), só deixou de ser uma opção no app - quem realmente
+  // precisar dele pode pedir pelo canal de privacidade.
   function askExportFormat() {
     if (exportingRef.current) return;
-    Alert.alert("Baixar meus dados", "Em qual formato você quer receber seus dados?", [
-      { text: "Planilha (mais fácil de ler)", onPress: () => { setPendingExportFormat("spreadsheet"); setShowExportPasswordModal(true); } },
-      { text: "Arquivo técnico (JSON)", onPress: () => { setPendingExportFormat("json"); setShowExportPasswordModal(true); } },
-      { text: "Cancelar", style: "cancel" }
-    ]);
+    setShowExportPasswordModal(true);
   }
 
   // Achado em teste manual (2026-09-28): a exportação sai com dados sensíveis
@@ -161,24 +160,17 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
   // senha de novo evita que qualquer pessoa com o celular desbloqueado baixe
   // tudo isso sem nenhuma fricção extra além do login já ativo.
   async function handleConfirmExportPassword(password: string) {
-    const format = pendingExportFormat;
-    if (!format || exportingRef.current) return;
+    if (exportingRef.current) return;
     exportingRef.current = true;
     setExporting(true);
     try {
-      if (format === "spreadsheet") {
-        const file = await runWithAuth((token) => userApi.exportMyDataSpreadsheet(token, password));
-        await shareBase64FileAsFile(file.base64, {
-          filename: file.filename,
-          mimeType: file.mimeType,
-          dialogTitle: "Meus dados — Muvify"
-        });
-      } else {
-        const data = await runWithAuth((token) => userApi.exportMyData(token, password));
-        await shareExportedDataAsFile(data);
-      }
+      const file = await runWithAuth((token) => userApi.exportMyDataSpreadsheet(token, password));
+      await shareBase64FileAsFile(file.base64, {
+        filename: file.filename,
+        mimeType: file.mimeType,
+        dialogTitle: "Meus dados — Muvify"
+      });
       setShowExportPasswordModal(false);
-      setPendingExportFormat(null);
     } catch (error) {
       Alert.alert("Erro", extractApiMessage(error, "Não foi possível exportar seus dados."));
     } finally {
@@ -408,7 +400,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
         confirmLabel="Baixar meus dados"
         confirmVariant="primary"
         loading={exporting}
-        onCancel={() => { setShowExportPasswordModal(false); setPendingExportFormat(null); }}
+        onCancel={() => setShowExportPasswordModal(false)}
         onConfirm={(password) => void handleConfirmExportPassword(password)}
       />
     </View>
