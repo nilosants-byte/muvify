@@ -152,9 +152,20 @@ function getTransporter() {
       // cada vez), um único destinatário problemático travava a fila
       // inteira por tempo indeterminado, atrasando verificação de e-mail e
       // redefinição de senha de todo mundo atrás dele na fila.
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 20_000
+      //
+      // Achado em teste manual (2026-09-30): os 10s/10s originais eram
+      // curtos demais pra ambiente de hospedagem gratuita (Render) - o
+      // handshake com o servidor SMTP (Resend) ocasionalmente passa dos
+      // 10s (mais ainda logo após o servidor acordar de um período
+      // ocioso), estourando o timeout e gerando falha intermitente sem
+      // nenhum problema real de configuração por trás. Sintoma observado:
+      // mesmo e-mail/mesma conta funcionando em uma tentativa e falhando
+      // com "Connection timeout" em outra, em horários diferentes. Valores
+      // aumentados pra dar mais folga sem reintroduzir o travamento
+      // indeterminado que esta proteção evita.
+      connectionTimeout: 30_000,
+      greetingTimeout: 20_000,
+      socketTimeout: 45_000
     });
   }
 
