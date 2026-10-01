@@ -1,8 +1,8 @@
 import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
-import { prisma } from "../../../config/prisma";
 import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
 import { EmailQueueService } from "../../../shared/services/email-queue.service";
+import { withJobLock } from "../../../shared/utils/job-lock";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 
 const emailQueueService = new EmailQueueService();
@@ -30,20 +30,17 @@ export function startEmailRetryJob() {
       return;
     }
     running = true;
-    let lockAcquired = false;
     try {
-      const lockResult = (await prisma.$queryRaw<
-        Array<{ pg_try_advisory_lock: boolean }>
-      >`SELECT pg_try_advisory_lock(${emailRetryLockKey})`)?.[0];
-      lockAcquired = Boolean(lockResult?.pg_try_advisory_lock);
-      if (!lockAcquired) {
+      const acquired = await withJobLock(emailRetryLockKey, async () => {
+        await emailQueueService.processRetryQueue();
+        try {
+          await emailQueueService.purgeOldFailures();
+        } catch {
+          // non-critical — purge failure does not affect retry processing
+        }
+      });
+      if (!acquired) {
         return;
-      }
-      await emailQueueService.processRetryQueue();
-      try {
-        await emailQueueService.purgeOldFailures();
-      } catch {
-        // non-critical — purge failure does not affect retry processing
       }
       recordJobSuccess("email-retry-job");
       consecutiveDatabaseFailures = 0;
@@ -67,17 +64,6 @@ export function startEmailRetryJob() {
         recordJobFailure("email-retry-job");
       }
     } finally {
-      if (lockAcquired) {
-        try {
-          await prisma.$executeRaw`SELECT pg_advisory_unlock(${emailRetryLockKey})`;
-        } catch (unlockError) {
-          if (isPrismaDatabaseUnavailableError(unlockError)) {
-            console.error("Skipped email retry job lock release because database became unavailable.");
-          } else {
-            console.error("Failed to release email retry job lock:", unlockError);
-          }
-        }
-      }
       running = false;
     }
   }, RETRY_JOB_INTERVAL_MS);

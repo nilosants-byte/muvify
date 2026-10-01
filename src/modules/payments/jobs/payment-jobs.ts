@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
-import { prisma } from "../../../config/prisma";
 import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
+import { withJobLock } from "../../../shared/utils/job-lock";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { BookingService } from "../../bookings/services/booking.service";
 import { ConsultancyService } from "../../consultancy/services/consultancy.service";
@@ -34,63 +34,59 @@ export function startPaymentJobs() {
       return;
     }
     running = true;
-    let lockAcquired = false;
     try {
-      const lockResult = (await prisma.$queryRaw<
-        Array<{ pg_try_advisory_lock: boolean }>
-      >`SELECT pg_try_advisory_lock(${paymentJobLockKey})`)?.[0];
-      lockAcquired = Boolean(lockResult?.pg_try_advisory_lock);
-      if (!lockAcquired) {
+      const acquired = await withJobLock(paymentJobLockKey, async () => {
+        const JOB_TIMEOUT_MS = 5 * 60 * 1000; // 5 min por job
+        const runWithTimeout = (fn: () => Promise<void>, name: string) =>
+          Promise.race([
+            fn(),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`${name} timeout after 5min`)), JOB_TIMEOUT_MS)
+            ),
+          ])
+            .then(() => {
+              // Frente 13 (segunda camada), Lote 6: sem isso, nenhum
+              // Prometheus/Alertmanager conseguia distinguir "job atrasado
+              // silenciosamente" de "job rodando normal" - só apareceria se
+              // alguém abrisse o Sentry manualmente E soubesse o que procurar.
+              recordJobSuccess(name);
+            })
+            .catch((err) => {
+              // Erros de DB indisponível são re-lançados para incrementar consecutiveDatabaseFailures
+              if (isPrismaDatabaseUnavailableError(err)) throw err;
+              console.error(`[payment-jobs] ${name} failed:`, err);
+              // Épico de Frentes, Frente 9, Lote 14: catches deste job só
+              // usavam console.error, sem Sentry.captureException - diferente
+              // de pontos críticos de pagamento (payment.service.ts) que já
+              // usam Sentry deliberadamente.
+              Sentry.captureException(err, { tags: { area: "payment-jobs", subJob: name } });
+              recordJobFailure(name);
+            });
+
+        // Cada job é isolado — falha de um não impede os demais
+        await runWithTimeout(() => bookingService.releaseDueAttendanceCodes(), "releaseDueAttendanceCodes");
+        await runWithTimeout(() => bookingService.autoExpireStaleBookings(), "autoExpireStaleBookings");
+        await runWithTimeout(() => paymentService.autoExpirePixPayments(), "autoExpirePixPayments");
+        await runWithTimeout(() => paymentService.autoRefundExpiredBookings(), "autoRefundExpiredBookings");
+        await runWithTimeout(() => paymentService.authorizeDuePayments(), "authorizeDuePayments");
+        await runWithTimeout(() => paymentService.autoCaptureSingleConfirmation(), "autoCaptureSingleConfirmation");
+        await runWithTimeout(() => bookingService.resolveExpiredNoShowReports(), "resolveExpiredNoShowReports");
+        await runWithTimeout(() => consultancyService.autoRefundExpiredContracts(), "autoRefundExpiredContracts");
+        await runWithTimeout(() => presentialPackageService.chargeDueCycles(), "presentialPackageChargeDueCycles");
+        await runWithTimeout(() => consultancyService.chargeDueFichaRenewals(), "consultancyChargeDueFichaRenewals");
+        await runWithTimeout(
+          () => presentialPackageService.generateDueCardFixedPeriods(),
+          "presentialPackageGenerateDueCardFixedPeriods"
+        );
+        await runWithTimeout(
+          () => presentialPackageService.expireStalePendingPixCharges(),
+          "presentialPackageExpireStalePendingPixCharges"
+        );
+        await runWithTimeout(() => paymentService.refreshProviderMpTokens(), "refreshProviderMpTokens");
+      });
+      if (!acquired) {
         return;
       }
-
-      const JOB_TIMEOUT_MS = 5 * 60 * 1000; // 5 min por job
-      const runWithTimeout = (fn: () => Promise<void>, name: string) =>
-        Promise.race([
-          fn(),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`${name} timeout after 5min`)), JOB_TIMEOUT_MS)
-          ),
-        ])
-          .then(() => {
-            // Frente 13 (segunda camada), Lote 6: sem isso, nenhum
-            // Prometheus/Alertmanager conseguia distinguir "job atrasado
-            // silenciosamente" de "job rodando normal" - só apareceria se
-            // alguém abrisse o Sentry manualmente E soubesse o que procurar.
-            recordJobSuccess(name);
-          })
-          .catch((err) => {
-            // Erros de DB indisponível são re-lançados para incrementar consecutiveDatabaseFailures
-            if (isPrismaDatabaseUnavailableError(err)) throw err;
-            console.error(`[payment-jobs] ${name} failed:`, err);
-            // Épico de Frentes, Frente 9, Lote 14: catches deste job só
-            // usavam console.error, sem Sentry.captureException - diferente
-            // de pontos críticos de pagamento (payment.service.ts) que já
-            // usam Sentry deliberadamente.
-            Sentry.captureException(err, { tags: { area: "payment-jobs", subJob: name } });
-            recordJobFailure(name);
-          });
-
-      // Cada job é isolado — falha de um não impede os demais
-      await runWithTimeout(() => bookingService.releaseDueAttendanceCodes(), "releaseDueAttendanceCodes");
-      await runWithTimeout(() => bookingService.autoExpireStaleBookings(), "autoExpireStaleBookings");
-      await runWithTimeout(() => paymentService.autoExpirePixPayments(), "autoExpirePixPayments");
-      await runWithTimeout(() => paymentService.autoRefundExpiredBookings(), "autoRefundExpiredBookings");
-      await runWithTimeout(() => paymentService.authorizeDuePayments(), "authorizeDuePayments");
-      await runWithTimeout(() => paymentService.autoCaptureSingleConfirmation(), "autoCaptureSingleConfirmation");
-      await runWithTimeout(() => bookingService.resolveExpiredNoShowReports(), "resolveExpiredNoShowReports");
-      await runWithTimeout(() => consultancyService.autoRefundExpiredContracts(), "autoRefundExpiredContracts");
-      await runWithTimeout(() => presentialPackageService.chargeDueCycles(), "presentialPackageChargeDueCycles");
-      await runWithTimeout(() => consultancyService.chargeDueFichaRenewals(), "consultancyChargeDueFichaRenewals");
-      await runWithTimeout(
-        () => presentialPackageService.generateDueCardFixedPeriods(),
-        "presentialPackageGenerateDueCardFixedPeriods"
-      );
-      await runWithTimeout(
-        () => presentialPackageService.expireStalePendingPixCharges(),
-        "presentialPackageExpireStalePendingPixCharges"
-      );
-      await runWithTimeout(() => paymentService.refreshProviderMpTokens(), "refreshProviderMpTokens");
       consecutiveDatabaseFailures = 0;
       nextAllowedRunAt = 0;
     } catch (error) {
@@ -110,17 +106,6 @@ export function startPaymentJobs() {
         recordJobFailure("payment-jobs");
       }
     } finally {
-      if (lockAcquired) {
-        try {
-          await prisma.$executeRaw`SELECT pg_advisory_unlock(${paymentJobLockKey})`;
-        } catch (unlockError) {
-          if (isPrismaDatabaseUnavailableError(unlockError)) {
-            console.error("Skipped payment job lock release because database became unavailable.");
-          } else {
-            console.error("Failed to release payment job lock:", unlockError);
-          }
-        }
-      }
       running = false;
     }
   }, env.PAYMENT_JOB_INTERVAL_SECONDS * 1000);

@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
-import { prisma } from "../../../config/prisma";
 import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
+import { withJobLock } from "../../../shared/utils/job-lock";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { AuthService } from "../../auth/services/auth.service";
 import { BookingService } from "../../bookings/services/booking.service";
@@ -58,16 +58,8 @@ export function startReminderJob() {
       return;
     }
     running = true;
-    let lockAcquired = false;
     try {
-      const lockResult = (await prisma.$queryRaw<
-        Array<{ pg_try_advisory_lock: boolean }>
-      >`SELECT pg_try_advisory_lock(${reminderJobLockKey})`)?.[0];
-      lockAcquired = Boolean(lockResult?.pg_try_advisory_lock);
-      if (!lockAcquired) {
-        return;
-      }
-
+      const acquired = await withJobLock(reminderJobLockKey, async () => {
       const JOB_TIMEOUT_MS = 120_000; // 2 minutos
       await Promise.race([
         Promise.all([
@@ -139,6 +131,10 @@ export function startReminderJob() {
           setTimeout(() => reject(new Error("Reminder job timeout after 120s")), JOB_TIMEOUT_MS)
         ),
       ]);
+      });
+      if (!acquired) {
+        return;
+      }
       consecutiveDatabaseFailures = 0;
       nextAllowedRunAt = 0;
     } catch (error) {
@@ -158,17 +154,6 @@ export function startReminderJob() {
         recordJobFailure("reminder-job");
       }
     } finally {
-      if (lockAcquired) {
-        try {
-          await prisma.$executeRaw`SELECT pg_advisory_unlock(${reminderJobLockKey})`;
-        } catch (unlockError) {
-          if (isPrismaDatabaseUnavailableError(unlockError)) {
-            console.error("Skipped reminder job lock release because database became unavailable.");
-          } else {
-            console.error("Failed to release reminder job lock:", unlockError);
-          }
-        }
-      }
       running = false;
     }
   }, env.REMINDER_JOB_INTERVAL_SECONDS * 1000);

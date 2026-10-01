@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/node";
 import { prisma } from "../../../config/prisma";
 import { env } from "../../../config/env";
 import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
+import { withJobLock } from "../../../shared/utils/job-lock";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { awardXp, getWeekKey, getMonthKey } from "../../gamification/services/xp.service";
 import { checkAndUnlock } from "../../gamification/services/achievement.service";
@@ -293,18 +294,13 @@ export function startCommunityJobs() {
   timer = setInterval(async () => {
     if (running || Date.now() < nextAllowedRunAt) return;
     running = true;
-    let lockAcquired = false;
 
     try {
-      const lockResult = (
-        await prisma.$queryRaw<Array<{ pg_try_advisory_lock: boolean }>>`
-          SELECT pg_try_advisory_lock(${COMMUNITY_JOB_LOCK_KEY})
-        `
-      )?.[0];
-      lockAcquired = Boolean(lockResult?.pg_try_advisory_lock);
-      if (!lockAcquired) return;
+      const acquired = await withJobLock(COMMUNITY_JOB_LOCK_KEY, async () => {
+        await runCommunityJobs();
+      });
+      if (!acquired) return;
 
-      await runCommunityJobs();
       recordJobSuccess("community-jobs");
       consecutiveDatabaseFailures = 0;
       nextAllowedRunAt = 0;
@@ -324,13 +320,6 @@ export function startCommunityJobs() {
         recordJobFailure("community-jobs");
       }
     } finally {
-      if (lockAcquired) {
-        try {
-          await prisma.$executeRaw`SELECT pg_advisory_unlock(${COMMUNITY_JOB_LOCK_KEY})`;
-        } catch {
-          // ignore unlock errors on DB failure
-        }
-      }
       running = false;
     }
   }, JOB_INTERVAL_MS);

@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/node";
 import { env } from "../../../config/env";
-import { prisma } from "../../../config/prisma";
 import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
+import { withJobLock } from "../../../shared/utils/job-lock";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { DataRetentionService } from "../services/data-retention.service";
 
@@ -37,30 +37,26 @@ export function startDataRetentionJob() {
     }
 
     running = true;
-    let lockAcquired = false;
     try {
-      const lockResult = (await prisma.$queryRaw<
-        Array<{ pg_try_advisory_lock: boolean }>
-      >`SELECT pg_try_advisory_lock(${retentionJobLockKey})`)?.[0];
-      lockAcquired = Boolean(lockResult?.pg_try_advisory_lock);
-      if (!lockAcquired) {
-        return;
-      }
+      const acquired = await withJobLock(retentionJobLockKey, async () => {
+        const legalHoldUserIds = await retentionService.resolveLegalHoldUserIds(parseLegalHoldUserIds());
+        const result = await retentionService.run({
+          dryRun: env.DATA_RETENTION_DRY_RUN,
+          triggeredBy: "SYSTEM_SCHEDULED_JOB",
+          legalHoldUserIds
+        });
 
-      const legalHoldUserIds = await retentionService.resolveLegalHoldUserIds(parseLegalHoldUserIds());
-      const result = await retentionService.run({
-        dryRun: env.DATA_RETENTION_DRY_RUN,
-        triggeredBy: "SYSTEM_SCHEDULED_JOB",
-        legalHoldUserIds
+        console.log(
+          `[DATA_RETENTION] success dryRun=${String(result.dryRun)} matched=${result.totals.matchedCount} affected=${result.totals.affectedCount}`
+        );
+        if (result.status === "PARTIAL_FAILURE") {
+          recordJobFailure("data-retention-job");
+        } else {
+          recordJobSuccess("data-retention-job");
+        }
       });
-
-      console.log(
-        `[DATA_RETENTION] success dryRun=${String(result.dryRun)} matched=${result.totals.matchedCount} affected=${result.totals.affectedCount}`
-      );
-      if (result.status === "PARTIAL_FAILURE") {
-        recordJobFailure("data-retention-job");
-      } else {
-        recordJobSuccess("data-retention-job");
+      if (!acquired) {
+        return;
       }
 
       consecutiveDatabaseFailures = 0;
@@ -81,19 +77,6 @@ export function startDataRetentionJob() {
         recordJobFailure("data-retention-job");
       }
     } finally {
-      if (lockAcquired) {
-        try {
-          await prisma.$executeRaw`SELECT pg_advisory_unlock(${retentionJobLockKey})`;
-        } catch (unlockError) {
-          if (isPrismaDatabaseUnavailableError(unlockError)) {
-            console.error(
-              "Skipped data retention job lock release because database became unavailable."
-            );
-          } else {
-            console.error("Failed to release data retention job lock:", unlockError);
-          }
-        }
-      }
       running = false;
     }
   }, intervalMs);

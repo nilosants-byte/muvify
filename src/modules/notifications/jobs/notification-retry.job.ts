@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/node";
-import { prisma } from "../../../config/prisma";
 import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
+import { withJobLock } from "../../../shared/utils/job-lock";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { NotificationService } from "../services/notification.service";
 
@@ -28,22 +28,19 @@ export function startNotificationRetryJob() {
       return;
     }
     running = true;
-    let lockAcquired = false;
     try {
-      const lockResult = (await prisma.$queryRaw<
-        Array<{ pg_try_advisory_lock: boolean }>
-      >`SELECT pg_try_advisory_lock(${notificationRetryLockKey})`)?.[0];
-      lockAcquired = Boolean(lockResult?.pg_try_advisory_lock);
-      if (!lockAcquired) {
+      const acquired = await withJobLock(notificationRetryLockKey, async () => {
+        const JOB_TIMEOUT_MS = 120_000; // 2 minutos
+        await Promise.race([
+          notificationService.processRetryQueue(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Notification retry job timeout after 120s")), JOB_TIMEOUT_MS)
+          ),
+        ]);
+      });
+      if (!acquired) {
         return;
       }
-      const JOB_TIMEOUT_MS = 120_000; // 2 minutos
-      await Promise.race([
-        notificationService.processRetryQueue(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Notification retry job timeout after 120s")), JOB_TIMEOUT_MS)
-        ),
-      ]);
       recordJobSuccess("notification-retry-job");
       consecutiveDatabaseFailures = 0;
       nextAllowedRunAt = 0;
@@ -63,19 +60,6 @@ export function startNotificationRetryJob() {
         recordJobFailure("notification-retry-job");
       }
     } finally {
-      if (lockAcquired) {
-        try {
-          await prisma.$executeRaw`SELECT pg_advisory_unlock(${notificationRetryLockKey})`;
-        } catch (unlockError) {
-          if (isPrismaDatabaseUnavailableError(unlockError)) {
-            console.error(
-              "Skipped notification retry job lock release because database became unavailable."
-            );
-          } else {
-            console.error("Failed to release notification retry job lock:", unlockError);
-          }
-        }
-      }
       running = false;
     }
   }, RETRY_JOB_INTERVAL_MS);

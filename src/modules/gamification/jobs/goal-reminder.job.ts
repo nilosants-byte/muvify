@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/node";
 import { prisma } from "../../../config/prisma";
 import { env } from "../../../config/env";
 import { recordJobFailure, recordJobSuccess } from "../../../observability/metrics";
+import { withJobLock } from "../../../shared/utils/job-lock";
 import { isPrismaDatabaseUnavailableError } from "../../../shared/utils/prisma-error";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { getWeekKey } from "../services/xp.service";
@@ -124,20 +125,14 @@ export function startGoalReminderJob() {
   timer = setInterval(async () => {
     if (running || Date.now() < nextAllowedRunAt) return;
     running = true;
-    let lockAcquired = false;
 
     try {
-      const lockResult = (
-        await prisma.$queryRaw<Array<{ pg_try_advisory_lock: boolean }>>`
-          SELECT pg_try_advisory_lock(${GOAL_REMINDER_JOB_LOCK_KEY})
-        `
-      )?.[0];
-      lockAcquired = Boolean(lockResult?.pg_try_advisory_lock);
-      if (!lockAcquired) return;
-
-      const now = new Date();
-      await sendDailyTrainingReminders(now);
-      await sendWeeklyGoalSetupNudges(now);
+      const acquired = await withJobLock(GOAL_REMINDER_JOB_LOCK_KEY, async () => {
+        const now = new Date();
+        await sendDailyTrainingReminders(now);
+        await sendWeeklyGoalSetupNudges(now);
+      });
+      if (!acquired) return;
 
       recordJobSuccess("goal-reminder-job");
       consecutiveDatabaseFailures = 0;
@@ -154,13 +149,6 @@ export function startGoalReminderJob() {
         recordJobFailure("goal-reminder-job");
       }
     } finally {
-      if (lockAcquired) {
-        try {
-          await prisma.$executeRaw`SELECT pg_advisory_unlock(${GOAL_REMINDER_JOB_LOCK_KEY})`;
-        } catch {
-          // ignore unlock errors on DB failure
-        }
-      }
       running = false;
     }
   }, env.GOAL_REMINDER_JOB_INTERVAL_MINUTES * 60 * 1000);
