@@ -79,6 +79,7 @@ authRoutes.post(
  *     tags: [Auth]
  */
 authRoutes.get("/reset-password", authRateLimiter, authController.renderResetPasswordPage);
+authRoutes.get("/reset-password.js", authController.renderResetPasswordPageScript);
 /**
  * @swagger
  * /auth/verify-email:

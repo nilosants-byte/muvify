@@ -57,6 +57,23 @@ describe("Página web do link de redefinição de senha", () => {
     expect(page.text).toContain("Redefinir senha");
     expect(page.text).toContain(resetToken);
     expect(page.text).toContain("/api/auth/reset-password");
+    // Achado em teste manual (2026-10-01): a validação em tempo real e o
+    // botão nunca "acendiam" - CSP global bloqueia <script> inline. A
+    // página precisa referenciar um arquivo JS próprio (mesma origem),
+    // nunca JS embutido na própria página.
+    expect(page.text).not.toMatch(/<script>[\s\S]*<\/script>/);
+    expect(page.text).toContain('<script src="/api/auth/reset-password.js"></script>');
+    // Botões de mostrar/ocultar senha nos dois campos.
+    expect(page.text).toContain('id="pwd-toggle"');
+    expect(page.text).toContain('id="confirm-toggle"');
+  });
+
+  it("GET /api/auth/reset-password.js serve o script de mesma origem (respeita o CSP script-src 'self')", async () => {
+    const response = await request(app).get("/api/auth/reset-password.js");
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toContain("application/javascript");
+    expect(response.text).toContain("addEventListener('submit'");
+    expect(response.text).toContain("pwd-toggle");
   });
 
   it("o POST JSON usado pelo app mobile continua funcionando sem nenhuma mudança", async () => {

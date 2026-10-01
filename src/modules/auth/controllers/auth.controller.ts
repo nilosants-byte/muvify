@@ -72,6 +72,13 @@ export class AuthController {
     return response.status(StatusCodes.OK).send(buildResetPasswordPage({ token }));
   }
 
+  // Arquivo JS próprio da página acima, servido de mesma origem pra
+  // respeitar o CSP global (script-src 'self', sem 'unsafe-inline').
+  renderResetPasswordPageScript(_request: Request, response: Response) {
+    response.setHeader("Cache-Control", "public, max-age=3600");
+    return response.status(StatusCodes.OK).type("application/javascript").send(RESET_PASSWORD_PAGE_SCRIPT);
+  }
+
   // Frente 8 (segunda camada), Lote 5: este GET antes consumia o token na
   // primeira requisição — mas gateways corporativos de e-mail pré-buscam
   // automaticamente todo link recebido pra escaneá-lo (Microsoft Safe
@@ -136,8 +143,17 @@ function buildVerificationPage(success: boolean, errorMessage?: string): string 
 // Página do link "Esqueci minha senha" — formulário envia via fetch() pro
 // mesmo POST /api/auth/reset-password que o app mobile já usa (JSON,
 // intocado), então não existe risco de quebrar o fluxo do app.
+//
+// Achado em teste manual (2026-10-01): a validação em tempo real e o
+// botão de enviar nunca "acendiam" - o CSP global (scriptSrc: ["'self'"],
+// ver app.ts) bloqueia QUALQUER <script> inline, e esta foi a primeira
+// página deste backend a tentar usar JS embutido na própria página (as
+// páginas de verificação de e-mail, mais antigas, nunca precisaram de JS -
+// são só HTML com um <form> nativo). O script precisa vir de um arquivo
+// próprio, de mesma origem (GET /auth/reset-password.js abaixo), que o
+// CSP já permite sem precisar afrouxar a política em nada.
 function buildResetPasswordPage(input: { token?: string; error?: string }): string {
-  const styles = `body{margin:0;padding:0;background:#f0f0f0;font-family:'Helvetica Neue',Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;}.card{background:#fff;border-radius:14px;padding:40px 36px;max-width:420px;width:90%;box-shadow:0 4px 16px rgba(0,0,0,0.10);}.icon{font-size:48px;margin-bottom:12px;text-align:center;}.title{font-size:22px;font-weight:700;color:#111827;margin-bottom:10px;text-align:center;}.msg{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:20px;text-align:center;}label{display:block;font-size:13px;font-weight:600;color:#374151;margin:16px 0 6px;}input[type=password]{width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:15px;}input[type=password]:focus{outline:none;border-color:#4CAF50;}.criteria{list-style:none;padding:0;margin:14px 0 0;font-size:13px;}.criteria li{padding:3px 0;color:#9ca3af;}.btn{display:block;width:100%;background:#4CAF50;color:#fff;border:none;border-radius:10px;padding:14px 20px;font-size:15px;font-weight:700;cursor:pointer;margin-top:22px;}.btn:disabled{background:#d1d5db;cursor:not-allowed;}.error{display:none;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:16px;}.logo{margin-top:28px;font-size:22px;font-weight:800;letter-spacing:3px;color:#4CAF50;text-transform:uppercase;text-align:center;}`;
+  const styles = `body{margin:0;padding:0;background:#f0f0f0;font-family:'Helvetica Neue',Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;}.card{background:#fff;border-radius:14px;padding:40px 36px;max-width:420px;width:90%;box-shadow:0 4px 16px rgba(0,0,0,0.10);}.icon{font-size:48px;margin-bottom:12px;text-align:center;}.title{font-size:22px;font-weight:700;color:#111827;margin-bottom:10px;text-align:center;}.msg{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:20px;text-align:center;}label{display:block;font-size:13px;font-weight:600;color:#374151;margin:16px 0 6px;}.pwd-wrap{position:relative;}.pwd-wrap input[type=password],.pwd-wrap input[type=text]{width:100%;box-sizing:border-box;padding:12px 44px 12px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:15px;}.pwd-wrap input:focus{outline:none;border-color:#4CAF50;}.pwd-toggle{position:absolute;right:4px;top:4px;bottom:4px;width:40px;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:18px;display:flex;align-items:center;justify-content:center;}.criteria{list-style:none;padding:0;margin:14px 0 0;font-size:13px;}.criteria li{padding:3px 0;color:#9ca3af;}.btn{display:block;width:100%;background:#4CAF50;color:#fff;border:none;border-radius:10px;padding:14px 20px;font-size:15px;font-weight:700;cursor:pointer;margin-top:22px;}.btn:disabled{background:#d1d5db;cursor:not-allowed;}.error{display:none;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:16px;}.logo{margin-top:28px;font-size:22px;font-weight:800;letter-spacing:3px;color:#4CAF50;text-transform:uppercase;text-align:center;}`;
 
   if (!input.token) {
     const msg = input.error ?? "Link invalido ou expirado. Abra o aplicativo e solicite um novo link.";
@@ -153,9 +169,15 @@ function buildResetPasswordPage(input: { token?: string; error?: string }): stri
   <form id="f">
     <input type="hidden" name="token" value="${safeToken}">
     <label for="pwd">Nova senha</label>
-    <input type="password" id="pwd" autocomplete="new-password" required>
+    <div class="pwd-wrap">
+      <input type="password" id="pwd" autocomplete="new-password" required>
+      <button type="button" class="pwd-toggle" id="pwd-toggle" aria-label="Mostrar senha">&#128065;</button>
+    </div>
     <label for="confirm">Confirmar nova senha</label>
-    <input type="password" id="confirm" autocomplete="new-password" required>
+    <div class="pwd-wrap">
+      <input type="password" id="confirm" autocomplete="new-password" required>
+      <button type="button" class="pwd-toggle" id="confirm-toggle" aria-label="Mostrar senha">&#128065;</button>
+    </div>
     <ul class="criteria">
       <li id="c-len" data-label="Pelo menos 8 caracteres">&#9675; Pelo menos 8 caracteres</li>
       <li id="c-letter" data-label="Pelo menos uma letra">&#9675; Pelo menos uma letra</li>
@@ -173,13 +195,32 @@ function buildResetPasswordPage(input: { token?: string; error?: string }): stri
   <p class="msg">Sua senha foi alterada com sucesso. Volte ao aplicativo Muvify e fa&ccedil;a login com a nova senha.</p>
   <div class="logo">muvify</div>
 </div>
-<script>
-(function () {
+<script src="/api/auth/reset-password.js"></script>
+</body></html>`;
+}
+
+// Arquivo JS próprio (mesma origem), em vez de <script> inline - o CSP
+// global (script-src 'self', sem 'unsafe-inline') bloquearia um <script>
+// embutido na página sem nenhum aviso visível. Ver comentário acima de
+// buildResetPasswordPage.
+const RESET_PASSWORD_PAGE_SCRIPT = `(function () {
   var pwd = document.getElementById('pwd');
   var confirm = document.getElementById('confirm');
   var submitBtn = document.getElementById('submit');
   var errorBox = document.getElementById('error');
   var form = document.getElementById('f');
+
+  function setupToggle(toggleId, inputEl) {
+    var toggle = document.getElementById(toggleId);
+    toggle.addEventListener('click', function () {
+      var showing = inputEl.type === 'text';
+      inputEl.type = showing ? 'password' : 'text';
+      toggle.setAttribute('aria-label', showing ? 'Mostrar senha' : 'Ocultar senha');
+      toggle.innerHTML = showing ? '&#128065;' : '&#128584;';
+    });
+  }
+  setupToggle('pwd-toggle', pwd);
+  setupToggle('confirm-toggle', confirm);
 
   function setCheck(id, ok) {
     var el = document.getElementById(id);
@@ -231,6 +272,4 @@ function buildResetPasswordPage(input: { token?: string; error?: string }): stri
     });
   });
 })();
-</script>
-</body></html>`;
-}
+`;
