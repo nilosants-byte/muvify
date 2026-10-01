@@ -73,6 +73,14 @@ authRoutes.post(
 );
 /**
  * @swagger
+ * /auth/reset-password:
+ *   get:
+ *     summary: Pagina web do link de "esqueci minha senha" (formulario de nova senha)
+ *     tags: [Auth]
+ */
+authRoutes.get("/reset-password", authRateLimiter, authController.renderResetPasswordPage);
+/**
+ * @swagger
  * /auth/verify-email:
  *   get:
  *     summary: Verifica o e-mail do usuario a partir do link enviado por e-mail

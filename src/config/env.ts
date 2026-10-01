@@ -264,10 +264,19 @@ export const env = {
     parsed.SMTP_VERIFY_ON_STARTUP ?? (parsed.NODE_ENV === "production"),
   ACCESS_TOKEN_EXPIRES_IN:
     parsed.ACCESS_TOKEN_EXPIRES_IN ?? parsed.JWT_EXPIRES_IN ?? "15m",
+  // Achado em teste manual (2026-10-01): authRoutes só é montado sob
+  // "/api" (router.use("/auth", authRoutes) dentro de um router montado
+  // em app.use("/api", router) - ver src/routes.ts) - os defaults abaixo
+  // esqueciam esse prefixo e geravam um link que batia em "Rota nao
+  // encontrada." sempre que PASSWORD_RESET_WEB_URL/EMAIL_VERIFICATION_WEB_URL
+  // não estivesse definida explicitamente no ambiente (não estava, nem em
+  // produção/staging). Diferente de MP_CONNECT_RETURN_URL/REFRESH_URL
+  // logo abaixo, que ficam corretos sem "/api" de propósito - mpConnectRoutes
+  // é montado direto em app.use(), fora do router "/api".
   PASSWORD_RESET_WEB_URL:
-    parsed.PASSWORD_RESET_WEB_URL ?? `${appBaseUrl}/reset-password`,
+    parsed.PASSWORD_RESET_WEB_URL ?? `${appBaseUrl}/api/auth/reset-password`,
   EMAIL_VERIFICATION_WEB_URL:
-    parsed.EMAIL_VERIFICATION_WEB_URL ?? `${appBaseUrl}/auth/verify-email`,
+    parsed.EMAIL_VERIFICATION_WEB_URL ?? `${appBaseUrl}/api/auth/verify-email`,
   MP_CONNECT_RETURN_URL:
     parsed.MP_CONNECT_RETURN_URL ?? `${appBaseUrl}/mp/return`,
   MP_CONNECT_REFRESH_URL:
