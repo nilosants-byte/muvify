@@ -1,5 +1,4 @@
 import { StatusCodes } from "http-status-codes";
-import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "../../config/env";
 import { AppError } from "../errors/app-error";
 
@@ -111,8 +110,6 @@ type PurchaseConfirmationProviderInput = {
   priceCents: number;
 };
 
-let transporter: Transporter | null = null;
-
 function isSmtpConfigured() {
   if (env.NODE_ENV === "test" && !env.SMTP_ENABLED_IN_TEST) {
     return false;
@@ -127,60 +124,73 @@ function isSmtpConfigured() {
   );
 }
 
-function getTransporter() {
-  if (!isSmtpConfigured()) {
-    return null;
-  }
+type SendEmailInput = {
+  to: string;
+  from: string;
+  subject: string;
+  text: string;
+  html: string;
+  replyTo?: string;
+};
 
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: env.SMTP_SECURE,
-      auth: {
-        user: env.SMTP_USER,
-        pass: env.SMTP_PASS
+const RESEND_API_URL = "https://api.resend.com/emails";
+const RESEND_REQUEST_TIMEOUT_MS = 15_000;
+
+// Achado em teste manual (2026-09-30): o envio por SMTP tradicional
+// (porta 587) ficava com "Connection timeout" persistente a partir do
+// Render, mesmo com timeouts generosos e com a configuração do Resend
+// (chave de API, domínio) conferida e correta - hospedagens costumam
+// restringir tráfego SMTP de saída por ser um vetor clássico de spam. A
+// API HTTP do Resend usa a mesma porta (443/HTTPS) que qualquer outra
+// chamada do servidor já faz sem problema (ex: Mercado Pago), então não
+// fica sujeita a esse tipo de bloqueio.
+//
+// SMTP_PASS já é a própria chave de API do Resend (a integração SMTP
+// deles usa usuário "resend" e senha = chave de API) - reaproveitada
+// aqui de propósito pra não exigir nenhuma variável de ambiente nova no
+// Render.
+async function sendViaResend(input: SendEmailInput): Promise<void> {
+  const apiKey = env.SMTP_PASS;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), RESEND_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
       },
-      tls: {
-        rejectUnauthorized: env.SMTP_TLS_REJECT_UNAUTHORIZED
-      },
-      // Frente 14 (segunda camada, carga real), Lote 3: sem estes três, o
-      // Nodemailer usa os defaults do driver SMTP subjacente — na prática
-      // sem timeout de socket nenhum (fica esperando indefinidamente um
-      // servidor de destino lento/travado responder). Como
-      // email-queue.service.ts entrega os itens da fila em série (um de
-      // cada vez), um único destinatário problemático travava a fila
-      // inteira por tempo indeterminado, atrasando verificação de e-mail e
-      // redefinição de senha de todo mundo atrás dele na fila.
-      //
-      // Achado em teste manual (2026-09-30): os 10s/10s originais eram
-      // curtos demais pra ambiente de hospedagem gratuita (Render) - o
-      // handshake com o servidor SMTP (Resend) ocasionalmente passa dos
-      // 10s (mais ainda logo após o servidor acordar de um período
-      // ocioso), estourando o timeout e gerando falha intermitente sem
-      // nenhum problema real de configuração por trás. Sintoma observado:
-      // mesmo e-mail/mesma conta funcionando em uma tentativa e falhando
-      // com "Connection timeout" em outra, em horários diferentes. Valores
-      // aumentados pra dar mais folga sem reintroduzir o travamento
-      // indeterminado que esta proteção evita.
-      connectionTimeout: 30_000,
-      greetingTimeout: 20_000,
-      socketTimeout: 45_000
+      body: JSON.stringify({
+        from: input.from,
+        to: input.to,
+        subject: input.subject,
+        text: input.text,
+        html: input.html,
+        ...(input.replyTo ? { reply_to: input.replyTo } : {})
+      }),
+      signal: controller.signal
     });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Resend request failed: ${message}`);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
-  return transporter;
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Resend API error: HTTP ${response.status} ${body.slice(0, 500)}`);
+  }
 }
 
-function requireMailer() {
-  const mailer = getTransporter();
-  if (!mailer) {
+function requireEmailConfigured() {
+  if (!isSmtpConfigured()) {
     throw new AppError(
       "Serviço de e-mail não configurado. Tente novamente mais tarde.",
       StatusCodes.SERVICE_UNAVAILABLE
     );
   }
-  return mailer;
 }
 
 function escapeHtml(value: string) {
@@ -253,16 +263,28 @@ export class EmailService {
     if (!this.canSendEmail()) {
       return;
     }
-    const mailer = requireMailer();
-    await mailer.verify();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), RESEND_REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch("https://api.resend.com/domains", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${env.SMTP_PASS}` },
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        throw new Error(`Resend API verification failed: HTTP ${response.status}`);
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   async sendEmailVerificationEmail(input: EmailVerificationInput) {
-    const mailer = requireMailer();
+    requireEmailConfigured();
     const expiresHours = env.EMAIL_VERIFICATION_TOKEN_EXPIRES_HOURS;
 
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: "Muvify — Confirme seu e-mail",
       text: [
@@ -299,12 +321,12 @@ export class EmailService {
   }
 
   async sendPasswordResetEmail(input: PasswordResetEmailInput) {
-    const mailer = requireMailer();
+    requireEmailConfigured();
     const resetUrl = `${env.PASSWORD_RESET_WEB_URL}?token=${encodeURIComponent(input.resetToken)}`;
     const expiresMinutes = env.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES;
 
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: "Muvify — Redefinicao de senha",
       text: [
@@ -345,11 +367,11 @@ export class EmailService {
   // plano do bloco). Por isso o código também aparece em texto puro no
   // e-mail, como alternativa garantida pra quem ainda não tem o app.
   async sendExternalStudentInviteEmail(input: ExternalStudentInviteEmailInput) {
-    const mailer = requireMailer();
+    requireEmailConfigured();
     const deepLink = `muvify://convite/${encodeURIComponent(input.inviteToken)}`;
 
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: `${input.providerName} te convidou para o Muvify`,
       text: [
@@ -384,9 +406,9 @@ export class EmailService {
   }
 
   async sendPasswordChangedEmail(input: PasswordChangedEmailInput) {
-    const mailer = requireMailer();
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    requireEmailConfigured();
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: "Muvify — Sua senha foi alterada",
       text: [
@@ -409,9 +431,9 @@ export class EmailService {
   // Épico de Frentes, Frente 11, Lote 5: exportação self-service de dados
   // pessoais não avisava o titular por nenhum canal - só o download em si.
   async sendDataExportConfirmation(input: DataExportConfirmationEmailInput) {
-    const mailer = requireMailer();
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    requireEmailConfigured();
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: "Muvify — Seus dados foram exportados",
       text: [
@@ -435,9 +457,9 @@ export class EmailService {
   // nenhum aviso de confirmação - o único sinal pro titular era o próprio
   // app deslogar.
   async sendAccountDeleted(input: AccountDeletedEmailInput) {
-    const mailer = requireMailer();
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    requireEmailConfigured();
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: "Muvify — Sua conta foi excluída",
       text: [
@@ -458,9 +480,9 @@ export class EmailService {
   }
 
   async sendRecoveryEmailUpdated(input: RecoveryEmailUpdatedInput) {
-    const mailer = requireMailer();
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    requireEmailConfigured();
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: "Muvify — E-mail de recuperacao atualizado",
       text: [
@@ -484,7 +506,7 @@ export class EmailService {
   }
 
   async sendWaitlistWelcomeEmail(input: WaitlistWelcomeInput) {
-    const mailer = requireMailer();
+    requireEmailConfigured();
     const nextStep =
       input.audience === "PROFESSIONAL"
         ? "Avisaremos assim que abrirmos cadastro de profissionais, com desconto de lancamento pra quem entrou cedo."
@@ -494,8 +516,8 @@ export class EmailService {
         ? "Avisaremos assim que abrirmos cadastro de profissionais, com <strong>desconto de lan&ccedil;amento</strong> pra quem entrou cedo."
         : "Avisaremos assim que o app estiver dispon&iacute;vel na sua regi&atilde;o.";
 
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: "Muvify — Você está na lista de espera",
       text: [
@@ -514,9 +536,9 @@ export class EmailService {
   }
 
   async sendSupportMessageEmail(input: SupportMessageEmailInput) {
-    const mailer = requireMailer();
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    requireEmailConfigured();
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       replyTo: input.userEmail,
       subject: `[Suporte Muvify] ${sanitizeSubject(input.subject)}`,
@@ -547,9 +569,9 @@ export class EmailService {
   }
 
   async sendSupportReplyEmail(input: SupportReplyEmailInput) {
-    const mailer = requireMailer();
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    requireEmailConfigured();
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: `[Suporte Muvify] Resposta: ${sanitizeSubject(input.subject ?? "Sua solicitacao")}`,
       text: [
@@ -571,15 +593,15 @@ export class EmailService {
   }
 
   async sendBookingConfirmationToClient(input: BookingConfirmationClientInput) {
-    const mailer = requireMailer();
+    requireEmailConfigured();
     const dateStr = input.scheduledAt.toLocaleDateString("pt-BR", {
       weekday: "long", day: "2-digit", month: "long", year: "numeric",
       hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo"
     });
     const priceStr = (input.priceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: `Muvify — Agendamento solicitado com ${sanitizeSubject(input.providerName)}`,
       text: [
@@ -611,15 +633,15 @@ export class EmailService {
   }
 
   async sendBookingConfirmationToProvider(input: BookingConfirmationProviderInput) {
-    const mailer = requireMailer();
+    requireEmailConfigured();
     const dateStr = input.scheduledAt.toLocaleDateString("pt-BR", {
       weekday: "long", day: "2-digit", month: "long", year: "numeric",
       hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo"
     });
     const priceStr = (input.priceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: `Muvify — Novo agendamento de ${sanitizeSubject(input.clientName)}`,
       text: [
@@ -652,11 +674,11 @@ export class EmailService {
   // (não amarrado a "sessão", diferente do de booking) reaproveitado
   // pelos dois fluxos via serviceName.
   async sendPurchaseConfirmationToClient(input: PurchaseConfirmationClientInput) {
-    const mailer = requireMailer();
+    requireEmailConfigured();
     const priceStr = (input.priceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: `Muvify — Compra confirmada com ${sanitizeSubject(input.providerName)}`,
       text: [
@@ -682,11 +704,11 @@ export class EmailService {
   }
 
   async sendPurchaseConfirmationToProvider(input: PurchaseConfirmationProviderInput) {
-    const mailer = requireMailer();
+    requireEmailConfigured();
     const priceStr = (input.priceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: `Muvify — Nova venda de ${sanitizeSubject(input.clientName)}`,
       text: [
@@ -712,7 +734,7 @@ export class EmailService {
   }
 
   async sendCrefReviewEmail(input: CrefReviewEmailInput) {
-    const mailer = requireMailer();
+    requireEmailConfigured();
     const approved = input.approved;
     const decisionLabel = approved ? "Aprovado" : "Reprovado";
     const reason =
@@ -743,8 +765,8 @@ export class EmailService {
       </div>
     `;
 
-    await mailer.sendMail({
-      from: env.SMTP_FROM,
+    await sendViaResend({
+      from: env.SMTP_FROM!,
       to: input.to,
       subject: `Muvify — Revisao de CREF: ${sanitizeSubject(decisionLabel)}`,
       text: [
