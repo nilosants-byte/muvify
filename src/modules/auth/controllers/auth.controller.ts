@@ -152,6 +152,18 @@ function buildVerificationPage(success: boolean, errorMessage?: string): string 
 // são só HTML com um <form> nativo). O script precisa vir de um arquivo
 // próprio, de mesma origem (GET /auth/reset-password.js abaixo), que o
 // CSP já permite sem precisar afrouxar a política em nada.
+// Mesmos ícones Ionicons (eye-outline / eye-off-outline) usados no app
+// (ver mobile-app/src/components/mv/MvInput.tsx) - achado em teste manual
+// (2026-10-02): a versão anterior usava emoji (👁/🙈), inconsistente com o
+// resto do produto. SVG embutido porque esta página não tem acesso à
+// fonte de ícones do app (é HTML puro, fora do React Native); path
+// copiado direto da fonte oficial do ícone (ionicons, MIT) pra garantir
+// que é visualmente idêntico, não uma aproximação.
+const EYE_ICON_SVG =
+  '<svg viewBox="0 0 512 512" width="20" height="20" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"><path d="M255.66,112c-77.94,0-157.89,45.11-220.83,135.33a16,16,0,0,0-.27,17.77C82.92,340.8,161.8,400,255.66,400,348.5,400,429,340.62,477.45,264.75a16.14,16.14,0,0,0,0-17.47C428.89,172.28,347.8,112,255.66,112Z"/><circle cx="256" cy="256" r="80" stroke-miterlimit="10"/></svg>';
+const EYE_OFF_ICON_SVG =
+  '<svg viewBox="0 0 512 512" width="20" height="20" fill="currentColor"><path d="M432,448a15.92,15.92,0,0,1-11.31-4.69l-352-352A16,16,0,0,1,91.31,68.69l352,352A16,16,0,0,1,432,448Z"/><path d="M255.66,384c-41.49,0-81.5-12.28-118.92-36.5-34.07-22-64.74-53.51-88.7-91l0-.08c19.94-28.57,41.78-52.73,65.24-72.21a2,2,0,0,0,.14-2.94L93.5,161.38a2,2,0,0,0-2.71-.12c-24.92,21-48.05,46.76-69.08,76.92a31.92,31.92,0,0,0-.64,35.54c26.41,41.33,60.4,76.14,98.28,100.65C162,402,207.9,416,255.66,416a239.13,239.13,0,0,0,75.8-12.58,2,2,0,0,0,.77-3.31l-21.58-21.58a4,4,0,0,0-3.83-1A204.8,204.8,0,0,1,255.66,384Z"/><path d="M490.84,238.6c-26.46-40.92-60.79-75.68-99.27-100.53C349,110.55,302,96,255.66,96a227.34,227.34,0,0,0-74.89,12.83,2,2,0,0,0-.75,3.31l21.55,21.55a4,4,0,0,0,3.88,1A192.82,192.82,0,0,1,255.66,128c40.69,0,80.58,12.43,118.55,37,34.71,22.4,65.74,53.88,89.76,91a.13.13,0,0,1,0,.16,310.72,310.72,0,0,1-64.12,72.73,2,2,0,0,0-.15,2.95l19.9,19.89a2,2,0,0,0,2.7.13,343.49,343.49,0,0,0,68.64-78.48A32.2,32.2,0,0,0,490.84,238.6Z"/><path d="M256,160a95.88,95.88,0,0,0-21.37,2.4,2,2,0,0,0-1,3.38L346.22,278.34a2,2,0,0,0,3.38-1A96,96,0,0,0,256,160Z"/><path d="M165.78,233.66a2,2,0,0,0-3.38,1,96,96,0,0,0,115,115,2,2,0,0,0,1-3.38Z"/></svg>';
+
 function buildResetPasswordPage(input: { token?: string; error?: string }): string {
   const styles = `body{margin:0;padding:0;background:#f0f0f0;font-family:'Helvetica Neue',Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;}.card{background:#fff;border-radius:14px;padding:40px 36px;max-width:420px;width:90%;box-shadow:0 4px 16px rgba(0,0,0,0.10);}.icon{font-size:48px;margin-bottom:12px;text-align:center;}.title{font-size:22px;font-weight:700;color:#111827;margin-bottom:10px;text-align:center;}.msg{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:20px;text-align:center;}label{display:block;font-size:13px;font-weight:600;color:#374151;margin:16px 0 6px;}.pwd-wrap{position:relative;}.pwd-wrap input[type=password],.pwd-wrap input[type=text]{width:100%;box-sizing:border-box;padding:12px 44px 12px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:15px;}.pwd-wrap input:focus{outline:none;border-color:#4CAF50;}.pwd-toggle{position:absolute;right:4px;top:4px;bottom:4px;width:40px;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:18px;display:flex;align-items:center;justify-content:center;}.criteria{list-style:none;padding:0;margin:14px 0 0;font-size:13px;}.criteria li{padding:3px 0;color:#9ca3af;}.btn{display:block;width:100%;background:#4CAF50;color:#fff;border:none;border-radius:10px;padding:14px 20px;font-size:15px;font-weight:700;cursor:pointer;margin-top:22px;}.btn:disabled{background:#d1d5db;cursor:not-allowed;}.error{display:none;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:16px;}.logo{margin-top:28px;font-size:22px;font-weight:800;letter-spacing:3px;color:#4CAF50;text-transform:uppercase;text-align:center;}`;
 
@@ -171,12 +183,12 @@ function buildResetPasswordPage(input: { token?: string; error?: string }): stri
     <label for="pwd">Nova senha</label>
     <div class="pwd-wrap">
       <input type="password" id="pwd" autocomplete="new-password" required>
-      <button type="button" class="pwd-toggle" id="pwd-toggle" aria-label="Mostrar senha">&#128065;</button>
+      <button type="button" class="pwd-toggle" id="pwd-toggle" aria-label="Mostrar senha">${EYE_ICON_SVG}</button>
     </div>
     <label for="confirm">Confirmar nova senha</label>
     <div class="pwd-wrap">
       <input type="password" id="confirm" autocomplete="new-password" required>
-      <button type="button" class="pwd-toggle" id="confirm-toggle" aria-label="Mostrar senha">&#128065;</button>
+      <button type="button" class="pwd-toggle" id="confirm-toggle" aria-label="Mostrar senha">${EYE_ICON_SVG}</button>
     </div>
     <ul class="criteria">
       <li id="c-len" data-label="Pelo menos 8 caracteres">&#9675; Pelo menos 8 caracteres</li>
@@ -210,13 +222,17 @@ const RESET_PASSWORD_PAGE_SCRIPT = `(function () {
   var errorBox = document.getElementById('error');
   var form = document.getElementById('f');
 
+  var EYE_ICON = '${EYE_ICON_SVG}';
+  var EYE_OFF_ICON = '${EYE_OFF_ICON_SVG}';
+
   function setupToggle(toggleId, inputEl) {
     var toggle = document.getElementById(toggleId);
+    toggle.innerHTML = EYE_ICON;
     toggle.addEventListener('click', function () {
       var showing = inputEl.type === 'text';
       inputEl.type = showing ? 'password' : 'text';
       toggle.setAttribute('aria-label', showing ? 'Mostrar senha' : 'Ocultar senha');
-      toggle.innerHTML = showing ? '&#128065;' : '&#128584;';
+      toggle.innerHTML = showing ? EYE_ICON : EYE_OFF_ICON;
     });
   }
   setupToggle('pwd-toggle', pwd);

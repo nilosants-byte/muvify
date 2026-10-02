@@ -351,7 +351,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     user: AuthUser;
     accessToken: string;
     refreshToken: string;
-  }) => {
+  }, source: "login" | "register" = "login") => {
     // Update refs synchronously so runWithAuth sees the new token immediately,
     // before any child component effects fire (React runs child effects before parent effects).
     accessTokenRef.current = input.accessToken;
@@ -359,10 +359,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     // Set role synchronously with the other state so there is no render cycle
     // where isAuthenticated=true but role=null, which would flash AuthProfileSelectionScreen.
     const immediateRole = resolveSessionRole(input.user, null);
+    // Achado em teste manual (2026-10-02): mesmo bug de corrida do role
+    // acima, só que pro onboarding - onboardingDone ficava com o valor
+    // antigo (geralmente false, de antes do login) até loadOnboardingDoneForUser
+    // resolver, fazendo os slides de onboarding piscarem na tela por um
+    // instante em TODO login de usuário que já tinha completado onboarding
+    // antes. Chute otimista síncrono igual ao do role: quem está logando
+    // (não se cadastrando agora) quase sempre já viu onboarding nesse
+    // aparelho - loadOnboardingDoneForUser corrige logo em seguida pro caso
+    // raro (conta antiga, aparelho novo). Cadastro usa o chute oposto
+    // (false) de propósito - é sempre a primeira vez por definição.
+    const immediateOnboardingDone = source === "login";
     setUser(input.user);
     setAccessToken(input.accessToken);
     setRefreshToken(input.refreshToken);
     setRole(immediateRole);
+    setOnboardingDone(immediateOnboardingDone);
     setIsAuthenticated(true);
     await Promise.all([
       saveTokens(input.accessToken, input.refreshToken),
@@ -622,7 +634,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       ...input,
       role: registrationRole
     });
-    await setSession(session);
+    await setSession(session, "register");
     identifyUser(session.user.id, { role: session.user.role });
     trackEvent("user_registered", { role: session.user.role ?? registrationRole });
   }
