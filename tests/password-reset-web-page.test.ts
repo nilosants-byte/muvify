@@ -62,7 +62,12 @@ describe("Página web do link de redefinição de senha", () => {
     // página precisa referenciar um arquivo JS próprio (mesma origem),
     // nunca JS embutido na própria página.
     expect(page.text).not.toMatch(/<script>[\s\S]*<\/script>/);
-    expect(page.text).toContain('<script src="/api/auth/reset-password.js"></script>');
+    // Achado em teste manual (2026-10-02): sem versão na URL, o navegador
+    // reaproveitava uma cópia em cache do script por até 1h depois de
+    // qualquer atualização de conteúdo (o header Cache-Control de longa
+    // duração do arquivo é seguro exatamente porque a URL muda sozinha
+    // quando o conteúdo muda).
+    expect(page.text).toMatch(/<script src="\/api\/auth\/reset-password\.js\?v=[a-f0-9]{12}"><\/script>/);
     // Botões de mostrar/ocultar senha nos dois campos.
     expect(page.text).toContain('id="pwd-toggle"');
     expect(page.text).toContain('id="confirm-toggle"');

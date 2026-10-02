@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { AuthService } from "../services/auth.service";
@@ -75,7 +76,10 @@ export class AuthController {
   // Arquivo JS próprio da página acima, servido de mesma origem pra
   // respeitar o CSP global (script-src 'self', sem 'unsafe-inline').
   renderResetPasswordPageScript(_request: Request, response: Response) {
-    response.setHeader("Cache-Control", "public, max-age=3600");
+    // Seguro cachear por muito tempo agora: a URL referenciada pela página
+    // (?v=hash do conteúdo) muda sozinha sempre que o conteúdo muda - esta
+    // versão exata nunca vai mudar de conteúdo debaixo do mesmo hash.
+    response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     return response.status(StatusCodes.OK).type("application/javascript").send(RESET_PASSWORD_PAGE_SCRIPT);
   }
 
@@ -207,7 +211,7 @@ function buildResetPasswordPage(input: { token?: string; error?: string }): stri
   <p class="msg">Sua senha foi alterada com sucesso. Volte ao aplicativo Muvify e fa&ccedil;a login com a nova senha.</p>
   <div class="logo">muvify</div>
 </div>
-<script src="/api/auth/reset-password.js"></script>
+<script src="/api/auth/reset-password.js?v=${RESET_PASSWORD_PAGE_SCRIPT_VERSION}"></script>
 </body></html>`;
 }
 
@@ -289,3 +293,19 @@ const RESET_PASSWORD_PAGE_SCRIPT = `(function () {
   });
 })();
 `;
+
+// Achado em teste manual (2026-10-02): a página referenciava
+// "/reset-password.js" sem versão nenhuma, e o header Cache-Control
+// (max-age=3600) abaixo fazia o navegador reaproveitar uma cópia antiga
+// do script por até 1 hora depois de qualquer atualização de conteúdo -
+// a página HTML (sempre renderizada na hora, nunca cacheada) já vinha
+// nova, mas o comportamento em tempo real (clique nos botões) continuava
+// rodando a versão velha do script. Hash do próprio conteúdo como query
+// string: a URL muda sozinha sempre que o script muda, forçando um
+// download novo sem precisar derrubar o cache (que continua útil - a
+// MESMA versão pode ficar cacheada por 1h sem problema, só essa versão
+// específica).
+const RESET_PASSWORD_PAGE_SCRIPT_VERSION = createHash("sha256")
+  .update(RESET_PASSWORD_PAGE_SCRIPT)
+  .digest("hex")
+  .slice(0, 12);
