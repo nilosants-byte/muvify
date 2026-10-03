@@ -437,6 +437,7 @@ const FeedPostCard = React.memo(function FeedPostCard({
   onNavigateToProfile,
   onCommentFocus,
   onDeletePost,
+  onRestorePost,
   showToast,
   viewerId,
 }: {
@@ -450,6 +451,10 @@ const FeedPostCard = React.memo(function FeedPostCard({
   // React.memo deste card ter efeito de verdade.
   onCommentFocus: (postId: string) => void;
   onDeletePost: (postId: string) => void;
+  // Atualização otimista de denunciar/excluir: some da tela na hora do
+  // toque; se a chamada falhar de verdade (raro), reinsere o post pra não
+  // perder o conteúdo silenciosamente.
+  onRestorePost: (post: FeedPost) => void;
   showToast: (msg: string, type?: "success" | "error" | "info") => void;
   viewerId: string;
 }) {
@@ -918,16 +923,19 @@ const FeedPostCard = React.memo(function FeedPostCard({
               <TouchableOpacity
                 onPress={async () => {
                   setShowMenu(false);
+                  // Atualização otimista: some da tela na hora, sem esperar
+                  // o servidor — reinsere só se a chamada falhar de verdade.
+                  onDeletePost(post.id);
+                  showToast("Denúncia recebida. Obrigado por nos avisar.", "info");
                   try {
                     // Épico de Frentes, Frente 8, Lote 2: antes só mostrava o
                     // toast sem chamar nenhuma API — a denúncia não era
                     // persistida em lugar nenhum. Post denunciado some do
                     // próprio feed do denunciante a partir de agora.
                     await runWithAuth((token) => communityApi.reportPost(token, post.id));
-                    onDeletePost(post.id);
-                    showToast("Denúncia recebida. Obrigado por nos avisar.", "info");
                   } catch (error) {
                     captureException(error, { screen: "CommunityScreen", action: "reportPost" });
+                    onRestorePost(post);
                     showToast("Não foi possível enviar a denúncia. Tente novamente.", "error");
                   }
                 }}
@@ -942,11 +950,14 @@ const FeedPostCard = React.memo(function FeedPostCard({
               <TouchableOpacity
                 onPress={async () => {
                   setShowMenu(false);
+                  // Atualização otimista: some da tela na hora, sem esperar
+                  // o servidor — reinsere só se a chamada falhar de verdade.
+                  onDeletePost(post.id);
                   try {
                     await runWithAuth((token) => communityApi.deletePost(token, post.id));
-                    onDeletePost(post.id);
                   } catch (error) {
                     captureException(error, { screen: "CommunityScreen", action: "deletePost" });
+                    onRestorePost(post);
                     showToast("Não foi possível excluir o post.", "error");
                   }
                 }}
@@ -1099,16 +1110,29 @@ export function CommunityScreen({ navigation }: Props) {
   async function handleFollow(targetId: string) {
     if (followInFlightRef.current.has(targetId)) return;
     followInFlightRef.current.add(targetId);
+    // Atualização otimista (mesmo padrão de handleLike acima): alterna o
+    // estado na hora do toque, sem esperar o servidor, e desfaz só se a
+    // chamada falhar de verdade.
+    const wasFollowing = followingIds.has(targetId);
+    if (wasFollowing) {
+      setFollowingIds((prev) => { const next = new Set(prev); next.delete(targetId); return next; });
+    } else {
+      setFollowingIds((prev) => new Set([...prev, targetId]));
+    }
     try {
-      if (followingIds.has(targetId)) {
+      if (wasFollowing) {
         await runWithAuth((token) => communityApi.unfollow(token, targetId));
-        setFollowingIds((prev) => { const next = new Set(prev); next.delete(targetId); return next; });
       } else {
         await runWithAuth((token) => communityApi.follow(token, targetId));
-        setFollowingIds((prev) => new Set([...prev, targetId]));
       }
     } catch (error) {
       captureException(error, { screen: "CommunityScreen", action: "followUnfollow" });
+      if (wasFollowing) {
+        setFollowingIds((prev) => new Set([...prev, targetId]));
+      } else {
+        setFollowingIds((prev) => { const next = new Set(prev); next.delete(targetId); return next; });
+      }
+      showToast("Não foi possível concluir a ação. Tente novamente.", "error");
     }
     finally { followInFlightRef.current.delete(targetId); }
   }
@@ -1194,6 +1218,14 @@ export function CommunityScreen({ navigation }: Props) {
 
   const handleDeletePost = useCallback((postId: string) => {
     setFeedItems((prev) => prev.filter((p) => p.id !== postId));
+  }, []);
+
+  // Reversão da exclusão/denúncia otimista — só chamada quando a chamada ao
+  // servidor falha de verdade (raro). Reinsere no topo em vez de tentar
+  // recalcular a posição original exata, que não é crítica pra esse caso de
+  // erro pontual.
+  const handleRestorePost = useCallback((post: FeedPost) => {
+    setFeedItems((prev) => (prev.some((p) => p.id === post.id) ? prev : [post, ...prev]));
   }, []);
 
   const handleScrollToIndexFailed = useCallback((info: { index: number; averageItemLength: number }) => {
@@ -1564,6 +1596,7 @@ export function CommunityScreen({ navigation }: Props) {
               onNavigateToProfile={openUserProfile}
               onCommentFocus={handleCommentFocus}
               onDeletePost={handleDeletePost}
+              onRestorePost={handleRestorePost}
             />
           </View>
         )}
@@ -2000,7 +2033,7 @@ export function CommunityScreen({ navigation }: Props) {
         activeTab="community"
         badges={{ community: pendingFeedItems.length }}
         onNavigate={(tab) => {
-          if (tab === "home") navigation.navigate("ClientHome");
+          if (tab === "home") (navigation as any).navigate("ClientTabs", { screen: "ClientHome" });
           if (tab === "meuPersonal") navigation.navigate("ClientBookings");
           if (tab === "trainings") navigation.navigate("MyTraining");
           if (tab === "profile") navigation.navigate("ClientProfile");
