@@ -125,7 +125,15 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
     try {
       await runWithAuth((token) => userApi.deleteMe(token, password));
       setShowDeletePasswordModal(false);
-      await signOut();
+      // Achado em teste manual (2026-09-28): o fluxo pulava direto pro
+      // signOut() sem nenhuma confirmação - o usuário só descobria que a
+      // exclusão funcionou por dedução (foi deslogado). Alert bloqueante
+      // garante que a mensagem é vista antes da navegação forçar a saída.
+      Alert.alert(
+        "Conta excluída",
+        "Sua conta foi excluída com sucesso. Seus dados pessoais foram removidos ou anonimizados.",
+        [{ text: "OK", onPress: () => { void signOut(); } }]
+      );
     } catch (error) {
       Alert.alert("Erro", extractApiMessage(error, "Não foi possível excluir a conta."));
     } finally {

@@ -275,6 +275,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
       [
       { text: "Cancelar", style: "cancel" },
       { text: "Remover", style: "destructive", onPress: async () => {
+        showToast("Removendo aluno...", "info");
         try {
           await runWithAuth(t => financialApi.deleteStudent(t, id));
           queryClient.setQueryData<StudentsPageData>(queryKeys.financial.studentsPage(month), (old) =>

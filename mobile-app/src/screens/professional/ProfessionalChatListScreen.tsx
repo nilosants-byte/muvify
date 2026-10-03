@@ -444,13 +444,16 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
             text: "Denunciar",
             style: "destructive",
             onPress: () => {
+              // Atualização otimista: denunciar quase nunca falha e não tem
+              // efeito visual reversível na tela (a mensagem continua igual
+              // pros dois lados) — mostra a confirmação na hora, sem esperar
+              // o servidor, e só troca pelo erro se a chamada falhar de fato.
+              showToast("Denúncia recebida. Obrigado por nos avisar.", "info");
               runWithAuth((token) =>
                 chat.kind === "booking"
                   ? chatApi.reportMessage(token, chat.rawId, message.id)
                   : consultancyChatApi.reportMessage(token, chat.rawId, message.id)
-              )
-                .then(() => showToast("Denúncia recebida. Obrigado por nos avisar.", "info"))
-                .catch(() => showToast("Não foi possível enviar a denúncia.", "error"));
+              ).catch(() => showToast("Não foi possível enviar a denúncia. Tente novamente.", "error"));
             },
           },
         ]

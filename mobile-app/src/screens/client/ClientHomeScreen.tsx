@@ -15,6 +15,7 @@ import {
 import { usePlaceSuggestions } from "../../hooks/usePlaceSuggestions";
 import { useGooglePlacesSearch } from "../../hooks/useGooglePlacesSearch";
 import {
+  ActivityIndicator,
   Keyboard,
   Modal,
   Pressable,
@@ -356,6 +357,7 @@ export function ClientHomeScreen({ navigation }: Props) {
   // Seguidores que ainda não seguimos de volta
   const [newFollowers, setNewFollowers] = useState<import("../../services/api/client").CommunityUser[]>([]);
   const [followBackIds, setFollowBackIds] = useState<Set<string>>(new Set());
+  const [followingBackNowIds, setFollowingBackNowIds] = useState<Set<string>>(new Set());
   const [weatherIcon, setWeatherIcon] = useState<WeatherIconData>(clientTimeBasedWeatherIcon);
   const lightModeEnabled = !isDark;
   const safeRadiusKm = Math.max(1, Math.min(10, Math.round(filterDistance)));
@@ -1248,12 +1250,27 @@ export function ClientHomeScreen({ navigation }: Props) {
                     </View>
                     {!isFollowingBack && (
                       <TouchableOpacity
+                        disabled={followingBackNowIds.has(follower.id)}
                         onPress={async () => {
+                          // Atualização otimista: já marca como seguindo e
+                          // some da lista de "novos seguidores" na hora —
+                          // só desfaz se a chamada falhar de verdade.
+                          setFollowingBackNowIds((prev) => new Set([...prev, follower.id]));
+                          setFollowBackIds((prev) => new Set([...prev, follower.id]));
+                          setNewFollowers((prev) => prev.filter((f) => f.id !== follower.id));
                           try {
                             await runWithAuth((token) => communityApiImport.follow(token, follower.id));
-                            setFollowBackIds((prev) => new Set([...prev, follower.id]));
-                            setNewFollowers((prev) => prev.filter((f) => f.id !== follower.id));
-                          } catch { /* best effort */ }
+                          } catch {
+                            setFollowBackIds((prev) => { const next = new Set(prev); next.delete(follower.id); return next; });
+                            setNewFollowers((prev) => (prev.some((f) => f.id === follower.id) ? prev : [...prev, follower]));
+                            showToast("Não foi possível seguir de volta. Tente novamente.", "error");
+                          } finally {
+                            setFollowingBackNowIds((prev) => {
+                              const next = new Set(prev);
+                              next.delete(follower.id);
+                              return next;
+                            });
+                          }
                         }}
                         // Frente 15 (segunda camada, acessibilidade), Lote
                         // 18: 32pt de altura fica abaixo do mínimo
@@ -1262,7 +1279,11 @@ export function ClientHomeScreen({ navigation }: Props) {
                         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                         style={{ height: 32, paddingHorizontal: 12, borderRadius: S.chipR, backgroundColor: C.sky, alignItems: "center", justifyContent: "center" }}
                       >
-                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: theme.textOnPrimary }}>Seguir de volta</Text>
+                        {followingBackNowIds.has(follower.id) ? (
+                          <ActivityIndicator size="small" color={theme.textOnPrimary} />
+                        ) : (
+                          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: theme.textOnPrimary }}>Seguir de volta</Text>
+                        )}
                       </TouchableOpacity>
                     )}
                     {isFollowingBack && (

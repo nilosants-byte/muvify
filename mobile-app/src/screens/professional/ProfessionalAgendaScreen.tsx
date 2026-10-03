@@ -393,6 +393,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
       {
         text: "Remover", style: "destructive",
         onPress: async () => {
+          showToast("Removendo bloqueio...", "info");
           try {
             await runWithAuth((token) => manualBlocksApi.delete(token, id));
             queryClient.setQueryData<typeof agendaQuery.data>(queryKeys.agenda.professional(), (old) => ({

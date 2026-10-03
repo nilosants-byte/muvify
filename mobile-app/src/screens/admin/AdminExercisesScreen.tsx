@@ -194,6 +194,7 @@ export function AdminExercisesScreen({ navigation }: Props) {
           text: "Remover",
           style: "destructive",
           onPress: async () => {
+            showToast("Removendo exercício...", "info");
             try {
               await runWithAuth((token) => adminExerciseApi.delete(token, ex.id));
               setExercises((prev) => prev.filter((e) => e.id !== ex.id));
@@ -348,10 +349,11 @@ export function AdminExercisesScreen({ navigation }: Props) {
       </View>
 
       {/* Create / Edit Modal */}
+      {/* presentationStyle="pageSheet" removido: quebra a correção de
+          toast-atrás-de-modal no iOS (ver ProfessionalConsultancyOffersScreen.tsx). */}
       <Modal
         visible={modalVisible}
         animationType="slide"
-        presentationStyle="pageSheet"
         onRequestClose={() => { setModalVisible(false); setForm(emptyForm()); setEditingId(null); }}
       >
         <KeyboardAvoidingView
