@@ -144,6 +144,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
   // salvar, com um erro do backend.
   const [editingOfferPriceLockedUntil, setEditingOfferPriceLockedUntil] = useState<string | null>(null);
   const [deletingOfferId, setDeletingOfferId] = useState<string | null>(null);
+  const [togglingOfferId, setTogglingOfferId] = useState<string | null>(null);
   const [offerWizardStep, setOfferWizardStep] = useState(0);
   const [offerFormVisible, setOfferFormVisible] = useState(false);
 
@@ -228,6 +229,11 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     if (presentialHasFixedTerm) {
       const cycles = Number(presentialTotalCycles);
       if (!cycles || cycles < 1) return "Informe o número total de ciclos.";
+    } else if (presentialPackageMode === "FLEXIBLE_CREDITS") {
+      // Achado em teste manual: faltava essa checagem no app (só existia no
+      // servidor) — sessões avulsas são um bloco fechado, sempre precisam de
+      // uma validade definida, ao contrário do horário fixo recorrente.
+      return "Pacotes de sessões avulsas precisam de uma validade — ative \"Vigência com prazo determinado\".";
     }
     return undefined;
   }, [offerKind, presentialPackageMode, presentialSessionsPerCycle, presentialHasFixedTerm, presentialTotalCycles]);
@@ -401,19 +407,27 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
 
   async function handleToggleOfferActive(offer: ProviderServiceOffer) {
     const nextIsActive = !(offer.isActive !== false);
+    // Atualização otimista: alterna o selo "Ativa/Inativa" na hora, sem
+    // esperar o servidor — reversível e de baixo risco (não mexe em
+    // contratos já ativos), só reverte se a chamada falhar de verdade.
+    setOffers((prev) => prev.map((o) => (o.id === offer.id ? { ...o, isActive: nextIsActive } : o)));
+    showToast(nextIsActive ? "Oferta reativada." : "Oferta desativada — ela some da vitrine, mas contratos ativos continuam normalmente.", "success");
     try {
+      setTogglingOfferId(offer.id);
       const updated = await runWithAuth((token) =>
         consultancyApi.updateProviderOffer(token, offer.id, { isActive: nextIsActive })
       );
       setOffers((prev) => prev.map((o) => (o.id === offer.id ? updated : o)));
-      showToast(nextIsActive ? "Oferta reativada." : "Oferta desativada — ela some da vitrine, mas contratos ativos continuam normalmente.", "success");
     } catch (error) {
+      setOffers((prev) => prev.map((o) => (o.id === offer.id ? { ...o, isActive: !nextIsActive } : o)));
       handleScreenError({
         error,
         showToast,
         fallbackMessage: "Não foi possível alterar o status da oferta.",
         onSubscriptionRequired: showSubscriptionRequiredSheet
       });
+    } finally {
+      setTogglingOfferId(null);
     }
   }
 
@@ -464,6 +478,10 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
     }
     if (markAsPromotion && (promotionValueError || promotionDateError)) {
       showToast(promotionValueError ?? promotionDateError ?? "Promoção inválida.", "error");
+      return;
+    }
+    if (offerKind !== "PRESENTIAL" && !fichaValidityDays.trim()) {
+      showToast("Informe a validade de cada ficha (em dias).", "error");
       return;
     }
 
@@ -552,9 +570,16 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
       setOfferFormVisible(false);
       void centerQuery.refetch();
     } catch (error) {
+      // Achado em teste manual: esta tela roda dentro de um <Modal> nativo
+      // (react-native), e um segundo <Modal> nativo aberto por cima (o
+      // toast global) não renderiza de forma confiável no iOS enquanto o
+      // primeiro está visível — o erro nunca aparecia, embora a mensagem
+      // fosse gerada corretamente. Alert.alert usa um mecanismo nativo
+      // diferente (sempre aparece por cima, mesmo com outro modal aberto),
+      // por isso substitui o toast só aqui, no fluxo de criar/editar oferta.
       handleScreenError({
         error,
-        showToast,
+        showToast: (message, type) => Alert.alert(type === "error" ? "Erro" : "Aviso", message),
         fallbackMessage: editingOfferId ? "Falha ao atualizar oferta." : "Falha ao criar oferta.",
         navigation,
         onSubscriptionRequired: showSubscriptionRequiredSheet
@@ -640,7 +665,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                       borderRadius: 16,
                       backgroundColor: theme.mode === "dark" ? "rgba(255,255,255,0.015)" : "#FFFFFF",
                       padding: 16,
-                      opacity: deletingOfferId === offer.id ? 0.45 : 1,
+                      opacity: deletingOfferId === offer.id || togglingOfferId === offer.id ? 0.45 : 1,
                     }}
                   >
                     <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
@@ -709,7 +734,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                         </View>
                         <PressableScale
                           onPress={() => openOfferMenu(offer)}
-                          disabled={deletingOfferId === offer.id}
+                          disabled={deletingOfferId === offer.id || togglingOfferId === offer.id}
                           scale={0.94}
                           accessibilityLabel="Gerenciar oferta"
                           style={{
@@ -729,7 +754,13 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
           )}
         </MvCard>
 
-        <Modal visible={offerFormVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeOfferForm}>
+        {/* Achado em teste manual: presentationStyle="pageSheet" (só 3
+            modais no app usavam) quebra a correção já existente de
+            toast-atrás-de-modal no iOS — o toast de erro nunca aparecia
+            enquanto este modal estava aberto. Removido para usar a mesma
+            apresentação (fullScreen) do resto do app, onde o toast já
+            funciona corretamente por cima. */}
+        <Modal visible={offerFormVisible} animationType="slide" onRequestClose={closeOfferForm}>
           <View style={{ flex: 1, backgroundColor: theme.bg }}>
             <View
               style={{
@@ -773,14 +804,14 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                   <View style={{ gap: 4 }}>
                     <MvInput
                       keyboardType="numeric"
-                      label="Validade de cada ficha (dias) — opcional"
+                      label="Validade de cada ficha (dias)"
                       placeholder="Ex: 30"
                       value={fichaValidityDays}
                       onChangeText={setFichaValidityDays}
                     />
                     <MvText variant="caption" color="secondary">
                       Quando a ficha vence, você é avisado pra renovar — a renovação cobra o valor desta oferta de
-                      novo. Se deixar em branco, a ficha não tem validade automática.
+                      novo. Obrigatório para este tipo de oferta.
                     </MvText>
                   </View>
                 ) : null}
@@ -846,7 +877,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     </View>
                     <MvInput
                       keyboardType="numeric"
-                      label={presentialPackageMode === "FLEXIBLE_CREDITS" ? "Total de sessões no pacote" : "Sessões por ciclo"}
+                      label={presentialPackageMode === "FLEXIBLE_CREDITS" ? "Total de sessões no pacote" : "Sessões por ciclo (quantas sessões em cada cobrança)"}
                       placeholder="Ex: 8"
                       value={presentialSessionsPerCycle}
                       onChangeText={setPresentialSessionsPerCycle}
@@ -857,6 +888,8 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     </View>
                     {presentialHasFixedTerm ? (
                       <MvInput keyboardType="numeric" label="Total de ciclos" placeholder="Ex: 3" value={presentialTotalCycles} onChangeText={setPresentialTotalCycles} />
+                    ) : presentialPackageMode === "FLEXIBLE_CREDITS" ? (
+                      <MvText variant="caption" color="danger">Obrigatório para sessões avulsas — ative e informe o total de ciclos.</MvText>
                     ) : (
                       <MvText variant="caption" color="secondary">Sem prazo definido — renova sozinho até o aluno ou você cancelar.</MvText>
                     )}
@@ -921,7 +954,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     {([
                       { value: "PRESENTIAL", label: "Presencial", icon: "body-outline", desc: "Atendimento físico — cobrança diária" },
                       { value: "ONLINE_CONSULTANCY", label: "Consultoria online", icon: "phone-portrait-outline", desc: "Plano entregue remotamente — cobrança mensal" },
-                      { value: "ONLINE_CONSULTANCY_SPECIALIZED", label: "Especializada", icon: "ribbon-outline", desc: "Abordagem diferenciada — cobrança mensal" },
+                      { value: "ONLINE_CONSULTANCY_SPECIALIZED", label: "Especializada", icon: "ribbon-outline", desc: "Plano entregue remotamente, com abordagem especializada — cobrança mensal" },
                       { value: "COMBO", label: "Combo presencial + online", icon: "shuffle-outline", desc: "Combina sessões e acompanhamento — cobrança mensal" },
                     ] as { value: ServiceOfferKind; label: string; icon: string; desc: string }[]).map((opt) => {
                       const sel = offerKind === opt.value;
@@ -986,6 +1019,21 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     {offerKind === "PRESENTIAL" ? (
                       <MvInput keyboardType="numeric" label="Dias por semana (presencial)" placeholder="Ex: 3" value={daysPerWeek} onChangeText={setDaysPerWeek} />
                     ) : null}
+                    {offerKind !== "PRESENTIAL" ? (
+                      <View style={{ gap: 4 }}>
+                        <MvInput
+                          keyboardType="numeric"
+                          label="Validade de cada ficha (dias)"
+                          placeholder="Ex: 30"
+                          value={fichaValidityDays}
+                          onChangeText={setFichaValidityDays}
+                        />
+                        <MvText variant="caption" color="secondary">
+                          Quando a ficha vence, você é avisado pra renovar — a renovação cobra o valor desta oferta de
+                          novo. Obrigatório para este tipo de oferta.
+                        </MvText>
+                      </View>
+                    ) : null}
                     {offerKind === "COMBO" ? (
                       <>
                         <MvInput keyboardType="numeric" label="Dias presenciais por semana" placeholder="Ex: 3" value={comboPresentialDaysPerWeek} onChangeText={setComboPresentialDaysPerWeek} />
@@ -1024,7 +1072,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                         </View>
                         <MvInput
                           keyboardType="numeric"
-                          label={presentialPackageMode === "FLEXIBLE_CREDITS" ? "Total de sessões no pacote" : "Sessões por ciclo"}
+                          label={presentialPackageMode === "FLEXIBLE_CREDITS" ? "Total de sessões no pacote" : "Sessões por ciclo (quantas sessões em cada cobrança)"}
                           placeholder="Ex: 8"
                           value={presentialSessionsPerCycle}
                           onChangeText={setPresentialSessionsPerCycle}
@@ -1035,6 +1083,8 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                         </View>
                         {presentialHasFixedTerm ? (
                           <MvInput keyboardType="numeric" label="Total de ciclos" placeholder="Ex: 3" value={presentialTotalCycles} onChangeText={setPresentialTotalCycles} />
+                        ) : presentialPackageMode === "FLEXIBLE_CREDITS" ? (
+                          <MvText variant="caption" color="danger">Obrigatório para sessões avulsas — ative e informe o total de ciclos.</MvText>
                         ) : (
                           <MvText variant="caption" color="secondary">Sem prazo definido — renova sozinho até o aluno ou você cancelar.</MvText>
                         )}
@@ -1067,6 +1117,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                           label="Revisar →"
                           disabled={
                             (offerKind !== "COMBO" && !offerTitle.trim()) ||
+                            (offerKind !== "PRESENTIAL" && !fichaValidityDays.trim()) ||
                             Boolean(presentialPackageError || comboShareError)
                           }
                           onPress={() => setOfferWizardStep(3)}
