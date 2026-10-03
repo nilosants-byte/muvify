@@ -1271,7 +1271,7 @@ export function MyTrainingScreen({ navigation, route }: Props) {
       <ClientBottomNavV2
         activeTab="trainings"
         onNavigate={(tab) => {
-          if (tab === "home") navigation.navigate("ClientHome");
+          if (tab === "home") (navigation as any).navigate("ClientTabs", { screen: "ClientHome" });
           if (tab === "meuPersonal") navigation.navigate("ClientBookings");
           if (tab === "community") navigation.navigate("Community");
           if (tab === "profile") navigation.navigate("ClientProfile");

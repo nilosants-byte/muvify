@@ -147,7 +147,7 @@ export function CategoriesScreen({ navigation }: Props) {
         activeTab="community"
         onNavigate={(tab) => {
           const parent = navigation.getParent<any>();
-          if (tab === "home") parent?.navigate("ClientHome");
+          if (tab === "home") (navigation as any).navigate("ClientTabs", { screen: "ClientHome" });
           if (tab === "meuPersonal") parent?.navigate("ClientBookings");
           if (tab === "trainings") parent?.navigate("MyTraining");
           if (tab === "community") navigation.navigate("Community");
