@@ -178,7 +178,7 @@ const pinStyles = StyleSheet.create({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function ClientHomeMapSection({
+function ClientHomeMapSectionBase({
   mapRef, userLat, userLng, hasLocation, filterDistanceCommitted,
   mapProviders, activeMapSearchModal, mapSearchFeedback,
   isDark, isLight,
@@ -673,3 +673,5 @@ export function ClientHomeMapSection({
     </>
   );
 }
+
+export const ClientHomeMapSection = React.memo(ClientHomeMapSectionBase);

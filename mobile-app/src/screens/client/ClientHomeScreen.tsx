@@ -899,6 +899,39 @@ export function ClientHomeScreen({ navigation }: Props) {
     }
   }, []);
 
+  // Callbacks estáveis pro mapa: funções criadas na hora fazem o mapa inteiro
+  // (todos os pins) re-renderizar a cada toque, e isso acumulava atraso a cada
+  // pin tocado. Com estes useCallback + React.memo no mapa, um toque só mexe
+  // no que realmente mudou.
+  const handleOpenProviderPin = useCallback((p: ProviderWithExtras) => {
+    void openProviderModal(p);
+  }, [openProviderModal]);
+
+  const handleToggleMapMode = useCallback((m: ProviderServiceMode) => {
+    setMapSearchFeedback(null);
+    setFilterMode((c) => (c === m ? undefined : m));
+    clearProviderSelection();
+  }, [clearProviderSelection]);
+
+  const handleToggleMapSpecialty = useCallback((s: string) => {
+    setMapSearchFeedback(null);
+    setSelectedSpecialties((p) => (p.includes(s) ? p.filter((i) => i !== s) : [...p, s]));
+    clearProviderSelection();
+  }, [clearProviderSelection]);
+
+  const handleSearchByLocationPress = useCallback(() => {
+    void searchByLocation();
+  }, [searchByLocation]);
+
+  const handleRequestLocationPress = useCallback(() => {
+    void requestLocation();
+  }, [requestLocation]);
+
+  const handleClearMapProviderNameSearch = useCallback(() => {
+    setProviderNameQuery("");
+    setProviderNameSearch("");
+    setMapSearchFeedback(null);
+  }, []);
 
   // Treinos concluídos na semana atual (para o card de sequência V2)
   const weeklyCompleted = useMemo(() => {
@@ -1409,9 +1442,9 @@ export function ClientHomeScreen({ navigation }: Props) {
 
           <ClientHomeFilters
             filterMode={filterMode}
-            onToggleMode={(m) => { setMapSearchFeedback(null); setFilterMode((c) => (c === m ? undefined : m)); clearProviderSelection(); }}
+            onToggleMode={handleToggleMapMode}
             selectedSpecialties={selectedSpecialties}
-            onToggleSpecialty={(s) => { setMapSearchFeedback(null); setSelectedSpecialties((p) => p.includes(s) ? p.filter((i) => i !== s) : [...p, s]); clearProviderSelection(); }}
+            onToggleSpecialty={handleToggleMapSpecialty}
           />
 
           <ClientHomeMapSection
@@ -1441,19 +1474,19 @@ export function ClientHomeScreen({ navigation }: Props) {
             visibleProviderLabel={visibleProviderLabel}
             loading={false}
             onSetActiveMapSearchModal={setActiveMapSearchModal}
-            onSearchByLocation={() => void searchByLocation()}
+            onSearchByLocation={handleSearchByLocationPress}
             onApplyProviderNameSearch={applyProviderNameSearch}
             onSelectLocationSuggestion={selectLocationSuggestion}
             onSelectProviderSuggestion={selectProviderSuggestion}
             onSetLocationSearchQuery={setLocationSearchQuery}
             onSetProviderNameQuery={setProviderNameQuery}
-            onOpenProviderModal={(p) => void openProviderModal(p)}
-            onRequestLocation={() => void requestLocation()}
+            onOpenProviderModal={handleOpenProviderPin}
+            onRequestLocation={handleRequestLocationPress}
             onSetAcademyFilter={setSelectedAcademyFilter}
             onSetAcademySearchText={setAcademySearchText}
             onSetMapSearchFeedback={setMapSearchFeedback}
             onClearProviderSelection={clearProviderSelection}
-            onClearProviderNameSearch={() => { setProviderNameQuery(""); setProviderNameSearch(""); setMapSearchFeedback(null); }}
+            onClearProviderNameSearch={handleClearMapProviderNameSearch}
             onSetFilterDistance={setFilterDistance}
             onSetFilterDistanceCommitted={setFilterDistanceCommitted}
           />
