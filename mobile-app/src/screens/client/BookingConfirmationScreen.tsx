@@ -161,12 +161,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
   async function confirmBooking() {
     hapticPaymentSuccess(); // Momento 2 — pagamento confirmado
     if (hasMultipleBookings) {
-      const parent = navigation.getParent();
-      if (parent) {
-        parent.navigate("ClientBookings" as never);
-      } else {
-        navigation.navigate("ClientBookings");
-      }
+      (navigation as any).navigate("ClientTabs", { screen: "ClientBookings" });
       return;
     }
 
@@ -175,8 +170,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
       setConfirming(true);
       await runWithAuth((token) => bookingsApi.updateStatus(token, booking.id, "CONFIRMED"));
       showToast("Serviço confirmado com sucesso.", "success");
-      const parent = navigation.getParent();
-      if (parent) { parent.navigate("ClientBookings" as never); } else { navigation.goBack(); }
+      (navigation as any).navigate("ClientTabs", { screen: "ClientBookings" });
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Não foi possível confirmar o serviço.", navigation });
     } finally {
