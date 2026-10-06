@@ -334,10 +334,11 @@ export function ClientBookingsScreen({ navigation }: Props) {
           <TouchableOpacity
             onPress={goToStack.bind(null, "SearchProfessionals")}
             accessibilityRole="button"
-            accessibilityLabel="Novo agendamento"
-            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
+            accessibilityLabel="Buscar profissional"
+            style={{ height: 40, paddingHorizontal: 14, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
           >
-            <Ionicons name="add" size={20} color={theme.primary} />
+            <Ionicons name="search" size={16} color={theme.primary} />
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>Buscar profissional</Text>
           </TouchableOpacity>
         ) : null}
       </View>
