@@ -1,4 +1,4 @@
-﻿import React from "react";
+﻿import React, { useMemo } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -84,6 +84,7 @@ export type Props = {
   onSetAcademySearchText: (text: string) => void;
   onSetMapSearchFeedback: (fb: "local" | "provider" | null) => void;
   onClearProviderSelection: () => void;
+  onMapPress: () => void;
   onClearProviderNameSearch: () => void;
   onSetFilterDistance: (km: number) => void;
   onSetFilterDistanceCommitted: (km: number) => void;
@@ -192,10 +193,28 @@ function ClientHomeMapSectionBase({
   onSetLocationSearchQuery, onSetProviderNameQuery,
   onOpenProviderModal, onRequestLocation,
   onSetAcademyFilter, onSetAcademySearchText, onSetMapSearchFeedback,
-  onClearProviderSelection, onClearProviderNameSearch,
+  onClearProviderSelection, onClearProviderNameSearch, onMapPress,
   onSetFilterDistance, onSetFilterDistanceCommitted,
 }: Props) {
   const { theme } = useMvTheme();
+  // Lista de pins separada: troca de seleção (abrir/fechar modal) não deve
+  // redesenhar todos os pins no mapa - isso era o que demorava 3-5s por toque.
+  const providerMarkers = useMemo(
+    () =>
+      mapProviders.map((provider) =>
+        typeof provider.latitude === "number" && typeof provider.longitude === "number" ? (
+          <Marker
+            key={provider.id}
+            coordinate={{ latitude: provider.latitude, longitude: provider.longitude }}
+            onPress={() => onOpenProviderModal(provider)}
+            tracksViewChanges={false}
+          >
+            <ProviderMapPin provider={provider} isDark={isDark} />
+          </Marker>
+        ) : null
+      ),
+    [mapProviders, isDark, onOpenProviderModal]
+  );
   return (
     <>
       {/* Map */}
@@ -212,7 +231,7 @@ function ClientHomeMapSectionBase({
           showsMyLocationButton={false}
           showsCompass={false}
           rotateEnabled={false}
-          onPress={() => onClearProviderSelection()}
+          onPress={() => onMapPress()}
         >
           <Circle
             center={{ latitude: userLat, longitude: userLng }}
@@ -221,18 +240,7 @@ function ClientHomeMapSectionBase({
             strokeWidth={1.5}
             fillColor="rgba(76,175,80,0.09)"
           />
-          {mapProviders.map((provider) =>
-            typeof provider.latitude === "number" && typeof provider.longitude === "number" ? (
-              <Marker
-                key={provider.id}
-                coordinate={{ latitude: provider.latitude, longitude: provider.longitude }}
-                onPress={() => onOpenProviderModal(provider)}
-                tracksViewChanges={false}
-              >
-                <ProviderMapPin provider={provider} isDark={isDark} />
-              </Marker>
-            ) : null
-          )}
+          {providerMarkers}
         </MapView>
 
         {/* Legend overlay - top right */}
@@ -443,6 +451,34 @@ function ClientHomeMapSectionBase({
         ) : null}
 
         {/* Empty state overlay */}
+        {loading ? (
+          <View
+            pointerEvents="none"
+            accessibilityLiveRegion="polite"
+            accessibilityLabel="Buscando personais na região"
+            style={{
+              position: "absolute",
+              top: 12,
+              alignSelf: "center",
+              zIndex: 20,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 20,
+              backgroundColor: theme.cardBg,
+              borderWidth: 1,
+              borderColor: theme.border,
+            }}
+          >
+            <ActivityIndicator size="small" color={theme.primary} />
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text1 }}>
+              Buscando personais...
+            </Text>
+          </View>
+        ) : null}
+
         {visibleProviderCount === 0 && !loading && activeMapSearchModal === null ? (
           <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(3,8,6,0.88)" }}>
             <View style={{

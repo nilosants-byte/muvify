@@ -1,5 +1,5 @@
-﻿import React from "react";
-import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { Animated, Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { MvAvatar } from "../../../components/mv";
 import { MvVideoPlayer } from "../../../components/mv/MvVideoPlayer";
@@ -55,6 +55,21 @@ function formatPrice(cents: number) {
   }
 }
 
+function PulseBlock({ width, height, radius, color }: { width: number | `${number}%`; height: number; radius: number; color: string }) {
+  const opacity = useRef(new Animated.Value(0.35)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.8, duration: 700, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.35, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [opacity]);
+  return <Animated.View style={{ width, height, borderRadius: radius, backgroundColor: color, opacity }} />;
+}
+
 export const ClientProviderCard = React.memo(function ClientProviderCard({
   visible,
   provider,
@@ -99,15 +114,7 @@ export const ClientProviderCard = React.memo(function ClientProviderCard({
           {/* Handle */}
           <View style={{ width: 38, height: 4, borderRadius: 99, backgroundColor: theme.border, alignSelf: "center" }} />
 
-          {detailLoading ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 }}>
-              <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: theme.border }} />
-              <View style={{ flex: 1, gap: 6 }}>
-                <View style={{ height: 14, borderRadius: 7, backgroundColor: theme.cardBg, width: "60%" }} />
-                <View style={{ height: 11, borderRadius: 6, backgroundColor: theme.cardBg, width: "40%" }} />
-              </View>
-            </View>
-          ) : provider ? (
+          {provider ? (
             <>
               {/* Header: avatar + nome + preço + fechar */}
               <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -136,8 +143,29 @@ export const ClientProviderCard = React.memo(function ClientProviderCard({
                 </TouchableOpacity>
               </View>
 
+              {/* Carregando detalhes: esqueleto no lugar do vídeo, especialidades e agenda */}
+              {detailLoading && (
+                <View accessibilityRole="progressbar" accessibilityLabel="Carregando detalhes do profissional" style={{ gap: 12 }}>
+                  <PulseBlock width="100%" height={110} radius={12} color={theme.cardBg} />
+                  <View style={{ flexDirection: "row", gap: 6 }}>
+                    <PulseBlock width={80} height={24} radius={12} color={theme.cardBg} />
+                    <PulseBlock width={96} height={24} radius={12} color={theme.cardBg} />
+                    <PulseBlock width={72} height={24} radius={12} color={theme.cardBg} />
+                  </View>
+                  <View style={{ flexDirection: "row", gap: 6 }}>
+                    <PulseBlock width={58} height={44} radius={12} color={theme.cardBg} />
+                    <PulseBlock width={58} height={44} radius={12} color={theme.cardBg} />
+                    <PulseBlock width={58} height={44} radius={12} color={theme.cardBg} />
+                    <PulseBlock width={58} height={44} radius={12} color={theme.cardBg} />
+                  </View>
+                  <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 12, color: theme.text3, textAlign: "center" }}>
+                    Carregando agenda e apresentação...
+                  </Text>
+                </View>
+              )}
+
               {/* Vídeo de apresentação */}
-              {provider.presentationVideoUrl && (
+              {!detailLoading && provider.presentationVideoUrl && (
                 <MvVideoPlayer
                   url={resolveMediaUrl(provider.presentationVideoUrl) ?? provider.presentationVideoUrl}
                   thumbnailUrl={resolveMediaUrl(provider.presentationVideoThumbUrl) ?? provider.presentationVideoThumbUrl}

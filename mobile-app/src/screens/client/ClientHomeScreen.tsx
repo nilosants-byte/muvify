@@ -309,6 +309,8 @@ export function ClientHomeScreen({ navigation }: Props) {
   // padrão já usado em ProfessionalHomeScreen.tsx (loading/loadError).
   const homeLoading = bookingsQuery.isLoading;
   const homeLoadError = bookingsQuery.isError;
+  const [providersLoading, setProvidersLoading] = useState(false);
+  const providersRequestRef = useRef(0);
   // Initialize from module-level cache so re-entering the screen shows data immediately
   const [providers, setProviders] = useState<ProviderWithExtras[]>(
     () => (globalThis as any).__mvProvidersCache?.data ?? []
@@ -677,6 +679,8 @@ export function ClientHomeScreen({ navigation }: Props) {
   }, [clearProviderSelection, providerNameQuery]);
 
   const loadProviders = useCallback(async (lat: number, lng: number, locationKnown: boolean) => {
+    const requestId = ++providersRequestRef.current;
+    setProvidersLoading(true);
     try {
       const byNameSearch = providerNameSearch.trim();
       const results = await providersApi.list(
@@ -692,6 +696,8 @@ export function ClientHomeScreen({ navigation }: Props) {
               maxDistanceKm: filterDistanceCommitted,
             }
       );
+      // Resposta de uma busca antiga não pode sobrescrever a busca mais recente.
+      if (requestId !== providersRequestRef.current) return;
       const normalized = results.map((provider) => {
         const raw = provider as ProviderWithExtras;
         const coords = getProviderMapCoordinates(raw);
@@ -723,6 +729,8 @@ export function ClientHomeScreen({ navigation }: Props) {
       setProvidersCache({ data: normalized, lat, lng, distanceKm: filterDistanceCommitted });
     } catch {
       // silently fail; map stays with cached/empty data
+    } finally {
+      if (requestId === providersRequestRef.current) setProvidersLoading(false);
     }
   }, [filterDistanceCommitted, providerNameSearch]);
 
@@ -903,9 +911,22 @@ export function ClientHomeScreen({ navigation }: Props) {
   // (todos os pins) re-renderizar a cada toque, e isso acumulava atraso a cada
   // pin tocado. Com estes useCallback + React.memo no mapa, um toque só mexe
   // no que realmente mudou.
+  const lastPinPressAtRef = useRef(0);
+
   const handleOpenProviderPin = useCallback((p: ProviderWithExtras) => {
+    lastPinPressAtRef.current = Date.now();
     void openProviderModal(p);
   }, [openProviderModal]);
+
+  // No Android o toque num pin também dispara o toque do mapa, que limpava a
+  // seleção logo depois de abrir o modal - o modal só voltava quando a rede
+  // respondia (3-5s). Ignora o toque do mapa logo após um toque em pin.
+  const handleMapPress = useCallback(() => {
+    if (Date.now() - lastPinPressAtRef.current < 400) {
+      return;
+    }
+    clearProviderSelection();
+  }, [clearProviderSelection]);
 
   const handleToggleMapMode = useCallback((m: ProviderServiceMode) => {
     setMapSearchFeedback(null);
@@ -1472,7 +1493,7 @@ export function ClientHomeScreen({ navigation }: Props) {
             filterDistance={filterDistance}
             visibleProviderCount={visibleProviderCount}
             visibleProviderLabel={visibleProviderLabel}
-            loading={false}
+            loading={providersLoading}
             onSetActiveMapSearchModal={setActiveMapSearchModal}
             onSearchByLocation={handleSearchByLocationPress}
             onApplyProviderNameSearch={applyProviderNameSearch}
@@ -1486,6 +1507,7 @@ export function ClientHomeScreen({ navigation }: Props) {
             onSetAcademySearchText={setAcademySearchText}
             onSetMapSearchFeedback={setMapSearchFeedback}
             onClearProviderSelection={clearProviderSelection}
+            onMapPress={handleMapPress}
             onClearProviderNameSearch={handleClearMapProviderNameSearch}
             onSetFilterDistance={setFilterDistance}
             onSetFilterDistanceCommitted={setFilterDistanceCommitted}
