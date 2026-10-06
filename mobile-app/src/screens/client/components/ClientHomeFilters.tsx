@@ -11,7 +11,7 @@ const MODE_OPTIONS: { label: string; value: ProviderServiceMode }[] = [
   { label: "Ambos", value: "BOTH" },
 ];
 
-const QUICK_SPECIALTIES = ["Funcional", "Hipertrofia"] as const;
+const QUICK_SPECIALTIES = ["Emagrecimento", "Hipertrofia"] as const;
 
 type Props = {
   filterMode: ProviderServiceMode | undefined;
@@ -66,7 +66,7 @@ export function ClientHomeFilters({ filterMode, onToggleMode, selectedSpecialtie
             }}
           >
             <Ionicons
-              name={spec === "Funcional" ? "flame-outline" : "barbell-outline"}
+              name={spec === "Emagrecimento" ? "flame-outline" : "barbell-outline"}
               size={14}
               color={active ? theme.primary : theme.text2}
             />
