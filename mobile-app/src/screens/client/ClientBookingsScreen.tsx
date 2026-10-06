@@ -332,7 +332,7 @@ export function ClientBookingsScreen({ navigation }: Props) {
             plano abaixo, sempre com o mesmo profissional. */}
         {!activeEngagement?.hasActive ? (
           <TouchableOpacity
-            onPress={goToStack.bind(null, "SearchProfessionals")}
+            onPress={() => goToStack("SearchProfessionals")}
             accessibilityRole="button"
             accessibilityLabel="Buscar profissional"
             style={{ height: 40, paddingHorizontal: 14, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
