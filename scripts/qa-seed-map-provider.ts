@@ -27,6 +27,10 @@ const LNG = -46.6559;
 // Marcador falso: a busca só lista profissionais com conta MP conectada.
 // Pagamentos com este personal NÃO funcionam (não existe conta real por trás).
 const MP_FAKE_ACCOUNT_ID = "QA-SEED-SEM-MP-REAL";
+// Achado em teste manual (2026-10-08): a busca por especialidade (tela
+// Especialidades) não encontrava este personal porque ele não tinha
+// nenhuma especialidade cadastrada - não era bug, só faltava esse dado.
+const SPECIALTIES = ["Hipertrofia", "Emagrecimento", "Corrida"];
 
 async function main() {
   const passwordHash = await bcrypt.hash(PASSWORD, 12);
@@ -60,6 +64,7 @@ async function main() {
       longitude: LNG,
       crefValidationStatus: CrefValidationStatus.APPROVED,
       mpAccountId: MP_FAKE_ACCOUNT_ID,
+      specialties: SPECIALTIES,
     },
     create: {
       userId: user.id,
@@ -72,6 +77,7 @@ async function main() {
       longitude: LNG,
       crefValidationStatus: CrefValidationStatus.APPROVED,
       mpAccountId: MP_FAKE_ACCOUNT_ID,
+      specialties: SPECIALTIES,
     },
   });
 
