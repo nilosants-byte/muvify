@@ -193,7 +193,7 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <PressableScale
                   onPress={() => navigation.navigate("ProfessionalDetail", { professionalId: item.id })}
-                  style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
+                  style={{ height: S.btnH, paddingHorizontal: 16, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
                 >
                   <Ionicons name="person-outline" size={15} color={theme.textGreen} />
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textGreen }}>Ver perfil</Text>
