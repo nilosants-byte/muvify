@@ -149,7 +149,12 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
           const rating = averageToFive(item.avgRating ?? item.averageRating);
           const modeLabel = serviceModeLabel(item.serviceMode);
           return (
-            <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 10 }}>
+            <PressableScale
+              onPress={() => navigation.navigate("ProfessionalDetail", { professionalId: item.id })}
+              accessibilityLabel={`Ver perfil de ${item.displayName}`}
+              scale={0.985}
+              style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 10 }}
+            >
               {/* Linha superior: avatar + nome/bio + rating */}
               <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
                 <MvAvatar
@@ -189,24 +194,16 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
                 )}
               </View>
 
-              {/* Ações */}
-              <View style={{ gap: 8 }}>
-                <PressableScale
-                  onPress={() => navigation.navigate("ProfessionalDetail", { professionalId: item.id })}
-                  style={{ height: S.btnH, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
-                >
-                  <Ionicons name="person-outline" size={15} color={theme.textGreen} />
-                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textGreen }}>Ver perfil</Text>
-                </PressableScale>
-                <PressableScale
-                  onPress={() => navigation.navigate("CreateBooking", { professionalId: item.id })}
-                  style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
-                >
-                  <Ionicons name="calendar-outline" size={15} color={theme.textOnPrimary} />
-                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Agendar</Text>
-                </PressableScale>
-              </View>
-            </View>
+              {/* Ação principal — o resto do card já leva pro perfil */}
+              <PressableScale
+                onPress={() => navigation.navigate("CreateBooking", { professionalId: item.id })}
+                accessibilityLabel={`Agendar com ${item.displayName}`}
+                style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+              >
+                <Ionicons name="calendar-outline" size={15} color={theme.textOnPrimary} />
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Agendar</Text>
+              </PressableScale>
+            </PressableScale>
           );
         }}
         ListEmptyComponent={
