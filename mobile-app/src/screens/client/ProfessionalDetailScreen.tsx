@@ -64,7 +64,7 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
   useBlockedWhileLocked(providerId);
 
   const detailQuery = useAuthQuery(
-    queryKeys.providers.detail(providerId),
+    queryKeys.providers.detailForProfileScreen(providerId),
     async (token) => {
       let catalogLoadError = false;
       const [detail, catalog, currentFavorites, anamnesisProfile] = await Promise.all([

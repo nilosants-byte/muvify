@@ -43,6 +43,16 @@ export const queryKeys = {
     all: ["providers"] as const,
     list: (params?: object) => ["providers", "list", params] as const,
     detail: (id: string) => ["providers", "detail", id] as const,
+    // Chaves próprias por tela: cada uma combina o detalhe do provider com
+    // dados diferentes (categorias, favoritos, catálogo de consultoria...).
+    // Usar a mesma chave de `detail` pra formatos diferentes faz o cache do
+    // TanStack Query devolver o formato errado pra tela errada (bug real
+    // encontrado em teste manual 2026-10-08: perfil -> agendar aula caía
+    // com "Cannot convert undefined value to object" porque o cache ainda
+    // tinha o formato do ProfessionalDetailScreen, sem `categories`).
+    detailForBooking: (id: string) => ["providers", "detailForBooking", id] as const,
+    detailForPresentialPackageSetup: (id: string) => ["providers", "detailForPresentialPackageSetup", id] as const,
+    detailForProfileScreen: (id: string) => ["providers", "detailForProfileScreen", id] as const,
     schedulePreview: (id: string, params?: object) => ["providers", "schedulePreview", id, params] as const,
     myCredentials: () => ["providers", "myCredentials"] as const,
     dashboardStudents: () => ["providers", "dashboardStudents"] as const,

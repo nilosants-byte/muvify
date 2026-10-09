@@ -192,7 +192,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
   const [creating, setCreating] = useState(false);
 
   const createBookingQuery = useAuthQuery(
-    queryKeys.providers.detail(providerId),
+    queryKeys.providers.detailForBooking(providerId),
     async (token) => {
       const [providerDetail, customerStatus, anamnesisProfile] = await Promise.all([
         providersApi.detail(providerId) as Promise<ProviderDetail>,

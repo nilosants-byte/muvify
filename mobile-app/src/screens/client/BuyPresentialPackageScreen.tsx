@@ -132,7 +132,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   const [pixConfirmed, setPixConfirmed] = useState(false);
 
   const setupQuery = useAuthQuery(
-    queryKeys.providers.detail(professionalId),
+    queryKeys.providers.detailForPresentialPackageSetup(professionalId),
     async (token) => {
       const [providerDetail, customerStatus] = await Promise.all([
         providersApi.detail(professionalId) as Promise<ProviderDetail>,
