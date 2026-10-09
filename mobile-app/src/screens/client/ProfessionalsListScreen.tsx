@@ -190,17 +190,17 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
               </View>
 
               {/* Ações */}
-              <View style={{ flexDirection: "row", gap: 8 }}>
+              <View style={{ gap: 8 }}>
                 <PressableScale
                   onPress={() => navigation.navigate("ProfessionalDetail", { professionalId: item.id })}
-                  style={{ height: S.btnH, paddingHorizontal: 16, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
+                  style={{ height: S.btnH, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
                 >
                   <Ionicons name="person-outline" size={15} color={theme.textGreen} />
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textGreen }}>Ver perfil</Text>
                 </PressableScale>
                 <PressableScale
                   onPress={() => navigation.navigate("CreateBooking", { professionalId: item.id })}
-                  style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+                  style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
                 >
                   <Ionicons name="calendar-outline" size={15} color={theme.textOnPrimary} />
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Agendar</Text>
