@@ -2420,6 +2420,8 @@ export const providersApi = {
     lng?: number;
     maxDistanceKm?: number;
     serviceMode?: ProviderServiceMode;
+    onlineConsultancyOnly?: boolean;
+    sortBy?: "rating" | "distance";
     take?: number;
     offset?: number;
   }) {
@@ -2432,6 +2434,8 @@ export const providersApi = {
     if (typeof params?.lng === "number") query.set("lng", String(params.lng));
     if (typeof params?.maxDistanceKm === "number") query.set("maxDistanceKm", String(params.maxDistanceKm));
     if (params?.serviceMode) query.set("serviceMode", params.serviceMode);
+    if (params?.onlineConsultancyOnly) query.set("onlineConsultancyOnly", "true");
+    if (params?.sortBy) query.set("sortBy", params.sortBy);
     if (typeof params?.take === "number") query.set("take", String(params.take));
     if (typeof params?.offset === "number") query.set("offset", String(params.offset));
     const suffix = query.toString() ? `?${query}` : "";

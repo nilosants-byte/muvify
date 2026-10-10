@@ -65,6 +65,8 @@ export class ProviderController {
       lng: request.query.lng ? Number(request.query.lng) : undefined,
       maxDistanceKm: request.query.maxDistanceKm ? Number(request.query.maxDistanceKm) : undefined,
       serviceMode: request.query.serviceMode as import("@prisma/client").ProviderServiceMode | undefined,
+      onlineConsultancyOnly: request.query.onlineConsultancyOnly === "true" ? true : undefined,
+      sortBy: request.query.sortBy as "rating" | "distance" | undefined,
       take: request.query.take ? Number(request.query.take) : undefined,
       offset: request.query.offset ? Number(request.query.offset) : undefined
     });

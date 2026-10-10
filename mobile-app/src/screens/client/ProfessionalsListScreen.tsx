@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import { FlatList, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
+import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientStackParamList } from "../../navigation/route-types";
 import { ProviderServiceMode, providersApi, ProviderSummary } from "../../services/api/client";
@@ -48,11 +49,22 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
   const categoryId = params.categoryId;
   const objective = params.objective;
   const minRating = params.minRating;
-  const lat = params.lat;
-  const lng = params.lng;
   const serviceMode = params.serviceMode;
 
-  const hasGeo = typeof lat === "number" && typeof lng === "number";
+  // Achado em teste manual (2026-10-09): chegar aqui pela tela de
+  // Especialidades não levava localização nenhuma — a busca virava nacional,
+  // sem nenhum corte por distância. Em vez de forçar isso, o cliente ganha
+  // controle de ordenação/filtro direto aqui. Quem já chega com lat/lng (ex:
+  // Busca avançada) mantém o comportamento de antes: ordenado por distância.
+  const [clientLat, setClientLat] = useState<number | undefined>(params.lat);
+  const [clientLng, setClientLng] = useState<number | undefined>(params.lng);
+  const [sortBy, setSortBy] = useState<"rating" | "distance">(
+    typeof params.lat === "number" && typeof params.lng === "number" ? "distance" : "rating"
+  );
+  const [onlineConsultancyOnly, setOnlineConsultancyOnly] = useState(false);
+  const [locating, setLocating] = useState(false);
+
+  const hasGeo = typeof clientLat === "number" && typeof clientLng === "number";
 
   const fetchPage = useCallback(async (requestedOffset: number) => {
     return providersApi.list({
@@ -60,13 +72,38 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
       categoryId,
       objective,
       minRating,
-      lat,
-      lng,
+      lat: clientLat,
+      lng: clientLng,
       serviceMode,
+      onlineConsultancyOnly: onlineConsultancyOnly || undefined,
+      sortBy: hasGeo ? sortBy : undefined,
       take: PAGE_SIZE,
       offset: requestedOffset,
     });
-  }, [categoryId, objective, lat, lng, minRating, query, serviceMode]);
+  }, [categoryId, objective, clientLat, clientLng, minRating, query, serviceMode, onlineConsultancyOnly, sortBy, hasGeo]);
+
+  async function handleSelectProximitySort() {
+    if (hasGeo) {
+      setSortBy("distance");
+      return;
+    }
+    try {
+      setLocating(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        showToast("Permissão de localização negada.", "error");
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setClientLat(loc.coords.latitude);
+      setClientLng(loc.coords.longitude);
+      setSortBy("distance");
+    } catch {
+      showToast("Não foi possível obter localização.", "error");
+    } finally {
+      setLocating(false);
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -130,9 +167,58 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <MvText variant="h1" numberOfLines={1}>{title}</MvText>
-          {hasGeo && <MvText variant="caption" color="tertiary" style={{ marginTop: 2 }}>ordenado por distância</MvText>}
+          <MvText variant="caption" color="tertiary" style={{ marginTop: 2 }}>
+            {sortBy === "distance" && hasGeo ? "ordenado por proximidade" : "ordenado por avaliação"}
+          </MvText>
         </View>
       </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: S.px, paddingVertical: 10, gap: 8, alignItems: "center" }}
+        style={{ borderBottomWidth: 1, borderBottomColor: theme.border, flexGrow: 0 }}
+      >
+        {([
+          { key: "rating" as const, label: "Avaliação", icon: "star-outline" as const },
+          { key: "distance" as const, label: "Proximidade", icon: "navigate-outline" as const },
+        ]).map((opt) => {
+          const active = sortBy === opt.key;
+          return (
+            <TouchableOpacity
+              key={opt.key}
+              onPress={() => (opt.key === "distance" ? handleSelectProximitySort() : setSortBy("rating"))}
+              disabled={opt.key === "distance" && locating}
+              style={{
+                height: 40, paddingHorizontal: 14, borderRadius: S.chipR,
+                backgroundColor: active ? theme.primarySubtle : "rgba(128,128,128,0.08)",
+                borderWidth: 1, borderColor: active ? theme.primarySubtleBorder : theme.border,
+                flexDirection: "row", alignItems: "center", gap: 7,
+              }}
+            >
+              <Ionicons name={opt.icon} size={14} color={active ? theme.primary : theme.text2} />
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: active ? theme.primary : theme.text2 }}>
+                {opt.key === "distance" && locating ? "Localizando..." : opt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+        <View style={{ width: 1, alignSelf: "stretch", backgroundColor: theme.border, marginVertical: 4 }} />
+        <TouchableOpacity
+          onPress={() => setOnlineConsultancyOnly((current) => !current)}
+          style={{
+            height: 40, paddingHorizontal: 14, borderRadius: S.chipR,
+            backgroundColor: onlineConsultancyOnly ? theme.primarySubtle : "rgba(128,128,128,0.08)",
+            borderWidth: 1, borderColor: onlineConsultancyOnly ? theme.primarySubtleBorder : theme.border,
+            flexDirection: "row", alignItems: "center", gap: 7,
+          }}
+        >
+          <Ionicons name="laptop-outline" size={14} color={onlineConsultancyOnly ? theme.primary : theme.text2} />
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: onlineConsultancyOnly ? theme.primary : theme.text2 }}>
+            Consultoria online
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
 
       <FlatList
         contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, gap: 10, paddingTop: 12 }}

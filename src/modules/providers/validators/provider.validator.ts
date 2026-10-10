@@ -86,6 +86,8 @@ export const searchProvidersSchema = z.object({
     lng: z.coerce.number().min(-180).max(180).optional(),
     maxDistanceKm: z.coerce.number().min(1).max(200).optional(),
     serviceMode: z.enum(["PRESENTIAL_ONLY", "HOME_VISIT_ONLY", "BOTH"]).optional(),
+    onlineConsultancyOnly: z.coerce.boolean().optional(),
+    sortBy: z.enum(["rating", "distance"]).optional(),
     take: z.coerce.number().int().min(1).max(100).optional(),
     offset: z.coerce.number().int().min(0).max(10000).optional()
   })

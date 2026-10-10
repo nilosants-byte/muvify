@@ -94,9 +94,24 @@ type SearchProvidersInput = {
   lng?: number;
   maxDistanceKm?: number;
   serviceMode?: ProviderServiceMode;
+  // Achado em teste manual (2026-10-09): a tela de Especialidades não
+  // aplicava nenhum filtro geográfico, então um cliente no Nordeste via
+  // resultado de um profissional no Sudeste sem nenhum aviso. Decisão: em
+  // vez de forçar geolocalização ali, dar controle ao próprio cliente na
+  // tela de resultados (ordenar por proximidade/avaliação + filtrar por
+  // quem oferece consultoria online, já que essa modalidade não depende de
+  // distância).
+  onlineConsultancyOnly?: boolean;
+  sortBy?: "rating" | "distance";
   take?: number;
   offset?: number;
 };
+
+const ONLINE_CONSULTANCY_OFFER_KINDS = [
+  ServiceOfferKind.ONLINE_CONSULTANCY,
+  ServiceOfferKind.ONLINE_CONSULTANCY_SPECIALIZED,
+  ServiceOfferKind.COMBO
+];
 
 // Cleanup pós-épico segunda camada, 14/08/2026: cada objetivo de treino
 // mapeia pra palavras-chave buscadas nas especialidades (texto livre) que o
@@ -1270,7 +1285,7 @@ export class ProviderService {
       Object.entries(filters).sort(([a], [b]) => a.localeCompare(b))
     );
     const baseCacheKey = geoGridKey
-      ? `providers:geo:${geoGridKey}:${filters.q ?? ""}:${filters.categoryId ?? ""}:${filters.serviceMode ?? ""}:${filters.minRating ?? ""}:${filters.objective ?? ""}`
+      ? `providers:geo:${geoGridKey}:${filters.q ?? ""}:${filters.categoryId ?? ""}:${filters.serviceMode ?? ""}:${filters.minRating ?? ""}:${filters.objective ?? ""}:${filters.onlineConsultancyOnly ?? ""}:${filters.sortBy ?? ""}`
       : `providers:search:${JSON.stringify(sortedInput)}`;
     const pageCacheKey = `${baseCacheKey}:offset:${pageOffset}:take:${pageTake ?? "all"}`;
 
@@ -1387,6 +1402,9 @@ export class ProviderService {
           ? { equals: ProviderServiceMode.BOTH }
           : { in: [filters.serviceMode, ProviderServiceMode.BOTH] }
         : undefined,
+      ...(filters.onlineConsultancyOnly
+        ? { serviceOffers: { some: { isActive: true, kind: { in: ONLINE_CONSULTANCY_OFFER_KINDS } } } }
+        : {}),
       ...bboxWhere,
     };
 
@@ -1572,6 +1590,11 @@ export class ProviderService {
       ordered = ranked.sort((a, b) => {
         const da = a.distanceKm ?? 9999;
         const db = b.distanceKm ?? 9999;
+        if (filters.sortBy === "rating") {
+          if (b.averageRating !== a.averageRating) return b.averageRating - a.averageRating;
+          if (b.totalReviews !== a.totalReviews) return b.totalReviews - a.totalReviews;
+          return da - db;
+        }
         if (da !== db) return da - db;
         if (b.averageRating !== a.averageRating) return b.averageRating - a.averageRating;
         return b.totalReviews - a.totalReviews;
