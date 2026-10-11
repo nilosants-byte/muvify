@@ -109,6 +109,18 @@ async function main() {
     create: { providerId: profile.id, status: ProviderSubscriptionStatus.ACTIVE, priceCents: 2990, isFounder: false, nextBillingAt },
   });
 
+  // Achado em teste manual (2026-10-11): "Enviar solicitação" na tela de
+  // consultoria ficava sempre desabilitado para este personal - não era bug,
+  // é um toggle à parte (OnlineConsultancySetting.enabled) que o profissional
+  // liga manualmente, e que no app real exige Mercado Pago conectado. Como
+  // este personal é fictício (sem MP real), habilita direto no banco só pra
+  // destravar o teste manual do fluxo de solicitação de consultoria.
+  await prisma.onlineConsultancySetting.upsert({
+    where: { providerId: profile.id },
+    update: { enabled: true },
+    create: { providerId: profile.id, enabled: true },
+  });
+
   // Pedido manual (2026-10-10): uma oferta de cada tipo (ServiceOfferKind),
   // pra ver visualmente como a tela de perfil completo lista cada uma.
   const offers: Array<Parameters<typeof prisma.providerServiceOffer.create>[0]["data"]> = [

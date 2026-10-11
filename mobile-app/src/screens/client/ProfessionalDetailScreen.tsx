@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { Alert, ScrollView, Share, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, Share, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -329,7 +329,7 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
             accessibilityRole="button" accessibilityLabel="Conversar com o profissional"
             style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}
           >
-            <Ionicons name="send" size={16} color={theme.primary} />
+            <Ionicons name="chatbubble-outline" size={16} color={theme.primary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -664,9 +664,13 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
             opacity: savingFavorite ? 0.6 : 1,
           }}
         >
-          <Ionicons name={favorite ? "heart" : "heart-outline"} size={16} color={favorite ? theme.danger : theme.text1} />
+          {savingFavorite ? (
+            <ActivityIndicator size="small" color={favorite ? theme.danger : theme.text1} />
+          ) : (
+            <Ionicons name={favorite ? "heart" : "heart-outline"} size={16} color={favorite ? theme.danger : theme.text1} />
+          )}
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: favorite ? theme.danger : theme.text1 }}>
-            {savingFavorite ? "..." : favorite ? "Salvo" : "Salvar"}
+            {favorite ? "Favoritado" : "Favoritar"}
           </Text>
         </TouchableOpacity>
 
