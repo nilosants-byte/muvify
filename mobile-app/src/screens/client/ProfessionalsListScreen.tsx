@@ -294,23 +294,27 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
                   com só uma, ela ocupa a linha inteira e centralizada. */}
               <View style={{ flexDirection: "row", gap: 8 }}>
                 {typeof item.onlineConsultancyFromCents === "number" && (
-                  <PressableScale
-                    onPress={() => navigation.navigate("ConsultancyRequest", { professionalId: item.id })}
-                    accessibilityLabel={`Solicitar consultoria online com ${item.displayName}`}
-                    style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
-                  >
-                    <Ionicons name="laptop-outline" size={15} color={theme.textGreen} />
-                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textGreen }}>Consultoria</Text>
-                  </PressableScale>
+                  <View style={{ flex: 1 }}>
+                    <PressableScale
+                      onPress={() => navigation.navigate("ConsultancyRequest", { professionalId: item.id })}
+                      accessibilityLabel={`Solicitar consultoria online com ${item.displayName}`}
+                      style={{ height: S.btnH, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
+                    >
+                      <Ionicons name="laptop-outline" size={15} color={theme.textGreen} />
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textGreen }}>Consultoria</Text>
+                    </PressableScale>
+                  </View>
                 )}
-                <PressableScale
-                  onPress={() => navigation.navigate("CreateBooking", { professionalId: item.id })}
-                  accessibilityLabel={`Agendar com ${item.displayName}`}
-                  style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
-                >
-                  <Ionicons name="calendar-outline" size={15} color={theme.textOnPrimary} />
-                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Agendar</Text>
-                </PressableScale>
+                <View style={{ flex: 1 }}>
+                  <PressableScale
+                    onPress={() => navigation.navigate("CreateBooking", { professionalId: item.id })}
+                    accessibilityLabel={`Agendar com ${item.displayName}`}
+                    style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+                  >
+                    <Ionicons name="calendar-outline" size={15} color={theme.textOnPrimary} />
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Agendar</Text>
+                  </PressableScale>
+                </View>
               </View>
             </PressableScale>
           );
