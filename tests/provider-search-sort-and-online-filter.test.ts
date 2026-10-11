@@ -23,6 +23,7 @@ let farHighRatedId = "";
 let onlineOnlyId = "";
 let noOfferId = "";
 let inactiveOfferOnlyId = "";
+let toggleDisabledId = "";
 const userIds: string[] = [];
 const providerIds: string[] = [];
 
@@ -74,6 +75,7 @@ describe("Busca de profissionais — ordenar por avaliação/proximidade e filtr
     farHighRatedId = await makeProvider({ suffix: "longe nota alta", rating: 5, lat: CLIENT_LAT + 1, lng: CLIENT_LNG });
 
     onlineOnlyId = await makeProvider({ suffix: "com consultoria online", rating: 4 });
+    await prisma.onlineConsultancySetting.create({ data: { providerId: onlineOnlyId, enabled: true } });
     await prisma.providerServiceOffer.create({
       data: {
         providerId: onlineOnlyId,
@@ -104,6 +106,7 @@ describe("Busca de profissionais — ordenar por avaliação/proximidade e filtr
     noOfferId = await makeProvider({ suffix: "sem nenhuma oferta", rating: 4 });
 
     inactiveOfferOnlyId = await makeProvider({ suffix: "oferta online inativa", rating: 4 });
+    await prisma.onlineConsultancySetting.create({ data: { providerId: inactiveOfferOnlyId, enabled: true } });
     await prisma.providerServiceOffer.create({
       data: {
         providerId: inactiveOfferOnlyId,
@@ -112,6 +115,21 @@ describe("Busca de profissionais — ordenar por avaliação/proximidade e filtr
         billingCycle: "MONTHLY",
         priceCents: 20000,
         isActive: false
+      }
+    });
+
+    // Achado em teste manual (2026-10-11): oferta ativa não basta - o
+    // profissional também precisa ter o toggle "aceitando consultoria
+    // online agora" ligado (OnlineConsultancySetting.enabled).
+    toggleDisabledId = await makeProvider({ suffix: "toggle de consultoria desligado", rating: 4 });
+    await prisma.providerServiceOffer.create({
+      data: {
+        providerId: toggleDisabledId,
+        kind: "ONLINE_CONSULTANCY",
+        title: "Consultoria online (toggle desligado)",
+        billingCycle: "MONTHLY",
+        priceCents: 20000,
+        isActive: true
       }
     });
   });
@@ -147,12 +165,13 @@ describe("Busca de profissionais — ordenar por avaliação/proximidade e filtr
     expect(ids.indexOf(farHighRatedId)).toBeLessThan(ids.indexOf(nearLowRatedId));
   });
 
-  it("onlineConsultancyOnly inclui só quem tem oferta de consultoria online ATIVA", async () => {
+  it("onlineConsultancyOnly inclui só quem tem oferta ATIVA e o toggle de consultoria LIGADO", async () => {
     const results = await providerService.search({ q: marker, onlineConsultancyOnly: true } as any);
     const ids = results.map((p: any) => p.id);
     expect(ids).toContain(onlineOnlyId);
     expect(ids).not.toContain(noOfferId);
     expect(ids).not.toContain(inactiveOfferOnlyId);
+    expect(ids).not.toContain(toggleDisabledId);
   });
 
   it("sem o filtro, todo mundo aparece normalmente (inclusive quem não tem consultoria online)", async () => {
@@ -162,14 +181,16 @@ describe("Busca de profissionais — ordenar por avaliação/proximidade e filtr
     expect(ids).toContain(noOfferId);
   });
 
-  it("onlineConsultancyFromCents expõe o MENOR preço ativo (considerando promoção), e null pra quem não oferece", async () => {
+  it("onlineConsultancyFromCents expõe o MENOR preço ativo (considerando promoção), e null pra quem não oferece ou não tem o toggle ligado", async () => {
     const results = await providerService.search({ q: marker } as any);
     const online = results.find((p: any) => p.id === onlineOnlyId) as any;
     const noOffer = results.find((p: any) => p.id === noOfferId) as any;
     const inactiveOnly = results.find((p: any) => p.id === inactiveOfferOnlyId) as any;
+    const toggleDisabled = results.find((p: any) => p.id === toggleDisabledId) as any;
     expect(online.onlineConsultancyFromCents).toBe(12000);
     expect(noOffer.onlineConsultancyFromCents).toBeNull();
     expect(inactiveOnly.onlineConsultancyFromCents).toBeNull();
+    expect(toggleDisabled.onlineConsultancyFromCents).toBeNull();
   });
 
   it("getById (perfil completo) também expõe onlineConsultancyFromCents", async () => {

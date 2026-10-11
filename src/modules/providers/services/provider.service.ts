@@ -122,7 +122,18 @@ const ONLINE_CONSULTANCY_OFFER_KINDS = [
 async function getOnlineConsultancyFromCentsMap(providerIds: string[]): Promise<Map<string, number>> {
   if (providerIds.length === 0) return new Map();
   const offers = await prisma.providerServiceOffer.findMany({
-    where: { providerId: { in: providerIds }, isActive: true, kind: { in: ONLINE_CONSULTANCY_OFFER_KINDS } },
+    where: {
+      providerId: { in: providerIds },
+      isActive: true,
+      kind: { in: ONLINE_CONSULTANCY_OFFER_KINDS },
+      // Achado em teste manual (2026-10-11): ter uma oferta publicada não
+      // significa que o profissional está aceitando pedidos agora - existe
+      // um toggle à parte (mesmo que bloqueia o botão "Enviar solicitação"
+      // em ConsultancyRequestScreen). Sem checar aqui também, o card
+      // mostrava preço/botão de consultoria pra quem não aceita pedido
+      // nenhum no momento.
+      provider: { onlineConsultancySetting: { enabled: true } }
+    },
     select: { providerId: true, priceCents: true, isPromotion: true, promotionPriceCents: true, promotionEndsAt: true }
   });
   const now = new Date();
@@ -1428,7 +1439,12 @@ export class ProviderService {
           : { in: [filters.serviceMode, ProviderServiceMode.BOTH] }
         : undefined,
       ...(filters.onlineConsultancyOnly
-        ? { serviceOffers: { some: { isActive: true, kind: { in: ONLINE_CONSULTANCY_OFFER_KINDS } } } }
+        ? {
+            serviceOffers: { some: { isActive: true, kind: { in: ONLINE_CONSULTANCY_OFFER_KINDS } } },
+            // Mesmo achado do card compacto: só faz sentido filtrar por
+            // "consultoria online" quem está de fato aceitando pedido agora.
+            onlineConsultancySetting: { is: { enabled: true } }
+          }
         : {}),
       ...bboxWhere,
     };

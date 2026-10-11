@@ -458,18 +458,32 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
                         </Text>
                       )}
                     </View>
-                    <TouchableOpacity
-                      onPress={() =>
-                        offer.kind === "COMBO" && offer.presentialPackageMode
-                          ? goToPresentialPackagePurchase(offer)
-                          : navigation.navigate("ConsultancyRequest", { professionalId: providerId })
-                      }
-                      style={{ height: S.touchMin, borderRadius: S.btnR, backgroundColor: C.amber, alignItems: "center", justifyContent: "center" }}
-                    >
-                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>
-                        {offer.kind === "COMBO" && offer.presentialPackageMode ? "Contratar combo" : "Solicitar consultoria"}
-                      </Text>
-                    </TouchableOpacity>
+                    {(() => {
+                      const isComboPurchase = offer.kind === "COMBO" && Boolean(offer.presentialPackageMode);
+                      // Achado em teste manual (2026-10-11): o botão "Solicitar
+                      // consultoria" ficava sempre clicável mesmo quando o
+                      // profissional não tem a consultoria online habilitada -
+                      // o cliente só descobria isso depois de preencher a tela
+                      // inteira, no botão final desabilitado. Combo continua
+                      // de fora dessa trava (vai pra compra do pacote presencial,
+                      // fluxo separado que não depende desse toggle).
+                      const blocked = !isComboPurchase && !consultancyCatalog?.onlineConsultancyEnabled;
+                      return (
+                        <TouchableOpacity
+                          disabled={blocked}
+                          onPress={() =>
+                            isComboPurchase
+                              ? goToPresentialPackagePurchase(offer)
+                              : navigation.navigate("ConsultancyRequest", { professionalId: providerId })
+                          }
+                          style={{ height: S.touchMin, borderRadius: S.btnR, backgroundColor: blocked ? "rgba(255,255,255,0.06)" : C.amber, alignItems: "center", justifyContent: "center", opacity: blocked ? 0.6 : 1 }}
+                        >
+                          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: blocked ? theme.text3 : theme.textOnPrimary }}>
+                            {blocked ? "Consultoria indisponível no momento" : isComboPurchase ? "Contratar combo" : "Solicitar consultoria"}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })()}
                   </View>
                 );
               })}
@@ -593,15 +607,23 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
               </View>
             );
           })}
-          <TouchableOpacity
-            disabled={catalogLoadError}
-            onPress={() => navigation.navigate("ConsultancyRequest", { professionalId: providerId })}
-            style={{ height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: catalogLoadError ? theme.border : theme.primarySubtleBorder, backgroundColor: catalogLoadError ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", marginTop: 4, opacity: catalogLoadError ? 0.45 : 1 }}
-          >
-            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: catalogLoadError ? theme.text3 : theme.text1 }}>
-              {catalogLoadError ? "Consultoria indisponível no momento" : "Solicitar consultoria online"}
-            </Text>
-          </TouchableOpacity>
+          {(() => {
+            // Mesmo achado do bloco de promoção acima: sem essa checagem, o
+            // cliente abria a tela de solicitação, preenchia tudo e só
+            // descobria no final que o profissional não aceita pedidos agora.
+            const blocked = catalogLoadError || !consultancyCatalog?.onlineConsultancyEnabled;
+            return (
+              <TouchableOpacity
+                disabled={blocked}
+                onPress={() => navigation.navigate("ConsultancyRequest", { professionalId: providerId })}
+                style={{ height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: blocked ? theme.border : theme.primarySubtleBorder, backgroundColor: blocked ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", marginTop: 4, opacity: blocked ? 0.45 : 1 }}
+              >
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: blocked ? theme.text3 : theme.text1 }}>
+                  {catalogLoadError ? "Consultoria indisponível no momento" : !consultancyCatalog?.onlineConsultancyEnabled ? "Profissional não está aceitando pedidos agora" : "Solicitar consultoria online"}
+                </Text>
+              </TouchableOpacity>
+            );
+          })()}
         </View>
 
         {/* Avaliações recentes */}
