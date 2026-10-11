@@ -103,6 +103,11 @@ export type ProviderSummary = {
   distanceKm?: number;
   // Bloco 7 (programa 100 Fundadores): selo visual público.
   isFounder?: boolean;
+  // Achado em teste manual (2026-10-10): menor preço ativo entre as ofertas
+  // de consultoria/combo do profissional, pra exibir "a partir de" direto
+  // no card compacto sem precisar abrir o perfil completo. null quando ele
+  // não oferece nenhuma consultoria online no momento.
+  onlineConsultancyFromCents?: number | null;
 };
 
 export type ProviderCategoryLink = {

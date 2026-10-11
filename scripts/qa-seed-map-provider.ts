@@ -109,6 +109,62 @@ async function main() {
     create: { providerId: profile.id, status: ProviderSubscriptionStatus.ACTIVE, priceCents: 2990, isFounder: false, nextBillingAt },
   });
 
+  // Pedido manual (2026-10-10): uma oferta de cada tipo (ServiceOfferKind),
+  // pra ver visualmente como a tela de perfil completo lista cada uma.
+  const offers: Array<Parameters<typeof prisma.providerServiceOffer.create>[0]["data"]> = [
+    {
+      providerId: profile.id,
+      kind: "PRESENTIAL",
+      title: "Pacote mensal 8 aulas",
+      billingCycle: "MONTHLY",
+      priceCents: 35000,
+      presentialPackageMode: "FIXED_RECURRING",
+      presentialSessionsPerCycle: 8,
+      isActive: true,
+    },
+    {
+      providerId: profile.id,
+      kind: "ONLINE_CONSULTANCY",
+      title: "Consultoria online mensal",
+      billingCycle: "MONTHLY",
+      priceCents: 20000,
+      fichaValidityDays: 30,
+      isActive: true,
+    },
+    {
+      providerId: profile.id,
+      kind: "ONLINE_CONSULTANCY_SPECIALIZED",
+      title: "Consultoria especializada em emagrecimento",
+      billingCycle: "MONTHLY",
+      priceCents: 35000,
+      fichaValidityDays: 30,
+      isActive: true,
+    },
+    {
+      providerId: profile.id,
+      kind: "COMBO",
+      title: "Combo presencial + consultoria online",
+      billingCycle: "MONTHLY",
+      priceCents: 50000,
+      presentialPackageMode: "FIXED_RECURRING",
+      presentialSessionsPerCycle: 4,
+      comboPresentialDaysPerWeek: 1,
+      comboOnlineDaysPerWeek: 3,
+      comboPresentialShareCents: 20000,
+      comboConsultancyShareCents: 30000,
+      fichaValidityDays: 30,
+      isActive: true,
+    },
+  ];
+  for (const offer of offers) {
+    const existing = await prisma.providerServiceOffer.findFirst({
+      where: { providerId: profile.id, kind: offer.kind, title: offer.title },
+    });
+    if (!existing) {
+      await prisma.providerServiceOffer.create({ data: offer });
+    }
+  }
+
   console.log("OK", { email: EMAIL, password: PASSWORD, providerId: profile.id, lat: LAT, lng: LNG });
 }
 

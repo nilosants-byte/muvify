@@ -1640,6 +1640,7 @@ export function ClientHomeScreen({ navigation }: Props) {
           photoUrl: providerModal.photoUrl ?? null,
           presentationVideoUrl: selectedProviderDetail?.presentationVideoUrl ?? null,
           presentationVideoThumbUrl: selectedProviderDetail?.presentationVideoThumbUrl ?? null,
+          onlineConsultancyFromCents: providerModal.onlineConsultancyFromCents ?? null,
         } : null}
         detailLoading={providerDetailLoading}
         specialties={providerModalSpecialties}
@@ -1652,6 +1653,7 @@ export function ClientHomeScreen({ navigation }: Props) {
         onBook={(providerId) => { clearProviderSelection(); goToStack("CreateBooking", { professionalId: providerId }); }}
         onViewProfile={(providerId) => { clearProviderSelection(); goToStack("ProfessionalDetail", { professionalId: providerId }); }}
         onChat={(_providerId) => { clearProviderSelection(); goToStack("ClientChatList"); }}
+        onConsultancy={(providerId) => { clearProviderSelection(); goToStack("ConsultancyRequest", { professionalId: providerId }); }}
       />
 
 

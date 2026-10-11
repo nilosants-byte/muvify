@@ -113,6 +113,31 @@ const ONLINE_CONSULTANCY_OFFER_KINDS = [
   ServiceOfferKind.COMBO
 ];
 
+// Achado em teste manual (2026-10-10): o card compacto (lista de busca, pin
+// do mapa) só mostrava o preço da aula avulsa, mesmo quando o profissional
+// também oferece consultoria online — o cliente só descobria isso abrindo o
+// perfil completo. Calcula o menor preço ativo (já considerando promoção)
+// entre as ofertas de consultoria/combo, por profissional, pra exibir
+// "a partir de" direto no card, igual já acontece com o preço da aula.
+async function getOnlineConsultancyFromCentsMap(providerIds: string[]): Promise<Map<string, number>> {
+  if (providerIds.length === 0) return new Map();
+  const offers = await prisma.providerServiceOffer.findMany({
+    where: { providerId: { in: providerIds }, isActive: true, kind: { in: ONLINE_CONSULTANCY_OFFER_KINDS } },
+    select: { providerId: true, priceCents: true, isPromotion: true, promotionPriceCents: true, promotionEndsAt: true }
+  });
+  const now = new Date();
+  const map = new Map<string, number>();
+  for (const offer of offers) {
+    const effective =
+      offer.isPromotion && offer.promotionPriceCents != null && (!offer.promotionEndsAt || offer.promotionEndsAt > now)
+        ? offer.promotionPriceCents
+        : offer.priceCents;
+    const current = map.get(offer.providerId);
+    if (current === undefined || effective < current) map.set(offer.providerId, effective);
+  }
+  return map;
+}
+
 // Cleanup pós-épico segunda camada, 14/08/2026: cada objetivo de treino
 // mapeia pra palavras-chave buscadas nas especialidades (texto livre) que o
 // profissional cadastrou — mesmo padrão de match parcial/case-insensitive
@@ -1421,7 +1446,8 @@ export class ProviderService {
       }
     >(
       provider: T,
-      distanceKm?: number
+      distanceKm?: number,
+      onlineConsultancyFromCents?: number
     ) => {
       // Bloco 7 (programa 100 Fundadores): mesmo tratamento de getById —
       // só o selo booleano sai pro cliente, nunca o status de cobrança.
@@ -1431,6 +1457,7 @@ export class ProviderService {
         ...jittered,
         isFounder: subscription?.isFounder ?? false,
         ...(typeof distanceKm === "number" ? { distanceKm } : {}),
+        onlineConsultancyFromCents: onlineConsultancyFromCents ?? null,
         photoUrl: toProviderPhotoUrl(rest.id, rest.photoUrl ?? null, rest.updatedAt ?? null),
       };
     };
@@ -1453,7 +1480,10 @@ export class ProviderService {
         ...(pageTake ? { take: pageTake } : {})
       });
 
-      const safeResult = providers.map((provider) => toSafeSummary(provider));
+      const onlineConsultancyPriceMap = await getOnlineConsultancyFromCentsMap(providers.map((p) => p.id));
+      const safeResult = providers.map((provider) =>
+        toSafeSummary(provider, undefined, onlineConsultancyPriceMap.get(provider.id))
+      );
       await setCache(pageCacheKey, safeResult, 180);
       return safeResult;
     }
@@ -1626,12 +1656,13 @@ export class ProviderService {
 
     const providerMap = new Map(pageProviders.map((provider) => [provider.id, provider]));
     const distanceMap = new Map(pagedOrdered.map((item) => [item.id, item.distanceKm]));
+    const onlineConsultancyPriceMap = await getOnlineConsultancyFromCentsMap(pageIds);
 
     const safeResult = pageIds
       .map((providerId) => {
         const provider = providerMap.get(providerId);
         if (!provider) return null;
-        return toSafeSummary(provider, distanceMap.get(providerId));
+        return toSafeSummary(provider, distanceMap.get(providerId), onlineConsultancyPriceMap.get(providerId));
       })
       .filter((provider) => provider !== null) as Array<ReturnType<typeof toSafeSummary>>;
 
@@ -1734,9 +1765,11 @@ export class ProviderService {
     // status de cobrança (subscription.status) é dado privado do próprio
     // profissional, nunca vaza pro perfil público.
     const { subscription: _subscription, ...providerWithoutSubscription } = provider;
+    const onlineConsultancyFromCents = (await getOnlineConsultancyFromCentsMap([provider.id])).get(provider.id) ?? null;
     return {
       ...jitterPublicCoordinates(providerWithoutSubscription),
       isFounder: provider.subscription?.isFounder ?? false,
+      onlineConsultancyFromCents,
       user: publicUser,
       photoUrl: toProviderPhotoUrl(provider.id, provider.photoUrl, provider.updatedAt),
       presentationVideoUrl:

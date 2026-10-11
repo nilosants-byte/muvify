@@ -34,6 +34,7 @@ describe("Frente 15, Lotes 10 e 11 — ClientProviderCard expõe fechar e dispon
     onBook: jest.fn(),
     onViewProfile: jest.fn(),
     onChat: jest.fn(),
+    onConsultancy: jest.fn(),
   };
 
   it("botão de fechar tem accessibilityLabel", () => {

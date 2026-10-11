@@ -23,6 +23,7 @@ export type ProviderModalData = {
   photoUrl?: string | null;
   presentationVideoUrl?: string | null;
   presentationVideoThumbUrl?: string | null;
+  onlineConsultancyFromCents?: number | null;
 };
 
 type Props = {
@@ -39,6 +40,7 @@ type Props = {
   onBook: (providerId: string) => void;
   onViewProfile: (providerId: string) => void;
   onChat: (providerId: string) => void;
+  onConsultancy: (providerId: string) => void;
 };
 
 function getInitials(name?: string | null) {
@@ -84,6 +86,7 @@ export const ClientProviderCard = React.memo(function ClientProviderCard({
   onBook,
   onViewProfile,
   onChat,
+  onConsultancy,
 }: Props) {
   const { theme, isDark } = useMvTheme();
   const isLight = !isDark;
@@ -131,6 +134,14 @@ export const ClientProviderCard = React.memo(function ClientProviderCard({
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>
                     {formatPrice(provider.priceCents)}<Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>/aula</Text>
                   </Text>
+                  {typeof provider.onlineConsultancyFromCents === "number" && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                      <Ionicons name="laptop-outline" size={11} color={theme.text3} />
+                      <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.text3 }}>
+                        consultoria a partir de {formatPrice(provider.onlineConsultancyFromCents)}
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <TouchableOpacity
                   onPress={onClose}
@@ -245,6 +256,17 @@ export const ClientProviderCard = React.memo(function ClientProviderCard({
               >
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>Agendar aula</Text>
               </TouchableOpacity>
+
+              {/* Consultoria online — só quando o profissional tem oferta ativa */}
+              {typeof provider.onlineConsultancyFromCents === "number" && (
+                <TouchableOpacity
+                  onPress={() => { hapticCta(); onConsultancy(provider.id); }}
+                  style={{ height: S.btnH, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
+                >
+                  <Ionicons name="laptop-outline" size={15} color={theme.textGreen} />
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textGreen }}>Solicitar consultoria online</Text>
+                </TouchableOpacity>
+              )}
             </>
           ) : null}
         </View>

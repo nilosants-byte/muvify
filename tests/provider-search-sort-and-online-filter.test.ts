@@ -84,6 +84,22 @@ describe("Busca de profissionais — ordenar por avaliação/proximidade e filtr
         isActive: true
       }
     });
+    // Segunda oferta mais barata (com promoção) pra confirmar que o preço
+    // exibido no card é o MENOR entre as ofertas ativas, já considerando
+    // promoção vigente.
+    await prisma.providerServiceOffer.create({
+      data: {
+        providerId: onlineOnlyId,
+        kind: "ONLINE_CONSULTANCY_SPECIALIZED",
+        title: "Consultoria especializada em promoção",
+        billingCycle: "MONTHLY",
+        priceCents: 18000,
+        isPromotion: true,
+        promotionPriceCents: 12000,
+        promotionEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        isActive: true
+      }
+    });
 
     noOfferId = await makeProvider({ suffix: "sem nenhuma oferta", rating: 4 });
 
@@ -144,5 +160,20 @@ describe("Busca de profissionais — ordenar por avaliação/proximidade e filtr
     const ids = results.map((p: any) => p.id);
     expect(ids).toContain(onlineOnlyId);
     expect(ids).toContain(noOfferId);
+  });
+
+  it("onlineConsultancyFromCents expõe o MENOR preço ativo (considerando promoção), e null pra quem não oferece", async () => {
+    const results = await providerService.search({ q: marker } as any);
+    const online = results.find((p: any) => p.id === onlineOnlyId) as any;
+    const noOffer = results.find((p: any) => p.id === noOfferId) as any;
+    const inactiveOnly = results.find((p: any) => p.id === inactiveOfferOnlyId) as any;
+    expect(online.onlineConsultancyFromCents).toBe(12000);
+    expect(noOffer.onlineConsultancyFromCents).toBeNull();
+    expect(inactiveOnly.onlineConsultancyFromCents).toBeNull();
+  });
+
+  it("getById (perfil completo) também expõe onlineConsultancyFromCents", async () => {
+    const detail = await providerService.getById(onlineOnlyId) as any;
+    expect(detail.onlineConsultancyFromCents).toBe(12000);
   });
 });
