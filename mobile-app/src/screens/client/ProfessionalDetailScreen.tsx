@@ -169,6 +169,16 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
 
   function handleShare() {
     const name = provider?.displayName ?? "Personal Trainer";
+    // Achado em teste manual (2026-10-11): "muvify://..." é um esquema
+    // próprio do app, não uma URL http(s) - por isso o WhatsApp (e outros
+    // apps de mensagem) nunca deixa clicável. Decisão (Danilo, 2026-10-11):
+    // aceitável por enquanto, já que o app ainda não foi publicado e não dá
+    // pra testar o clique de quem recebe de verdade. QUANDO publicar:
+    // trocar por um link universal/App Link https:// real (iOS Universal
+    // Links + Android App Links) que abre a tela certa se o app já estiver
+    // instalado, e cai na loja se não estiver (com "deferred deep linking"
+    // pra voltar pra essa tela depois de instalar) - precisa de domínio e
+    // do app publicado nas lojas antes de dar pra implementar de verdade.
     void Share.share({
       title: `Conheça ${name} no Muvify`,
       message: `Conheça ${name} no Muvify!\nmuvify://professional/${providerId}`,
