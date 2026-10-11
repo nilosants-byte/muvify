@@ -288,15 +288,19 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
                 )}
               </View>
 
-              {/* Ação principal — o resto do card já leva pro perfil */}
+              {/* Ação principal — o resto do card já leva pro perfil. Com as
+                  duas ações, ficam lado a lado em flex:1 (metade cada) —
+                  mesma altura/padding/raio, pra ficar proporcional nos dois;
+                  com só uma, ela ocupa a linha inteira e centralizada. */}
               <View style={{ flexDirection: "row", gap: 8 }}>
                 {typeof item.onlineConsultancyFromCents === "number" && (
                   <PressableScale
                     onPress={() => navigation.navigate("ConsultancyRequest", { professionalId: item.id })}
                     accessibilityLabel={`Solicitar consultoria online com ${item.displayName}`}
-                    style={{ width: S.btnH, height: S.btnH, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}
+                    style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
                   >
-                    <Ionicons name="laptop-outline" size={18} color={theme.textGreen} />
+                    <Ionicons name="laptop-outline" size={15} color={theme.textGreen} />
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textGreen }}>Consultoria</Text>
                   </PressableScale>
                 )}
                 <PressableScale
