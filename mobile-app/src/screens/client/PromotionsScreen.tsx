@@ -208,33 +208,41 @@ export function PromotionsScreen({ navigation }: Props) {
           </View>
         </View>
 
-        {/* Actions */}
+        {/* Actions — cada botão envolto num View com flex próprio: o
+            PressableScale só aplica o style no elemento animado interno,
+            não no Pressable real que participa do layout da linha, então
+            flex:1/1.4 direto nele não tem efeito (mesmo achado já corrigido
+            em ProfessionalsListScreen). */}
         <View style={{ flexDirection: "row", gap: 10 }}>
-          <PressableScale
-            onPress={() => goToDetail(item.providerId)}
-            scale={0.96}
-            style={{
-              flex: 1, height: S.btnH, borderRadius: S.btnR,
-              backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border,
-              alignItems: "center", justifyContent: "center",
-            }}
-          >
-            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Ver perfil</Text>
-          </PressableScale>
-          <PressableScale
-            onPress={() => { hapticCta(); goToBooking(item); }}
-            scale={0.96}
-            style={{
-              flex: 1.4, height: S.btnH, borderRadius: S.btnR,
-              backgroundColor: accent,
-              alignItems: "center", justifyContent: "center",
-              shadowColor: accent, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
-            }}
-          >
-            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
-              {consultancy ? "Solicitar" : "Agendar"}
-            </Text>
-          </PressableScale>
+          <View style={{ flex: 1 }}>
+            <PressableScale
+              onPress={() => goToDetail(item.providerId)}
+              scale={0.96}
+              style={{
+                height: S.btnH, borderRadius: S.btnR,
+                backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border,
+                alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Ver perfil</Text>
+            </PressableScale>
+          </View>
+          <View style={{ flex: 1 }}>
+            <PressableScale
+              onPress={() => { hapticCta(); goToBooking(item); }}
+              scale={0.96}
+              style={{
+                height: S.btnH, borderRadius: S.btnR,
+                backgroundColor: accent,
+                alignItems: "center", justifyContent: "center",
+                shadowColor: accent, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
+              }}
+            >
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
+                {consultancy ? "Solicitar" : "Agendar"}
+              </Text>
+            </PressableScale>
+          </View>
         </View>
       </PressableScale>
     );
@@ -246,6 +254,18 @@ export function PromotionsScreen({ navigation }: Props) {
 
       {/* Header V2 */}
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+        {/* Achado em teste manual (2026-10-12): esta tela é alcançada a
+            partir da Home ("Ver ofertas"), mas não tinha nenhum jeito de
+            voltar - as demais telas sempre têm o chevron de voltar no topo,
+            aqui só sobrava usar a barra inferior (o que troca de aba, não
+            "volta"). Mesmo botão/estilo já usado em ProfessionalsListScreen. */}
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          accessibilityRole="button" accessibilityLabel="Voltar"
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center", marginBottom: 10 }}
+        >
+          <Ionicons name="chevron-back" size={18} color={theme.text1} />
+        </TouchableOpacity>
         <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 10, color: theme.primary, letterSpacing: 0.1 * 10, textTransform: "uppercase", fontWeight: "700" }}>
           Destaques do dia
         </Text>

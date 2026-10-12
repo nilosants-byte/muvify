@@ -121,8 +121,15 @@ async function main() {
     create: { providerId: profile.id, enabled: true },
   });
 
+  const promotionEndsAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
   // Pedido manual (2026-10-10): uma oferta de cada tipo (ServiceOfferKind),
   // pra ver visualmente como a tela de perfil completo lista cada uma.
+  // Achado em teste manual (2026-10-12): a tela de Promoções não mostrava
+  // nenhuma oferta pra este personal (nenhuma estava marcada como promoção)
+  // - duas delas (presencial e consultoria online) ganharam isPromotion,
+  // pra dar pra testar as abas Destaques/Promoções e o botão "Solicitar"
+  // de consultoria em promoção.
   const offers: Array<Parameters<typeof prisma.providerServiceOffer.create>[0]["data"]> = [
     {
       providerId: profile.id,
@@ -133,6 +140,10 @@ async function main() {
       presentialPackageMode: "FIXED_RECURRING",
       presentialSessionsPerCycle: 8,
       isActive: true,
+      isPromotion: true,
+      promotionPriceCents: 28000,
+      promotionEndsAt,
+      promotionLabel: "Oferta de lançamento",
     },
     {
       providerId: profile.id,
@@ -142,6 +153,10 @@ async function main() {
       priceCents: 20000,
       fichaValidityDays: 30,
       isActive: true,
+      isPromotion: true,
+      promotionPriceCents: 15000,
+      promotionEndsAt,
+      promotionLabel: "Primeira consultoria com desconto",
     },
     {
       providerId: profile.id,
@@ -172,7 +187,9 @@ async function main() {
     const existing = await prisma.providerServiceOffer.findFirst({
       where: { providerId: profile.id, kind: offer.kind, title: offer.title },
     });
-    if (!existing) {
+    if (existing) {
+      await prisma.providerServiceOffer.update({ where: { id: existing.id }, data: offer });
+    } else {
       await prisma.providerServiceOffer.create({ data: offer });
     }
   }
