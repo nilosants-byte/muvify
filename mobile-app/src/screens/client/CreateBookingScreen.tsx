@@ -599,26 +599,37 @@ export function CreateBookingScreen({ navigation, route }: Props) {
           </View>
         </View>
 
-        {/* Card: Local */}
-        {(provider?.serviceMode === "PRESENTIAL_ONLY" || provider?.serviceMode === "BOTH") && (provider?.fixedLocations ?? []).length === 0 ? (
+        {/* Card: Local.
+            Achado em teste manual (2026-10-13): "A domicílio" só aparecia
+            dentro do ramo "fixedLocations.length > 0" - um profissional
+            serviceMode BOTH sem nenhum local fixo cadastrado caía direto no
+            beco sem saída "Nenhum local cadastrado", mesmo "A domicílio"
+            sendo uma opção válida e independente de local fixo. E
+            HOME_VISIT_ONLY nunca entrava nesse card nenhuma vez (ficava de
+            fora da condição externa), então o endereço era exigido no
+            envio (sessionLocation já vem setado por efeito acima) mas o
+            campo de busca de endereço nunca aparecia pra preencher. */}
+        {provider?.serviceMode === "PRESENTIAL_ONLY" && (provider?.fixedLocations ?? []).length === 0 ? (
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad }}>
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>
               Nenhum local de atendimento cadastrado. Entre em contato com o profissional pelo chat para combinar o local.
             </Text>
           </View>
-        ) : (provider?.serviceMode === "PRESENTIAL_ONLY" || provider?.serviceMode === "BOTH") && (provider?.fixedLocations ?? []).length > 0 ? (
+        ) : (
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 10 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>
               Local do atendimento <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>(obrigatório)</Text>
             </Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-              {provider?.serviceMode === "BOTH" ? (
-                <Chip label="A domicílio" selected={sessionLocation === "A domicílio"} onPress={() => setSessionLocation("A domicílio")} />
-              ) : null}
-              {(provider?.fixedLocations ?? []).map((loc) => (
-                <Chip key={loc.id} label={loc.name} selected={sessionLocation === loc.name} onPress={() => setSessionLocation(loc.name)} />
-              ))}
-            </View>
+            {provider?.serviceMode !== "HOME_VISIT_ONLY" ? (
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {provider?.serviceMode === "BOTH" ? (
+                  <Chip label="A domicílio" selected={sessionLocation === "A domicílio"} onPress={() => setSessionLocation("A domicílio")} />
+                ) : null}
+                {(provider?.fixedLocations ?? []).map((loc) => (
+                  <Chip key={loc.id} label={loc.name} selected={sessionLocation === loc.name} onPress={() => setSessionLocation(loc.name)} />
+                ))}
+              </View>
+            ) : null}
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: sessionLocation ? theme.primary : theme.text3 }}>
               {sessionLocation ? `Local selecionado: ${sessionLocation}` : "Selecione onde a aula será realizada."}
             </Text>
@@ -650,7 +661,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
               </View>
             ) : null}
           </View>
-        ) : null}
+        )}
 
         {/* Card: Oferta selecionada */}
         {offerTitleFromRoute ? (
