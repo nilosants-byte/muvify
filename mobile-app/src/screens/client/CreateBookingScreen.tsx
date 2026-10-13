@@ -713,28 +713,39 @@ export function CreateBookingScreen({ navigation, route }: Props) {
             ))}
           </View>
 
-          {/* Grade do calendário — células com mínimo 44px (touch target V2) */}
-          <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 4, gap: 4 }}>
+          {/* Grade do calendário — células com mínimo 44px (touch target V2).
+              Achado em teste manual (2026-10-13): a largura das células
+              (13.5%) somada ao gap:4 entre elas não fechava matematicamente
+              em 100% como a linha de cabeçalho (14.285% sem gap) - em telas
+              mais estreitas isso estourava a largura da linha e o flexWrap
+              quebrava a grade um dia antes da hora, empurrando o resto do
+              mês inteiro uma coluna pra esquerda (datas certas apareciam sob
+              o dia da semana errado). Cada item agora é um slot externo de
+              14.2857% sem gap nenhum (igual ao cabeçalho, sempre fecha
+              100%), com o toque menor por dentro só pra dar respiro visual -
+              isso nunca afeta a largura total da linha.*/}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 4 }}>
             {monthCells.map((cell, index) => {
-              if (!cell) return <View key={`calendar-blank-${index}`} style={{ width: "13.5%", minHeight: S.touchMin }} />;
+              if (!cell) return <View key={`calendar-blank-${index}`} style={{ width: "14.2857%", minHeight: S.touchMin }} />;
               const isoDate = toIsoDate(cell);
               const selected = selectedDateSet.has(isoDate);
               const selectable = isSelectableDate(cell);
               const isPast = isoDate < todayIso;
               return (
-                <TouchableOpacity
-                  key={`calendar-day-${isoDate}`}
-                  testID={`button.booking.calendar-day.${isoDate}`}
-                  disabled={!selectable}
-                  onPress={() => toggleDate(cell)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Dia ${cell.getDate()}`}
-                  style={{ width: "13.5%", minHeight: S.touchMin, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: selected ? theme.primary : selectable ? theme.border : "transparent", backgroundColor: selected ? theme.primary : selectable ? "rgba(255,255,255,0.03)" : "transparent", opacity: isPast || (!selectable && !isPast) ? 0.3 : 1 }}
-                >
-                  <Text style={{ fontFamily: selected ? "DMSans_700Bold" : "DMSans_400Regular", fontSize: 12, color: selected ? theme.textOnPrimary : selectable ? C.zinc300 : theme.labelColor, textDecorationLine: isPast && !selectable ? "line-through" : "none" }}>
-                    {cell.getDate()}
-                  </Text>
-                </TouchableOpacity>
+                <View key={`calendar-day-${isoDate}`} style={{ width: "14.2857%", minHeight: S.touchMin, alignItems: "center", justifyContent: "center" }}>
+                  <TouchableOpacity
+                    testID={`button.booking.calendar-day.${isoDate}`}
+                    disabled={!selectable}
+                    onPress={() => toggleDate(cell)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Dia ${cell.getDate()}`}
+                    style={{ width: "86%", minHeight: S.touchMin - 4, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: selected ? theme.primary : selectable ? theme.border : "transparent", backgroundColor: selected ? theme.primary : selectable ? "rgba(255,255,255,0.03)" : "transparent", opacity: isPast || (!selectable && !isPast) ? 0.3 : 1 }}
+                  >
+                    <Text style={{ fontFamily: selected ? "DMSans_700Bold" : "DMSans_400Regular", fontSize: 12, color: selected ? theme.textOnPrimary : selectable ? C.zinc300 : theme.labelColor, textDecorationLine: isPast && !selectable ? "line-through" : "none" }}>
+                      {cell.getDate()}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               );
             })}
           </View>
