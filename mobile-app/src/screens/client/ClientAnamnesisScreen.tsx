@@ -393,6 +393,18 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
       setErrorText(null);
       setDirty(false);
       showToast(targetStatus === "COMPLETED" ? "Anamnese confirmada." : "Rascunho salvo.", "success");
+      // Achado em teste manual (2026-10-13): confirmar a ficha inteira não
+      // levava a lugar nenhum - só o "voltar" (que desfaz passo a passo)
+      // tirava da tela, e só ao chegar no passo 0. Essa tela é alcançada de
+      // vários lugares diferentes (agendamento, compra de pacote, consultoria,
+      // configurações...), então volta pra quem chamou (goBack), não pra um
+      // destino fixo. justLeavingRef evita que o listener de beforeRemove
+      // (fechado sobre o dirty/status de antes deste save) dispare o aviso
+      // de "sair sem salvar" por uma leitura desatualizada.
+      if (targetStatus === "COMPLETED") {
+        justLeavingRef.current = true;
+        navigation.goBack();
+      }
     } catch (error) {
       if (__DEV__ && error instanceof Error) {
         const apiErr = error as any;
