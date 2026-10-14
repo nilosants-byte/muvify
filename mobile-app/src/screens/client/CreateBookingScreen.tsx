@@ -193,6 +193,14 @@ export function CreateBookingScreen({ navigation, route }: Props) {
   const [homeAddressQuery, setHomeAddressQuery] = useState("");
   const [homeAddressCoords, setHomeAddressCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [searchingHomeAddress, setSearchingHomeAddress] = useState(false);
+  // Achado em teste manual (2026-10-13): a busca pegava só o 1º resultado
+  // (limit=1) e confirmava sozinha, sem o usuário poder escolher - endereços
+  // com o mesmo nome existem em bairros/cidades/estados diferentes, então
+  // isso era uma loteria. Agora guarda até 5 candidatos pro usuário escolher
+  // o certo, e o endereço confirmado some do campo de digitar pra ser
+  // mostrado por extenso, com quebra de linha, em vez de cortado.
+  const [homeAddressResults, setHomeAddressResults] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
+  const [confirmedHomeAddress, setConfirmedHomeAddress] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>("CARD");
   const [creating, setCreating] = useState(false);
@@ -416,32 +424,36 @@ export function CreateBookingScreen({ navigation, route }: Props) {
     if (!query) return;
     try {
       setSearchingHomeAddress(true);
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=br`;
+      setHomeAddressCoords(null);
+      setConfirmedHomeAddress(null);
+      setHomeAddressResults([]);
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=br`;
       const resp = await fetch(url, {
         headers: { "Accept-Language": "pt-BR", "User-Agent": "Muvify-App/1.0" },
       });
       const results = (await resp.json()) as Array<{ display_name: string; lat: string; lon: string }>;
-      const first = results[0];
-      if (!first) {
+      if (results.length === 0) {
         showToast("Endereço não encontrado.", "info");
-        setHomeAddressCoords(null);
         return;
       }
-      const lat = parseFloat(first.lat);
-      const lng = parseFloat(first.lon);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        showToast("Endereço inválido.", "error");
-        setHomeAddressCoords(null);
-        return;
-      }
-      setHomeAddressCoords({ lat, lng });
-      setHomeAddressQuery(first.display_name);
+      setHomeAddressResults(results);
     } catch {
       showToast("Falha ao buscar endereço.", "error");
-      setHomeAddressCoords(null);
     } finally {
       setSearchingHomeAddress(false);
     }
+  }
+
+  function confirmHomeAddress(result: { display_name: string; lat: string; lon: string }) {
+    const lat = parseFloat(result.lat);
+    const lng = parseFloat(result.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      showToast("Endereço inválido.", "error");
+      return;
+    }
+    setHomeAddressCoords({ lat, lng });
+    setConfirmedHomeAddress(result.display_name);
+    setHomeAddressResults([]);
   }
 
   async function handleContinue() {
@@ -650,30 +662,67 @@ export function CreateBookingScreen({ navigation, route }: Props) {
               {sessionLocation ? `Local selecionado: ${sessionLocation}` : "Selecione onde a aula será realizada."}
             </Text>
             {sessionLocation === "A domicílio" ? (
-              <View style={{ gap: 6 }}>
-                <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-                  <TextInput
-                    value={homeAddressQuery}
-                    onChangeText={(v) => { setHomeAddressQuery(v); setHomeAddressCoords(null); }}
-                    onSubmitEditing={() => void searchHomeAddress()}
-                    placeholder="Endereço completo do atendimento"
-                    placeholderTextColor={theme.text3}
-                    returnKeyType="search"
-                    style={{ flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 10, backgroundColor: theme.inputBg, paddingHorizontal: 12, paddingVertical: 10, color: theme.text1, fontSize: 13 }}
-                  />
-                  <TouchableOpacity
-                    onPress={() => void searchHomeAddress()}
-                    disabled={searchingHomeAddress || !homeAddressQuery.trim()}
-                    style={{ height: 40, paddingHorizontal: 14, borderRadius: 10, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", opacity: searchingHomeAddress || !homeAddressQuery.trim() ? 0.6 : 1 }}
-                  >
-                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: "#000" }}>
-                      {searchingHomeAddress ? "..." : "Buscar"}
+              <View style={{ gap: 8 }}>
+                {confirmedHomeAddress ? (
+                  <View style={{ borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, borderRadius: 10, padding: 10, gap: 6 }}>
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.primary, lineHeight: 17 }}>
+                      Endereço confirmado: {confirmedHomeAddress}
                     </Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: homeAddressCoords ? theme.primary : theme.text3 }}>
-                  {homeAddressCoords ? "Endereço confirmado." : "Busque e confirme o endereço para checar se está dentro da área de atendimento."}
-                </Text>
+                    <TouchableOpacity
+                      onPress={() => { setConfirmedHomeAddress(null); setHomeAddressCoords(null); }}
+                      style={{ alignSelf: "flex-start" }}
+                    >
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: theme.primary, textDecorationLine: "underline" }}>Trocar endereço</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <>
+                    <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+                      <TextInput
+                        value={homeAddressQuery}
+                        onChangeText={(v) => { setHomeAddressQuery(v); setHomeAddressCoords(null); setHomeAddressResults([]); }}
+                        onSubmitEditing={() => void searchHomeAddress()}
+                        placeholder="Endereço completo do atendimento"
+                        placeholderTextColor={theme.text3}
+                        returnKeyType="search"
+                        multiline
+                        style={{ flex: 1, minHeight: 40, borderWidth: 1, borderColor: theme.border, borderRadius: 10, backgroundColor: theme.inputBg, paddingHorizontal: 12, paddingVertical: 10, color: theme.text1, fontSize: 13 }}
+                      />
+                      <TouchableOpacity
+                        onPress={() => void searchHomeAddress()}
+                        disabled={searchingHomeAddress || !homeAddressQuery.trim()}
+                        style={{ height: 40, paddingHorizontal: 14, borderRadius: 10, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", opacity: searchingHomeAddress || !homeAddressQuery.trim() ? 0.6 : 1 }}
+                      >
+                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: "#000" }}>
+                          {searchingHomeAddress ? "..." : "Buscar"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    {homeAddressResults.length > 0 ? (
+                      <View style={{ gap: 6 }}>
+                        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>
+                          Encontramos mais de um endereço parecido — toque no correto:
+                        </Text>
+                        {homeAddressResults.map((result, index) => (
+                          <TouchableOpacity
+                            key={`${result.lat}-${result.lon}-${index}`}
+                            testID={`button.booking.home-address-result.${index}`}
+                            onPress={() => confirmHomeAddress(result)}
+                            style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 10, backgroundColor: theme.inputBg }}
+                          >
+                            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text1, lineHeight: 17 }}>
+                              {result.display_name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>
+                        Busque e escolha o endereço certo na lista — endereços com o mesmo nome podem existir em bairros ou cidades diferentes.
+                      </Text>
+                    )}
+                  </>
+                )}
               </View>
             ) : null}
           </View>
