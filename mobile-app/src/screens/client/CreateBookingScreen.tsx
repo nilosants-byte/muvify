@@ -180,6 +180,12 @@ export function CreateBookingScreen({ navigation, route }: Props) {
   const hasInitialized = useRef(false);
 
   const [selectedDateKeys, setSelectedDateKeys] = useState<string[]>([]);
+  // Pedido manual (2026-10-13): com vários dias selecionados, a lista de
+  // horários ficava toda aberta ao mesmo tempo, exigindo muito scroll pra
+  // achar o dia que faltava escolher. Vira acordeão: só um dia aberto por
+  // vez, abrindo sozinho no próximo que ainda não tem horário escolhido e
+  // fechando ao escolher.
+  const [expandedDateKey, setExpandedDateKey] = useState<string | null>(null);
   const [immediateExecutionAcknowledged, setImmediateExecutionAcknowledged] = useState(false);
   const [selectedSlotsByDate, setSelectedSlotsByDate] = useState<Record<string, string>>({});
 
@@ -248,6 +254,16 @@ export function CreateBookingScreen({ navigation, route }: Props) {
       })),
     [scheduleByDate, selectedDateKeys, selectedSlotsByDate]
   );
+
+  // Mantém no máximo um dia aberto: se o aberto atual ainda não tem horário,
+  // deixa como está; senão pula pro próximo dia sem horário escolhido, ou
+  // fecha tudo (null) se todos já tiverem.
+  useEffect(() => {
+    setExpandedDateKey((current) => {
+      if (current && selectedDateKeys.includes(current) && !selectedSlotsByDate[current]) return current;
+      return selectedDateKeys.find((key) => !selectedSlotsByDate[key]) ?? null;
+    });
+  }, [selectedDateKeys, selectedSlotsByDate]);
 
   const unitPriceCents = useMemo(() => {
     if (packageSessionPriceCentsFromRoute && packageSessionPriceCentsFromRoute > 0) {
@@ -794,50 +810,62 @@ export function CreateBookingScreen({ navigation, route }: Props) {
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>Selecione um ou mais dias no calendário para escolher os horários.</Text>
           ) : (
             <View style={{ gap: 12 }}>
-              {selectedSchedules.map((item) => (
-                <View key={`selected-day-${item.dateKey}`} style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 16, padding: 12, backgroundColor: theme.inputBg, gap: 8 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>{formatSelectedDayLabel(item.dateKey)}</Text>
-                    <View style={{ backgroundColor: item.selectedSlot ? theme.primarySubtle : C.amberDim, borderWidth: 1, borderColor: item.selectedSlot ? theme.primarySubtleBorder : C.amberBorder, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2 }}>
-                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: item.selectedSlot ? theme.primary : C.amber }}>{item.selectedSlot ?? "Sem horário"}</Text>
-                    </View>
-                  </View>
+              {selectedSchedules.map((item) => {
+                const expanded = expandedDateKey === item.dateKey;
+                return (
+                  <View key={`selected-day-${item.dateKey}`} style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 16, padding: 12, backgroundColor: theme.inputBg, gap: 8 }}>
+                    <TouchableOpacity
+                      testID={`button.booking.day-toggle.${item.dateKey}`}
+                      onPress={() => setExpandedDateKey((current) => (current === item.dateKey ? null : item.dateKey))}
+                      style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Ionicons name={expanded ? "chevron-down" : "chevron-forward"} size={14} color={theme.text3} />
+                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>{formatSelectedDayLabel(item.dateKey)}</Text>
+                      </View>
+                      <View style={{ backgroundColor: item.selectedSlot ? theme.primarySubtle : C.amberDim, borderWidth: 1, borderColor: item.selectedSlot ? theme.primarySubtleBorder : C.amberBorder, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 2 }}>
+                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: item.selectedSlot ? theme.primary : C.amber }}>{item.selectedSlot ?? "Sem horário"}</Text>
+                      </View>
+                    </TouchableOpacity>
 
-                  {item.slots.length === 0 ? (
-                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>
-                      Sem horários livres para este dia.
-                    </Text>
-                  ) : (
-                    // Grid 2 colunas com botões de 52px — regra V2
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                      {item.slots.map((slot) => {
-                        const active = item.selectedSlot === slot;
-                        return (
-                          <TouchableOpacity
-                            key={`${item.dateKey}-${slot}`}
-                            testID={`button.booking.slot.${item.dateKey}.${slot}`}
-                            onPress={() => selectSlotForDate(item.dateKey, slot)}
-                            style={{
-                              width: "47%",
-                              height: S.btnH,
-                              borderRadius: 16,
-                              alignItems: "center",
-                              justifyContent: "center",
-                              borderWidth: 1,
-                              borderColor: active ? theme.primary : theme.border,
-                              backgroundColor: active ? theme.primary : "rgba(255,255,255,0.04)",
-                            }}
-                          >
-                            <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: active ? theme.textOnPrimary : C.zinc300, letterSpacing: -0.013 * 18 }}>
-                              {slot}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              ))}
+                    {expanded ? (
+                      item.slots.length === 0 ? (
+                        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>
+                          Sem horários livres para este dia.
+                        </Text>
+                      ) : (
+                        // Grid 2 colunas com botões de 52px — regra V2
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                          {item.slots.map((slot) => {
+                            const active = item.selectedSlot === slot;
+                            return (
+                              <TouchableOpacity
+                                key={`${item.dateKey}-${slot}`}
+                                testID={`button.booking.slot.${item.dateKey}.${slot}`}
+                                onPress={() => selectSlotForDate(item.dateKey, slot)}
+                                style={{
+                                  width: "47%",
+                                  height: S.btnH,
+                                  borderRadius: 16,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  borderWidth: 1,
+                                  borderColor: active ? theme.primary : theme.border,
+                                  backgroundColor: active ? theme.primary : "rgba(255,255,255,0.04)",
+                                }}
+                              >
+                                <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: active ? theme.textOnPrimary : C.zinc300, letterSpacing: -0.013 * 18 }}>
+                                  {slot}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
           )}
         </View>
@@ -961,7 +989,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
               color={immediateExecutionAcknowledged ? theme.primary : theme.text3}
             />
             <Text style={{ flex: 1, fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text2 }}>
-              Peço o início imediato do atendimento e estou ciente de que, com o agendamento marcado para menos de 7 dias, o cancelamento segue a regra de 2h acima em vez do prazo de arrependimento de 7 dias previsto no CDC.
+              Peço início imediato e abro mão do prazo de 7 dias de arrependimento (art. 49, CDC) para esta aula — vale a regra de 2h acima.
             </Text>
           </TouchableOpacity>
         ) : null}
