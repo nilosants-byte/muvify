@@ -84,7 +84,7 @@ function Chip({
 }
 
 export function BuyPresentialPackageScreen({ navigation, route }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { runWithAuth, showToast, refreshActiveEngagement } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
 
@@ -271,6 +271,10 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
       if (isCombo) {
         const result = await runWithAuth((token) => presentialPackagesApi.purchaseCombo(token, body));
         setPurchasedPackage(result.package);
+        // Achado em teste manual (2026-10-15): mesma lacuna do agendamento
+        // avulso - criar um pacote/combo não atualizava o vínculo ativo
+        // guardado no app (só cancelar/trocar faziam isso).
+        await refreshActiveEngagement();
         if (result.presentialPayment.status === "PENDING" && result.presentialPayment.pix) {
           setPixPending(result.presentialPayment.pix);
         } else if (
@@ -299,6 +303,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
       } else {
         const result = await runWithAuth((token) => presentialPackagesApi.purchase(token, body));
         setPurchasedPackage(result.package);
+        await refreshActiveEngagement();
         if (result.payment.status === "CAPTURED") {
           await hapticCta();
           showToast("Pacote contratado com sucesso!", "success");

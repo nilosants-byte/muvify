@@ -152,7 +152,7 @@ function Chip({
 }
 
 export function CreateBookingScreen({ navigation, route }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { runWithAuth, showToast, refreshActiveEngagement } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
   const providerId = route.params.professionalId;
@@ -553,6 +553,15 @@ export function CreateBookingScreen({ navigation, route }: Props) {
           "info"
         );
       }
+
+      // Achado em teste manual (2026-10-15): criar um agendamento avulso
+      // nunca atualizava o "vínculo ativo" (activeEngagement) guardado no
+      // app - só cancelar/trocar de serviço faziam isso. Cliente que já
+      // tinha cancelado o plano nesta mesma sessão do app (ficando com
+      // hasActive=false) e depois criava novos agendamentos continuava
+      // vendo a Home/Meu Personal como se não tivesse vínculo nenhum,
+      // mesmo com agendamentos novos e ativos de verdade no servidor.
+      await refreshActiveEngagement();
 
       navigation.navigate("BookingConfirmation", {
         bookingId: createdBookingIds[0] ?? "",
