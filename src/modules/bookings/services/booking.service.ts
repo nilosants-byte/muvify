@@ -18,7 +18,7 @@ import { AppError } from "../../../shared/errors/app-error";
 import { deleteByPattern } from "../../../shared/utils/cache";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { assertAnamnesisCompleted } from "../../../shared/utils/anamnesis-required";
-import { assertNoActiveEngagementWithOtherProvider } from "../../../shared/utils/client-engagement";
+import { ACTIVE_BOOKING_STATUSES, assertNoActiveEngagementWithOtherProvider } from "../../../shared/utils/client-engagement";
 import { assertProviderSubscriptionActive } from "../../../shared/utils/provider-subscription-gate";
 import { isOnboardingGatesBypassActive } from "../../../shared/utils/onboarding-gates-bypass";
 import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/utils/encryption";
@@ -2479,5 +2479,41 @@ export class BookingService {
     }
 
     return bookings.length;
+  }
+
+  // Achado em teste manual (2026-10-15): "Cancelar plano" na aba Meu
+  // Personal, pro vínculo puramente avulso (sem contrato/pacote), só
+  // cancelava UM booking (o "anchor" usado em getActiveEngagementSummary
+  // pra identificar o profissional) — se o cliente tivesse mais de um
+  // agendamento pendente/confirmado com o mesmo profissional, os outros
+  // continuavam ativos, o vínculo de exclusividade nunca era liberado de
+  // verdade, e o toast de sucesso ("já pode ver outros profissionais")
+  // mentia. Cancela TODOS os agendamentos avulsos ativos do cliente com
+  // esse profissional, reusando updateStatus (mesma regra de reembolso/
+  // captura de 2h que já vale pro cancelamento individual) em vez de
+  // reimplementar a lógica de estorno - só pula pacote (packageId: null,
+  // cancelamento de pacote é um fluxo à parte, próprio endpoint).
+  async cancelAllStandaloneBookingsForClient(clientId: string, providerId: string) {
+    const bookings = await prisma.booking.findMany({
+      where: {
+        clientId,
+        providerId,
+        packageId: null,
+        status: { in: ACTIVE_BOOKING_STATUSES }
+      },
+      select: { id: true }
+    });
+
+    let cancelled = 0;
+    for (const booking of bookings) {
+      try {
+        await this.updateStatus(clientId, booking.id, BookingStatus.CANCELLED);
+        cancelled += 1;
+      } catch (error) {
+        console.error(`Falha ao cancelar agendamento ${booking.id} no cancelamento de vínculo (cliente ${clientId}):`, error);
+      }
+    }
+
+    return { cancelled, total: bookings.length };
   }
 }

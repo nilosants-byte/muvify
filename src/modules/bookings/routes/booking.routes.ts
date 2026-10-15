@@ -7,6 +7,7 @@ import { uploadRateLimiter } from "../../../middlewares/rate-limit.middleware";
 import { BookingController } from "../controllers/booking.controller";
 import {
   bookingIdParamSchema,
+  cancelProviderEngagementSchema,
   completionProofParamSchema,
   contestAutoCaptureSchema,
   contestNoShowSchema,
@@ -45,6 +46,13 @@ bookingRoutes.post(
   bookingController.verifyAttendanceQr
 );
 bookingRoutes.patch("/:bookingId/status", clientOrProvider, uploadRateLimiter, validate(updateBookingStatusSchema), bookingController.updateStatus);
+bookingRoutes.post(
+  "/cancel-provider-engagement",
+  ensureRole(UserRole.CLIENT),
+  uploadRateLimiter,
+  validate(cancelProviderEngagementSchema),
+  bookingController.cancelProviderEngagement
+);
 bookingRoutes.post(
   "/:bookingId/report-no-show",
   clientOrProvider,

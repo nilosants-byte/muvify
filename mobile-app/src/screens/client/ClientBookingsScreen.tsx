@@ -58,9 +58,14 @@ function ActivePlanCard({
       } else if (engagement.packageId) {
         await presentialPackagesApi.cancel(token, engagement.packageId);
       } else if (engagement.bookingId) {
-        // Raio-X pós-épico: vínculo puramente avulso (agendamento sem
-        // contrato/pacote) — cancela o próprio Booking.
-        await bookingsApi.updateStatus(token, engagement.bookingId, "CANCELLED");
+        // Achado em teste manual (2026-10-15): vínculo avulso podia ter
+        // MAIS de um agendamento pendente/confirmado com o mesmo
+        // profissional (ex: múltiplos dias escolhidos de uma vez no
+        // agendamento) - cancelar só engagement.bookingId (o usado pra
+        // identificar o profissional) deixava os outros ativos, e o
+        // vínculo nunca era liberado de verdade apesar do toast de
+        // sucesso. Cancela todos de uma vez.
+        await bookingsApi.cancelProviderEngagement(token, engagement.providerId);
       }
     },
     {

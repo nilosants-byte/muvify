@@ -2713,6 +2713,18 @@ export const bookingsApi = {
       token
     });
   },
+  // Achado em teste manual (2026-10-15): "Cancelar plano" pra vinculo
+  // puramente avulso so cancelava 1 booking (o usado so pra identificar o
+  // profissional), deixando outros agendamentos pendentes/confirmados com
+  // o mesmo profissional ativos - o vinculo nunca era liberado de verdade.
+  // Este endpoint cancela todos de uma vez.
+  cancelProviderEngagement(token: string, providerId: string) {
+    return apiRequest<{ cancelled: number; total: number }>("/bookings/cancel-provider-engagement", {
+      method: "POST",
+      token,
+      body: { providerId }
+    });
+  },
   verifyAttendanceCode(token: string, bookingId: string, code: string) {
     return apiRequest<{
       bookingId: string;

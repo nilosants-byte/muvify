@@ -27,6 +27,14 @@ export class BookingController {
     const bookings = await bookingService.listMyBookings(request.user!.id, skip, take);
     return response.json(bookings);
   }
+  async cancelProviderEngagement(request: Request, response: Response) {
+    const result = await bookingService.cancelAllStandaloneBookingsForClient(
+      request.user!.id,
+      request.body.providerId
+    );
+    return response.json(result);
+  }
+
   async updateStatus(request: Request, response: Response) {
     const booking = await bookingService.updateStatus(
       request.user!.id,

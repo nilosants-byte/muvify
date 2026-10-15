@@ -11,7 +11,7 @@ import { AppError } from "../errors/app-error";
 //
 // "Ativo" por modelo segue a mesma convenção que o próprio código já usa em
 // cada guarda existente (conflito de horário, pacote duplicado):
-const ACTIVE_BOOKING_STATUSES: BookingStatus[] = [BookingStatus.PENDING, BookingStatus.CONFIRMED];
+export const ACTIVE_BOOKING_STATUSES: BookingStatus[] = [BookingStatus.PENDING, BookingStatus.CONFIRMED];
 const ACTIVE_CONSULTANCY_STATUSES: ConsultancyContractStatus[] = [
   ConsultancyContractStatus.PENDING_PAYMENT,
   ConsultancyContractStatus.ACTIVE,

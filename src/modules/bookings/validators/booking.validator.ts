@@ -11,6 +11,12 @@ const completionProofSchema = z.object({
   cameraFacing: z.enum(["FRONT", "BACK"])
 });
 
+export const cancelProviderEngagementSchema = z.object({
+  body: z.object({
+    providerId: z.string().uuid("ID de profissional inválido.")
+  })
+});
+
 export const createBookingSchema = z.object({
   body: z
     .object({
