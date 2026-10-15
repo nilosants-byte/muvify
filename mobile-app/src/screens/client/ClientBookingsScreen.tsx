@@ -409,8 +409,12 @@ export function ClientBookingsScreen({ navigation }: Props) {
               ))}
             </View>
 
-            {/* Filter tabs V2 */}
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {/* Filter tabs V2 — pedido manual (2026-10-15): os 4 filtros
+                quebravam em 2 linhas (cada chip tinha largura pelo próprio
+                conteúdo). Agora são 4 fatias iguais (flex:1) que sempre
+                cabem numa linha só, com padding/fonte mais enxutos pra
+                "Pendentes"/"Histórico" caberem sem cortar. */}
+            <View style={{ flexDirection: "row", gap: 6 }}>
               {filterOptions.map((item) => {
                 const active = item.key === activeFilter;
                 return (
@@ -418,16 +422,16 @@ export function ClientBookingsScreen({ navigation }: Props) {
                     key={item.key}
                     onPress={() => setActiveFilter(item.key)}
                     style={{
-                      height: 36, paddingHorizontal: 14, borderRadius: S.chipR,
-                      flexDirection: "row", alignItems: "center", gap: 6,
+                      flex: 1, height: 36, paddingHorizontal: 6, borderRadius: S.chipR,
+                      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
                       borderWidth: 1,
                       borderColor: active ? theme.primarySubtleBorder : theme.border,
                       backgroundColor: active ? theme.primarySubtle : "rgba(255,255,255,0.04)",
                     }}
                   >
-                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: active ? theme.primary : theme.text2 }}>{item.label}</Text>
-                    <View style={{ backgroundColor: active ? "rgba(36,230,109,0.22)" : "rgba(255,255,255,0.08)", borderRadius: 99, minWidth: 20, height: 20, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 }}>
-                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: active ? theme.primary : theme.text3 }}>{item.count}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: active ? theme.primary : theme.text2 }}>{item.label}</Text>
+                    <View style={{ backgroundColor: active ? "rgba(36,230,109,0.22)" : "rgba(255,255,255,0.08)", borderRadius: 99, minWidth: 18, height: 18, alignItems: "center", justifyContent: "center", paddingHorizontal: 3 }}>
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 9, color: active ? theme.primary : theme.text3 }}>{item.count}</Text>
                     </View>
                   </TouchableOpacity>
                 );
