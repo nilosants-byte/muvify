@@ -593,7 +593,16 @@ export class BookingService {
         paymentMethod
       );
       return booking;
-    });
+    // Achado via Sentry em produção (2026-10-14): essa transação (lock +
+    // conflito de horário + oferta/pacote + criação do booking + pagamento
+    // pendente) estourou o limite padrão do Prisma por pouco (5178ms vs
+    // 5000ms), derrubando o agendamento com "Transaction already closed".
+    // Diferente do ajuste já feito em src/config/prisma.ts (só NODE_ENV=test,
+    // de propósito - lá o gargalo é a máquina de CI, não a transação em si),
+    // aqui é a transação de criar agendamento rodando sob carga real,
+    // merecendo o mesmo tratamento pontual já usado em outras transações
+    // deste arquivo (ex: captura de pagamento, ~15-30s).
+    }, { timeout: 15_000 });
 
     void deleteByPattern(`schedule:${createdBooking.providerId}:*`).catch(() => undefined);
 
