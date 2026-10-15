@@ -107,6 +107,28 @@ export function ProviderServicesUpgradeScreen({ navigation, route }: Props) {
           </Text>
         </View>
 
+        {/* Achado em teste manual (2026-10-15): cliente com vínculo ativo só
+            por agendamento avulso (sem pacote/contrato) não tinha NENHUM
+            jeito de marcar mais um dia avulso com o MESMO profissional -
+            essa tela só listava ofertas/pacotes publicados, e o botão de
+            "novo agendamento" na aba Meu Personal some assim que existe
+            vínculo ativo, independente de ser com o mesmo profissional ou
+            não. A regra de exclusividade já permite isso (só bloqueia
+            profissional DIFERENTE) - só faltava o caminho de navegação. */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate("CreateBooking", { professionalId: providerId })}
+          style={{ borderRadius: 16, padding: 15, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, flexDirection: "row", alignItems: "center", gap: 10 }}
+        >
+          <Ionicons name="calendar-outline" size={20} color={theme.primary} />
+          <View style={{ flex: 1 }}>
+            <MvText variant="semi2" style={{ color: theme.primary }}>Agendar mais uma aula avulsa</MvText>
+            <MvText variant="caption" color="secondary" style={{ marginTop: 2 }}>
+              Com {catalogQuery.data?.provider.displayName ?? "este profissional"}, sem trocar nem cancelar seu plano atual.
+            </MvText>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={theme.text3} />
+        </TouchableOpacity>
+
         {/* Raio-X pós-épico (achado médio): sem isso, a tela ficava com a
             lista vazia tanto durante o carregamento quanto se a query
             falhasse — indistinguível de "esse profissional não tem mais
