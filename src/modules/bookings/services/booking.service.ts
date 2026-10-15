@@ -2504,15 +2504,30 @@ export class BookingService {
       select: { id: true }
     });
 
+    // Achado em teste manual (2026-10-15): em sequência, cada booking espera
+    // até MP_CLIENT_TIMEOUT_MS (15s) pra tentar estornar o pagamento antes
+    // de seguir pro próximo - com 2+ agendamentos isso somava tempo
+    // suficiente pra chegar perto (ou passar) do timeout de requisição do
+    // app mobile (30s), fazendo o app desistir antes do servidor terminar
+    // de cancelar tudo de verdade: o cliente via a tela "carregando" por
+    // muito tempo e o card de plano ativo não sumia (o refresh pós-sucesso
+    // nunca rodava, porque o app já tinha dado a requisição como falha).
+    // Cada booking é independente (nenhum estado compartilhado entre eles
+    // além do próprio banco, já protegido pelo claim atômico dentro de
+    // updateStatus), então rodar em paralelo é seguro e corta o tempo total
+    // de "soma de todos" pra "o mais lento de todos".
+    const results = await Promise.allSettled(
+      bookings.map((booking) => this.updateStatus(clientId, booking.id, BookingStatus.CANCELLED))
+    );
+
     let cancelled = 0;
-    for (const booking of bookings) {
-      try {
-        await this.updateStatus(clientId, booking.id, BookingStatus.CANCELLED);
+    results.forEach((result, index) => {
+      if (result.status === "fulfilled") {
         cancelled += 1;
-      } catch (error) {
-        console.error(`Falha ao cancelar agendamento ${booking.id} no cancelamento de vínculo (cliente ${clientId}):`, error);
+      } else {
+        console.error(`Falha ao cancelar agendamento ${bookings[index].id} no cancelamento de vínculo (cliente ${clientId}):`, result.reason);
       }
-    }
+    });
 
     return { cancelled, total: bookings.length };
   }
