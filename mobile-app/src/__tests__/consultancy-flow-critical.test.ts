@@ -77,6 +77,7 @@ describe("Consultoria — catálogo público", () => {
         displayName: "Coach Silva",
         photoUrl: null,
         specialties: ["Hipertrofia", "Emagrecimento"],
+        priceCents: 10000,
       },
       onlineConsultancyEnabled: true,
       offers: [

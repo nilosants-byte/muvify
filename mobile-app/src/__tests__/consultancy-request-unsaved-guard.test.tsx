@@ -24,7 +24,7 @@ function renderWithQueryClient(ui: React.ReactElement) {
 
 function buildCatalog(): ProviderConsultancyCatalog {
   return {
-    provider: { id: "provider-1", displayName: "Coach A", photoUrl: null, specialties: [] },
+    provider: { id: "provider-1", displayName: "Coach A", photoUrl: null, specialties: [], priceCents: 10000 },
     onlineConsultancyEnabled: true,
     offers: [
       {

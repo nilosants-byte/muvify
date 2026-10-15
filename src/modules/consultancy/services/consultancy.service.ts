@@ -1251,7 +1251,12 @@ export class ConsultancyService {
         photoUrl: toProviderPhotoUrl(provider.id, provider.photoUrl, provider.updatedAt),
         specialties: provider.categoryLinks.map((item) => item.category?.name).filter(Boolean),
         // Bloco 7 (programa 100 Fundadores): selo visual público.
-        isFounder: provider.subscription?.isFounder ?? false
+        isFounder: provider.subscription?.isFounder ?? false,
+        // Pedido manual (2026-10-15): ProviderServicesUpgradeScreen precisa
+        // mostrar o preço da aula avulsa ao lado do botão "Agendar mais uma
+        // aula avulsa" - preço base do profissional, independente de
+        // qualquer oferta/pacote publicado.
+        priceCents: provider.priceCents
       },
       onlineConsultancyEnabled: provider.onlineConsultancySetting?.enabled ?? false,
       offers: provider.serviceOffers.map((offer) => this.serializeOffer(offer)),

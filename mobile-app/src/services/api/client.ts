@@ -314,6 +314,8 @@ export type ProviderConsultancyCatalog = {
     specialties: string[];
     // Bloco 7 (programa 100 Fundadores): selo visual público.
     isFounder?: boolean;
+    // Preço da aula avulsa (independente de oferta/pacote publicado).
+    priceCents: number;
   };
   onlineConsultancyEnabled: boolean;
   offers: ProviderServiceOffer[];

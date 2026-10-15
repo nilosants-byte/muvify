@@ -114,110 +114,132 @@ export function ProviderServicesUpgradeScreen({ navigation, route }: Props) {
             "novo agendamento" na aba Meu Personal some assim que existe
             vínculo ativo, independente de ser com o mesmo profissional ou
             não. A regra de exclusividade já permite isso (só bloqueia
-            profissional DIFERENTE) - só faltava o caminho de navegação. */}
-        <TouchableOpacity
-          onPress={() => navigation.navigate("CreateBooking", { professionalId: providerId })}
-          style={{ borderRadius: 16, padding: 15, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, flexDirection: "row", alignItems: "center", gap: 10 }}
-        >
-          <Ionicons name="calendar-outline" size={20} color={theme.primary} />
-          <View style={{ flex: 1 }}>
-            <MvText variant="semi2" style={{ color: theme.primary }}>Agendar mais uma aula avulsa</MvText>
-            <MvText variant="caption" color="secondary" style={{ marginTop: 2 }}>
-              Com {catalogQuery.data?.provider.displayName ?? "este profissional"}, sem trocar nem cancelar seu plano atual.
-            </MvText>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={theme.text3} />
-        </TouchableOpacity>
+            profissional DIFERENTE) - só faltava o caminho de navegação.
+            Pedido manual (2026-10-15): separado em seções por intenção
+            ("quero uma aula" vs. "quero um plano") em vez de por tipo de
+            produto - mais intuitivo pro cliente escolher. */}
+        <View style={{ gap: 10 }}>
+          <MvText variant="caption" color="secondary" style={{ textTransform: "uppercase", letterSpacing: 0.06 * 12, fontFamily: "DMSans_700Bold" }}>
+            Quero agendar uma aula nova
+          </MvText>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("CreateBooking", { professionalId: providerId })}
+            style={{ borderRadius: 16, padding: 15, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, flexDirection: "row", alignItems: "center", gap: 10 }}
+          >
+            <Ionicons name="calendar-outline" size={20} color={theme.primary} />
+            <View style={{ flex: 1 }}>
+              <MvText variant="semi2" style={{ color: theme.primary }}>Agendar mais uma aula avulsa</MvText>
+              <MvText variant="caption" color="secondary" style={{ marginTop: 2 }}>
+                Sem trocar nem cancelar seu plano atual.
+              </MvText>
+            </View>
+            {typeof catalogQuery.data?.provider.priceCents === "number" ? (
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.primary }}>
+                  {formatCurrencyBRL(catalogQuery.data.provider.priceCents / 100)}
+                </Text>
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 10, color: theme.text3 }}>por aula</Text>
+              </View>
+            ) : (
+              <Ionicons name="chevron-forward" size={18} color={theme.text3} />
+            )}
+          </TouchableOpacity>
+        </View>
 
         {/* Raio-X pós-épico (achado médio): sem isso, a tela ficava com a
             lista vazia tanto durante o carregamento quanto se a query
             falhasse — indistinguível de "esse profissional não tem mais
-            nada pra oferecer", sem toast nem retry nenhum. */}
-        {catalogQuery.isLoading ? (
-          <View style={{ paddingVertical: 40, alignItems: "center" }}>
-            <ActivityIndicator color={theme.primary} />
-          </View>
-        ) : catalogQuery.isError ? (
-          <View style={{ paddingVertical: 30, alignItems: "center", gap: 10 }}>
-            <MvText variant="caption" color="secondary" style={{ textAlign: "center" }}>
-              Não foi possível carregar os serviços deste profissional.
+            nada pra oferecer", sem toast nem retry nenhum. Pedido manual
+            (2026-10-15): seção inteira (título incluso) some quando o
+            profissional não tem nenhuma oferta publicada, em vez de
+            mostrar um título vazio com só o aviso de "nenhum serviço". */}
+        {catalogQuery.isLoading || catalogQuery.isError || (catalogQuery.data?.offers.length ?? 0) > 0 ? (
+          <View style={{ gap: 10 }}>
+            <MvText variant="caption" color="secondary" style={{ textTransform: "uppercase", letterSpacing: 0.06 * 12, fontFamily: "DMSans_700Bold" }}>
+              Quero contratar um plano novo
             </MvText>
-            <TouchableOpacity onPress={() => catalogQuery.refetch()}>
-              <MvText variant="semi3" style={{ color: theme.primary }}>Tentar de novo</MvText>
-            </TouchableOpacity>
-          </View>
-        ) : (catalogQuery.data?.offers ?? []).length === 0 ? (
-          <View style={{ paddingVertical: 30, alignItems: "center" }}>
-            <MvText variant="caption" color="secondary" style={{ textAlign: "center" }}>
-              Nenhum outro serviço disponível deste profissional no momento.
-            </MvText>
+
+            {catalogQuery.isLoading ? (
+              <View style={{ paddingVertical: 40, alignItems: "center" }}>
+                <ActivityIndicator color={theme.primary} />
+              </View>
+            ) : catalogQuery.isError ? (
+              <View style={{ paddingVertical: 30, alignItems: "center", gap: 10 }}>
+                <MvText variant="caption" color="secondary" style={{ textAlign: "center" }}>
+                  Não foi possível carregar os serviços deste profissional.
+                </MvText>
+                <TouchableOpacity onPress={() => catalogQuery.refetch()}>
+                  <MvText variant="semi3" style={{ color: theme.primary }}>Tentar de novo</MvText>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              catalogQuery.data!.offers.map((offer) => {
+                const isCurrent = offer.id === currentOfferId;
+                const isPresentialLike = offer.kind === "PRESENTIAL" || offer.kind === "COMBO";
+                return (
+                  <View
+                    key={offer.id}
+                    style={{
+                      borderRadius: 16,
+                      padding: 15,
+                      borderWidth: isCurrent ? 1.5 : 1,
+                      borderColor: isCurrent ? theme.primary : theme.border,
+                      backgroundColor: isCurrent ? theme.primarySubtle : theme.cardBg,
+                      gap: 10
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <MvText variant="semi2">{kindLabel(offer.kind)}</MvText>
+                        <MvText variant="caption" color="secondary" style={{ marginTop: 2 }}>{offer.title}</MvText>
+                      </View>
+                      {isCurrent ? (
+                        <View style={{ backgroundColor: theme.primary, borderRadius: 99, paddingHorizontal: 9, paddingVertical: 4 }}>
+                          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.textOnPrimary }}>SEU PLANO ATUAL</Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    {!isCurrent ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                        <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+                          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 17, color: theme.text1 }}>
+                            {formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}
+                          </Text>
+                          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>/{cycleLabel(offer.billingCycle)}</Text>
+                        </View>
+                        {isPresentialLike ? (
+                          <TouchableOpacity
+                            onPress={() => navigation.navigate("ClientChatList")}
+                            style={{ height: 42, borderRadius: 13, paddingHorizontal: 16, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: theme.borderMid, alignItems: "center", justifyContent: "center" }}
+                          >
+                            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12.5, color: theme.text1 }}>Combinar no chat</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() => handlePickOnlineOffer(offer)}
+                            disabled={switchMutation.isPending}
+                            style={{ height: 42, borderRadius: 13, paddingHorizontal: 16, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", opacity: switchMutation.isPending ? 0.6 : 1 }}
+                          >
+                            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12.5, color: theme.textOnPrimary }}>
+                              {switchMutation.isPending ? "Trocando..." : "Trocar por este"}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ) : null}
+
+                    {!isCurrent && isPresentialLike ? (
+                      <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>
+                        Esse serviço tem dia/horário/local a combinar — fale com o profissional pelo chat pra fechar os detalhes.
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })
+            )}
           </View>
         ) : null}
-
-        {(catalogQuery.data?.offers ?? []).map((offer) => {
-          const isCurrent = offer.id === currentOfferId;
-          const isPresentialLike = offer.kind === "PRESENTIAL" || offer.kind === "COMBO";
-          return (
-            <View
-              key={offer.id}
-              style={{
-                borderRadius: 16,
-                padding: 15,
-                borderWidth: isCurrent ? 1.5 : 1,
-                borderColor: isCurrent ? theme.primary : theme.border,
-                backgroundColor: isCurrent ? theme.primarySubtle : theme.cardBg,
-                gap: 10
-              }}
-            >
-              <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-                <View style={{ flex: 1 }}>
-                  <MvText variant="semi2">{kindLabel(offer.kind)}</MvText>
-                  <MvText variant="caption" color="secondary" style={{ marginTop: 2 }}>{offer.title}</MvText>
-                </View>
-                {isCurrent ? (
-                  <View style={{ backgroundColor: theme.primary, borderRadius: 99, paddingHorizontal: 9, paddingVertical: 4 }}>
-                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.textOnPrimary }}>SEU PLANO ATUAL</Text>
-                  </View>
-                ) : null}
-              </View>
-
-              {!isCurrent ? (
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 17, color: theme.text1 }}>
-                      {formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}
-                    </Text>
-                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>/{cycleLabel(offer.billingCycle)}</Text>
-                  </View>
-                  {isPresentialLike ? (
-                    <TouchableOpacity
-                      onPress={() => navigation.navigate("ClientChatList")}
-                      style={{ height: 42, borderRadius: 13, paddingHorizontal: 16, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: theme.borderMid, alignItems: "center", justifyContent: "center" }}
-                    >
-                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12.5, color: theme.text1 }}>Combinar no chat</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      onPress={() => handlePickOnlineOffer(offer)}
-                      disabled={switchMutation.isPending}
-                      style={{ height: 42, borderRadius: 13, paddingHorizontal: 16, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", opacity: switchMutation.isPending ? 0.6 : 1 }}
-                    >
-                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12.5, color: theme.textOnPrimary }}>
-                        {switchMutation.isPending ? "Trocando..." : "Trocar por este"}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ) : null}
-
-              {!isCurrent && isPresentialLike ? (
-                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>
-                  Esse serviço tem dia/horário/local a combinar — fale com o profissional pelo chat pra fechar os detalhes.
-                </Text>
-              ) : null}
-            </View>
-          );
-        })}
       </ScrollView>
     </View>
   );
