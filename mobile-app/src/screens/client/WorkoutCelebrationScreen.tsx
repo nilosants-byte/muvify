@@ -16,6 +16,7 @@ import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { computeUserProgress, mapBackendAchievement } from "../../utils/gamification";
 import type { Achievement } from "../../types/gamification";
+import { captureException } from "../../observability/sentry";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "WorkoutCelebration">;
 
@@ -149,7 +150,12 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
       await AsyncStorage.removeItem(LAST_WORKOUT_KEY);
       setShareSelfieDataUri(null);
       showToast("Foto publicada no feed de evolução!", "success");
-    } catch {
+    } catch (error) {
+      // Achado em teste manual (2026-10-16): catch genérico escondia o erro
+      // de verdade (nunca logado, nunca mandado pro Sentry) — sem isso,
+      // não dava pra saber se o problema era no upload, na criação do post,
+      // ou outra coisa qualquer.
+      captureException(error, { screen: "WorkoutCelebrationScreen", action: "handleShareSelfieYes" });
       showToast("Não foi possível publicar a foto. Tente novamente.", "error");
     } finally {
       setSharingPhoto(false);

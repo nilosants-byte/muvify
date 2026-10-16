@@ -274,15 +274,23 @@ async function seedAchievements() {
   console.log("🏆 Criando conquistas...");
   const achievements = [
     // ── Progressão de Nível ──────────────────────────────────────────────────
-    { key: "level_2",  name: "Deu o Primeiro Passo",        description: "Atingiu o nível Ativo.",            category: "PROGRESSION", medalType: "BRONZE",  xpReward: 0,     conditionType: "LEVEL_REACHED", conditionValue: 2,   sortOrder: 10 },
-    { key: "level_3",  name: "Comprometido com a Evolução", description: "Atingiu o nível Dedicado.",          category: "PROGRESSION", medalType: "BRONZE",  xpReward: 0,     conditionType: "LEVEL_REACHED", conditionValue: 3,   sortOrder: 11 },
-    { key: "level_4",  name: "Atleta de Verdade",            description: "Atingiu o nível Atleta.",            category: "PROGRESSION", medalType: "SILVER",  xpReward: 0,     conditionType: "LEVEL_REACHED", conditionValue: 4,   sortOrder: 12 },
-    { key: "level_5",  name: "Espírito Guerreiro",           description: "Atingiu o nível Guerreiro.",         category: "PROGRESSION", medalType: "SILVER",  xpReward: 0,     conditionType: "LEVEL_REACHED", conditionValue: 5,   sortOrder: 13 },
-    { key: "level_6",  name: "Mentalidade de Campeão",       description: "Atingiu o nível Campeão.",           category: "PROGRESSION", medalType: "GOLD",    xpReward: 0,     conditionType: "LEVEL_REACHED", conditionValue: 6,   sortOrder: 14 },
-    { key: "level_7",  name: "No Nível Elite",               description: "Atingiu o nível Elite.",             category: "PROGRESSION", medalType: "GOLD",    xpReward: 0,     conditionType: "LEVEL_REACHED", conditionValue: 7,   sortOrder: 15 },
-    { key: "level_8",  name: "Mestre da Disciplina",         description: "Atingiu o nível Mestre.",            category: "PROGRESSION", medalType: "DIAMOND", xpReward: 0,     conditionType: "LEVEL_REACHED", conditionValue: 8,   sortOrder: 16 },
-    { key: "level_9",  name: "Uma Lenda Viva",               description: "Atingiu o nível Lenda.",             category: "PROGRESSION", medalType: "DIAMOND", xpReward: 0,     conditionType: "LEVEL_REACHED", conditionValue: 9,   sortOrder: 17 },
-    { key: "level_10", name: "Status Imortal",               description: "Atingiu o nível máximo: Imortal.",   category: "PROGRESSION", medalType: "SPECIAL", xpReward: 0,     conditionType: "LEVEL_REACHED", conditionValue: 10,  sortOrder: 18 },
+    // Achado em teste manual (2026-10-16): toda conquista de nível dava
+    // xpReward:0 (nunca chamava awardXp — sem isso o usuário "desbloqueia"
+    // uma conquista e não ganha nada, o que não faz sentido pra progressão
+    // de gamificação). Valores abaixo são um bônus modesto por nível —
+    // sempre bem menor que o XP exigido pra chegar lá (nunca "paga" a
+    // progressão em dobro), crescendo com a dificuldade/raridade do medalType,
+    // na mesma escala já usada pelas outras categorias (bronze ~10-100,
+    // prata ~100-200, ouro ~250-400, diamante ~800-1500, especial ~3000).
+    { key: "level_2",  name: "Deu o Primeiro Passo",        description: "Atingiu o nível Ativo.",            category: "PROGRESSION", medalType: "BRONZE",  xpReward: 20,    conditionType: "LEVEL_REACHED", conditionValue: 2,   sortOrder: 10 },
+    { key: "level_3",  name: "Comprometido com a Evolução", description: "Atingiu o nível Dedicado.",          category: "PROGRESSION", medalType: "BRONZE",  xpReward: 30,    conditionType: "LEVEL_REACHED", conditionValue: 3,   sortOrder: 11 },
+    { key: "level_4",  name: "Atleta de Verdade",            description: "Atingiu o nível Atleta.",            category: "PROGRESSION", medalType: "SILVER",  xpReward: 100,   conditionType: "LEVEL_REACHED", conditionValue: 4,   sortOrder: 12 },
+    { key: "level_5",  name: "Espírito Guerreiro",           description: "Atingiu o nível Guerreiro.",         category: "PROGRESSION", medalType: "SILVER",  xpReward: 150,   conditionType: "LEVEL_REACHED", conditionValue: 5,   sortOrder: 13 },
+    { key: "level_6",  name: "Mentalidade de Campeão",       description: "Atingiu o nível Campeão.",           category: "PROGRESSION", medalType: "GOLD",    xpReward: 250,   conditionType: "LEVEL_REACHED", conditionValue: 6,   sortOrder: 14 },
+    { key: "level_7",  name: "No Nível Elite",               description: "Atingiu o nível Elite.",             category: "PROGRESSION", medalType: "GOLD",    xpReward: 400,   conditionType: "LEVEL_REACHED", conditionValue: 7,   sortOrder: 15 },
+    { key: "level_8",  name: "Mestre da Disciplina",         description: "Atingiu o nível Mestre.",            category: "PROGRESSION", medalType: "DIAMOND", xpReward: 800,   conditionType: "LEVEL_REACHED", conditionValue: 8,   sortOrder: 16 },
+    { key: "level_9",  name: "Uma Lenda Viva",               description: "Atingiu o nível Lenda.",             category: "PROGRESSION", medalType: "DIAMOND", xpReward: 1500,  conditionType: "LEVEL_REACHED", conditionValue: 9,   sortOrder: 17 },
+    { key: "level_10", name: "Status Imortal",               description: "Atingiu o nível máximo: Imortal.",   category: "PROGRESSION", medalType: "SPECIAL", xpReward: 3000,  conditionType: "LEVEL_REACHED", conditionValue: 10,  sortOrder: 18 },
     // ── Sequência de Treinos ─────────────────────────────────────────────────
     { key: "streak_3",   name: "Primeiros Passos",         description: "3 treinos consecutivos.",              category: "CONSISTENCY", medalType: "BRONZE",  xpReward: 20,    conditionType: "STREAK_SESSIONS", conditionValue: 3,   sortOrder: 200 },
     { key: "streak_5",   name: "Ritmo de Treino",          description: "5 treinos consecutivos.",              category: "CONSISTENCY", medalType: "BRONZE",  xpReward: 40,    conditionType: "STREAK_SESSIONS", conditionValue: 5,   sortOrder: 201 },
@@ -302,7 +310,10 @@ async function seedAchievements() {
     { key: "streak_250", name: "250 Dias Sem Descanso",    description: "250 treinos consecutivos.",            category: "CONSISTENCY", medalType: "DIAMOND", xpReward: 7000,  conditionType: "STREAK_SESSIONS", conditionValue: 250, sortOrder: 215 },
     { key: "streak_365", name: "Um Ano Inteiro",           description: "365 treinos consecutivos.",            category: "CONSISTENCY", medalType: "SPECIAL", xpReward: 10000, conditionType: "STREAK_SESSIONS", conditionValue: 365, sortOrder: 216 },
     // ── Volume de Treinos ────────────────────────────────────────────────────
-    { key: "workouts_1",    name: "Primeiro Treino",         description: "Concluiu o primeiro treino.",          category: "VOLUME", medalType: "BRONZE",  xpReward: 0,     conditionType: "TOTAL_WORKOUTS", conditionValue: 1,    sortOrder: 300 },
+    // Achado em teste manual (2026-10-16): era a única "primeira vez" de
+    // qualquer categoria com xpReward:0 — todas as outras (avaliação,
+    // foto, personal, seguir) dão +10. Alinhado ao mesmo padrão.
+    { key: "workouts_1",    name: "Primeiro Treino",         description: "Concluiu o primeiro treino.",          category: "VOLUME", medalType: "BRONZE",  xpReward: 10,    conditionType: "TOTAL_WORKOUTS", conditionValue: 1,    sortOrder: 300 },
     { key: "workouts_5",    name: "Primeiros Cinco",         description: "5 treinos concluídos.",                category: "VOLUME", medalType: "BRONZE",  xpReward: 30,    conditionType: "TOTAL_WORKOUTS", conditionValue: 5,    sortOrder: 303 },
     { key: "workouts_10",   name: "Aquecendo",               description: "10 treinos concluídos.",               category: "VOLUME", medalType: "BRONZE",  xpReward: 100,   conditionType: "TOTAL_WORKOUTS", conditionValue: 10,   sortOrder: 304 },
     { key: "workouts_20",   name: "Vinte e Forte",           description: "20 treinos concluídos.",               category: "VOLUME", medalType: "BRONZE",  xpReward: 100,   conditionType: "TOTAL_WORKOUTS", conditionValue: 20,   sortOrder: 306 },
