@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Linking, Platform, Text, View, TouchableOpacity } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Platform, Text, TextInput, View, TouchableOpacity } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ConfettiCannon from "react-native-confetti-cannon";
@@ -22,6 +22,7 @@ type Props = NativeStackScreenProps<ClientStackParamList, "WorkoutCelebration">;
 const SEEN_ACHIEVEMENTS_KEY = "@muvify/seenAchievements";
 const STORE_REVIEW_PROMPTED_KEY = "@muvify/storeReviewPrompted";
 const LAST_WORKOUT_KEY = "@personalapp/lastWorkout";
+const DEFAULT_FEED_CAPTION = "Treino concluído! 💪";
 const PTS_PRESENCIAL = 80;
 const IOS_APP_ID = process.env.EXPO_PUBLIC_IOS_APP_ID ?? "";
 const ANDROID_PACKAGE = process.env.EXPO_PUBLIC_ANDROID_PACKAGE ?? "";
@@ -39,6 +40,7 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
   const [newAchievements, setNewAchievements] = useState<Achievement[]>([]);
   const [shareSelfieDataUri, setShareSelfieDataUri] = useState<string | null>(null);
   const [sharingPhoto, setSharingPhoto] = useState(false);
+  const [feedCaption, setFeedCaption] = useState("");
 
   const bookingsQuery = useAuthQuery(
     queryKeys.bookings.me(),
@@ -142,7 +144,7 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
         )
       );
       await runWithAuth((token) =>
-        communityApi.createPost(token, { imageUrl: url, caption: "Treino concluído! 💪" })
+        communityApi.createPost(token, { imageUrl: url, caption: feedCaption.trim() || DEFAULT_FEED_CAPTION })
       );
       await AsyncStorage.removeItem(LAST_WORKOUT_KEY);
       setShareSelfieDataUri(null);
@@ -239,6 +241,16 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1, textAlign: "center" }}>
             Postar essa foto no feed de evolução?
           </Text>
+          <TextInput
+            value={feedCaption}
+            onChangeText={setFeedCaption}
+            editable={!sharingPhoto}
+            placeholder={DEFAULT_FEED_CAPTION}
+            placeholderTextColor={theme.text3}
+            maxLength={200}
+            selectionColor={theme.primary}
+            style={{ width: "100%", borderWidth: 1, borderColor: theme.border, borderRadius: 12, backgroundColor: theme.inputBg, paddingHorizontal: 14, paddingVertical: 10, color: theme.text1, fontFamily: "DMSans_400Regular", fontSize: 13 }}
+          />
           <View style={{ flexDirection: "row", gap: S.gap, width: "100%" }}>
             <TouchableOpacity
               onPress={() => void handleShareSelfieNo()}

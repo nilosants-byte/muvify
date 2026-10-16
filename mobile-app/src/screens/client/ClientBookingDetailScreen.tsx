@@ -524,6 +524,15 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         })
       );
       showToast("Avaliação enviada!", "success");
+      // navigation.replace() abaixo também dispara o listener "beforeRemove"
+      // (linha ~197) — ele existe pra avisar quando o usuário tenta SAIR
+      // com algo não salvo, mas não distingue isso de uma navegação
+      // disparada pelo próprio app após o sucesso. Como completionProof
+      // continuava setado, o listener interceptava essa troca de tela e
+      // mostrava "Voltar para o treino? A selfie e a avaliação serão
+      // perdidas." logo depois de tudo já ter sido salvo com sucesso —
+      // limpar aqui faz o listener deixar a troca de tela seguir em frente.
+      setCompletionProof(null);
       navigation.replace("WorkoutCelebration", {
         bookingId: booking.id,
         professionalId: booking.provider?.id ?? booking.providerId ?? "unknown",
@@ -531,7 +540,8 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
       });
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Não foi possível confirmar conclusão.", navigation });
-    } finally { setSubmitting(false); }
+      setSubmitting(false);
+    }
   }
 
   // ── Loading / not found ────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import {
   ScrollView,
   StatusBar,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -189,6 +190,7 @@ function flatPlans(contracts: ConsultancyContract[]): FlatPlan[] {
 // presencial) - conquista já vista ali não é celebrada de novo aqui, e
 // vice-versa.
 const SEEN_ACHIEVEMENTS_KEY = "@muvify/seenAchievements";
+const DEFAULT_FEED_CAPTION = "Treino concluído! 💪";
 
 const DELIVERY_CONTEST_WINDOW_MS = 48 * 60 * 60 * 1000;
 function canContestDelivery(plan: FlatPlan) {
@@ -239,6 +241,7 @@ function WorkoutDetailModal({
 
   // ── Opt-in de foto pro feed de evolução (não obrigatório) ─────────────────
   const [sharePhotoStage, setSharePhotoStage] = useState<"idle" | "capturing" | "uploading" | "done">("idle");
+  const [feedCaption, setFeedCaption] = useState("");
 
   // Chave de persistência do timer — específica por plano (guard contra id undefined)
   const TIMER_KEY = plan?.id ? `@muvify/workoutTimer_${plan.id}` : null;
@@ -384,7 +387,7 @@ function WorkoutDetailModal({
           "feed-photos"
         )
       );
-      await runWithAuth((token) => communityApi.createPost(token, { imageUrl: url, caption: "Treino concluído! 💪" }));
+      await runWithAuth((token) => communityApi.createPost(token, { imageUrl: url, caption: feedCaption.trim() || DEFAULT_FEED_CAPTION }));
       setSharePhotoStage("done");
       showToast("Foto publicada no feed de evolução!", "success");
     } catch {
@@ -439,6 +442,15 @@ function WorkoutDetailModal({
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, textAlign: "center" }}>
                 Não é obrigatório — só pra mostrar pros seus amigos que você treinou.
               </Text>
+              <TextInput
+                value={feedCaption}
+                onChangeText={setFeedCaption}
+                placeholder={DEFAULT_FEED_CAPTION}
+                placeholderTextColor={theme.text3}
+                maxLength={200}
+                selectionColor={theme.primary}
+                style={{ width: "100%", borderWidth: 1, borderColor: theme.border, borderRadius: 12, backgroundColor: theme.inputBg, paddingHorizontal: 14, paddingVertical: 10, color: theme.text1, fontFamily: "DMSans_400Regular", fontSize: 13 }}
+              />
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <TouchableOpacity
                   onPress={() => setSharePhotoStage("done")}
