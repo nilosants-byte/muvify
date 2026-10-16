@@ -204,7 +204,7 @@ export type Booking = {
     id: string;
     reportedUserId: string;
     reportedByUserId: string;
-    status: "PENDING" | "CONTESTED" | "RESOLVED";
+    status: "PENDING" | "CONTESTED" | "RESOLVED" | "WITHDRAWN";
     contestDeadlineAt: string;
     contestedAt: string | null;
     resolvedAt: string | null;
@@ -2774,7 +2774,7 @@ export const bookingsApi = {
       bookingId: string;
       reportedUserId: string;
       reportedByUserId: string;
-      status: "PENDING" | "CONTESTED" | "RESOLVED";
+      status: "PENDING" | "CONTESTED" | "RESOLVED" | "WITHDRAWN";
       contestDeadlineAt: string;
       contestedAt: string | null;
       resolvedAt: string | null;
@@ -2782,6 +2782,12 @@ export const bookingsApi = {
       method: "POST",
       token,
       body: { contestReason }
+    });
+  },
+  withdrawNoShow(token: string, bookingId: string) {
+    return apiRequest<Booking>(`/bookings/${bookingId}/withdraw-no-show`, {
+      method: "POST",
+      token
     });
   },
   contestAutoCapture(token: string, bookingId: string, reason?: string) {

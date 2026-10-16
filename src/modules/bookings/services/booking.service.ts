@@ -2188,6 +2188,67 @@ export class BookingService {
     return updated;
   }
 
+  // Achado em teste manual (2026-10-16): não existia jeito de desfazer um
+  // relato de falta enviado por engano — só o lado acusado podia contestar.
+  // O próprio autor pode retirar enquanto ninguém mais mexeu nisso (ainda
+  // PENDING): o agendamento volta a CONFIRMED (destrava validar
+  // presença/reportar de novo/concluir normalmente) e o relato nunca é
+  // apagado — vira WITHDRAWN, com rastro completo (quem, quando) pra
+  // qualquer revisão futura (admin ou o próprio histórico do agendamento).
+  async withdrawNoShowReport(userId: string, bookingId: string) {
+    const report = await prisma.noShowReport.findUnique({
+      where: { bookingId },
+      include: {
+        booking: {
+          select: {
+            clientId: true,
+            providerId: true,
+            provider: { select: { userId: true } }
+          }
+        }
+      }
+    });
+
+    if (!report) {
+      throw new AppError("Nenhum relato de falta encontrado para este agendamento.", StatusCodes.NOT_FOUND);
+    }
+    if (report.reportedByUserId !== userId) {
+      throw new AppError("Apenas quem registrou o relato pode retirá-lo.", StatusCodes.FORBIDDEN);
+    }
+    if (report.status !== "PENDING") {
+      throw new AppError(
+        report.status === "CONTESTED"
+          ? "Este relato já foi contestado e está em análise — não é mais possível retirá-lo."
+          : "Este relato já foi resolvido e não pode mais ser retirado.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    const [, updatedBooking] = await prisma.$transaction([
+      prisma.noShowReport.update({
+        where: { id: report.id },
+        data: { status: "WITHDRAWN", resolvedAt: new Date() }
+      }),
+      prisma.booking.update({
+        where: { id: bookingId },
+        data: { status: BookingStatus.CONFIRMED }
+      })
+    ]);
+
+    void notificationService
+      .sendToUsers([report.reportedUserId], {
+        preferenceType: "BOOKINGS",
+        title: "Relato de falta retirado",
+        body: `Quem reportou retirou o relato de falta do agendamento ${bookingId.slice(0, 8)} — o agendamento voltou ao normal.`,
+        data: { type: "BOOKING_NO_SHOW_WITHDRAWN", bookingId }
+      })
+      .catch((error) => {
+        console.error("No-show withdrawal notification failed:", error);
+      });
+
+    return updatedBooking;
+  }
+
   // Quando só uma das partes confirma a sessão, a cobrança é forçada depois de
   // AUTO_CAPTURE_CONFIRMATION_HOURS (ver payment.service.ts::autoCaptureSingleConfirmation)
   // pra proteger quem prestou o serviço de um silêncio da outra parte. Em troca,

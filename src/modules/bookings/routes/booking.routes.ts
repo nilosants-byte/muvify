@@ -68,6 +68,13 @@ bookingRoutes.post(
   bookingController.contestNoShowReport
 );
 bookingRoutes.post(
+  "/:bookingId/withdraw-no-show",
+  clientOrProvider,
+  uploadRateLimiter,
+  validate(bookingIdParamSchema),
+  bookingController.withdrawNoShowReport
+);
+bookingRoutes.post(
   "/:bookingId/contest-auto-capture",
   clientOrProvider,
   uploadRateLimiter,

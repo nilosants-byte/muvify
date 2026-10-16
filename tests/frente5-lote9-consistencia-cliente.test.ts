@@ -179,4 +179,77 @@ describe("Frente 5, Lote 9 — mensagens de estado obsoleto e dados de disputa n
     expect(found.noShowReport.reportedUserId).toBe(clientId);
     expect(new Date(found.noShowReport.contestDeadlineAt).getTime()).toBeGreaterThan(Date.now());
   });
+
+  // Achado em teste manual (2026-10-16): não existia jeito de desfazer um
+  // relato de falta enviado por engano — só o lado acusado podia contestar.
+  it("quem reportou pode retirar o relato enquanto PENDING — booking volta a CONFIRMED e o relato vira WITHDRAWN", async () => {
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        providerId,
+        categoryId,
+        scheduledAt: new Date(Date.now() - 60 * 60 * 1000),
+        priceCents: 10000,
+        status: BookingStatus.CONFIRMED
+      }
+    });
+    bookingIds.push(booking.id);
+
+    await bookingService.reportNoShow(clientId, booking.id);
+    const reverted = await bookingService.withdrawNoShowReport(clientId, booking.id);
+    expect(reverted.status).toBe(BookingStatus.CONFIRMED);
+
+    const report = await prisma.noShowReport.findUniqueOrThrow({ where: { bookingId: booking.id } });
+    expect(report.status).toBe("WITHDRAWN");
+    expect(report.resolvedAt).toBeTruthy();
+  });
+
+  it("só quem registrou o relato pode retirá-lo — a parte reportada recebe 403", async () => {
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        providerId,
+        categoryId,
+        scheduledAt: new Date(Date.now() - 60 * 60 * 1000),
+        priceCents: 10000,
+        status: BookingStatus.CONFIRMED
+      }
+    });
+    bookingIds.push(booking.id);
+
+    await bookingService.reportNoShow(clientId, booking.id);
+
+    let caughtMessage = "";
+    try {
+      await bookingService.withdrawNoShowReport(providerUserId, booking.id);
+    } catch (error) {
+      caughtMessage = error instanceof Error ? error.message : String(error);
+    }
+    expect(caughtMessage).toBe("Apenas quem registrou o relato pode retirá-lo.");
+  });
+
+  it("não é mais possível retirar depois que a parte reportada já contestou", async () => {
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        providerId,
+        categoryId,
+        scheduledAt: new Date(Date.now() - 60 * 60 * 1000),
+        priceCents: 10000,
+        status: BookingStatus.CONFIRMED
+      }
+    });
+    bookingIds.push(booking.id);
+
+    await bookingService.reportNoShow(clientId, booking.id);
+    await bookingService.contestNoShowReport(providerUserId, booking.id);
+
+    let caughtMessage = "";
+    try {
+      await bookingService.withdrawNoShowReport(clientId, booking.id);
+    } catch (error) {
+      caughtMessage = error instanceof Error ? error.message : String(error);
+    }
+    expect(caughtMessage).toBe("Este relato já foi contestado e está em análise — não é mais possível retirá-lo.");
+  });
 });

@@ -683,6 +683,12 @@ enum NoShowReportStatus {
   PENDING
   CONTESTED
   RESOLVED
+  // Achado em teste manual (2026-10-16): não existia jeito de desfazer um
+  // relato feito por engano — só o lado acusado podia contestar. O próprio
+  // autor agora pode retirar, mas só enquanto PENDING (antes de o outro
+  // lado contestar ou do prazo vencer) — preserva o registro (nunca apaga
+  // a linha) pra manter rastro visível a quem for revisar depois.
+  WITHDRAWN
 }
 
 model NoShowReport {

@@ -137,6 +137,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   const [reportingNoShow, setReportingNoShow] = useState(false);
   const [contestingNoShow, setContestingNoShow] = useState(false);
   const [contestingAutoCapture, setContestingAutoCapture] = useState(false);
+  const [withdrawingNoShow, setWithdrawingNoShow] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [contestReason, setContestReason] = useState("");
   // Frente 6 (segunda camada), Lote 12: navigation.goBack() logo depois de
@@ -478,6 +479,31 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             } catch (error) {
               handleScreenError({ error, showToast, fallbackMessage: "Não foi possível contestar.", navigation });
             } finally { setContestingNoShow(false); }
+          },
+        },
+      ]
+    );
+  }
+
+  function handleWithdrawNoShow() {
+    if (!booking) return;
+    Alert.alert(
+      "Retirar relato de falta",
+      "Isso cancela o seu relato e volta o agendamento ao estado confirmado, como se nada tivesse acontecido. Use só se você reportou por engano.",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Retirar relato",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setWithdrawingNoShow(true);
+              await runWithAuth((token) => bookingsApi.withdrawNoShow(token, booking.id));
+              showToast("Relato retirado. O agendamento voltou ao normal.", "success");
+              void detailQuery.refetch();
+            } catch (error) {
+              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível retirar o relato.", navigation });
+            } finally { setWithdrawingNoShow(false); }
           },
         },
       ]
@@ -1045,15 +1071,21 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         )}
 
         {wasReportedAsNoShow && noShowReport ? (
-          <View style={{ marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.danger, backgroundColor: theme.dangerSubtle, padding: 14, gap: 8 }}>
+          <View style={{
+            marginTop: 12, borderRadius: 12, borderWidth: 1, padding: 14, gap: 8,
+            borderColor: noShowReport.status === "WITHDRAWN" ? theme.border : theme.danger,
+            backgroundColor: noShowReport.status === "WITHDRAWN" ? theme.cardBg : theme.dangerSubtle,
+          }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>
-              Você foi reportado por falta neste agendamento
+              {noShowReport.status === "WITHDRAWN" ? "Relato de falta retirado" : "Você foi reportado por falta neste agendamento"}
             </Text>
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
               {noShowReport.status === "PENDING"
                 ? `Se não for contestado até ${formatBRDateTime(noShowReport.contestDeadlineAt)}, o valor da sessão fica com o profissional.`
                 : noShowReport.status === "CONTESTED"
                 ? "Sua contestação está em análise."
+                : noShowReport.status === "WITHDRAWN"
+                ? "Quem reportou retirou o relato — o agendamento voltou ao normal, nada a fazer aqui."
                 : "Este relato já foi resolvido."}
             </Text>
             {canContestNoShow ? (
@@ -1084,15 +1116,28 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         {reportedByMe && noShowReport ? (
           <View style={{ marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14, gap: 8 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>
-              Você reportou falta neste agendamento
+              {noShowReport.status === "WITHDRAWN" ? "Você retirou o relato de falta" : "Você reportou falta neste agendamento"}
             </Text>
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
               {noShowReport.status === "PENDING"
                 ? `O profissional tem até ${formatBRDateTime(noShowReport.contestDeadlineAt)} para contestar. Se não contestar, você é reembolsado automaticamente.`
                 : noShowReport.status === "CONTESTED"
                 ? "O profissional contestou o seu relato — um administrador vai analisar e decidir."
+                : noShowReport.status === "WITHDRAWN"
+                ? "O agendamento voltou ao estado confirmado, como se nada tivesse acontecido."
                 : "Este relato já foi resolvido."}
             </Text>
+            {noShowReport.status === "PENDING" ? (
+              <TouchableOpacity
+                disabled={withdrawingNoShow}
+                onPress={handleWithdrawNoShow}
+                style={{ height: 40, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center", opacity: withdrawingNoShow ? 0.6 : 1 }}
+              >
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text2 }}>
+                  {withdrawingNoShow ? "Retirando..." : "Retirar relato (reportei por engano)"}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
 
@@ -1127,7 +1172,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
           tímido no próprio botão ("Reportando...", opacidade reduzida),
           fácil de não perceber que algo está acontecendo de verdade. */}
       <Modal
-        visible={cancelling || reportingNoShow || contestingNoShow || contestingAutoCapture}
+        visible={cancelling || reportingNoShow || contestingNoShow || contestingAutoCapture || withdrawingNoShow}
         transparent
         animationType="fade"
       >
@@ -1139,8 +1184,8 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                 ? "Cancelando agendamento..."
                 : reportingNoShow
                   ? "Registrando o relato de falta..."
-                  : contestingNoShow
-                    ? "Enviando sua contestação..."
+                  : withdrawingNoShow
+                    ? "Retirando o relato..."
                     : "Enviando sua contestação..."}
             </Text>
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center" }}>

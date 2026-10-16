@@ -89,6 +89,14 @@ export class BookingController {
     return response.json(report);
   }
 
+  async withdrawNoShowReport(request: Request, response: Response) {
+    const booking = await bookingService.withdrawNoShowReport(
+      request.user!.id,
+      request.params.bookingId
+    );
+    return response.json(booking);
+  }
+
   async contestAutoCapturedCompletion(request: Request, response: Response) {
     const disputeCase = await bookingService.contestAutoCapturedCompletion(
       request.user!.id,
