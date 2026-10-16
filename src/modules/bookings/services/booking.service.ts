@@ -754,6 +754,17 @@ export class BookingService {
           contestedAt: true,
           resolvedAt: true
         }
+      },
+      // Achado em teste manual (2026-10-16): o app não tinha nenhum jeito de
+      // saber que a cobrança automática já tinha sido contestada — o botão
+      // "Contestar cobrança" continuava aparecendo depois de contestar
+      // (o servidor já bloqueia uma segunda contestação, mas a tela nunca
+      // mostrava isso, arriscando o cliente tentar de novo e levar um erro
+      // confuso em vez de ver que já está em análise).
+      disputeCases: {
+        where: { type: "AUTO_CAPTURE_CONTESTED" },
+        select: { id: true, status: true, createdAt: true },
+        take: 1
       }
     } as const;
 

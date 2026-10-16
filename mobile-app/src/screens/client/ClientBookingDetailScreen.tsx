@@ -342,13 +342,22 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   // Se só o profissional confirmou a conclusão (o cliente nunca confirmou), a
   // cobrança foi forçada por confirmação única — o cliente tem 24h após a
   // conclusão pra contestar essa cobrança específica.
+  const autoCaptureContest = booking?.disputeCases?.[0] ?? null;
   const canContestAutoCapture = Boolean(
     booking &&
     booking.status === "COMPLETED" &&
     booking.completedAt &&
     !booking.clientConfirmedAt &&
     booking.providerConfirmedAt &&
+    !autoCaptureContest &&
     Date.now() - new Date(booking.completedAt).getTime() <= 24 * 60 * 60 * 1000
+  );
+  // Achado em teste manual (2026-10-16): depois de contestar, o botão
+  // "Contestar cobrança" continuava aparecendo — o servidor já bloqueia
+  // uma segunda tentativa, mas a tela nunca sabia que a primeira já tinha
+  // acontecido (disputeCases não vinha junto com o agendamento).
+  const showAutoCaptureInfo = Boolean(
+    booking && booking.status === "COMPLETED" && !booking.clientConfirmedAt && booking.providerConfirmedAt
   );
 
   // Frente 6 (segunda camada), Lote 13: o código/QR só atualizava com o
@@ -1158,6 +1167,17 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                 {contestingAutoCapture ? "Enviando..." : "Contestar cobrança"}
               </Text>
             </TouchableOpacity>
+          </View>
+        ) : showAutoCaptureInfo && autoCaptureContest ? (
+          <View style={{ marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14, gap: 8 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>
+              Você já contestou esta cobrança
+            </Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
+              {autoCaptureContest.status === "RESOLVED"
+                ? "Um administrador já analisou e resolveu o caso."
+                : "Um administrador vai analisar antes da cobrança ficar definitiva — nada mais a fazer por aqui."}
+            </Text>
           </View>
         ) : null}
       </ScrollView>

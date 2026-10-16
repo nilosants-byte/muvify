@@ -204,6 +204,10 @@ function disputeBadge(item: Booking): { label: string } | null {
       return { label: "Aguardando contestação" };
     }
   }
+  // Achado em teste manual (2026-10-16): depois de contestar, o selo
+  // continuava "Aguardando contestação" pra sempre — não checava se já
+  // existia a contestação (disputeCases).
+  if (item.disputeCases && item.disputeCases.length > 0) return { label: "Cobrança contestada" };
   const autoCaptureOpen =
     item.status === "COMPLETED" &&
     !!item.completedAt &&

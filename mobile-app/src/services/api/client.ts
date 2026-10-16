@@ -209,6 +209,10 @@ export type Booking = {
     contestedAt: string | null;
     resolvedAt: string | null;
   } | null;
+  // Achado em teste manual (2026-10-16): sem isso, o app não sabia
+  // diferenciar "ainda não contestei" de "já contestei, em análise" —
+  // só existe no máximo 1 (um caso por booking, filtrado no servidor).
+  disputeCases?: Array<{ id: string; status: "OPEN" | "RESOLVED"; createdAt: string }>;
 };
 
 export type CompletionProofInput = {
