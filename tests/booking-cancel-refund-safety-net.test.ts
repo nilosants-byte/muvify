@@ -214,6 +214,25 @@ describe("Rede de seguranca de estorno — cancelPaymentForBooking (Lote 1 do ra
     expect(dispute?.amountCents).toBe(payment.amountCents);
   });
 
+  // Achado em teste manual (2026-10-16): o job de seguranca
+  // (autoRefundExpiredBookings) chama cancelPaymentForBooking de novo a
+  // cada ciclo pra qualquer pagamento ainda preso nesse estado - sem essa
+  // protecao, uma falha persistente da MP (ou um pagamento fictico que
+  // nunca existiu de verdade no gateway) gerava um DisputeCase novo e uma
+  // notificacao nova a CADA tentativa, pra sempre (chegou a centenas numa
+  // unica sessao de teste).
+  it("chamar cancelPaymentForBooking duas vezes seguidas com a MP sempre falhando so cria UM DisputeCase", async () => {
+    vi.spyOn(PaymentRefund.prototype, "create").mockRejectedValue(new Error("MP indisponivel"));
+
+    const booking = await createCapturedBooking(21);
+
+    await paymentService.cancelPaymentForBooking(booking.id);
+    await paymentService.cancelPaymentForBooking(booking.id);
+
+    const disputes = await prisma.disputeCase.findMany({ where: { bookingId: booking.id, type: "REFUND_FAILED" } });
+    expect(disputes.length).toBe(1);
+  });
+
   it("quando o estorno da MP funciona, marca REFUNDED normalmente e nao cria disputa", async () => {
     vi.spyOn(PaymentRefund.prototype, "create").mockResolvedValueOnce({ id: 12345 } as any);
 

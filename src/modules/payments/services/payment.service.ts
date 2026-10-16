@@ -1308,28 +1308,41 @@ export class PaymentService {
         // consultancy.service.ts e no cancelamento de pacote presencial.
         console.error("cancelPaymentForBooking: estorno falhou (MP error):", { bookingId, paymentId: payment.id, error });
         Sentry.captureException(error, { tags: { area: "payments" }, extra: { bookingId, paymentId: payment.id, phase: "refund_failed" } });
-        const booking = await prisma.booking.findUnique({
-          where: { id: bookingId },
-          select: { clientId: true, providerId: true }
+        // Achado em teste manual (2026-10-16): autoRefundExpiredBookings (job
+        // de segurança) chama cancelPaymentForBooking de novo a cada ciclo
+        // pra qualquer pagamento ainda não CANCELED/REFUNDED num booking já
+        // CANCELLED — sem essa checagem, uma falha de MP persistente (ou,
+        // neste caso, um pagamento fictício de teste que nunca existiu de
+        // verdade no gateway) gerava um DisputeCase E uma notificação NOVOS
+        // a cada execução do job, pra sempre — "centenas de notificações
+        // iguais" num único dia de teste.
+        const alreadyFlagged = await prisma.disputeCase.findFirst({
+          where: { bookingId, type: "REFUND_FAILED", status: "OPEN" }
         });
-        if (booking) {
-          await prisma.disputeCase.create({
-            data: {
-              type: "REFUND_FAILED",
-              clientId: booking.clientId,
-              providerId: booking.providerId,
-              amountCents: payment.amountCents,
-              mpPaymentId: payment.mpPaymentId,
-              bookingId,
-              contextNote: "Reembolso automático falhou ao cancelar agendamento presencial."
-            }
+        if (!alreadyFlagged) {
+          const booking = await prisma.booking.findUnique({
+            where: { id: bookingId },
+            select: { clientId: true, providerId: true }
+          });
+          if (booking) {
+            await prisma.disputeCase.create({
+              data: {
+                type: "REFUND_FAILED",
+                clientId: booking.clientId,
+                providerId: booking.providerId,
+                amountCents: payment.amountCents,
+                mpPaymentId: payment.mpPaymentId,
+                bookingId,
+                contextNote: "Reembolso automático falhou ao cancelar agendamento presencial."
+              }
+            });
+          }
+          await this.notifyBookingUsers(bookingId, {
+            title: "Estorno pendente de revisão",
+            body: "Não conseguimos confirmar o estorno automaticamente — nossa equipe já foi avisada e vai resolver manualmente.",
+            data: { type: "PAYMENT_REFUND_FAILED" }
           });
         }
-        await this.notifyBookingUsers(bookingId, {
-          title: "Estorno pendente de revisão",
-          body: "Não conseguimos confirmar o estorno automaticamente — nossa equipe já foi avisada e vai resolver manualmente.",
-          data: { type: "PAYMENT_REFUND_FAILED" }
-        });
       }
       return;
     }
@@ -1366,28 +1379,39 @@ export class PaymentService {
           error
         });
         Sentry.captureException(error, { tags: { area: "payments" }, extra: { bookingId, paymentId: payment.id, phase: "preauth_cancel_failed" } });
-        const booking = await prisma.booking.findUnique({
-          where: { id: bookingId },
-          select: { clientId: true, providerId: true }
+        // Achado em teste manual (2026-10-16): mesmo problema do ramo
+        // CAPTURED acima — sem essa checagem, o job de segurança
+        // autoRefundExpiredBookings reabria um DisputeCase e reenviava essa
+        // notificação a cada ciclo, pra sempre, pra qualquer pagamento que
+        // nunca conseguisse ser cancelado no gateway (incluindo pagamentos
+        // fictícios de teste, que nunca existiram de verdade na MP).
+        const alreadyFlagged = await prisma.disputeCase.findFirst({
+          where: { bookingId, type: "REFUND_FAILED", status: "OPEN" }
         });
-        if (booking) {
-          await prisma.disputeCase.create({
-            data: {
-              type: "REFUND_FAILED",
-              clientId: booking.clientId,
-              providerId: booking.providerId,
-              amountCents: payment.amountCents,
-              mpPaymentId: payment.mpPaymentId,
-              bookingId,
-              contextNote: "Cancelamento de pré-autorização (hold no cartão) falhou ao cancelar agendamento presencial — pagamento nunca foi capturado."
-            }
+        if (!alreadyFlagged) {
+          const booking = await prisma.booking.findUnique({
+            where: { id: bookingId },
+            select: { clientId: true, providerId: true }
+          });
+          if (booking) {
+            await prisma.disputeCase.create({
+              data: {
+                type: "REFUND_FAILED",
+                clientId: booking.clientId,
+                providerId: booking.providerId,
+                amountCents: payment.amountCents,
+                mpPaymentId: payment.mpPaymentId,
+                bookingId,
+                contextNote: "Cancelamento de pré-autorização (hold no cartão) falhou ao cancelar agendamento presencial — pagamento nunca foi capturado."
+              }
+            });
+          }
+          await this.notifyBookingUsers(bookingId, {
+            title: "Cancelamento pendente de revisão",
+            body: "Não conseguimos confirmar a liberação do valor pré-autorizado — nossa equipe já foi avisada e vai resolver manualmente.",
+            data: { type: "PAYMENT_REFUND_FAILED" }
           });
         }
-        await this.notifyBookingUsers(bookingId, {
-          title: "Cancelamento pendente de revisão",
-          body: "Não conseguimos confirmar a liberação do valor pré-autorizado — nossa equipe já foi avisada e vai resolver manualmente.",
-          data: { type: "PAYMENT_REFUND_FAILED" }
-        });
         // Não marca o Payment como CANCELED — o hold pode ainda estar ativo
         // no gateway, e mentir sobre o estado local atrapalharia qualquer
         // tentativa de resolução manual depois (mesmo princípio do ramo
