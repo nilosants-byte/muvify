@@ -34,8 +34,17 @@ export class ReviewService {
     if (booking.clientId !== userId) {
       throw new AppError("Apenas o cliente pode avaliar.", StatusCodes.FORBIDDEN);
     }
-    if (booking.status !== BookingStatus.COMPLETED) {
-      throw new AppError("A avaliação só pode ser enviada após o serviço ser concluído.");
+    // Achado em teste manual (2026-10-16): a conclusão presencial exige
+    // confirmação dos dois lados (cliente e profissional) pra virar
+    // COMPLETED de verdade — mas isso é sobre quando capturar o pagamento,
+    // não sobre se o cliente já viveu a experiência o bastante pra avaliar.
+    // Exigir COMPLETED aqui bloqueava a avaliação logo depois do cliente
+    // confirmar a própria conclusão (com selfie e tudo), bem no momento em
+    // que a tela já oferece a avaliação pra ele fazer na hora — exatamente
+    // quando ele não vai voltar depois pra avaliar. clientConfirmedAt já
+    // é a prova de que o cliente concluiu a parte dele.
+    if (booking.status !== BookingStatus.COMPLETED && !booking.clientConfirmedAt) {
+      throw new AppError("A avaliação só pode ser enviada após você confirmar a conclusão do atendimento.");
     }
     if (booking.review) {
       throw new AppError("Este agendamento já foi avaliado.", StatusCodes.CONFLICT);

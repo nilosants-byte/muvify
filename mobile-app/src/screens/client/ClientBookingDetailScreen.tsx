@@ -498,11 +498,12 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     if (!booking) return;
     try {
       setSubmitting(true);
-      // 1. Confirma conclusão com prova de presença — a conclusão exige
-      // confirmação dos dois lados (cliente e profissional). Se o
-      // profissional ainda não confirmou a dele, o booking retorna aqui
-      // ainda como CONFIRMED (não COMPLETED) — "aguardando o outro lado".
-      const updatedBooking = await runWithAuth((token) =>
+      // 1. Confirma conclusão com prova de presença — a conclusão só vira
+      // COMPLETED de verdade (status do booking) depois que os dois lados
+      // confirmarem, mas isso é sobre quando capturar o pagamento, não
+      // sobre se o cliente já pode avaliar: clientConfirmedAt (gravado
+      // aqui) já é suficiente pro servidor aceitar a avaliação.
+      await runWithAuth((token) =>
         bookingsApi.updateStatus(token, booking.id, "COMPLETED", completionProof)
       );
       // 2. Salva snapshot local
@@ -513,27 +514,16 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         scheduledAt: booking.scheduledAt,
         location: booking.notes ?? "Local definido no agendamento",
       }));
-      // 3. Envia avaliação — só é aceita pelo servidor depois que o
-      // agendamento está de fato COMPLETED. Tentar enviar antes disso
-      // (quando só o cliente confirmou) sempre falhava com um erro confuso
-      // pro usuário ("a avaliação só pode ser enviada após o serviço ser
-      // concluído"), mesmo o cliente tendo acabado de fazer a parte dele.
-      if (updatedBooking.status === "COMPLETED") {
-        const tagText = selectedTags.join(", ");
-        await runWithAuth((token) =>
-          reviewsApi.create(token, {
-            bookingId: booking.id,
-            rating,
-            comment: tagText || undefined,
-          })
-        );
-        showToast("Avaliação enviada!", "success");
-      } else {
-        showToast(
-          "Conclusão registrada! Assim que o profissional também confirmar, você poderá avaliar.",
-          "success"
-        );
-      }
+      // 3. Envia avaliação
+      const tagText = selectedTags.join(", ");
+      await runWithAuth((token) =>
+        reviewsApi.create(token, {
+          bookingId: booking.id,
+          rating,
+          comment: tagText || undefined,
+        })
+      );
+      showToast("Avaliação enviada!", "success");
       navigation.replace("WorkoutCelebration", {
         bookingId: booking.id,
         professionalId: booking.provider?.id ?? booking.providerId ?? "unknown",
@@ -625,6 +615,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
         <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
           <TouchableOpacity
+            disabled={submitting}
             onPress={() => {
               if (completionProof) {
                 Alert.alert(
@@ -641,7 +632,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             }}
             accessibilityRole="button"
             accessibilityLabel="Voltar"
-            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center", opacity: submitting ? 0.5 : 1 }}
           >
             <Ionicons name="chevron-back" size={18} color={theme.text1} />
           </TouchableOpacity>
