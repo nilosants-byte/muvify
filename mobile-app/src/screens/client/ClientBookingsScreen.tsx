@@ -126,6 +126,37 @@ function ActivePlanCard({
         <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>
           Cadastro manual — o Muvify não intermedia essa relação nem cobra por ela.
         </Text>
+      ) : engagement.billingCycle === "AVULSO" ? (
+        // Achado em teste manual (2026-10-16): vínculo puramente avulso
+        // (sem contrato/pacote por trás, bookingId setado) usava o mesmo
+        // "R$X/mês" do plano recorrente — não existe cobrança mensal
+        // nenhuma aqui, cada aula avulsa é cobrada por sessão. A contagem
+        // também precisa separar sessão que ainda vai acontecer de sessão
+        // com horário já passado mas ainda não concluída dos dois lados
+        // (senão "sessão agendada" vira mentira quando na real só falta
+        // confirmação).
+        (() => {
+          const now = Date.now();
+          const future = engagement.upcomingSessions.filter((s) => new Date(s.scheduledAt).getTime() > now).length;
+          const pastUnresolved = engagement.upcomingSessions.length - future;
+          return (
+            <View style={{ gap: 2 }}>
+              <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+                <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: theme.text1, letterSpacing: -0.3 }}>
+                  {formatCurrencyBRL(engagement.priceCents / 100)}
+                </Text>
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>/ aula avulsa</Text>
+              </View>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11.5, color: theme.text2 }}>
+                {future > 0
+                  ? future === 1 ? "1 aula avulsa agendada" : `${future} aulas avulsas agendadas`
+                  : pastUnresolved === 1
+                    ? "Aguardando confirmação de 1 sessão anterior"
+                    : `Aguardando confirmação de ${pastUnresolved} sessões anteriores`}
+              </Text>
+            </View>
+          );
+        })()
       ) : (
         <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
           <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 20, color: theme.text1, letterSpacing: -0.3 }}>
