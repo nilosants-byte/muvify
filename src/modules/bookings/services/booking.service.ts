@@ -1551,19 +1551,32 @@ export class BookingService {
       throw new AppError("Sem permissão para alterar este agendamento.", StatusCodes.FORBIDDEN);
     }
 
+    // COMPLETED é tratado à parte, antes do mapa genérico abaixo:
+    // confirmCompletion já sabe lidar sozinho com uma segunda confirmação
+    // do mesmo lado (ex: reenvio depois de um erro de rede, ou o
+    // agendamento já ter sido concluído pela confirmação do outro lado
+    // nesse meio-tempo) — ele mesmo detecta "já concluído" e devolve o
+    // booking como está, sem erro. O mapa genérico abaixo listava
+    // COMPLETED -> [] (nenhuma transição permitida a partir dele), o que
+    // bloqueava essa reconfirmação idempotente antes mesmo de chegar em
+    // confirmCompletion, com um "Transição de status inválida" sem sentido
+    // pra quem só estava tentando de novo.
+    if (status === BookingStatus.COMPLETED) {
+      if (booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.COMPLETED) {
+        throw new AppError("Transição de status inválida.", StatusCodes.BAD_REQUEST);
+      }
+      return this.confirmCompletion(userId, bookingId, completionProof);
+    }
+
     const allowedTransitions: Record<BookingStatus, BookingStatus[]> = {
       [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
-      [BookingStatus.CONFIRMED]: [BookingStatus.COMPLETED, BookingStatus.CANCELLED],
+      [BookingStatus.CONFIRMED]: [BookingStatus.CANCELLED],
       [BookingStatus.CANCELLED]: [],
       [BookingStatus.COMPLETED]: []
     };
 
     if (!allowedTransitions[booking.status].includes(status)) {
       throw new AppError("Transição de status inválida.", StatusCodes.BAD_REQUEST);
-    }
-
-    if (status === BookingStatus.COMPLETED) {
-      return this.confirmCompletion(userId, bookingId, completionProof);
     }
 
     // Frente 6 (segunda camada), Lote 9: só o job periódico

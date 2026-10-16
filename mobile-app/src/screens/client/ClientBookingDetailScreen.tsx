@@ -9,6 +9,7 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   Pressable,
@@ -188,6 +189,30 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
+  // Confirma e descarta o treino em andamento, voltando ao estado agendado —
+  // usado tanto pelo botão de voltar customizado do header quanto pelo
+  // beforeRemove (botão físico/gesto do sistema), que precisam se comportar
+  // igual. setSeconds(0) é necessário aqui: sem isso, o cronômetro ficava
+  // "pausado" em vez de reiniciar ao tocar em "Iniciar aula" de novo.
+  function confirmExitStartedStage() {
+    Alert.alert(
+      "Sair do treino em andamento?",
+      "O cronômetro será perdido e o treino voltará ao estado agendado.",
+      [
+        { text: "Ficar aqui", style: "cancel" },
+        {
+          text: "Sair",
+          style: "destructive",
+          onPress: () => {
+            setStage("scheduled");
+            setSeconds(0);
+            setCompletionProof(null);
+          },
+        },
+      ]
+    );
+  }
+
   // Frente 6 (segunda camada), Lote 12: os estágios "started" (timer em
   // tela cheia) e "post" (selfie + avaliação) só protegiam contra perda de
   // dados através do botão de voltar customizado do próprio header — o
@@ -199,11 +224,13 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
       const hasStartedWork = stage === "started" || (stage === "post" && Boolean(completionProof));
       if (!hasStartedWork) return;
       e.preventDefault();
+      if (stage === "started") {
+        confirmExitStartedStage();
+        return;
+      }
       Alert.alert(
-        stage === "post" ? "Voltar para o treino?" : "Sair do treino em andamento?",
-        stage === "post"
-          ? "A selfie salva e a avaliação serão perdidas."
-          : "O cronômetro será perdido e o treino voltará ao estado agendado.",
+        "Voltar para o treino?",
+        "A selfie salva e a avaliação serão perdidas.",
         [
           { text: "Ficar aqui", style: "cancel" },
           {
@@ -211,6 +238,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             style: "destructive",
             onPress: () => {
               setStage("scheduled");
+              setSeconds(0);
               setCompletionProof(null);
             },
           },
@@ -470,8 +498,11 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     if (!booking) return;
     try {
       setSubmitting(true);
-      // 1. Confirma conclusão com prova de presença
-      await runWithAuth((token) =>
+      // 1. Confirma conclusão com prova de presença — a conclusão exige
+      // confirmação dos dois lados (cliente e profissional). Se o
+      // profissional ainda não confirmou a dele, o booking retorna aqui
+      // ainda como CONFIRMED (não COMPLETED) — "aguardando o outro lado".
+      const updatedBooking = await runWithAuth((token) =>
         bookingsApi.updateStatus(token, booking.id, "COMPLETED", completionProof)
       );
       // 2. Salva snapshot local
@@ -482,16 +513,27 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         scheduledAt: booking.scheduledAt,
         location: booking.notes ?? "Local definido no agendamento",
       }));
-      // 3. Envia avaliação
-      const tagText = selectedTags.join(", ");
-      await runWithAuth((token) =>
-        reviewsApi.create(token, {
-          bookingId: booking.id,
-          rating,
-          comment: tagText || undefined,
-        })
-      );
-      showToast("Avaliação enviada!", "success");
+      // 3. Envia avaliação — só é aceita pelo servidor depois que o
+      // agendamento está de fato COMPLETED. Tentar enviar antes disso
+      // (quando só o cliente confirmou) sempre falhava com um erro confuso
+      // pro usuário ("a avaliação só pode ser enviada após o serviço ser
+      // concluído"), mesmo o cliente tendo acabado de fazer a parte dele.
+      if (updatedBooking.status === "COMPLETED") {
+        const tagText = selectedTags.join(", ");
+        await runWithAuth((token) =>
+          reviewsApi.create(token, {
+            bookingId: booking.id,
+            rating,
+            comment: tagText || undefined,
+          })
+        );
+        showToast("Avaliação enviada!", "success");
+      } else {
+        showToast(
+          "Conclusão registrada! Assim que o profissional também confirmar, você poderá avaliar.",
+          "success"
+        );
+      }
       navigation.replace("WorkoutCelebration", {
         bookingId: booking.id,
         professionalId: booking.provider?.id ?? booking.providerId ?? "unknown",
@@ -534,7 +576,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
         {/* Header */}
         <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-          <TouchableOpacity onPress={() => setStage("scheduled")} accessibilityRole="button" accessibilityLabel="Voltar" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
+          <TouchableOpacity onPress={confirmExitStartedStage} accessibilityRole="button" accessibilityLabel="Voltar" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
             <Ionicons name="chevron-back" size={18} color={theme.text1} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
@@ -609,7 +651,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, paddingTop: 16, gap: 14 }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 210, paddingTop: 16, gap: 14 }} showsVerticalScrollIndicator={false}>
           {/* Tempo + stats */}
           <View style={{ alignItems: "center", gap: 6 }}>
             <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 30, color: theme.text1, letterSpacing: -0.02 * 30 }}>Missão cumprida.</Text>
@@ -755,16 +797,16 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, marginBottom: 14 }}>
               4 passos para a aula fluir bem
             </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+            <View style={{ flexDirection: "row", gap: 8 }}>
               {["Chegue ao local", "Encontre o personal", "Mostre o código", "Comece a aula"].map((step, i) => (
-                <View key={step} style={{ width: 130, borderRadius: 18, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, padding: 12 }}>
-                  <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center" }}>
-                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: theme.textOnPrimary }}>{i + 1}</Text>
+                <View key={step} style={{ flex: 1, minWidth: 0, borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, padding: 8 }}>
+                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: theme.textOnPrimary }}>{i + 1}</Text>
                   </View>
-                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1, marginTop: 10 }}>{step}</Text>
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10.5, lineHeight: 13, color: theme.text1, marginTop: 7 }}>{step}</Text>
                 </View>
               ))}
-            </ScrollView>
+            </View>
           </View>
         )}
 
@@ -790,8 +832,6 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>Iniciar aula</Text>
                 </TouchableOpacity>
               </>
-            ) : attendanceLoading ? (
-              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Atualizando código/QR...</Text>
             ) : attendance?.available ? (
               <>
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Código da aula</Text>
@@ -822,6 +862,8 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: C.zinc300 }}>Atualizar código/QR</Text>
                 </TouchableOpacity>
               </>
+            ) : attendanceLoading ? (
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>Atualizando código/QR...</Text>
             ) : attendanceError ? (
               // Frente 6 (segunda camada), Lote 13: antes, qualquer falha de
               // rede caía nesse mesmo estado de "ainda não liberado" — sem
@@ -978,6 +1020,24 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         ) : null}
       </ScrollView>
       </ScreenEntrance>
+
+      {/* Cobre a tela durante o cancelamento — a chamada pode levar alguns
+          segundos (depende do processamento do pagamento por baixo dos
+          panos) e sem isso o card de código/QR continuava fazendo polling
+          em paralelo, piscando entre estados enquanto o cancelamento rolava. */}
+      <Modal visible={cancelling} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: 32 }}>
+          <View style={{ backgroundColor: theme.cardBg, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: "center", gap: 14, width: "100%", maxWidth: 320 }}>
+            <ActivityIndicator size="large" color={theme.primary} />
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, textAlign: "center" }}>
+              Cancelando agendamento...
+            </Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center" }}>
+              Aguarde um instante enquanto processamos o cancelamento e o reembolso, se houver.
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

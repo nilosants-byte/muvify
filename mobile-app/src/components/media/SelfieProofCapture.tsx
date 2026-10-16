@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Image, Platform, View, useWindowDimensions } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import { Ionicons } from "@expo/vector-icons";
 import { CompletionProofInput } from "../../services/api/client";
 import { MvButton } from "../mv/MvButton";
 import { MvCard } from "../mv/MvCard";
@@ -46,7 +47,12 @@ export function SelfieProofCapture({
 
   const previewWidth = Math.min(screenWidth - SCREEN_H_PAD * 2, PREVIEW_MAX_WIDTH);
   const previewHeight = Math.round(previewWidth / SELFIE_ASPECT_RATIO);
-  const useStackedActions = screenWidth <= 360;
+  // Sempre empilhado: lado a lado, "Tentar novamente" (rótulo mais longo que
+  // "Salvar selfie") era cortado pelo numberOfLines={1} do MvButton em
+  // qualquer largura de tela comum — só telas bem estreitas (<=360) tinham
+  // espaço reservado pra isso antes, mas o problema também aparecia em
+  // telas maiores.
+  const useStackedActions = true;
 
   const savedLabel = useMemo(() => {
     if (draftProof) return "Selfie pronta para salvar";
@@ -129,6 +135,13 @@ export function SelfieProofCapture({
   }
 
   const hasPreview = Boolean(previewUri);
+  // Depois de salvar, draftProof/previewUri são limpos — sem essa flag a
+  // tela voltava a mostrar exatamente os mesmos botões de "tirar selfie"
+  // de antes, como se nada tivesse sido feito. O cliente não tinha como
+  // perceber visualmente que a selfie já foi salva, só por uma legenda
+  // pequena (savedLabel) que passava despercebida.
+  const hasSavedValue = Boolean(value) && !hasPreview;
+  const savedPreviewUri = value ? `data:${value.mimeType};base64,${value.imageBase64}` : null;
 
   return (
     <MvCard style={{ gap: 12, alignItems: "center" }}>
@@ -142,7 +155,7 @@ export function SelfieProofCapture({
         </MvText>
       ) : null}
 
-      {!hasPreview && Platform.OS !== "web" ? (
+      {!hasPreview && !hasSavedValue && Platform.OS !== "web" ? (
         <MvButton
           variant="ghost"
           label={`Câmera ${cameraFacing === "FRONT" ? "frontal" : "traseira"}`}
@@ -152,7 +165,7 @@ export function SelfieProofCapture({
         />
       ) : null}
 
-      {!hasPreview ? (
+      {!hasPreview && !hasSavedValue ? (
         <MvButton
           variant="outline"
           label="Tirar selfie"
@@ -169,6 +182,37 @@ export function SelfieProofCapture({
       >
         {savedLabel}
       </MvText>
+
+      {hasSavedValue && savedPreviewUri ? (
+        <View style={{ gap: 10, width: "100%", alignItems: "center" }}>
+          <View style={{ position: "relative" }}>
+            <Image
+              accessibilityLabel="Selfie salva como evidência"
+              accessibilityRole="image"
+              resizeMode="cover"
+              source={{ uri: savedPreviewUri }}
+              style={{
+                width: previewWidth,
+                height: previewHeight,
+                borderRadius: 12,
+                borderWidth: 2,
+                borderColor: theme.primary,
+                opacity: 0.9,
+              }}
+            />
+            <View style={{ position: "absolute", top: 8, right: 8, backgroundColor: theme.primary, borderRadius: 14, padding: 2 }}>
+              <Ionicons name="checkmark" size={18} color={theme.textOnPrimary} />
+            </View>
+          </View>
+          <MvButton
+            variant="ghost"
+            label="Tirar outra selfie"
+            disabled={disabled || busy}
+            loading={busy}
+            onPress={() => void captureProof()}
+          />
+        </View>
+      ) : null}
 
       {hasPreview && previewUri ? (
         <View style={{ gap: 12, width: "100%", alignItems: "center" }}>
