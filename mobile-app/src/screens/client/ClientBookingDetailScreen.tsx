@@ -189,6 +189,15 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   const [rating, setRating] = useState(5);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  // Achado em teste manual (2026-10-16): limpar completionProof via
+  // setCompletionProof(null) logo antes de navigation.replace() não bastava
+  // — setState é assíncrono (agendado pro próximo render), mas o evento
+  // "beforeRemove" disparado por replace() é síncrono e lê o completionProof
+  // ainda da closure antiga (não-nulo) do listener registrado no render
+  // anterior. Um ref muda na hora, sem esperar re-render, e o listener
+  // confere esse ref ANTES de olhar pro estado — mesmo padrão já usado em
+  // justSubmittedReasonRef, nesta mesma tela.
+  const justCompletedPostRef = useRef(false);
 
   // Confirma e descarta o treino em andamento, voltando ao estado agendado —
   // usado tanto pelo botão de voltar customizado do header quanto pelo
@@ -222,6 +231,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   // sair da tela, não só o toque no ícone.
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      if (justCompletedPostRef.current) return;
       const hasStartedWork = stage === "started" || (stage === "post" && Boolean(completionProof));
       if (!hasStartedWork) return;
       e.preventDefault();
@@ -587,13 +597,13 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
       }
       showToast("Avaliação enviada!", "success");
       // navigation.replace() abaixo também dispara o listener "beforeRemove"
-      // (linha ~197) — ele existe pra avisar quando o usuário tenta SAIR
-      // com algo não salvo, mas não distingue isso de uma navegação
-      // disparada pelo próprio app após o sucesso. Como completionProof
-      // continuava setado, o listener interceptava essa troca de tela e
-      // mostrava "Voltar para o treino? A selfie e a avaliação serão
-      // perdidas." logo depois de tudo já ter sido salvo com sucesso —
-      // limpar aqui faz o listener deixar a troca de tela seguir em frente.
+      // — ele existe pra avisar quando o usuário tenta SAIR com algo não
+      // salvo, mas não distingue isso de uma navegação disparada pelo
+      // próprio app após o sucesso. setCompletionProof(null) sozinho não
+      // bastava (setState é assíncrono, o listener ainda via a closure
+      // antiga na hora síncrona em que replace() dispara o evento) — o ref
+      // muda na hora e o listener confere ele primeiro.
+      justCompletedPostRef.current = true;
       setCompletionProof(null);
       navigation.replace("WorkoutCelebration", {
         bookingId: booking.id,
