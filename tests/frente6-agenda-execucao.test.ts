@@ -516,14 +516,20 @@ describe("Frente 6 (segunda camada), Lote 3 — corridas de concorrência sem tr
     expect(updatedPkg.creditsRemainingThisCycle).toBe(3);
   });
 
-  it("cancelar e confirmar conclusão quase ao mesmo tempo (após presença validada) não deixam o booking em estado inconsistente", async () => {
-    const scheduled = new Date(Date.now() - 60 * 60 * 1000);
+  // Raio-X do fluxo de conclusão presencial (2026-10-16): este teste cobria
+  // uma corrida legítima entre cancelar e confirmar conclusão simultâneos —
+  // mas deixou de ser uma corrida de verdade depois da decisão de produto
+  // de bloquear cancelamento simples assim que a presença é validada (achado
+  // #1 do raio-x: review sobrevivia a um cancelamento tardio). Cancelar
+  // agora falha sempre, de forma determinística, sem precisar de nenhuma
+  // concorrência com confirmCompletion pra isso acontecer.
+  it("cancelar não é mais permitido depois que a presença foi validada — direciona pra 'Reportar falta'/disputa", async () => {
     const booking = await prisma.booking.create({
       data: {
         clientId: l3ClientId,
         providerId: l3ProviderId,
         categoryId: l3CategoryId,
-        scheduledAt: scheduled,
+        scheduledAt: new Date(Date.now() - 60 * 60 * 1000),
         priceCents: 10000,
         status: BookingStatus.CONFIRMED,
         attendanceCodeValidatedAt: new Date()
@@ -534,27 +540,12 @@ describe("Frente 6 (segunda camada), Lote 3 — corridas de concorrência sem tr
       data: { bookingId: booking.id, amountCents: 10000, status: PaymentStatus.AUTHORIZED, mpPaymentId: `mp_${uid("pay")}` }
     });
 
-    const TINY_JPEG_BASE64 =
-      "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=";
-    const completionProof = {
-      imageBase64: `data:image/jpeg;base64,${TINY_JPEG_BASE64}`,
-      mimeType: "image/jpeg" as const,
-      cameraFacing: "FRONT" as const
-    };
+    await expect(
+      bookingService.updateStatus(l3ClientId, booking.id, BookingStatus.CANCELLED)
+    ).rejects.toThrow(/presença já foi validada/i);
 
-    const [cancelResult, completeResult] = await Promise.allSettled([
-      bookingService.updateStatus(l3ClientId, booking.id, BookingStatus.CANCELLED),
-      bookingService.updateStatus(l3ProviderUserId, booking.id, BookingStatus.COMPLETED, completionProof)
-    ]);
-
-    const outcomes = [cancelResult, completeResult];
-    const fulfilledCount = outcomes.filter((r) => r.status === "fulfilled").length;
-    // Uma das duas ações vence a corrida; a outra recebe um erro claro em
-    // vez de escrever por cima silenciosamente.
-    expect(fulfilledCount).toBe(1);
-
-    const finalBooking = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
-    expect([BookingStatus.CANCELLED, BookingStatus.COMPLETED]).toContain(finalBooking.status);
+    const stillConfirmed = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(stillConfirmed.status).toBe(BookingStatus.CONFIRMED);
   });
 });
 

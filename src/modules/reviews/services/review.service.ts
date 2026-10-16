@@ -46,6 +46,14 @@ export class ReviewService {
     if (booking.status !== BookingStatus.COMPLETED && !booking.clientConfirmedAt) {
       throw new AppError("A avaliação só pode ser enviada após você confirmar a conclusão do atendimento.");
     }
+    // clientConfirmedAt sozinho não garante que a sessão de fato "contou" —
+    // um agendamento pode, em tese, ainda virar CANCELLED depois do cliente
+    // confirmar sua própria conclusão (ex: disputa resolvida a favor do
+    // cancelamento). Nunca aceitar avaliação de uma sessão oficialmente
+    // cancelada, mesmo que a confirmação do cliente já exista.
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw new AppError("Este agendamento foi cancelado e não pode ser avaliado.", StatusCodes.BAD_REQUEST);
+    }
     if (booking.review) {
       throw new AppError("Este agendamento já foi avaliado.", StatusCodes.CONFLICT);
     }

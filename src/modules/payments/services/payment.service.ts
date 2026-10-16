@@ -1569,6 +1569,7 @@ export class PaymentService {
         ],
         payment: { status: PaymentStatus.AUTHORIZED }
       },
+      include: { provider: { select: { userId: true } } },
       take: 200,
     });
 
@@ -1586,6 +1587,32 @@ export class PaymentService {
             where: { id: booking.id },
             data: { status: BookingStatus.COMPLETED, completedAt: referenceDate }
           });
+          // Raio-X do fluxo de conclusão presencial (2026-10-16): este é o
+          // outro caminho que leva um booking a COMPLETED (quando só um
+          // lado confirma e o prazo de 24h vence) — mas só o caminho de
+          // confirmCompletion (os dois lados confirmando manualmente)
+          // concedia XP/conquistas e avisava "Serviço concluído". Quem
+          // fosse concluído só por aqui nunca ganhava XP nem era avisado,
+          // mesmo a tela de celebração do cliente já prometer pontos assim
+          // que ele confirma a própria parte.
+          const {
+            onWorkoutCompleted,
+            onFirstBookingCompleted,
+            onEvery10BookingsCompleted,
+          } = await import("../../gamification/services/gamification-events.service");
+          void onWorkoutCompleted(booking.clientId, booking.id);
+          void onFirstBookingCompleted(booking.clientId);
+          void onEvery10BookingsCompleted(booking.clientId);
+          await notificationService
+            .sendToUsers([booking.clientId, booking.provider.userId], {
+              preferenceType: "BOOKINGS",
+              title: "Serviço concluído",
+              body: `Agendamento ${booking.id.slice(0, 8)} concluído automaticamente — o prazo de confirmação do outro lado venceu.`,
+              data: { type: "BOOKING_COMPLETED", bookingId: booking.id }
+            })
+            .catch((error) => {
+              console.error("Booking push notification failed:", error);
+            });
         })
       );
       results.forEach((result, idx) => {

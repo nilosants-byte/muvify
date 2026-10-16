@@ -93,7 +93,7 @@ export type ClientStackParamList = {
   };
   BookingPaymentStatus: { bookingId?: string } | undefined;
   ClientBookingDetail: { bookingId: string };
-  WorkoutCelebration: { bookingId: string; professionalId: string; skipReview?: boolean };
+  WorkoutCelebration: { bookingId: string; professionalId: string; skipReview?: boolean; pendingOtherSide?: boolean };
   // Frente 9 (segunda camada), Lote 4: avaliação passa a aceitar consultoria
   // online (contractId) além de booking presencial (bookingId).
   ReviewProfessional:

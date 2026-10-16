@@ -156,6 +156,11 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
       } else {
         showToast("Sua confirmação foi registrada.", "info");
       }
+      // Limpa antes de navegar — com o beforeRemove abaixo agora cobrindo
+      // esta tela, deixar completionProof setado faria a própria navegação
+      // de sucesso disparar o aviso de "selfie será perdida" (mesmo bug já
+      // corrigido no fluxo equivalente do cliente).
+      setCompletionProof(null);
       navigation.replace("BookingPaymentStatus", { bookingId });
     } catch (error) {
       handleScreenError({ error, showToast, fallbackMessage: "Falha ao confirmar conclusão.", navigation });
@@ -172,6 +177,7 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
   // cliente (ClientBookingDetailScreen, estágio "post") já avisa nessa
   // mesma situação.
   function handleBack() {
+    if (submitting) return;
     if (completionProof) {
       Alert.alert(
         "Sair sem confirmar?",
@@ -185,6 +191,26 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
     }
     navigation.goBack();
   }
+
+  // Raio-X do fluxo de conclusão presencial (2026-10-16): handleBack só
+  // protegia o toque no botão de voltar do header — o gesto/botão físico
+  // do sistema (Android/iOS) ignorava completamente essa checagem, mesmo
+  // ponto já corrigido no fluxo equivalente do cliente.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      if (submitting || !completionProof) return;
+      e.preventDefault();
+      Alert.alert(
+        "Sair sem confirmar?",
+        "A selfie já capturada será perdida.",
+        [
+          { text: "Continuar aqui", style: "cancel" },
+          { text: "Sair", style: "destructive", onPress: () => navigation.dispatch(e.data.action) },
+        ]
+      );
+    });
+    return unsubscribe;
+  }, [navigation, submitting, completionProof]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.confirm-completion">

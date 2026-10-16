@@ -31,7 +31,7 @@ const STORE_URL = Platform.OS === "ios"
   : ANDROID_PACKAGE ? `market://details?id=${ANDROID_PACKAGE}` : null;
 
 export function WorkoutCelebrationScreen({ route, navigation }: Props) {
-  const { bookingId, professionalId, skipReview } = route.params;
+  const { bookingId, professionalId, skipReview, pendingOtherSide } = route.params;
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
@@ -187,21 +187,33 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
         <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: theme.primarySubtle, borderWidth: 2, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
           <Ionicons name="trophy" size={42} color={theme.primary} />
         </View>
-        <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 36, color: theme.text1, letterSpacing: -0.02 * 36 }}>
-          Treino concluído!
+        <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 36, color: theme.text1, letterSpacing: -0.02 * 36, textAlign: "center" }}>
+          {pendingOtherSide ? "Sua parte está confirmada!" : "Treino concluído!"}
         </Text>
-        <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 16, color: theme.text2 }}>+</Text>
-          <AnimatedNumber
-            value={PTS_PRESENCIAL}
-            duration={900}
-            style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 38, color: theme.primary, letterSpacing: -0.013 * 38 }}
-          />
-          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 18, color: theme.primary }}>pts</Text>
-        </View>
-        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 14, color: theme.text2, textAlign: "center" }}>
-          Excelente trabalho! Continue assim.
-        </Text>
+        {pendingOtherSide ? (
+          // Raio-X do fluxo de conclusão presencial (2026-10-16): os pontos só
+          // são concedidos de verdade quando o profissional também confirma —
+          // prometer "+80 pts" aqui, sempre, era enganoso quando só o cliente
+          // tinha confirmado a própria parte.
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 14, color: theme.text2, textAlign: "center", paddingHorizontal: 20 }}>
+            Assim que o profissional também confirmar, seus pontos e conquistas chegam automaticamente.
+          </Text>
+        ) : (
+          <>
+            <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 16, color: theme.text2 }}>+</Text>
+              <AnimatedNumber
+                value={PTS_PRESENCIAL}
+                duration={900}
+                style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 38, color: theme.primary, letterSpacing: -0.013 * 38 }}
+              />
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 18, color: theme.primary }}>pts</Text>
+            </View>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 14, color: theme.text2, textAlign: "center" }}>
+              Excelente trabalho! Continue assim.
+            </Text>
+          </>
+        )}
       </View>
 
       {/* Newly unlocked achievements */}

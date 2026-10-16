@@ -36,6 +36,11 @@ const BOOKING_TYPES_CLIENT = new Set([
   "BOOKING_NO_SHOW_CONTESTED", "BOOKING_AUTO_CAPTURE_CONTESTED",
   "BOOKING_ATTENDANCE_NOT_VALIDATED", "BOOKING_CONFIRMATION_DEADLINE_EXPIRED",
   "BOOKING_CONFIRMATION_DEADLOCK",
+  // Raio-X do fluxo de conclusão presencial (2026-10-16): confirmCompletion
+  // envia esse tipo pra quem ainda não confirmou, que pode ser o cliente
+  // (quando o profissional confirma primeiro) — só o conjunto PRO tinha
+  // esse tipo, o cliente caía no destino genérico de avisos.
+  "BOOKING_CONFIRMATION_PENDING",
 ]);
 
 // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 9: os tipos de

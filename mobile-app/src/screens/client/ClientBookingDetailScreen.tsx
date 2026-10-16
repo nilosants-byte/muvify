@@ -309,6 +309,16 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     [booking?.status, booking?.scheduledAt, isValidated]
   );
 
+  // Raio-X do fluxo de conclusão presencial (2026-10-16): a tela não tinha
+  // nenhuma noção de "eu já confirmei minha parte" vinda do servidor — o
+  // estado local (`stage`) sempre começa em "scheduled", então sair e
+  // voltar pro mesmo agendamento depois de confirmar (aguardando o
+  // profissional) mostrava de novo "Iniciar aula" e o guia de passos, como
+  // se nada tivesse acontecido.
+  const awaitingProviderConfirmation = Boolean(
+    booking && booking.status === "CONFIRMED" && booking.clientConfirmedAt
+  );
+
   // A tela e sempre do proprio cliente, entao "eu fui reportado" e comparar
   // com o clientId do booking, sem precisar buscar o usuario logado.
   const noShowReport = booking?.noShowReport;
@@ -503,7 +513,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
       // confirmarem, mas isso é sobre quando capturar o pagamento, não
       // sobre se o cliente já pode avaliar: clientConfirmedAt (gravado
       // aqui) já é suficiente pro servidor aceitar a avaliação.
-      await runWithAuth((token) =>
+      const updatedBooking = await runWithAuth((token) =>
         bookingsApi.updateStatus(token, booking.id, "COMPLETED", completionProof)
       );
       // 2. Salva snapshot local
@@ -514,15 +524,24 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         scheduledAt: booking.scheduledAt,
         location: booking.notes ?? "Local definido no agendamento",
       }));
-      // 3. Envia avaliação
+      // 3. Envia avaliação — um 409 "já foi avaliado" aqui pode acontecer
+      // de forma legítima (ex: a primeira tentativa teve sucesso no
+      // servidor mas a resposta se perdeu por uma queda de rede, e o
+      // cliente tentou de novo) — nesse caso não é erro de verdade, é só a
+      // confirmação de que já está tudo salvo.
       const tagText = selectedTags.join(", ");
-      await runWithAuth((token) =>
-        reviewsApi.create(token, {
-          bookingId: booking.id,
-          rating,
-          comment: tagText || undefined,
-        })
-      );
+      try {
+        await runWithAuth((token) =>
+          reviewsApi.create(token, {
+            bookingId: booking.id,
+            rating,
+            comment: tagText || undefined,
+          })
+        );
+      } catch (reviewError) {
+        const alreadyReviewed = reviewError instanceof ApiError && reviewError.status === 409;
+        if (!alreadyReviewed) throw reviewError;
+      }
       showToast("Avaliação enviada!", "success");
       // navigation.replace() abaixo também dispara o listener "beforeRemove"
       // (linha ~197) — ele existe pra avisar quando o usuário tenta SAIR
@@ -537,8 +556,28 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         bookingId: booking.id,
         professionalId: booking.provider?.id ?? booking.providerId ?? "unknown",
         skipReview: true,
+        // A conclusão só é definitiva (pagamento capturado, XP concedido)
+        // quando os dois lados confirmam — se o profissional ainda não
+        // confirmou a dele, a tela de celebração não deveria prometer
+        // pontos que ainda não existem de verdade.
+        pendingOtherSide: updatedBooking.status !== "COMPLETED",
       });
     } catch (error) {
+      // Pix pendente bloqueia a conclusão (regra do servidor) — sem isso, o
+      // cliente só via o toast de erro e tinha que descobrir sozinho que
+      // precisava ir pagar o Pix antes de poder tentar de novo.
+      if (error instanceof ApiError && /pix.*ainda não foi conclu[ií]do/i.test(error.message)) {
+        Alert.alert(
+          "Pagamento Pix pendente",
+          "Finalize o pagamento via Pix para poder concluir este agendamento.",
+          [
+            { text: "Agora não", style: "cancel" },
+            { text: "Ver pagamento", onPress: () => navigation.navigate("BookingPaymentStatus", { bookingId: booking.id }) },
+          ]
+        );
+        setSubmitting(false);
+        return;
+      }
       handleScreenError({ error, showToast, fallbackMessage: "Não foi possível confirmar conclusão.", navigation });
       setSubmitting(false);
     }
@@ -792,8 +831,21 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
           </View>
         </View>
 
+        {/* Cliente já confirmou a própria conclusão, falta só o profissional */}
+        {awaitingProviderConfirmation && (
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, padding: 16, gap: 8, alignItems: "center" }}>
+            <Ionicons name="checkmark-circle" size={28} color={theme.primary} />
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, textAlign: "center" }}>
+              Você já confirmou sua parte!
+            </Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center" }}>
+              Assim que o profissional também confirmar a conclusão, o pagamento é processado e você ganha seus pontos. Nada mais a fazer por aqui.
+            </Text>
+          </View>
+        )}
+
         {/* Guia de 4 passos */}
-        {isActive && (
+        {isActive && !awaitingProviderConfirmation && (
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, marginBottom: 14 }}>
               4 passos para a aula fluir bem
@@ -812,7 +864,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
         )}
 
         {/* QR Code + código de presença */}
-        {isActive && (
+        {isActive && !awaitingProviderConfirmation && (
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16, alignItems: "center", gap: 12 }}>
             {isValidated ? (
               // Código validado → mostra botão de iniciar
@@ -929,15 +981,22 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
               <Ionicons name="chatbubbles-outline" size={18} color={theme.text1} />
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>Chat com o personal</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              disabled={cancelling}
-              onPress={handleCancel}
-              style={{ height: 44, borderRadius: S.btnR, alignItems: "center", justifyContent: "center", opacity: cancelling ? 0.6 : 1 }}
-            >
-              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.danger }}>
-                {cancelling ? "Cancelando..." : "Cancelar agendamento"}
-              </Text>
-            </TouchableOpacity>
+            {/* Raio-X do fluxo de conclusão presencial (2026-10-16): uma vez
+                que a presença foi validada, a sessão é tratada como tendo
+                acontecido — o servidor agora recusa esse cancelamento
+                (mesma regra do lado profissional), então nem mostra mais o
+                botão aqui pra evitar o cliente tocar e levar um erro. */}
+            {!isValidated && (
+              <TouchableOpacity
+                disabled={cancelling}
+                onPress={handleCancel}
+                style={{ height: 44, borderRadius: S.btnR, alignItems: "center", justifyContent: "center", opacity: cancelling ? 0.6 : 1 }}
+              >
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.danger }}>
+                  {cancelling ? "Cancelando..." : "Cancelar agendamento"}
+                </Text>
+              </TouchableOpacity>
+            )}
             {canReportNoShow ? (
               <View style={{ gap: 6 }}>
                 <MvInput

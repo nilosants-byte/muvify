@@ -571,13 +571,16 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
               />
             ) : null}
 
-            {isActive ? (
+            {isActive && !validated ? (
               // Frente 5 (Descoberta, agendamento e agenda), Lote 7: os
               // botões de cancelar e reportar falta tinham o mesmo estilo
               // visual (variant="danger") apesar de efeitos financeiros
               // opostos — cancelar sempre reembolsa o aluno; falta pode
               // fazer o profissional ficar com o valor. Legenda explícita
               // sob cada botão deixa isso claro antes do toque.
+              // Raio-X do fluxo de conclusão presencial (2026-10-16): uma vez
+              // validada a presença, o servidor recusa o cancelamento simples
+              // (sessão já em andamento/ocorrida) — escondido aqui também.
               <View style={{ gap: 4 }}>
                 <MvButton
                   variant="danger"

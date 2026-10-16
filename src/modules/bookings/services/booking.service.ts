@@ -1020,6 +1020,73 @@ export class BookingService {
     }
   }
 
+  // Raio-X do fluxo de conclusão presencial (2026-10-16): quando só um
+  // lado confirma a conclusão, o outro recebia UM único aviso (disparado
+  // dentro de confirmCompletion, no momento exato da primeira confirmação)
+  // e nenhum lembrete depois disso — mesmo com uma cobrança automática
+  // chegando em até AUTO_CAPTURE_CONFIRMATION_HOURS (ver
+  // payment.service.ts::autoCaptureSingleConfirmation). Dispara um segundo
+  // aviso pouco antes desse prazo vencer, reaproveitando o mesmo tipo de
+  // notificação (mesmo destino na navegação).
+  async sendPendingCompletionReminders(referenceDate = new Date()) {
+    const REMINDER_WINDOW_BEFORE_AUTO_CAPTURE_MS = 4 * 60 * 60 * 1000;
+    const autoCaptureThresholdMs = env.AUTO_CAPTURE_CONFIRMATION_HOURS * 60 * 60 * 1000;
+    const reminderThresholdMs = autoCaptureThresholdMs - REMINDER_WINDOW_BEFORE_AUTO_CAPTURE_MS;
+    // scheduledAt precisa estar DEPOIS deste limite (ainda não elegível pro
+    // auto-capture) e ATÉ este limite (já velho o bastante pra merecer o
+    // lembrete) — a mesma janela "due dentro de X" usada nos outros lembretes
+    // deste arquivo, só que medida a partir de scheduledAt, não de "agora".
+    const notYetCapturedBoundary = new Date(referenceDate.getTime() - autoCaptureThresholdMs);
+    const reminderEligibleBoundary = new Date(referenceDate.getTime() - reminderThresholdMs);
+
+    const dueSoon = await prisma.booking.findMany({
+      where: {
+        status: BookingStatus.CONFIRMED,
+        pendingCompletionReminderSentAt: null,
+        scheduledAt: { gt: notYetCapturedBoundary, lte: reminderEligibleBoundary },
+        OR: [
+          { clientConfirmedAt: { not: null }, providerConfirmedAt: null },
+          { clientConfirmedAt: null, providerConfirmedAt: { not: null } }
+        ],
+        payment: { status: PaymentStatus.AUTHORIZED }
+      },
+      select: {
+        id: true,
+        clientId: true,
+        clientConfirmedAt: true,
+        provider: { select: { userId: true } }
+      }
+    });
+
+    if (dueSoon.length === 0) {
+      return;
+    }
+
+    await prisma.booking.updateMany({
+      where: { id: { in: dueSoon.map((b) => b.id) }, pendingCompletionReminderSentAt: null },
+      data: { pendingCompletionReminderSentAt: referenceDate }
+    });
+
+    const PENDING_COMPLETION_REMINDER_CONCURRENCY = 5;
+    for (let i = 0; i < dueSoon.length; i += PENDING_COMPLETION_REMINDER_CONCURRENCY) {
+      await Promise.allSettled(
+        dueSoon.slice(i, i + PENDING_COMPLETION_REMINDER_CONCURRENCY).map((booking) => {
+          // Quem já confirmou não precisa de lembrete — é sempre o OUTRO
+          // lado que falta.
+          const missingSideUserId = booking.clientConfirmedAt ? booking.provider.userId : booking.clientId;
+          return notificationService
+            .sendToUsers([missingSideUserId], {
+              preferenceType: "BOOKINGS",
+              title: "Confirme a conclusão do agendamento",
+              body: "O outro lado já confirmou a conclusão — confirme também, ou a cobrança acontece automaticamente em algumas horas.",
+              data: { type: "BOOKING_CONFIRMATION_PENDING", bookingId: booking.id }
+            })
+            .catch((e) => console.error("Pending completion reminder failed:", e));
+        })
+      );
+    }
+  }
+
   // Épico de Frentes, Frente 9, Lote 15 (decisão do usuário: construir):
   // não existia lembrete de "avalie sua sessão" - cliente só avaliava se
   // lembrasse sozinho. Dispara 24h depois da sessão concluída, uma única
@@ -1616,6 +1683,22 @@ export class BookingService {
       );
     }
 
+    // Raio-X do fluxo de conclusão presencial (2026-10-16): uma vez que a
+    // presença foi validada, a sessão é tratada como tendo acontecido —
+    // cancelamento simples deixava uma brecha onde o cliente já tinha
+    // confirmado a própria conclusão E enviado avaliação (válida assim que
+    // qualquer um dos dois lados confirma), e então cancelava o
+    // agendamento normalmente, deixando uma avaliação pública "pendurada"
+    // numa sessão oficialmente CANCELLED. Daqui pra frente, sessão com
+    // presença validada só se resolve via conclusão/disputa, nunca
+    // cancelamento direto.
+    if (status === BookingStatus.CANCELLED && booking.attendanceCodeValidatedAt) {
+      throw new AppError(
+        "A presença já foi validada para este agendamento — ele não pode mais ser cancelado diretamente. Use \"Reportar falta\" se a sessão não ocorreu como esperado, ou aguarde a confirmação de conclusão pelas duas partes.",
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
     // Frente 6 (segunda camada), Lote 3: escrita incondicional — duas
     // chamadas de updateStatus quase simultâneas pro mesmo booking (duplo
     // toque em cancelar, ou uma corrida com confirmCompletion escrevendo
@@ -1761,7 +1844,7 @@ export class BookingService {
 
         if (fresh.status === BookingStatus.COMPLETED) {
           const current = await tx.booking.findUniqueOrThrow({ where: { id: bookingId }, include: CONFIRM_INCLUDE });
-          return { updated: current, justCompleted: false, stillWaiting: false };
+          return { updated: current, outcome: "already-completed" as const };
         }
 
         // Frente 6 (segunda camada), Lote 3: só o caso "já concluído" era
@@ -1793,9 +1876,11 @@ export class BookingService {
         const bothConfirmed = Boolean(finalClientConfirmedAt && finalProviderConfirmedAt);
 
         if (alreadyConfirmedByMe && !bothConfirmed) {
-          // Já confirmei antes e o outro lado ainda não — nada novo a fazer.
+          // Já confirmei antes e o outro lado ainda não — nada novo a fazer,
+          // e sobretudo não notificar de novo (reenvio/retry/duplo toque
+          // não deveria soar como se algo novo tivesse acontecido).
           const current = await tx.booking.findUniqueOrThrow({ where: { id: bookingId }, include: CONFIRM_INCLUDE });
-          return { updated: current, justCompleted: false, stillWaiting: true };
+          return { updated: current, outcome: "repeat-waiting" as const };
         }
 
         if (bothConfirmed) {
@@ -1840,7 +1925,20 @@ export class BookingService {
           include: CONFIRM_INCLUDE
         });
 
-        return { updated: updatedBooking, justCompleted: bothConfirmed, stillWaiting: false };
+        // Achado no raio-x do fluxo de conclusão presencial (2026-10-16):
+        // esse era o caminho da PRIMEIRA confirmação de um lado quando o
+        // outro ainda não tinha confirmado — antes devolvia
+        // justCompleted:false/stillWaiting:false (os mesmos valores do caso
+        // "já estava tudo concluído, nada a fazer"), então o código do
+        // handler abaixo tratava os dois como idênticos e nunca notificava
+        // o outro lado na confirmação de verdade. A notificação "Confirmação
+        // pendente" só saía, por acidente, numa SEGUNDA chamada da mesma
+        // pessoa (reconfirmação) — ou seja, no uso normal (um toque só), o
+        // outro lado nunca ficava sabendo que precisava confirmar também.
+        return {
+          updated: updatedBooking,
+          outcome: bothConfirmed ? ("just-completed" as const) : ("first-confirmation-waiting" as const)
+        };
       },
       // Épico de Frentes, Frente 12, Lote 2: a captura de pagamento (linha
       // acima) pode levar até MP_CLIENT_TIMEOUT_MS inteiro, e ainda sobra
@@ -1855,15 +1953,15 @@ export class BookingService {
       { timeout: MP_CLIENT_TIMEOUT_MS + 15000, maxWait: 15000 }
     );
 
-    const { updated, justCompleted, stillWaiting } = result;
+    const { updated, outcome } = result;
 
-    if (!justCompleted && !stillWaiting) {
-      // Já estava concluído (por essa mesma corrida ou por outro caminho) —
-      // devolve como está, sem repetir notificação/gamificação.
+    if (outcome === "already-completed" || outcome === "repeat-waiting") {
+      // Já estava concluído, ou é uma reconfirmação do mesmo lado sem nada
+      // novo a avisar — devolve como está, sem repetir notificação/gamificação.
       return updated;
     }
 
-    if (justCompleted) {
+    if (outcome === "just-completed") {
       // A captura (cartão) já foi feita mais acima, antes de qualquer
       // gravação — aqui só o que depende do agendamento já estar concluído.
       const {
@@ -1891,6 +1989,9 @@ export class BookingService {
       return updated;
     }
 
+    // Só resta outcome === "first-confirmation-waiting" aqui: a primeira
+    // confirmação de verdade de um lado, com o outro ainda pendente — é
+    // exatamente quando o outro lado precisa ser avisado.
     const counterpartUserId = isClient ? updated.provider.userId : updated.clientId;
     const actorLabel = isClient ? "Cliente" : "Profissional";
     void notificationService

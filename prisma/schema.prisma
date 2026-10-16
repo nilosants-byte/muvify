@@ -652,6 +652,11 @@ model Booking {
   // Épico de Frentes, Frente 9, Lote 15: lembrete de avaliação pendente -
   // cliente só avaliava se lembrasse sozinho, sem nenhum aviso proativo.
   reviewReminderSentAt        DateTime?
+  // Raio-X do fluxo de conclusão presencial (2026-10-16): quando só um dos
+  // lados confirma a conclusão, o outro só recebia UM aviso (no momento da
+  // primeira confirmação) e nenhum lembrete depois disso, mesmo com uma
+  // cobrança automática chegando em até AUTO_CAPTURE_CONFIRMATION_HOURS.
+  pendingCompletionReminderSentAt DateTime?
   createdAt                 DateTime             @default(now())
   updatedAt                 DateTime             @updatedAt
   client                    User                 @relation("ClientBookings", fields: [clientId], references: [id], onDelete: Cascade)
