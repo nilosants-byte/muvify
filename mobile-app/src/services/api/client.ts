@@ -1382,6 +1382,18 @@ export async function apiRequest<T = unknown>(
         signal: controller.signal
       });
       clearTimeout(timeoutId);
+      // Achado em teste manual (2026-10-15, via Sentry): um soluço
+      // passageiro do banco (PrismaClientUnknownRequestError "Response from
+      // the Engine was empty") derrubou GET /users/me/active-engagement com
+      // 500 - a requisição em si funcionou (fetch não lançou erro nenhum),
+      // só a resposta do servidor veio com falha. O retry acima só cobre
+      // falha de REDE (fetch lançando exceção); um 500 passava direto sem
+      // nenhuma nova tentativa, mesmo sendo GET (idempotente, já seguro pra
+      // repetir pela mesma regra usada no catch abaixo).
+      if (response.status >= 500 && method === "GET" && attempt < maxAttempts) {
+        await sleep(NETWORK_RETRY_BASE_DELAY_MS * attempt);
+        continue;
+      }
       break;
     } catch (error) {
       clearTimeout(timeoutId);
