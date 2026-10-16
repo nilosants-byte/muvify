@@ -330,6 +330,14 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     noShowReport!.status === "PENDING" &&
     new Date(noShowReport!.contestDeadlineAt) > new Date();
 
+  // Achado em teste manual (2026-10-16): o caso espelhado (EU reportei a
+  // falta do profissional) não tinha nenhum card — o cliente que reporta
+  // reabria a tela e só via "Cancelado" genérico, sem confirmação de que
+  // o report foi registrado nem prazo de quando o outro lado pode responder.
+  const reportedByMe = Boolean(
+    noShowReport && booking && noShowReport.reportedByUserId === booking.clientId
+  );
+
   // Se só o profissional confirmou a conclusão (o cliente nunca confirmou), a
   // cobrança foi forçada por confirmação única — o cliente tem 24h após a
   // conclusão pra contestar essa cobrança específica.
@@ -774,6 +782,20 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             </Text>
           </TouchableOpacity>
         </View>
+
+        <Modal visible={submitting} transparent animationType="fade">
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: 32 }}>
+            <View style={{ backgroundColor: theme.cardBg, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: "center", gap: 14, width: "100%", maxWidth: 320 }}>
+              <ActivityIndicator size="large" color={theme.primary} />
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, textAlign: "center" }}>
+                Confirmando conclusão...
+              </Text>
+              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center" }}>
+                Salvando sua selfie e avaliação. Aguarde um instante.
+              </Text>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   }
@@ -1059,6 +1081,21 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
           </View>
         ) : null}
 
+        {reportedByMe && noShowReport ? (
+          <View style={{ marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14, gap: 8 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>
+              Você reportou falta neste agendamento
+            </Text>
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
+              {noShowReport.status === "PENDING"
+                ? `O profissional tem até ${formatBRDateTime(noShowReport.contestDeadlineAt)} para contestar. Se não contestar, você é reembolsado automaticamente.`
+                : noShowReport.status === "CONTESTED"
+                ? "O profissional contestou o seu relato — um administrador vai analisar e decidir."
+                : "Este relato já foi resolvido."}
+            </Text>
+          </View>
+        ) : null}
+
         {canContestAutoCapture ? (
           <View style={{ marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.danger, backgroundColor: theme.dangerSubtle, padding: 14, gap: 8 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>
@@ -1085,15 +1122,31 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
           segundos (depende do processamento do pagamento por baixo dos
           panos) e sem isso o card de código/QR continuava fazendo polling
           em paralelo, piscando entre estados enquanto o cancelamento rolava. */}
-      <Modal visible={cancelling} transparent animationType="fade">
+      {/* Achado em teste manual (2026-10-16): só "Cancelar" tinha esse popup
+          bloqueante — "Reportar falta"/contestações mostravam só um texto
+          tímido no próprio botão ("Reportando...", opacidade reduzida),
+          fácil de não perceber que algo está acontecendo de verdade. */}
+      <Modal
+        visible={cancelling || reportingNoShow || contestingNoShow || contestingAutoCapture}
+        transparent
+        animationType="fade"
+      >
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: 32 }}>
           <View style={{ backgroundColor: theme.cardBg, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: "center", gap: 14, width: "100%", maxWidth: 320 }}>
             <ActivityIndicator size="large" color={theme.primary} />
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, textAlign: "center" }}>
-              Cancelando agendamento...
+              {cancelling
+                ? "Cancelando agendamento..."
+                : reportingNoShow
+                  ? "Registrando o relato de falta..."
+                  : contestingNoShow
+                    ? "Enviando sua contestação..."
+                    : "Enviando sua contestação..."}
             </Text>
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center" }}>
-              Aguarde um instante enquanto processamos o cancelamento e o reembolso, se houver.
+              {cancelling
+                ? "Aguarde um instante enquanto processamos o cancelamento e o reembolso, se houver."
+                : "Aguarde um instante, isso não demora."}
             </Text>
           </View>
         </View>

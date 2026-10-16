@@ -211,6 +211,14 @@ function disputeBadge(item: Booking): { label: string } | null {
     !!item.providerConfirmedAt &&
     Date.now() - new Date(item.completedAt).getTime() <= 24 * 60 * 60 * 1000;
   if (autoCaptureOpen) return { label: "Aguardando contestação" };
+  // Achado em teste manual (2026-10-16): um agendamento CONFIRMED onde o
+  // cliente já concluiu a própria parte (selfie, avaliação) mostrava o
+  // mesmo selo genérico "Confirmado" de um agendamento que ainda nem
+  // aconteceu — sem nada indicando que só falta o profissional confirmar
+  // também pra virar COMPLETED de verdade.
+  if (item.status === "CONFIRMED" && item.clientConfirmedAt && !item.providerConfirmedAt) {
+    return { label: "Aguardando o profissional" };
+  }
   return null;
 }
 
