@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Linking, Platform, Text, TextInput, View, TouchableOpacity } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Platform, ScrollView, Text, TextInput, View, TouchableOpacity } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ConfettiCannon from "react-native-confetti-cannon";
@@ -170,7 +170,7 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center", paddingHorizontal: S.px }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <ConfettiCannon
         ref={confettiRef}
         count={120}
@@ -182,6 +182,14 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
         explosionSpeed={350}
       />
 
+      {/* Achado em teste manual (2026-10-16): tela nunca teve rolagem — com
+          3 conquistas desbloqueadas de uma vez + o card do feed (foto +
+          legenda + botões), o conteúdo passava da altura da tela e cortava
+          o final ("Pular avaliação"), sem nenhum jeito de rolar até lá. */}
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: S.px, paddingVertical: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
       {/* Points badge */}
       <View style={{ alignItems: "center", gap: 6, marginBottom: 32 }}>
         <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: theme.primarySubtle, borderWidth: 2, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
@@ -304,6 +312,7 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>Pular avaliação</Text>
         </TouchableOpacity>
       </View>
+      </ScrollView>
     </View>
   );
 }
