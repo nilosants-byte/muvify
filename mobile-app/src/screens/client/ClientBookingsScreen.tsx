@@ -227,11 +227,33 @@ export function ClientBookingsScreen({ navigation }: Props) {
   };
 
   const sorted = useMemo(() => sortByDateAsc(bookings), [bookings]);
-  const upcoming = useMemo(() => sorted.filter((b) => b.status === "PENDING" || b.status === "CONFIRMED"), [sorted]);
-  const pending = useMemo(() => sorted.filter((b) => b.status === "PENDING"), [sorted]);
+  // Achado em teste manual (2026-10-16): PENDING/CONFIRMED sozinho não basta
+  // pra ser "próximo" — um agendamento cujo horário já passou mas ainda não
+  // virou COMPLETED (ex: aguardando o profissional confirmar a conclusão
+  // também, caso do fluxo de dupla confirmação) ficava preso em "Próximos"
+  // pra sempre, mesmo com a selfie e a avaliação do cliente já feitas.
+  const now = Date.now();
+  const upcoming = useMemo(
+    () => sorted.filter((b) => (b.status === "PENDING" || b.status === "CONFIRMED") && new Date(b.scheduledAt).getTime() > now),
+    [sorted, now]
+  );
+  const pending = useMemo(
+    () => sorted.filter((b) => b.status === "PENDING" && new Date(b.scheduledAt).getTime() > now),
+    [sorted, now]
+  );
   const completed = useMemo(() => sortByDateDesc(bookings.filter((b) => b.status === "COMPLETED")), [bookings]);
   const cancelled = useMemo(() => sortByDateDesc(bookings.filter((b) => b.status === "CANCELLED")), [bookings]);
-  const history = useMemo(() => sortByDateDesc([...completed, ...cancelled]), [cancelled, completed]);
+  // Horário já passado mas ainda PENDING/CONFIRMED (nenhuma das duas partes
+  // concluiu, ou só uma confirmou) — não é mais "próximo", mas também não é
+  // COMPLETED/CANCELLED; entra no histórico mantendo o selo de status real.
+  const awaitingResolution = useMemo(
+    () => sorted.filter((b) => (b.status === "PENDING" || b.status === "CONFIRMED") && new Date(b.scheduledAt).getTime() <= now),
+    [sorted, now]
+  );
+  const history = useMemo(
+    () => sortByDateDesc([...completed, ...cancelled, ...awaitingResolution]),
+    [cancelled, completed, awaitingResolution]
+  );
   const nextBooking = upcoming[0] ?? null;
 
   const HISTORY_LIMIT = 30;
