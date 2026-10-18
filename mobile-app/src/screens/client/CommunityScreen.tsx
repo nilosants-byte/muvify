@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
   FlatList,
@@ -12,7 +13,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  Share,
   StatusBar,
   Text,
   TextInput,
@@ -483,6 +483,11 @@ const FeedPostCard = React.memo(function FeedPostCard({
   const heartOpacity = useRef(new Animated.Value(0)).current;
   const [showMenu, setShowMenu] = useState(false);
   const isOwner = post.user?.id === viewerId;
+  // Post automático (subiu de nível, entrou no ranking...) o servidor nunca
+  // deixa excluir - antes o menu oferecia "Excluir post" mesmo assim, e a
+  // opção sempre falhava.
+  const canDelete = isOwner && !post.isAutomatic;
+  const canReport = !isOwner;
 
   useEffect(() => () => {
     if (singleTapTimer.current) clearTimeout(singleTapTimer.current);
@@ -658,9 +663,11 @@ const FeedPostCard = React.memo(function FeedPostCard({
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>
               {formatRelativeTime(post.createdAt)}
             </Text>
-            <TouchableOpacity onPress={() => setShowMenu(true)} hitSlop={10}>
-              <Ionicons name="ellipsis-horizontal" size={18} color={theme.text3} />
-            </TouchableOpacity>
+            {(canDelete || canReport) && (
+              <TouchableOpacity onPress={() => setShowMenu(true)} hitSlop={10}>
+                <Ionicons name="ellipsis-horizontal" size={18} color={theme.text3} />
+              </TouchableOpacity>
+            )}
           </View>
         </TouchableOpacity>
 
@@ -907,19 +914,8 @@ const FeedPostCard = React.memo(function FeedPostCard({
         <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }} onPress={() => setShowMenu(false)}>
           <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: theme.inputBg, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 32, overflow: "hidden" }}>
             <View style={{ width: 36, height: 4, borderRadius: 99, backgroundColor: theme.border, alignSelf: "center", marginVertical: 12 }} />
-            {/* Compartilhar */}
-            <TouchableOpacity
-              onPress={async () => {
-                setShowMenu(false);
-                await Share.share({ message: post.caption ? `"${post.caption}" — via Muvify` : "Confira este post no Muvify!" });
-              }}
-              style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 24, paddingVertical: 16 }}
-            >
-              <Ionicons name="share-outline" size={22} color={theme.text1} />
-              <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 15, color: theme.text1 }}>Compartilhar</Text>
-            </TouchableOpacity>
             {/* Denunciar — só para posts de outros */}
-            {!isOwner && (
+            {canReport && (
               <TouchableOpacity
                 onPress={async () => {
                   setShowMenu(false);
@@ -945,21 +941,37 @@ const FeedPostCard = React.memo(function FeedPostCard({
                 <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 15, color: theme.text2 }}>Denunciar</Text>
               </TouchableOpacity>
             )}
-            {/* Excluir — só para o dono do post */}
-            {isOwner && (
+            {/* Excluir — só para o dono do post (e nunca post automático) */}
+            {canDelete && (
               <TouchableOpacity
-                onPress={async () => {
-                  setShowMenu(false);
-                  // Atualização otimista: some da tela na hora, sem esperar
-                  // o servidor — reinsere só se a chamada falhar de verdade.
-                  onDeletePost(post.id);
-                  try {
-                    await runWithAuth((token) => communityApi.deletePost(token, post.id));
-                  } catch (error) {
-                    captureException(error, { screen: "CommunityScreen", action: "deletePost" });
-                    onRestorePost(post);
-                    showToast("Não foi possível excluir o post.", "error");
-                  }
+                onPress={() => {
+                  // Excluir não tem volta (a foto sai do servidor e leva junto
+                  // curtidas e comentários de outras pessoas) — confirma antes,
+                  // mesmo padrão de "Excluir oferta"/"Excluir treino".
+                  Alert.alert(
+                    "Excluir post?",
+                    "Essa ação não pode ser desfeita. As curtidas e os comentários do post também serão apagados.",
+                    [
+                      { text: "Cancelar", style: "cancel", onPress: () => setShowMenu(false) },
+                      {
+                        text: "Excluir",
+                        style: "destructive",
+                        onPress: async () => {
+                          setShowMenu(false);
+                          // Atualização otimista: some da tela na hora, sem esperar
+                          // o servidor — reinsere só se a chamada falhar de verdade.
+                          onDeletePost(post.id);
+                          try {
+                            await runWithAuth((token) => communityApi.deletePost(token, post.id));
+                          } catch (error) {
+                            captureException(error, { screen: "CommunityScreen", action: "deletePost" });
+                            onRestorePost(post);
+                            showToast("Não foi possível excluir o post.", "error");
+                          }
+                        },
+                      },
+                    ]
+                  );
                 }}
                 style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 24, paddingVertical: 16 }}
               >

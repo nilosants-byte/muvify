@@ -3779,6 +3779,7 @@ export type FeedPost = {
   imageUrl?: string | null;
   caption?: string | null;
   metadata?: FeedPostMetadata | null;
+  isAutomatic?: boolean;
   createdAt: string;
   user?: { id: string; name: string; apelido?: string | null; photoUrl?: string | null };
   likesCount?: number;
