@@ -505,10 +505,16 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
         {/* Promoções de agendamento presencial */}
         {presentialPromotionOffers.length > 0 ? (
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: C.amberBorder, backgroundColor: "rgba(245,166,35,0.08)", padding: 14 }}>
-            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, marginBottom: 10 }}>Aulas em promoção</Text>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, marginBottom: 10 }}>Promoções presenciais</Text>
             <View style={{ gap: 10 }}>
               {presentialPromotionOffers.map((offer) => {
                 const hasDiscount = (offer.effectivePriceCents ?? offer.priceCents) < offer.priceCents;
+                // Achado no teste manual do checklist (C6.1): pacote em promoção caía
+                // aqui igual a uma aula avulsa ("Escolher dias", sem dizer quantas
+                // sessões) — o toque já levava pra compra do pacote, mas nada no
+                // quadro indicava que era um pacote.
+                const isPackage = Boolean(offer.presentialPackageMode);
+                const isSessionPack = offer.presentialPackageMode === "FLEXIBLE_CREDITS";
                 return (
                   <View key={offer.id} style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, padding: 12, gap: 6 }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -527,11 +533,18 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
                         </Text>
                       )}
                     </View>
+                    {isPackage ? (
+                      <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>
+                        {isSessionPack
+                          ? `Pacote · ${offer.presentialSessionsPerCycle ?? 0} sessões avulsas · valor por sessão`
+                          : `Pacote de horário fixo · ${offer.presentialSessionsPerCycle ?? 0} sessões por ciclo`}
+                      </Text>
+                    ) : null}
                     <TouchableOpacity
                       onPress={() => goToBookingWithOffer(offer)}
                       style={{ height: S.touchMin, borderRadius: S.btnR, backgroundColor: C.amber, alignItems: "center", justifyContent: "center" }}
                     >
-                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Escolher dias</Text>
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>{isPackage ? "Contratar pacote" : "Escolher dias"}</Text>
                     </TouchableOpacity>
                   </View>
                 );
