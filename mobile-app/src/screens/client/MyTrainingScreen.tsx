@@ -46,6 +46,7 @@ import { getYouTubeThumbnailFromUrl } from "../../utils/youtube";
 import { formatDateLabel, formatCurrencyBRL } from "../../utils/formatters";
 import { nextPixPollDelayMs } from "../../utils/pixPolling";
 import { extractApiMessage, handleScreenError } from "../shared/api-helpers";
+import { captureException } from "../../observability/sentry";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
@@ -240,7 +241,10 @@ function WorkoutDetailModal({
   const completingRef = useRef(false);
 
   // ── Opt-in de foto pro feed de evolução (não obrigatório) ─────────────────
-  const [sharePhotoStage, setSharePhotoStage] = useState<"idle" | "capturing" | "uploading" | "done">("idle");
+  // "dismissed" (Agora não) é reversível de propósito — achado em teste
+  // manual (2026-10-17): antes ia direto pra "done" e um toque errado
+  // escondia o convite sem volta.
+  const [sharePhotoStage, setSharePhotoStage] = useState<"idle" | "capturing" | "uploading" | "done" | "dismissed">("idle");
   const [feedCaption, setFeedCaption] = useState("");
 
   // Chave de persistência do timer — específica por plano (guard contra id undefined)
@@ -390,8 +394,11 @@ function WorkoutDetailModal({
       await runWithAuth((token) => communityApi.createPost(token, { imageUrl: url, caption: feedCaption.trim() || DEFAULT_FEED_CAPTION }));
       setSharePhotoStage("done");
       showToast("Foto publicada no feed de evolução!", "success");
-    } catch {
-      showToast("Não foi possível publicar a foto. Tente novamente.", "error");
+    } catch (error) {
+      // Mesmo achado do presencial (2026-10-16): catch genérico escondia o
+      // motivo real — vai pro Sentry e mostra a mensagem da API quando existe.
+      captureException(error, { screen: "MyTrainingScreen", action: "captureAndSharePhoto" });
+      showToast(extractApiMessage(error, "Não foi possível publicar a foto. Tente novamente."), "error");
       setSharePhotoStage("idle");
     }
   }
@@ -409,7 +416,9 @@ function WorkoutDetailModal({
           </TouchableOpacity>
           <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3, marginLeft: 10 }}>Tá pago!</Text>
         </View>
-        <ScrollView contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, paddingTop: 20, gap: 16, alignItems: "center" }}>
+        {/* automaticallyAdjustKeyboardInsets: o teclado cobria o campo da
+            legenda — no iOS sobe o campo focado pra cima do teclado. */}
+        <ScrollView contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 40, paddingTop: 20, gap: 16, alignItems: "center" }} automaticallyAdjustKeyboardInsets>
           <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 34, color: theme.text1, letterSpacing: -0.02 * 34, textAlign: "center" }}>Tá pago!</Text>
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center" }}>
             Tempo: {fmtTimer(seconds)} · {done.size}/{exercises.length} exercícios marcados
@@ -453,7 +462,7 @@ function WorkoutDetailModal({
               />
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <TouchableOpacity
-                  onPress={() => setSharePhotoStage("done")}
+                  onPress={() => setSharePhotoStage("dismissed")}
                   style={{ flex: 1, height: 44, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
                 >
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Agora não</Text>
@@ -473,6 +482,12 @@ function WorkoutDetailModal({
                 {sharePhotoStage === "capturing" ? "Abrindo câmera..." : "Publicando foto..."}
               </Text>
             </View>
+          ) : sharePhotoStage === "dismissed" ? (
+            <TouchableOpacity onPress={() => setSharePhotoStage("idle")} hitSlop={8} style={{ minHeight: 44, justifyContent: "center" }}>
+              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary, textAlign: "center" }}>
+                Mudou de ideia? Postar uma foto do treino
+              </Text>
+            </TouchableOpacity>
           ) : null}
 
           {/* Frente 9 (segunda camada), Lote 4: convite pra avaliar o

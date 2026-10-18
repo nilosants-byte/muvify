@@ -433,9 +433,24 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     }
   }
 
-  async function handleShareToFeedNo() {
-    await AsyncStorage.removeItem(LAST_WORKOUT_KEY);
-    setPendingFeedShare(null);
+  // Achado em teste manual (2026-10-17): "Não" descartava a selfie na hora,
+  // sem volta — um toque errado e não tinha mais como postar. Confirma antes.
+  function handleShareToFeedNo() {
+    Alert.alert(
+      "Não postar a foto?",
+      "A selfie não vai pro feed e este aviso some do agendamento. Não dá pra desfazer.",
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: "Não postar",
+          style: "destructive",
+          onPress: () => {
+            void AsyncStorage.removeItem(LAST_WORKOUT_KEY).catch(() => undefined);
+            setPendingFeedShare(null);
+          },
+        },
+      ]
+    );
   }
 
   // ── Animação de validação do código (scale bounce + fade) ─────────────────
@@ -923,7 +938,10 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
       </View>
 
       <ScreenEntrance>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, paddingTop: 16, gap: 14 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3}>
+      {/* automaticallyAdjustKeyboardInsets: sem isso o teclado cobria os
+          campos desta tela (legenda da selfie, motivos de relato/contestação)
+          — no iOS sobe o campo focado pra cima do teclado. */}
+      <ScrollView contentContainerStyle={{ paddingHorizontal: S.px, paddingBottom: 120, paddingTop: 16, gap: 14 }} showsVerticalScrollIndicator={false} pinchGestureEnabled maximumZoomScale={3} automaticallyAdjustKeyboardInsets>
 
         {/* Hero card — profissional + status */}
         <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primaryHighlight, padding: 16 }}>
@@ -979,11 +997,11 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             />
             <View style={{ flexDirection: "row", gap: S.gap, width: "100%" }}>
               <TouchableOpacity
-                onPress={() => void handleShareToFeedNo()}
+                onPress={handleShareToFeedNo}
                 disabled={sharingToFeed}
                 style={{ flex: 1, height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
               >
-                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text2 }}>Não</Text>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text2 }}>Não postar</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => void handleShareToFeedYes()}

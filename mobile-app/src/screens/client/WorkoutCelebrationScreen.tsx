@@ -11,6 +11,7 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { PressableScale } from "../../components/polish/PressableScale";
+import { MvToggle } from "../../components/mv";
 import { bookingsApi, gamificationApi } from "../../services/api/client";
 import { postSelfieToFeed } from "../../utils/feedSelfieShare";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
@@ -44,6 +45,12 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
   const [shareSelfieDataUri, setShareSelfieDataUri] = useState<string | null>(null);
   const [sharingPhoto, setSharingPhoto] = useState(false);
   const [feedCaption, setFeedCaption] = useState("");
+  // Desligada por padrão: a Política de Privacidade (item 3.5) promete que a
+  // foto só vai pro feed com autorização do aluno — nunca por omissão.
+  const [postToFeed, setPostToFeed] = useState(false);
+  // Guard síncrono contra toque duplo em "Continuar" enquanto a foto sobe —
+  // setSharingPhoto(true) sozinho não bastava (re-render não é imediato).
+  const leavingRef = useRef(false);
 
   const bookingsQuery = useAuthQuery(
     queryKeys.bookings.me(),
@@ -135,39 +142,52 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
     })();
   }, [bookingsQuery.data]);
 
-  async function handleShareSelfieYes() {
-    if (!shareSelfieDataUri) return;
+  // Achado em teste manual (2026-10-17): com "Não"/"Postar" como botões
+  // soltos, um toque errado em "Não" descartava a foto sem volta. Agora a
+  // escolha é uma chave e a postagem só acontece de fato ao sair da tela —
+  // até lá dá pra mudar de ideia quantas vezes quiser.
+  async function leaveScreen(goTo: () => void) {
+    if (leavingRef.current) return;
+    leavingRef.current = true;
     try {
-      setSharingPhoto(true);
-      await postSelfieToFeed(runWithAuth, shareSelfieDataUri, feedCaption.trim() || DEFAULT_FEED_CAPTION);
-      await AsyncStorage.removeItem(LAST_WORKOUT_KEY);
-      setShareSelfieDataUri(null);
-      showToast("Foto publicada no feed de evolução!", "success");
-    } catch (error) {
-      // Achado em teste manual (2026-10-16): catch genérico escondia o erro
-      // de verdade (nunca logado, nunca mandado pro Sentry) — sem isso,
-      // não dava pra saber se o problema era no upload, na criação do post,
-      // ou outra coisa qualquer.
-      captureException(error, { screen: "WorkoutCelebrationScreen", action: "handleShareSelfieYes" });
-      // Mensagem real em vez da genérica — alguns casos (ex: 400) nem
-      // chegam a aparecer no Sentry, que filtra respostas "esperadas".
-      showToast(extractApiMessage(error, "Não foi possível publicar a foto. Tente novamente."), "error");
+      if (shareSelfieDataUri && postToFeed) {
+        setSharingPhoto(true);
+        try {
+          await postSelfieToFeed(runWithAuth, shareSelfieDataUri, feedCaption.trim() || DEFAULT_FEED_CAPTION);
+        } catch (error) {
+          setSharingPhoto(false);
+          // Achado em teste manual (2026-10-16): catch genérico escondia o erro
+          // de verdade (nunca logado, nunca mandado pro Sentry).
+          captureException(error, { screen: "WorkoutCelebrationScreen", action: "postSelfieOnLeave" });
+          // Mensagem real em vez da genérica — alguns casos (ex: 400) nem
+          // chegam a aparecer no Sentry, que filtra respostas "esperadas".
+          showToast(extractApiMessage(error, "Não foi possível publicar a foto. Tente novamente."), "error");
+          // Fica na tela: tocar de novo tenta de novo, ou desligar a chave
+          // segue sem postar. A selfie continua salva, então o retry do
+          // detalhe do agendamento também segue disponível.
+          return;
+        }
+        showToast("Foto publicada no feed de evolução!", "success");
+      }
+      // Postou, ou escolheu seguir sem postar — nos dois casos a cópia local
+      // da selfie não tem mais uso.
+      if (shareSelfieDataUri) {
+        await AsyncStorage.removeItem(LAST_WORKOUT_KEY).catch(() => undefined);
+      }
+      goTo();
     } finally {
-      setSharingPhoto(false);
+      leavingRef.current = false;
     }
-  }
-
-  async function handleShareSelfieNo() {
-    await AsyncStorage.removeItem(LAST_WORKOUT_KEY);
-    setShareSelfieDataUri(null);
   }
 
   function handleContinue() {
-    if (skipReview) {
-      navigation.replace("ClientTabs", { screen: "ClientHome" } as any);
-    } else {
-      navigation.replace("ReviewProfessional", { bookingId, professionalId });
-    }
+    void leaveScreen(() => {
+      if (skipReview) {
+        navigation.replace("ClientTabs", { screen: "ClientHome" } as any);
+      } else {
+        navigation.replace("ReviewProfessional", { bookingId, professionalId });
+      }
+    });
   }
 
   return (
@@ -190,6 +210,11 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: S.px, paddingVertical: 24 }}
         showsVerticalScrollIndicator={false}
+        // Achado em teste manual (2026-10-17): o teclado cobria o campo da
+        // legenda, sem dar pra ver o que estava sendo digitado — no iOS isso
+        // sobe o campo focado pra cima do teclado (mesmo padrão do resto do app).
+        automaticallyAdjustKeyboardInsets
+        keyboardShouldPersistTaps="handled"
       >
       {/* Points badge */}
       <View style={{ alignItems: "center", gap: 6, marginBottom: 32 }}>
@@ -259,39 +284,41 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
             style={{ width: 96, height: 96, borderRadius: 16, borderWidth: 1, borderColor: theme.border }}
             resizeMode="cover"
           />
-          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1, textAlign: "center" }}>
-            Postar essa foto no feed de evolução?
+          {/* A linha inteira liga/desliga (alvo de toque maior que a chave sozinha) */}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setPostToFeed((v) => !v)}
+            disabled={sharingPhoto}
+            accessibilityRole="switch"
+            accessibilityLabel="Postar essa foto no feed de evolução"
+            accessibilityState={{ checked: postToFeed, disabled: sharingPhoto }}
+            style={{ width: "100%", flexDirection: "row", alignItems: "center", gap: 12, minHeight: S.touchMin, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: postToFeed ? theme.primarySubtleBorder : theme.border, backgroundColor: postToFeed ? theme.primarySubtle : theme.cardBg }}
+          >
+            <Text style={{ flex: 1, fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>
+              Postar essa foto no feed de evolução
+            </Text>
+            <View pointerEvents="none">
+              <MvToggle value={postToFeed} disabled={sharingPhoto} />
+            </View>
+          </TouchableOpacity>
+          {postToFeed && (
+            <TextInput
+              value={feedCaption}
+              onChangeText={setFeedCaption}
+              editable={!sharingPhoto}
+              placeholder={DEFAULT_FEED_CAPTION}
+              placeholderTextColor={theme.text3}
+              maxLength={200}
+              selectionColor={theme.primary}
+              accessibilityLabel="Legenda da foto"
+              style={{ width: "100%", borderWidth: 1, borderColor: theme.border, borderRadius: 12, backgroundColor: theme.inputBg, paddingHorizontal: 14, paddingVertical: 10, color: theme.text1, fontFamily: "DMSans_400Regular", fontSize: 13 }}
+            />
+          )}
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3, textAlign: "center" }}>
+            {postToFeed
+              ? "A foto vai pro feed quando você tocar em Continuar. Só quem segue você vê."
+              : "Opcional. Se ligar, só quem segue você vê a foto."}
           </Text>
-          <TextInput
-            value={feedCaption}
-            onChangeText={setFeedCaption}
-            editable={!sharingPhoto}
-            placeholder={DEFAULT_FEED_CAPTION}
-            placeholderTextColor={theme.text3}
-            maxLength={200}
-            selectionColor={theme.primary}
-            style={{ width: "100%", borderWidth: 1, borderColor: theme.border, borderRadius: 12, backgroundColor: theme.inputBg, paddingHorizontal: 14, paddingVertical: 10, color: theme.text1, fontFamily: "DMSans_400Regular", fontSize: 13 }}
-          />
-          <View style={{ flexDirection: "row", gap: S.gap, width: "100%" }}>
-            <TouchableOpacity
-              onPress={() => void handleShareSelfieNo()}
-              disabled={sharingPhoto}
-              style={{ flex: 1, height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
-            >
-              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text2 }}>Não</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => void handleShareSelfieYes()}
-              disabled={sharingPhoto}
-              style={{ flex: 1, height: S.touchMin, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
-            >
-              {sharingPhoto ? (
-                <ActivityIndicator size="small" color={theme.textOnPrimary} />
-              ) : (
-                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Postar</Text>
-              )}
-            </TouchableOpacity>
-          </View>
         </View>
       )}
 
@@ -299,11 +326,14 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
       <View style={{ width: "100%", paddingBottom: Math.max(24, insets.bottom + 12), gap: 10 }}>
         <PressableScale
           onPress={handleContinue}
+          disabled={sharingPhoto}
           accessibilityRole="button"
-          style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
+          accessibilityState={{ disabled: sharingPhoto, busy: sharingPhoto }}
+          style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8, shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
         >
+          {sharingPhoto && <ActivityIndicator size="small" color={theme.textOnPrimary} />}
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>
-            {skipReview ? "Continuar" : "Avaliar personal"}
+            {sharingPhoto ? "Publicando foto..." : skipReview ? "Continuar" : "Avaliar personal"}
           </Text>
         </PressableScale>
         {/* Com a avaliação já feita (skipReview), o botão principal já vira
@@ -311,7 +341,8 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
             redundante e sem sentido (não sobra avaliação nenhuma pra pular). */}
         {!skipReview && (
           <TouchableOpacity
-            onPress={() => navigation.replace("ClientTabs", { screen: "ClientHome" } as any)}
+            onPress={() => void leaveScreen(() => navigation.replace("ClientTabs", { screen: "ClientHome" } as any))}
+            disabled={sharingPhoto}
             style={{ height: S.touchMin, alignItems: "center", justifyContent: "center" }}
           >
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>Pular avaliação</Text>
