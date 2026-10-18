@@ -45,7 +45,7 @@ import { useAppState } from "../../state/AppState";
 import { SelfieProofCapture } from "../../components/media/SelfieProofCapture";
 import { MvAvatar, MvInput } from "../../components/mv";
 import { formatBRDate, formatBRDateTime, formatCurrencyBRL } from "../../utils/formatters";
-import { handleScreenError } from "../shared/api-helpers";
+import { extractApiMessage, handleScreenError } from "../shared/api-helpers";
 import { resolveMediaUrl } from "../../utils/media";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import type { MvTheme } from "../../theme/MvColors";
@@ -433,7 +433,11 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
       showToast("Foto publicada no feed de evolução!", "success");
     } catch (error) {
       captureException(error, { screen: "ClientBookingDetailScreen", action: "handleShareToFeedYes" });
-      showToast("Não foi possível publicar a foto. Tente novamente.", "error");
+      // Achado em teste manual (2026-10-16): mensagem genérica escondia o
+      // motivo real (e alguns casos nem chegam a aparecer no Sentry, que
+      // filtra respostas "esperadas" da API, ex: 400) — mostra a mensagem
+      // real sempre que existir uma.
+      showToast(extractApiMessage(error, "Não foi possível publicar a foto. Tente novamente."), "error");
     } finally {
       setSharingToFeed(false);
     }

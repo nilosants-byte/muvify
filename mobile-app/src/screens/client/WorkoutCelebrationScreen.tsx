@@ -17,6 +17,7 @@ import { queryKeys } from "../../lib/queryKeys";
 import { computeUserProgress, mapBackendAchievement } from "../../utils/gamification";
 import type { Achievement } from "../../types/gamification";
 import { captureException } from "../../observability/sentry";
+import { extractApiMessage } from "../shared/api-helpers";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "WorkoutCelebration">;
 
@@ -156,7 +157,9 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
       // não dava pra saber se o problema era no upload, na criação do post,
       // ou outra coisa qualquer.
       captureException(error, { screen: "WorkoutCelebrationScreen", action: "handleShareSelfieYes" });
-      showToast("Não foi possível publicar a foto. Tente novamente.", "error");
+      // Mensagem real em vez da genérica — alguns casos (ex: 400) nem
+      // chegam a aparecer no Sentry, que filtra respostas "esperadas".
+      showToast(extractApiMessage(error, "Não foi possível publicar a foto. Tente novamente."), "error");
     } finally {
       setSharingPhoto(false);
     }
