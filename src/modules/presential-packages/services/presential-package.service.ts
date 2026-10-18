@@ -371,6 +371,21 @@ export class PresentialPackageService {
       ? (await resolveClientCardForBilling(clientId)).mpCardId
       : null;
 
+    // Achado no teste manual do checklist (C6.1, 17/10/2026): horário fixo em
+    // Pix é o único modo que cobra já na compra (chargeCycle), e chargeCycle
+    // exige a conexão do profissional com o Mercado Pago funcionando. Se ela
+    // estivesse quebrada, o erro só aparecia DEPOIS de reservar o pacote
+    // (PENDING_PAYMENT), que ficava órfão: a nova tentativa batia em "você já
+    // possui um pacote ativo (ou pendente)" e o pacote fantasma ainda contava
+    // como vínculo ativo, prendendo o aluno a esse profissional. Checa antes
+    // de reservar qualquer coisa.
+    if (
+      offer.presentialPackageMode === PresentialPackageMode.FIXED_RECURRING &&
+      input.paymentMethod === ConsultancyPaymentMethod.PIX
+    ) {
+      await requireProviderMpAccessToken(offer.providerId);
+    }
+
     const resolvedLocation = await resolveSessionLocationForPackage(
       offer.provider,
       offer,
@@ -444,11 +459,29 @@ export class PresentialPackageService {
     // avulsas, cada uma cobrada individualmente quando o aluno agenda (ver
     // activateFlexibleSessionPack e booking.service.ts), pelo mesmo motor
     // de pagamento avulso comum (que já aceita os dois métodos por sessão).
-    const chargeResult = isCardFixedRecurring
-      ? await this.activateCardFixedPeriod(pkg.id, { isFirstPeriod: true })
-      : offer.presentialPackageMode === PresentialPackageMode.FLEXIBLE_CREDITS
-        ? await this.activateFlexibleSessionPack(pkg.id)
-        : await this.chargeCycle(pkg.id, { isFirstCycle: true });
+    const activateFirstPeriod = () =>
+      isCardFixedRecurring
+        ? this.activateCardFixedPeriod(pkg.id, { isFirstPeriod: true })
+        : offer.presentialPackageMode === PresentialPackageMode.FLEXIBLE_CREDITS
+          ? this.activateFlexibleSessionPack(pkg.id)
+          : this.chargeCycle(pkg.id, { isFirstCycle: true });
+    // Mesmo achado acima, pros outros jeitos de falhar aqui (Pix recusado ou
+    // não gerado, erro do Mercado Pago, erro de banco): nenhum deles deixa
+    // cobrança efetivada — horário fixo em cartão e créditos flexíveis nem
+    // cobram na compra, e o Pix ainda nem foi mostrado pro aluno. Cancela o
+    // pacote recém-reservado antes de relançar, pra nova tentativa funcionar
+    // de cara ("Tente novamente" do chargeCycle nunca funcionava, batia no
+    // pacote órfão). Mesmo tratamento que o combo já dá à falha do contrato.
+    let chargeResult: Awaited<ReturnType<typeof activateFirstPeriod>>;
+    try {
+      chargeResult = await activateFirstPeriod();
+    } catch (error) {
+      // notify: false — o cliente nunca recebeu confirmação desse pacote.
+      await this.cancelPackage(clientId, pkg.id, false).catch((cancelError) =>
+        console.error("Falha ao cancelar pacote órfão após erro na primeira cobrança:", cancelError)
+      );
+      throw error;
+    }
 
     const updated = await prisma.presentialPackage.findUniqueOrThrow({
       where: { id: pkg.id },
@@ -1699,6 +1732,19 @@ export class PresentialPackageService {
       input.clientLongitude
     );
 
+    // Achado no teste manual do checklist (C6.1, 17/10/2026): a metade de
+    // consultoria é cobrada já na compra (chargeComboConsultancy), o que
+    // exige a conexão do profissional com o Mercado Pago funcionando e, no
+    // cartão, um cartão de crédito salvo. Essas duas checagens só aconteciam
+    // DEPOIS de reservar o pacote e criar o contrato — falhar nelas deixava os
+    // dois órfãos (PENDING_PAYMENT): a nova tentativa batia em "você já
+    // possui um combo ativo (ou pendente)" e o aluno ficava preso a esse
+    // profissional. Checa antes de reservar qualquer coisa.
+    await requireProviderMpAccessToken(offer.providerId);
+    if (input.paymentMethod === ConsultancyPaymentMethod.CREDIT_CARD) {
+      await resolveClientCardForBilling(clientId);
+    }
+
     // Raio-X de pagamentos, Rodada 3, Lote 7: mesmo problema (e mesma
     // correção) de purchasePackage — "já existe um combo ativo?" rodava
     // fora de transação, sem trava, e dois cliques quase simultâneos
@@ -1839,10 +1885,20 @@ export class PresentialPackageService {
         offer.comboConsultancyShareCents!
       );
     } catch (error) {
-      await prisma.consultancyContract.update({
-        where: { id: contract.id },
-        data: { paymentStatus: ConsultancyPaymentStatus.FAILED }
+      // Mesmo achado: com as checagens antes da reserva, o que sobra aqui é
+      // recusa do cartão ou erro do Mercado Pago — nada foi cobrado ainda (é
+      // a primeira cobrança do combo). Antes só o contrato virava FAILED e
+      // os dois continuavam PENDING_PAYMENT, bloqueando nova tentativa.
+      // Contrato PENDING_PAYMENT: mesmo cancelamento direto já usado na troca
+      // por convite externo (o webhook só ativa contrato ainda
+      // PENDING_PAYMENT, então um retorno atrasado do MP não reativa).
+      await prisma.consultancyContract.updateMany({
+        where: { id: contract.id, status: ConsultancyContractStatus.PENDING_PAYMENT },
+        data: { paymentStatus: ConsultancyPaymentStatus.FAILED, status: ConsultancyContractStatus.CANCELLED }
       });
+      await this.cancelPackage(clientId, pkg.id, false).catch((cancelError) =>
+        console.error("Falha ao cancelar pacote órfão após erro na cobrança da consultoria do combo:", cancelError)
+      );
       const message =
         error instanceof Error ? error.message : "Falha ao processar pagamento da consultoria do combo.";
       throw new AppError(message, StatusCodes.BAD_REQUEST);
