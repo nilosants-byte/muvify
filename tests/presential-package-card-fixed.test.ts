@@ -21,7 +21,9 @@ let providerId = "";
 let categoryId = "";
 const offerIds: string[] = [];
 const CYCLE_AMOUNT_CENTS = 40000;
-const SESSIONS_PER_CYCLE = 4;
+// 7 dias x 4 semanas: weeklyScheduleAt marca os 7 dias, e o pacote de horario
+// fixo exige exatamente (sessoes por ciclo / semanas do ciclo) horarios por semana.
+const SESSIONS_PER_CYCLE = 28;
 
 // Todos os 7 dias da semana, pra garantir pelo menos uma ocorrência dentro
 // de qualquer período, independente de em que dia da semana o teste roda.

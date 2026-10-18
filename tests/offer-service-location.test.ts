@@ -203,7 +203,7 @@ describe("Liberdade de ofertas — Frente C (local por oferta + local do pacote)
         billingCycle: "MONTHLY",
         priceCents: 40000,
         presentialPackageMode: "FIXED_RECURRING",
-        presentialSessionsPerCycle: 4
+        presentialSessionsPerCycle: 28 // 7 dias x 4 semanas (marca os 7 dias abaixo)
       }
     });
     offerIds.push(offer.id);

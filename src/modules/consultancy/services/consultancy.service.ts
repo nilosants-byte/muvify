@@ -32,6 +32,7 @@ import { hashRefreshToken } from "../../../shared/utils/refresh-token";
 import { assertNoActiveEngagementWithOtherProvider, getActiveEngagementSummary } from "../../../shared/utils/client-engagement";
 import { requireProviderMpAccessToken, resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
+import { weeklySlotsForPackage, weeksPerCycle } from "../../../shared/utils/presential-package-schedule";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
 import { Payment, CardToken, PaymentRefund } from "mercadopago";
@@ -939,6 +940,28 @@ export class ConsultancyService {
           "Pacotes de sessões avulsas precisam de uma validade — informe por quanto tempo o pacote vale.",
           StatusCodes.BAD_REQUEST
         );
+      }
+      // Achado no teste manual do checklist (C6.1): horário fixo precisa
+      // virar um número inteiro de aulas por semana (o aluno escolhe
+      // exatamente essa quantidade de horários na compra) — e, no combo, esse
+      // número precisa bater com os "dias presenciais por semana" anunciados.
+      if (input.presentialPackageMode === "FIXED_RECURRING" && input.billingCycle) {
+        const weeks = weeksPerCycle(input.billingCycle);
+        const slots = weeklySlotsForPackage(input.billingCycle, input.presentialSessionsPerCycle);
+        if (slots === null) {
+          throw new AppError(
+            weeks < 1
+              ? "Pacote de horário fixo não pode ter cobrança diária."
+              : `No horário fixo, as sessões por ciclo precisam virar um número inteiro de aulas por semana (este ciclo tem ${weeks} semana${weeks === 1 ? "" : "s"}): use ${[1, 2, 3].map((n) => n * weeks).join(", ")}...`,
+            StatusCodes.BAD_REQUEST
+          );
+        }
+        if (kind === ServiceOfferKind.COMBO && input.comboPresentialDaysPerWeek && input.comboPresentialDaysPerWeek !== slots) {
+          throw new AppError(
+            `No combo, os dias presenciais por semana (${input.comboPresentialDaysPerWeek}) precisam bater com as sessões por ciclo (${input.presentialSessionsPerCycle} sessões em ${weeks} semanas = ${slots} por semana).`,
+            StatusCodes.BAD_REQUEST
+          );
+        }
       }
     }
 

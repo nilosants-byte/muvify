@@ -26,6 +26,7 @@ import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { resolveProviderMpAccessToken, requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { weeklySlotsForPackage } from "../../../shared/utils/presential-package-schedule";
 import { billingCycleDurationDays } from "../../../shared/utils/consultancy-validity";
 import { assertOfferAcceptsPaymentMethod } from "../../../shared/utils/offer-payment-method";
 import { assertOfferAllowsServiceLocation } from "../../../shared/utils/offer-service-mode";
@@ -115,9 +116,22 @@ function offerEffectivePriceCents(offer: {
   return promotionActive ? offer.promotionPriceCents! : offer.priceCents;
 }
 
-function validateWeeklySchedule(schedule: WeeklyScheduleEntry[]) {
+// requiredSlots: quantos horários por semana o pacote cobre (ver
+// weeklySlotsForPackage). Achado no teste manual do checklist (C6.1): sem
+// isso o aluno marcava quantos horários quisesse, inclusive vários no mesmo
+// dia, e cada um virava uma aula em toda semana do ciclo.
+function validateWeeklySchedule(schedule: WeeklyScheduleEntry[], requiredSlots: number | null) {
   if (schedule.length === 0) {
     throw new AppError("Informe ao menos um horário semanal fixo.", StatusCodes.BAD_REQUEST);
+  }
+  if (new Set(schedule.map((entry) => entry.weekday)).size !== schedule.length) {
+    throw new AppError("Escolha no máximo um horário por dia da semana.", StatusCodes.BAD_REQUEST);
+  }
+  if (requiredSlots !== null && schedule.length !== requiredSlots) {
+    throw new AppError(
+      `Este pacote cobre ${requiredSlots} aula${requiredSlots === 1 ? "" : "s"} por semana — escolha exatamente ${requiredSlots} horário${requiredSlots === 1 ? "" : "s"}.`,
+      StatusCodes.BAD_REQUEST
+    );
   }
   for (const entry of schedule) {
     if (!Number.isInteger(entry.weekday) || entry.weekday < 0 || entry.weekday > 6) {
@@ -351,7 +365,7 @@ export class PresentialPackageService {
       if (!input.weeklySchedule || input.weeklySchedule.length === 0) {
         throw new AppError("Informe o horário semanal fixo para este pacote.", StatusCodes.BAD_REQUEST);
       }
-      validateWeeklySchedule(input.weeklySchedule);
+      validateWeeklySchedule(input.weeklySchedule, weeklySlotsForPackage(offer.billingCycle, offer.presentialSessionsPerCycle ?? 0));
       weeklySchedule = input.weeklySchedule;
     }
 
@@ -785,13 +799,16 @@ export class PresentialPackageService {
         const schedule = pkg.weeklySchedule as unknown as WeeklyScheduleEntry[];
         const provider = await tx.providerProfile.findUniqueOrThrow({ where: { id: pkg.providerId } });
         const minNoticeMs = Math.max(24, provider.minBookingNoticeHours) * 60 * 60 * 1000;
+        // Teto: nunca gera mais aulas no ciclo do que o pacote cobre (ciclo de
+        // 30 dias pode ter 5 ocorrências de um mesmo dia da semana; pacotes
+        // antigos podem ter horários a mais).
         const occurrences = computeCycleOccurrences(
           schedule,
           periodStart,
           periodEnd,
           minNoticeMs,
           env.APP_TIMEZONE
-        );
+        ).slice(0, pkg.sessionsPerCycle);
 
         for (const scheduledAt of occurrences) {
           const conflict = await tx.booking.findFirst({
@@ -892,7 +909,11 @@ export class PresentialPackageService {
 
       const schedule = pkg.weeklySchedule as unknown as WeeklyScheduleEntry[];
       const minNoticeMs = Math.max(24, pkg.provider.minBookingNoticeHours) * 60 * 60 * 1000;
-      const occurrences = computeCycleOccurrences(schedule, periodStart, periodEnd, minNoticeMs, env.APP_TIMEZONE);
+      // Mesmo teto do ciclo em Pix (activateCycle): nunca mais aulas que o pacote cobre.
+      const occurrences = computeCycleOccurrences(schedule, periodStart, periodEnd, minNoticeMs, env.APP_TIMEZONE).slice(
+        0,
+        pkg.sessionsPerCycle
+      );
 
       for (const scheduledAt of occurrences) {
         const conflict = await tx.booking.findFirst({
@@ -1715,7 +1736,7 @@ export class PresentialPackageService {
           StatusCodes.BAD_REQUEST
         );
       }
-      validateWeeklySchedule(input.weeklySchedule);
+      validateWeeklySchedule(input.weeklySchedule, weeklySlotsForPackage(offer.billingCycle, offer.presentialSessionsPerCycle ?? 0));
       weeklySchedule = input.weeklySchedule;
     }
 
