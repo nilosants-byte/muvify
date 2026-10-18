@@ -290,6 +290,9 @@ export function AdminUserSearchScreen({ navigation, route }: Props) {
       <FlatList
         data={!selectedUserId ? (results ?? []) : []}
         keyExtractor={(u) => u.id}
+        // Sobe o campo focado (ex.: motivo da suspensão, no rodapé) pra cima
+        // do teclado no iOS.
+        automaticallyAdjustKeyboardInsets
         contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 12 }}
         ListHeaderComponent={
           <View style={{ gap: 12 }}>

@@ -128,6 +128,8 @@ export function AdminChatAuditScreen({ navigation }: Props) {
       <FlatList
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        // Sobe o campo focado pra cima do teclado no iOS.
+        automaticallyAdjustKeyboardInsets
         data={items}
         keyExtractor={(item) => item.bookingId}
         contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 10 }}

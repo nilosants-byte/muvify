@@ -614,6 +614,9 @@ export function AdminConsultasScreen({ navigation }: Props) {
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 90 }}
         keyboardShouldPersistTaps="handled"
+        // Sobe o campo focado pra cima do teclado no iOS (vale também pros
+        // campos do ScrollView interno da aba de chat).
+        automaticallyAdjustKeyboardInsets
       >
         <TabBar active={activeTab} onChange={handleTabChange} />
         <View style={{ paddingHorizontal: 16 }}>

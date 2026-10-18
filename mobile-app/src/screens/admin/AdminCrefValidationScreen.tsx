@@ -482,6 +482,8 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
         keyExtractor={(item) => item.providerId}
         renderItem={renderItem}
         keyboardShouldPersistTaps="handled"
+        // Sobe o campo do motivo da recusa pra cima do teclado no iOS.
+        automaticallyAdjustKeyboardInsets
         refreshControl={
           <RefreshControl
             refreshing={crefQuery.isRefetching}

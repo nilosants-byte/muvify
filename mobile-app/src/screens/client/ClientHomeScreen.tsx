@@ -17,7 +17,9 @@ import { useGooglePlacesSearch } from "../../hooks/useGooglePlacesSearch";
 import {
   ActivityIndicator,
   Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -1757,6 +1759,9 @@ export function ClientHomeScreen({ navigation }: Props) {
           style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", alignItems: "center", justifyContent: "center", padding: 24 }}
           onPress={() => void handleDismissApelidoModal()}
         >
+          {/* O campo já abre com o teclado (autoFocus) e o teclado cobria o
+              campo e os botões — mesmo padrão do MvPasswordConfirmModal. */}
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ width: "100%", maxWidth: 360 }}>
           <Pressable onPress={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 360, backgroundColor: theme.inputBg, borderRadius: S.cardR, padding: 24, gap: 14, borderWidth: 1, borderColor: theme.primarySubtleBorder, shadowColor: theme.primary, shadowOpacity: 0.25, shadowRadius: 30, elevation: 10 }}>
             {/* Ícone */}
             <View style={{ alignSelf: "center", width: 64, height: 64, borderRadius: 20, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center" }}>
@@ -1815,6 +1820,7 @@ export function ClientHomeScreen({ navigation }: Props) {
               </TouchableOpacity>
             </View>
           </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
     </View>

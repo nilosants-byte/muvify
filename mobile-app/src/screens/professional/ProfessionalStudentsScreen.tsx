@@ -351,6 +351,9 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
       <FlatList
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 12 }}
         showsVerticalScrollIndicator={false}
+        // A busca fica no cabeçalho, abaixo das métricas — sobe pra cima do
+        // teclado no iOS se o cabeçalho empurrar o campo pra baixo da tela.
+        automaticallyAdjustKeyboardInsets
         refreshControl={
           <MvRefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />
         }

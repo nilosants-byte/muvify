@@ -220,6 +220,8 @@ export function AdminSupportScreen({ navigation }: Props) {
         keyExtractor={(ticket) => ticket.id}
         renderItem={renderItem}
         keyboardShouldPersistTaps="handled"
+        // Sobe o campo da resposta ao chamado pra cima do teclado no iOS.
+        automaticallyAdjustKeyboardInsets
         refreshControl={
           <RefreshControl
             refreshing={ticketsQuery.isRefetching}

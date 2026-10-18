@@ -489,6 +489,9 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }}
         showsVerticalScrollIndicator={false}
+        // Sobe o campo focado pra cima do teclado no iOS (sem isso o
+        // teclado cobria o campo desta tela).
+        automaticallyAdjustKeyboardInsets
         refreshControl={
           <MvRefreshControl refreshing={studentDetailQuery.isRefetching} onRefresh={() => void studentDetailQuery.refetch()} />
         }

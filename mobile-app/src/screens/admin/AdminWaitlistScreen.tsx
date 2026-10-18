@@ -113,6 +113,8 @@ export function AdminWaitlistScreen({ navigation }: Props) {
         data={items}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
+        // Sobe o campo de busca pra cima do teclado no iOS.
+        automaticallyAdjustKeyboardInsets
         refreshControl={
           <RefreshControl
             refreshing={signupsQuery.isRefetching}

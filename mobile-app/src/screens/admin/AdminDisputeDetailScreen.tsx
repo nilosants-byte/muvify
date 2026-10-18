@@ -209,7 +209,9 @@ export function AdminDisputeDetailScreen({ navigation, route }: Props) {
 
   return (
     <AdminScaffold title="Detalhe do caso" navigation={navigation} currentScreen="AdminDisputes">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 12 }}>
+      {/* automaticallyAdjustKeyboardInsets: os campos da decisão ficam no
+          fim da tela e o teclado cobria — no iOS sobe o campo focado. */}
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 12 }} automaticallyAdjustKeyboardInsets>
         <MvButton
           variant="outline"
           label="Voltar para lista"

@@ -96,7 +96,9 @@ export function ProfessionalReviewsScreen({ navigation }: Props) {
       <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
       <ProfessionalScreenHeader title="Minhas avaliações" onBack={() => navigation.goBack()} />
       <ScreenEntrance>
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        {/* automaticallyAdjustKeyboardInsets: o campo de resposta a uma
+            avaliação mais embaixo na lista ficava escondido atrás do teclado. */}
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }} showsVerticalScrollIndicator={false} automaticallyAdjustKeyboardInsets>
           {isLoading ? (
             <>
               <SkeletonCard />
