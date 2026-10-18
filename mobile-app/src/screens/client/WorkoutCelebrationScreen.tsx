@@ -306,12 +306,17 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
             {skipReview ? "Continuar" : "Avaliar personal"}
           </Text>
         </PressableScale>
-        <TouchableOpacity
-          onPress={() => navigation.replace("ClientTabs", { screen: "ClientHome" } as any)}
-          style={{ height: S.touchMin, alignItems: "center", justifyContent: "center" }}
-        >
-          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>Pular avaliação</Text>
-        </TouchableOpacity>
+        {/* Com a avaliação já feita (skipReview), o botão principal já vira
+            "Continuar" e leva pro mesmo lugar — "Pular avaliação" ali era
+            redundante e sem sentido (não sobra avaliação nenhuma pra pular). */}
+        {!skipReview && (
+          <TouchableOpacity
+            onPress={() => navigation.replace("ClientTabs", { screen: "ClientHome" } as any)}
+            style={{ height: S.touchMin, alignItems: "center", justifyContent: "center" }}
+          >
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text3 }}>Pular avaliação</Text>
+          </TouchableOpacity>
+        )}
       </View>
       </ScrollView>
     </View>
