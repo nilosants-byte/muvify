@@ -11,7 +11,8 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { PressableScale } from "../../components/polish/PressableScale";
-import { bookingsApi, communityApi, gamificationApi, uploadsApi } from "../../services/api/client";
+import { bookingsApi, gamificationApi } from "../../services/api/client";
+import { postSelfieToFeed } from "../../utils/feedSelfieShare";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { computeUserProgress, mapBackendAchievement } from "../../utils/gamification";
@@ -138,16 +139,7 @@ export function WorkoutCelebrationScreen({ route, navigation }: Props) {
     if (!shareSelfieDataUri) return;
     try {
       setSharingPhoto(true);
-      const { url } = await runWithAuth((token) =>
-        uploadsApi.uploadMedia(
-          token,
-          { uri: shareSelfieDataUri, mimeType: "image/jpeg", fileName: "feed-photo.jpg" },
-          "feed-photos"
-        )
-      );
-      await runWithAuth((token) =>
-        communityApi.createPost(token, { imageUrl: url, caption: feedCaption.trim() || DEFAULT_FEED_CAPTION })
-      );
+      await postSelfieToFeed(runWithAuth, shareSelfieDataUri, feedCaption.trim() || DEFAULT_FEED_CAPTION);
       await AsyncStorage.removeItem(LAST_WORKOUT_KEY);
       setShareSelfieDataUri(null);
       showToast("Foto publicada no feed de evolução!", "success");

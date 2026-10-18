@@ -1676,18 +1676,15 @@ export const uploadsApi = {
     const formData = new FormData();
     formData.append("folder", folder);
     const fileName = file.fileName ?? `upload-${Date.now()}`;
-    if (file.uri.startsWith("data:")) {
-      // Already-in-memory data URI (e.g. a selfie stashed in AsyncStorage) — resolve
-      // it to a Blob directly, no local file:// path to hand to FormData.
-      const blob = await (await fetch(file.uri)).blob();
-      formData.append("file", blob, fileName);
-    } else {
-      formData.append("file", {
-        uri: file.uri,
-        name: fileName,
-        type: file.mimeType
-      } as unknown as Blob);
-    }
+    // Sempre um arquivo de verdade (file://...): data URIs convertidos em
+    // Blob perdiam o Content-Type no React Native e o servidor recusava o
+    // upload — quem tiver um data URI grava em cache antes (ver
+    // utils/feedSelfieShare.ts).
+    formData.append("file", {
+      uri: file.uri,
+      name: fileName,
+      type: file.mimeType
+    } as unknown as Blob);
     return apiUploadRequest<{ url: string; mimeType: string; sizeBytes: number }>("/uploads/media", {
       token,
       formData,

@@ -35,12 +35,11 @@ import {
   bookingsApi,
   Booking,
   CompletionProofInput,
-  communityApi,
   paymentsApi,
   PaymentStatusResponse,
   reviewsApi,
-  uploadsApi,
 } from "../../services/api/client";
+import { postSelfieToFeed } from "../../utils/feedSelfieShare";
 import { useAppState } from "../../state/AppState";
 import { SelfieProofCapture } from "../../components/media/SelfieProofCapture";
 import { MvAvatar, MvInput } from "../../components/mv";
@@ -418,16 +417,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     if (!pendingFeedShare || !booking) return;
     try {
       setSharingToFeed(true);
-      const { url } = await runWithAuth((token) =>
-        uploadsApi.uploadMedia(
-          token,
-          { uri: pendingFeedShare, mimeType: "image/jpeg", fileName: "feed-photo.jpg" },
-          "feed-photos"
-        )
-      );
-      await runWithAuth((token) =>
-        communityApi.createPost(token, { imageUrl: url, caption: feedCaption.trim() || DEFAULT_FEED_CAPTION })
-      );
+      await postSelfieToFeed(runWithAuth, pendingFeedShare, feedCaption.trim() || DEFAULT_FEED_CAPTION);
       await AsyncStorage.removeItem(LAST_WORKOUT_KEY);
       setPendingFeedShare(null);
       showToast("Foto publicada no feed de evolução!", "success");
