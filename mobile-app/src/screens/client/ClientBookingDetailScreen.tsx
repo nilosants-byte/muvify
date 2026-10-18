@@ -11,11 +11,13 @@ import Animated, {
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   Pressable,
   ScrollView,
   StatusBar,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -33,9 +35,11 @@ import {
   bookingsApi,
   Booking,
   CompletionProofInput,
+  communityApi,
   paymentsApi,
   PaymentStatusResponse,
   reviewsApi,
+  uploadsApi,
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { SelfieProofCapture } from "../../components/media/SelfieProofCapture";
@@ -49,11 +53,13 @@ import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { hapticCodeValidated, hapticCta } from "../../utils/haptics";
 import { SkeletonBookingDetail } from "../../components/polish/SkeletonCard";
+import { captureException } from "../../observability/sentry";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ClientBookingDetail">;
 type Stage = "scheduled" | "started" | "post" | "done";
 
 const LAST_WORKOUT_KEY = "@personalapp/lastWorkout";
+const DEFAULT_FEED_CAPTION = "Treino concluído! 💪";
 
 const REVIEW_TAGS = ["Didático", "Pontual", "Motivador", "Atencioso", "Técnico"];
 
@@ -138,6 +144,15 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   const [contestingNoShow, setContestingNoShow] = useState(false);
   const [contestingAutoCapture, setContestingAutoCapture] = useState(false);
   const [withdrawingNoShow, setWithdrawingNoShow] = useState(false);
+  // Achado em teste manual (2026-10-16): o convite de postar a selfie no
+  // feed só existia na tela de celebração, uma única vez, logo após
+  // concluir — se desse erro na hora (ou o cliente saísse sem decidir), a
+  // selfie ficava perdida pra sempre, sem nenhum jeito de tentar de novo
+  // reabrindo o agendamento já concluído. Reaproveita o mesmo snapshot
+  // local (LAST_WORKOUT_KEY) que a tela de celebração usa.
+  const [pendingFeedShare, setPendingFeedShare] = useState<string | null>(null);
+  const [feedCaption, setFeedCaption] = useState("");
+  const [sharingToFeed, setSharingToFeed] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [contestReason, setContestReason] = useState("");
   // Frente 6 (segunda camada), Lote 12: navigation.goBack() logo depois de
@@ -380,6 +395,54 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
     const interval = setInterval(() => { void loadAttendance(booking); }, 7000);
     return () => clearInterval(interval);
   }, [isFocused, isActive, isValidated, booking, loadAttendance]);
+
+  // Verifica se existe uma selfie deste agendamento específico ainda não
+  // postada (sobrou do fluxo de celebração por erro, ou porque o cliente
+  // saiu sem decidir) — roda de novo sempre que os dados do agendamento
+  // mudam (ex: refetch ao reabrir esta tela a partir da lista).
+  useEffect(() => {
+    if (!booking || booking.status !== "COMPLETED") { setPendingFeedShare(null); return; }
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(LAST_WORKOUT_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw) as { bookingId?: string; mode?: string; selfieDataUri?: string };
+        if (saved.bookingId === booking.id && saved.mode === "PRESENCIAL" && saved.selfieDataUri) {
+          setPendingFeedShare(saved.selfieDataUri);
+        }
+      } catch { /* best effort */ }
+    })();
+  }, [booking?.id, booking?.status]);
+
+  async function handleShareToFeedYes() {
+    if (!pendingFeedShare || !booking) return;
+    try {
+      setSharingToFeed(true);
+      const { url } = await runWithAuth((token) =>
+        uploadsApi.uploadMedia(
+          token,
+          { uri: pendingFeedShare, mimeType: "image/jpeg", fileName: "feed-photo.jpg" },
+          "feed-photos"
+        )
+      );
+      await runWithAuth((token) =>
+        communityApi.createPost(token, { imageUrl: url, caption: feedCaption.trim() || DEFAULT_FEED_CAPTION })
+      );
+      await AsyncStorage.removeItem(LAST_WORKOUT_KEY);
+      setPendingFeedShare(null);
+      showToast("Foto publicada no feed de evolução!", "success");
+    } catch (error) {
+      captureException(error, { screen: "ClientBookingDetailScreen", action: "handleShareToFeedYes" });
+      showToast("Não foi possível publicar a foto. Tente novamente.", "error");
+    } finally {
+      setSharingToFeed(false);
+    }
+  }
+
+  async function handleShareToFeedNo() {
+    await AsyncStorage.removeItem(LAST_WORKOUT_KEY);
+    setPendingFeedShare(null);
+  }
 
   // ── Animação de validação do código (scale bounce + fade) ─────────────────
   const checkScale = useSharedValue(0);
@@ -897,6 +960,51 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
             </View>
           </View>
         </View>
+
+        {/* Selfie deste agendamento ainda não postada no feed (sobrou da
+            tela de celebração por erro, ou porque saiu sem decidir) */}
+        {pendingFeedShare && (
+          <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 16, gap: 12, alignItems: "center" }}>
+            <Image
+              source={{ uri: pendingFeedShare }}
+              style={{ width: 96, height: 96, borderRadius: 16, borderWidth: 1, borderColor: theme.border }}
+              resizeMode="cover"
+            />
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1, textAlign: "center" }}>
+              Postar essa selfie no feed de evolução?
+            </Text>
+            <TextInput
+              value={feedCaption}
+              onChangeText={setFeedCaption}
+              editable={!sharingToFeed}
+              placeholder={DEFAULT_FEED_CAPTION}
+              placeholderTextColor={theme.text3}
+              maxLength={200}
+              selectionColor={theme.primary}
+              style={{ width: "100%", borderWidth: 1, borderColor: theme.border, borderRadius: 12, backgroundColor: theme.inputBg, paddingHorizontal: 14, paddingVertical: 10, color: theme.text1, fontFamily: "DMSans_400Regular", fontSize: 13 }}
+            />
+            <View style={{ flexDirection: "row", gap: S.gap, width: "100%" }}>
+              <TouchableOpacity
+                onPress={() => void handleShareToFeedNo()}
+                disabled={sharingToFeed}
+                style={{ flex: 1, height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
+              >
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text2 }}>Não</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void handleShareToFeedYes()}
+                disabled={sharingToFeed}
+                style={{ flex: 1, height: S.touchMin, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
+              >
+                {sharingToFeed ? (
+                  <ActivityIndicator size="small" color={theme.textOnPrimary} />
+                ) : (
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.textOnPrimary }}>Postar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* Cliente já confirmou a própria conclusão, falta só o profissional */}
         {awaitingProviderConfirmation && (
