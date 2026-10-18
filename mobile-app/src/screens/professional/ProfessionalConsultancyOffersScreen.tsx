@@ -23,7 +23,7 @@ import { StepProgressBar } from "../../components/professional/UXReformComponent
 import { PressableScale } from "../../components/polish/PressableScale";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { formatBRDate, formatCurrencyBRL, maskDateInputBR, maskPriceInput } from "../../utils/formatters";
-import { cycleUnitPlural } from "../../utils/presentialPackageLabels";
+import { cycleUnitPlural, weeklySlotsForPackage, weeksPerCycle } from "../../utils/presentialPackageLabels";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
@@ -236,8 +236,24 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
       // uma validade definida, ao contrário do horário fixo recorrente.
       return "Pacotes de sessões avulsas precisam de uma validade — ative \"Vigência com prazo determinado\".";
     }
+    // Achado no teste manual do checklist (C6.1): horário fixo vira um número
+    // exato de aulas por semana (o aluno escolhe essa quantidade de horários,
+    // 1 por dia) — mesma regra do servidor.
+    if (presentialPackageMode === "FIXED_RECURRING") {
+      const weeks = weeksPerCycle(offerCycle);
+      const slots = weeklySlotsForPackage(offerCycle, sessions);
+      if (slots === null) {
+        return weeks < 1
+          ? "Pacote de horário fixo não pode ter cobrança diária."
+          : `No horário fixo, as sessões por ciclo precisam virar aulas inteiras por semana (este ciclo tem ${weeks} semana${weeks === 1 ? "" : "s"}): use ${[1, 2, 3].map((n) => n * weeks).join(", ")}...`;
+      }
+      const comboDays = Number(comboPresentialDaysPerWeek);
+      if (offerKind === "COMBO" && comboDays && comboDays !== slots) {
+        return `Os dias presenciais por semana (${comboDays}) precisam bater com as sessões por ciclo (${sessions} em ${weeks} semanas = ${slots} por semana).`;
+      }
+    }
     return undefined;
-  }, [offerKind, presentialPackageMode, presentialSessionsPerCycle, presentialHasFixedTerm, presentialTotalCycles]);
+  }, [offerKind, offerCycle, comboPresentialDaysPerWeek, presentialPackageMode, presentialSessionsPerCycle, presentialHasFixedTerm, presentialTotalCycles]);
 
   const paymentMethodsError = useMemo(() => {
     if (!acceptsPix && !acceptsDebitCard && !acceptsCreditCard) {

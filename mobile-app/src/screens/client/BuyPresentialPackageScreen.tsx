@@ -23,7 +23,7 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar } from "../../components/mv";
 import { TimeWheelPicker } from "../../components/mv/TimeWheelPicker";
 import { formatCurrencyBRL, getInitials } from "../../utils/formatters";
-import { cycleDurationLabel } from "../../utils/presentialPackageLabels";
+import { cycleDurationLabel, weeklySlotsForPackage } from "../../utils/presentialPackageLabels";
 import { handleScreenError } from "../shared/api-helpers";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { hapticCta } from "../../utils/haptics";
@@ -108,6 +108,9 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   } = route.params;
 
   const isFixedRecurring = presentialPackageMode === "FIXED_RECURRING";
+  // Quantos horários por semana o pacote cobre (null = oferta antiga mal
+  // configurada; o servidor ainda exige no máximo 1 por dia).
+  const requiredWeeklySlots = isFixedRecurring ? weeklySlotsForPackage(billingCycle, presentialSessionsPerCycle) : null;
   const isCombo = offerKind === "COMBO";
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -200,6 +203,21 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
       showToast("Esse dia e horário já foi adicionado.", "error");
       return;
     }
+    // Achado no teste manual do checklist (C6.1): dava pra marcar quantos
+    // horários quisesse, inclusive vários no mesmo dia. Mesma regra do
+    // servidor: 1 por dia, e exatamente o número de aulas por semana que o
+    // pacote cobre.
+    if (weeklySchedule.some((slot) => slot.weekday === newSlotWeekday)) {
+      showToast("Só dá pra marcar um horário por dia da semana.", "error");
+      return;
+    }
+    if (requiredWeeklySlots !== null && weeklySchedule.length >= requiredWeeklySlots) {
+      showToast(
+        `Este pacote cobre ${requiredWeeklySlots} aula${requiredWeeklySlots === 1 ? "" : "s"} por semana — remova um horário para trocar.`,
+        "error"
+      );
+      return;
+    }
     setWeeklySchedule((current) => [...current, { weekday: newSlotWeekday, time: newSlotTime }].sort((a, b) => a.weekday - b.weekday || a.time.localeCompare(b.time)));
   }
 
@@ -249,7 +267,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   const canSubmit =
     !clientHasDebt &&
     Boolean(selectedCategoryId) &&
-    (!isFixedRecurring || weeklySchedule.length > 0) &&
+    (!isFixedRecurring || (requiredWeeklySlots !== null ? weeklySchedule.length === requiredWeeklySlots : weeklySchedule.length > 0)) &&
     (paymentMethod !== "CREDIT_CARD" || paymentReady) &&
     (!isCombo || consentAcknowledged) &&
     (!needsLocation || Boolean(sessionLocation)) &&
@@ -508,7 +526,9 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
             <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 10 }}>
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Horário fixo semanal</Text>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>
-                Escolha os dias e horários da sua rotina - toda semana as sessões acontecem automaticamente nesses horários.
+                {requiredWeeklySlots !== null
+                  ? `Este pacote cobre ${requiredWeeklySlots} aula${requiredWeeklySlots === 1 ? "" : "s"} por semana. Escolha ${requiredWeeklySlots === 1 ? "o dia e o horário" : `${requiredWeeklySlots} dias diferentes e o horário de cada um`} - toda semana as sessões acontecem automaticamente nesses horários.`
+                  : "Escolha os dias e horários da sua rotina (um por dia) - toda semana as sessões acontecem automaticamente nesses horários."}
               </Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                 {WEEKDAYS.map((day) => (
@@ -522,6 +542,11 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
               >
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>+ Adicionar horário</Text>
               </TouchableOpacity>
+              {requiredWeeklySlots !== null ? (
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: weeklySchedule.length === requiredWeeklySlots ? theme.primary : theme.text2 }}>
+                  {weeklySchedule.length} de {requiredWeeklySlots} horário{requiredWeeklySlots === 1 ? "" : "s"} escolhido{requiredWeeklySlots === 1 ? "" : "s"}
+                </Text>
+              ) : null}
               {weeklySchedule.length > 0 ? (
                 <View style={{ gap: 6 }}>
                   {weeklySchedule.map((slot, index) => (
