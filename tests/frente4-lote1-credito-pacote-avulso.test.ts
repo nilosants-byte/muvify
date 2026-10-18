@@ -86,12 +86,16 @@ describe("Frente 4, Lote 1 — crédito de pacote de sessões avulsas", () => {
     });
     providerId = provider.id;
 
+    // Dia inteiro (00:00–24:00): bookSession marca "agora + N horas", então
+    // com 06:00–22:00 o teste falhava sempre que rodava à noite ("Horário
+    // fora da disponibilidade informada."). A checagem compara "HH:MM" como
+    // texto, e "23:59" < "24:00".
     await prisma.availability.createMany({
       data: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
         providerId,
         weekday,
-        startTime: "06:00",
-        endTime: "22:00",
+        startTime: "00:00",
+        endTime: "24:00",
         isActive: true
       }))
     });
