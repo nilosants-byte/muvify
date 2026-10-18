@@ -1,4 +1,5 @@
 import { FeedPostType, Prisma } from "@prisma/client";
+import * as Sentry from "@sentry/node";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
@@ -345,8 +346,16 @@ export async function deletePost(postId: string, userId: string): Promise<void> 
   // Épico de Frentes, Frente 8, Lote 10: apagar o post no banco nunca
   // apagava a mídia correspondente no R2 - ficava órfã pra sempre. Best
   // effort: um erro de rede no storage não deve impedir a exclusão do post.
+  // Achado no teste manual do checklist (17/10/2026): a falha só ia pro
+  // console do servidor, sem alerta nenhum - o usuário via o post sumir, mas
+  // a foto podia continuar no ar no link público sem ninguém saber. Mesmo
+  // alerta do Sentry que a exclusão de conta já usa (reportR2CleanupFailure
+  // em user.service.ts).
   if (post.imageUrl) {
-    await deleteMediaByUrl(post.imageUrl).catch((e) => console.error("Falha ao apagar mídia do post no R2", e));
+    await deleteMediaByUrl(post.imageUrl).catch((e) => {
+      console.error("Falha ao apagar mídia do post no R2", e);
+      Sentry.captureException(e, { tags: { area: "community", phase: "post_deletion_r2_cleanup" }, extra: { postId } });
+    });
   }
 
   if (post.type === "MANUAL_PHOTO" && Date.now() - post.createdAt.getTime() < XP_FARM_REVERSAL_WINDOW_MS) {
