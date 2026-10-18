@@ -22,6 +22,7 @@ import { MvVideoPlayer } from "../../components/mv/MvVideoPlayer";
 import { FounderBadge } from "../../components/professional/FounderBadge";
 import { averageToFive, extractApiMessage, formatPriceFromCents, handleScreenError } from "../shared/api-helpers";
 import { formatCurrencyBRL } from "../../utils/formatters";
+import { cycleDurationLabel } from "../../utils/presentialPackageLabels";
 import { resolveMediaUrl } from "../../utils/media";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
@@ -544,19 +545,22 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: 14 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 16, color: theme.text1, marginBottom: 4 }}>Pacotes presenciais</Text>
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3, marginBottom: 10 }}>
-              Assinaturas cobradas por ciclo - cancele quando quiser, sem afetar o que já foi pago.
+              Veja como cada pacote é cobrado antes de contratar — cancele quando quiser, sem afetar o que já foi pago.
             </Text>
             <View style={{ gap: 10 }}>
               {presentialPackageOffers.map((offer) => {
-                const unitLabel = offer.presentialPackageMode === "FLEXIBLE_CREDITS" ? "créditos" : "sessões";
+                // Sessões avulsas: valor é por sessão, nada cobrado na compra.
+                const isSessionPack = offer.presentialPackageMode === "FLEXIBLE_CREDITS";
                 return (
                   <View key={offer.id} style={{ borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, padding: 12, gap: 6 }}>
                     <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{offer.title}</Text>
                     <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>
-                      {offer.presentialSessionsPerCycle ?? 0} {unitLabel} por ciclo
+                      {isSessionPack
+                        ? `${offer.presentialSessionsPerCycle ?? 0} sessões avulsas${offer.presentialHasFixedTerm && offer.presentialTotalCycles ? ` · válidas por ${cycleDurationLabel(offer.billingCycle, offer.presentialTotalCycles)}` : ""}`
+                        : `${offer.presentialSessionsPerCycle ?? 0} sessões por ciclo`}
                     </Text>
                     <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: theme.primary, letterSpacing: -0.013 * 18 }}>
-                      {formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}
+                      {formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}{isSessionPack ? " por sessão" : ""}
                     </Text>
                     <TouchableOpacity
                       onPress={() => goToPresentialPackagePurchase(offer)}

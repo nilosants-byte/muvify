@@ -23,6 +23,7 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvAvatar } from "../../components/mv";
 import { TimeWheelPicker } from "../../components/mv/TimeWheelPicker";
 import { formatCurrencyBRL, getInitials } from "../../utils/formatters";
+import { cycleDurationLabel } from "../../utils/presentialPackageLabels";
 import { handleScreenError } from "../shared/api-helpers";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { hapticCta } from "../../utils/haptics";
@@ -347,11 +348,17 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   }
 
   const cycleLabel = billingCycleLabel(billingCycle);
-  const unitLabel = presentialPackageMode === "FLEXIBLE_CREDITS" ? "créditos" : "sessões";
   // Único caso que já cobra sessão por sessão em vez do ciclo inteiro
   // adiantado — o combo ainda usa o modelo antigo pro lado presencial.
   const isCardFixedRecurringPurchase = !isCombo && isFixedRecurring && paymentMethod === "CREDIT_CARD";
   const isFlexibleCreditsPurchase = presentialPackageMode === "FLEXIBLE_CREDITS";
+  // Sessões avulsas: o valor da oferta é POR SESSÃO e nada é cobrado na
+  // compra — o resumo mostrava "R$ X / mensal" (parecia assinatura) e a
+  // validade saía como "1 mensal(s)".
+  const flexibleValidityLabel =
+    isFlexibleCreditsPurchase && presentialHasFixedTerm && presentialTotalCycles
+      ? cycleDurationLabel(billingCycle, presentialTotalCycles)
+      : null;
   const isPerSessionBilling = isCardFixedRecurringPurchase || isFlexibleCreditsPurchase;
 
   if (setupQuery.isLoading) {
@@ -431,7 +438,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
               <View style={{ flex: 1 }}>
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{provider?.displayName ?? "Profissional"}</Text>
                 <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, marginTop: 2 }}>
-                  {presentialPackageMode === "FIXED_RECURRING" ? "Pacote de horário fixo" : "Pacote de créditos flexíveis"}
+                  {presentialPackageMode === "FIXED_RECURRING" ? "Pacote de horário fixo" : "Pacote de sessões avulsas"}
                 </Text>
               </View>
             </View>
@@ -453,15 +460,13 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
                 Um bloco fechado de {presentialSessionsPerCycle} sessões, ao preço de {formatCurrencyBRL(cycleAmountCents / 100)} por sessão —
                 nada é cobrado agora. Você agenda quando quiser (dentro da validade do pacote) e cada sessão só é cobrada perto da data em que vai acontecer.
-                {presentialHasFixedTerm && presentialTotalCycles
-                  ? ` O pacote vale por ${presentialTotalCycles} ${cycleLabel === "diário" ? "dia(s)" : `${cycleLabel}(s)`} a partir da compra.`
-                  : ""}
+                {flexibleValidityLabel ? ` O pacote vale por ${flexibleValidityLabel} a partir da compra.` : ""}
                 {" "}Sem sessões usadas dentro da validade = sem cobrança nenhuma. Cancelar a qualquer momento libera as sessões que sobrarem.
               </Text>
             ) : (
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
                 Esta é uma assinatura: você paga {formatCurrencyBRL((isCombo ? comboPresentialShareCents ?? 0 : cycleAmountCents) / 100)} a cada ciclo ({cycleLabel}),
-                liberando {presentialSessionsPerCycle} {unitLabel} por ciclo.
+                liberando {presentialSessionsPerCycle} sessões por ciclo.
                 {presentialHasFixedTerm && presentialTotalCycles
                   ? ` A assinatura tem prazo determinado de ${presentialTotalCycles} ciclos e encerra sozinha ao final.`
                   : " Sem prazo fixo - renova automaticamente até você ou o profissional cancelarem."}
@@ -626,10 +631,14 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 6 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, marginBottom: 4 }}>Resumo</Text>
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>
-              {presentialSessionsPerCycle} {unitLabel} por ciclo {cycleLabel}
+              {isFlexibleCreditsPurchase
+                ? `${presentialSessionsPerCycle} sessões avulsas${flexibleValidityLabel ? ` · válidas por ${flexibleValidityLabel}` : ""}`
+                : `${presentialSessionsPerCycle} sessões por ciclo ${cycleLabel}`}
             </Text>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 18, color: theme.primary, marginTop: 4 }}>
-              {formatCurrencyBRL((isCombo ? comboPresentialShareCents ?? 0 : cycleAmountCents) / 100)} / {cycleLabel}
+              {isFlexibleCreditsPurchase
+                ? `${formatCurrencyBRL(cycleAmountCents / 100)} por sessão`
+                : `${formatCurrencyBRL((isCombo ? comboPresentialShareCents ?? 0 : cycleAmountCents) / 100)} / ${cycleLabel}`}
             </Text>
           </View>
 

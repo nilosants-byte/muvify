@@ -89,7 +89,8 @@ export function MyPresentialPackagesScreen({ navigation }: Props) {
 
           {packages.map((pkg) => {
             const badge = packageStatusBadge(pkg.status, theme);
-            const unitLabel = pkg.mode === "FLEXIBLE_CREDITS" ? "créditos" : "sessões";
+            // Sessões avulsas: valor é por sessão, sem cobrança por ciclo.
+            const isSessionPack = pkg.mode === "FLEXIBLE_CREDITS";
             return (
               <PressableScale
                 key={pkg.id}
@@ -108,11 +109,13 @@ export function MyPresentialPackagesScreen({ navigation }: Props) {
                   </View>
                 </View>
                 <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>
-                  {pkg.sessionsPerCycle} {unitLabel} · {formatCurrencyBRL(pkg.cycleAmountCents / 100)} / {billingCycleLabel(pkg.billingCycle)}
+                  {isSessionPack
+                    ? `${pkg.sessionsPerCycle} sessões avulsas · ${formatCurrencyBRL(pkg.cycleAmountCents / 100)} por sessão`
+                    : `${pkg.sessionsPerCycle} sessões · ${formatCurrencyBRL(pkg.cycleAmountCents / 100)} / ${billingCycleLabel(pkg.billingCycle)}`}
                 </Text>
-                {pkg.mode === "FLEXIBLE_CREDITS" && pkg.status === "ACTIVE" ? (
+                {isSessionPack && pkg.status === "ACTIVE" ? (
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.primary }}>
-                    {pkg.creditsRemainingThisCycle} crédito{pkg.creditsRemainingThisCycle === 1 ? "" : "s"} disponíve{pkg.creditsRemainingThisCycle === 1 ? "l" : "is"} neste ciclo
+                    {pkg.creditsRemainingThisCycle} sessão{pkg.creditsRemainingThisCycle === 1 ? "" : "ões"} restante{pkg.creditsRemainingThisCycle === 1 ? "" : "s"}{pkg.validUntil ? ` · válido até ${formatBRDate(pkg.validUntil)}` : ""}
                   </Text>
                 ) : null}
                 {pkg.status === "ACTIVE" && pkg.nextBillingAt ? (

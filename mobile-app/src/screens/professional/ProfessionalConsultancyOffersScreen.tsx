@@ -23,6 +23,7 @@ import { StepProgressBar } from "../../components/professional/UXReformComponent
 import { PressableScale } from "../../components/polish/PressableScale";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
 import { formatBRDate, formatCurrencyBRL, maskDateInputBR, maskPriceInput } from "../../utils/formatters";
+import { cycleUnitPlural } from "../../utils/presentialPackageLabels";
 import { handleScreenError } from "../shared/api-helpers";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
@@ -94,7 +95,7 @@ function cycleLabel(cycle: OfferBillingCycle) {
 
 function packageModeLabel(mode?: PresentialPackageMode | null): string | null {
   if (mode === "FIXED_RECURRING") return "Pacote · horário fixo";
-  if (mode === "FLEXIBLE_CREDITS") return "Pacote · créditos flexíveis";
+  if (mode === "FLEXIBLE_CREDITS") return "Pacote · sessões avulsas";
   return null;
 }
 
@@ -887,9 +888,9 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                       <MvToggle value={presentialHasFixedTerm} onValueChange={setPresentialHasFixedTerm} accessibilityLabel="Vigência com prazo determinado" />
                     </View>
                     {presentialHasFixedTerm ? (
-                      <MvInput keyboardType="numeric" label="Total de ciclos" placeholder="Ex: 3" value={presentialTotalCycles} onChangeText={setPresentialTotalCycles} />
+                      <MvInput keyboardType="numeric" label={presentialPackageMode === "FLEXIBLE_CREDITS" ? `Validade do pacote (em ${cycleUnitPlural(offerCycle)})` : "Total de ciclos"} placeholder={presentialPackageMode === "FLEXIBLE_CREDITS" ? "Ex: 1" : "Ex: 3"} value={presentialTotalCycles} onChangeText={setPresentialTotalCycles} />
                     ) : presentialPackageMode === "FLEXIBLE_CREDITS" ? (
-                      <MvText variant="caption" color="danger">Obrigatório para sessões avulsas — ative e informe o total de ciclos.</MvText>
+                      <MvText variant="caption" color="danger">Obrigatório para sessões avulsas — ative e informe a validade do pacote.</MvText>
                     ) : (
                       <MvText variant="caption" color="secondary">Sem prazo definido — renova sozinho até o aluno ou você cancelar.</MvText>
                     )}
@@ -903,9 +904,14 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                     ) : null}
                   </View>
                 ) : null}
+                {presentialPackageMode === "FLEXIBLE_CREDITS" && offerKind !== "COMBO" ? (
+                  <MvText variant="caption" color="warning">
+                    O valor abaixo é o preço de cada sessão — o aluno paga só pelas sessões que agendar, nada é cobrado na compra.
+                  </MvText>
+                ) : null}
                 <MvInput
                   keyboardType="numeric"
-                  placeholder="Valor base (R$)"
+                  placeholder={presentialPackageMode === "FLEXIBLE_CREDITS" && offerKind !== "COMBO" ? "Valor por sessão (R$)" : "Valor base (R$)"}
                   value={offerPrice}
                   onChangeText={(value) => setOfferPrice(maskPriceInput(value))}
                   editable={!editingOfferPriceLocked}
@@ -1082,12 +1088,21 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
                           <MvToggle value={presentialHasFixedTerm} onValueChange={setPresentialHasFixedTerm} accessibilityLabel="Vigência com prazo determinado" />
                         </View>
                         {presentialHasFixedTerm ? (
-                          <MvInput keyboardType="numeric" label="Total de ciclos" placeholder="Ex: 3" value={presentialTotalCycles} onChangeText={setPresentialTotalCycles} />
+                          <MvInput keyboardType="numeric" label={presentialPackageMode === "FLEXIBLE_CREDITS" ? `Validade do pacote (em ${cycleUnitPlural(offerCycle)})` : "Total de ciclos"} placeholder={presentialPackageMode === "FLEXIBLE_CREDITS" ? "Ex: 1" : "Ex: 3"} value={presentialTotalCycles} onChangeText={setPresentialTotalCycles} />
                         ) : presentialPackageMode === "FLEXIBLE_CREDITS" ? (
-                          <MvText variant="caption" color="danger">Obrigatório para sessões avulsas — ative e informe o total de ciclos.</MvText>
+                          <MvText variant="caption" color="danger">Obrigatório para sessões avulsas — ative e informe a validade do pacote.</MvText>
                         ) : (
                           <MvText variant="caption" color="secondary">Sem prazo definido — renova sozinho até o aluno ou você cancelar.</MvText>
                         )}
+                        {presentialPackageMode === "FLEXIBLE_CREDITS" && offerKind !== "COMBO" ? (
+                          // Achado no teste manual do checklist (C6.1): o "valor base" das
+                          // sessões avulsas é o preço de CADA sessão (cobrada quando o aluno
+                          // agenda), mas nada aqui dizia isso — digitar o total do pacote
+                          // multiplicaria a cobrança pelo número de sessões.
+                          <MvText variant="caption" color="warning">
+                            {`O valor base é o preço de cada sessão — o aluno paga só pelas sessões que agendar, nada é cobrado na compra.${basePriceCents > 0 && Number(presentialSessionsPerCycle) > 0 ? ` Usando todas: ${formatCurrencyBRL((basePriceCents * Number(presentialSessionsPerCycle)) / 100)}.` : ""}`}
+                          </MvText>
+                        ) : null}
                         {presentialPackageError ? <MvText variant="body4" color="danger">{presentialPackageError}</MvText> : null}
                         {offerKind === "COMBO" ? (
                           <>

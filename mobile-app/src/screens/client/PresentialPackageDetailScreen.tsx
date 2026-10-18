@@ -97,7 +97,8 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
     );
   }
 
-  const unitLabel = pkg.mode === "FLEXIBLE_CREDITS" ? "créditos" : "sessões";
+  // Sessões avulsas: valor é por sessão, sem cobrança nem vigência por ciclo.
+  const isSessionPack = pkg.mode === "FLEXIBLE_CREDITS";
   const canCancel = pkg.status === "ACTIVE" || pkg.status === "PAST_DUE";
   const cycles = pkg.cycles ?? [];
   const isCardFixedRecurring = pkg.mode === "FIXED_RECURRING" && pkg.paymentMethod === "CREDIT_CARD";
@@ -145,14 +146,20 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
         <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 6 }}>
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Detalhes do pacote</Text>
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2 }}>
-            {pkg.mode === "FIXED_RECURRING" ? "Horário fixo semanal" : "Créditos flexíveis"} · {pkg.sessionsPerCycle} {unitLabel} por ciclo
+            {isSessionPack
+              ? `Sessões avulsas · ${pkg.sessionsPerCycle} sessões no pacote`
+              : `Horário fixo semanal · ${pkg.sessionsPerCycle} sessões por ciclo`}
           </Text>
           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 18, color: theme.primary }}>
-            {formatCurrencyBRL(pkg.cycleAmountCents / 100)} / {billingCycleLabel(pkg.billingCycle)}
+            {isSessionPack
+              ? `${formatCurrencyBRL(pkg.cycleAmountCents / 100)} por sessão`
+              : `${formatCurrencyBRL(pkg.cycleAmountCents / 100)} / ${billingCycleLabel(pkg.billingCycle)}`}
           </Text>
-          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>
-            {pkg.hasFixedTerm && pkg.totalCycles ? `Vigência: ${pkg.totalCycles} ciclos` : "Vigência: sem prazo determinado"}
-          </Text>
+          {!isSessionPack ? (
+            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>
+              {pkg.hasFixedTerm && pkg.totalCycles ? `Vigência: ${pkg.totalCycles} ciclo${pkg.totalCycles === 1 ? "" : "s"}` : "Vigência: sem prazo determinado"}
+            </Text>
+          ) : null}
           {pkg.status === "ACTIVE" && pkg.nextBillingAt ? (
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>
               Próxima cobrança: {formatBRDate(pkg.nextBillingAt)}
