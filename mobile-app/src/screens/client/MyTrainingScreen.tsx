@@ -1159,12 +1159,19 @@ export function MyTrainingScreen({ navigation, route }: Props) {
                       </Text>
                     </TouchableOpacity>
                     {clientHasDebt ? (
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      // Achado no teste manual do checklist (C6.1): leva direto
+                      // pra "Minhas pendências" em vez de só avisar.
+                      <TouchableOpacity
+                        onPress={() => navigation.getParent<any>()?.navigate("MyDebts")}
+                        accessibilityRole="button"
+                        accessibilityLabel="Ver e regularizar pendência financeira"
+                        style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                      >
                         <Ionicons name="alert-circle-outline" size={14} color={theme.danger} />
                         <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.danger, flex: 1 }}>
-                          Você tem uma pendência financeira em aberto. Regularize antes de aceitar uma nova proposta.
+                          Você tem uma pendência financeira em aberto. Regularize antes de aceitar uma nova proposta — <Text style={{ fontFamily: "DMSans_700Bold", textDecorationLine: "underline" }}>ver e pagar</Text>.
                         </Text>
-                      </View>
+                      </TouchableOpacity>
                     ) : null}
                     <View style={{ flexDirection: "row", gap: 10 }}>
                       <TouchableOpacity onPress={() => void decideRequest(req.id, "REFUSE")} disabled={decidingRequestId === req.id} style={{ flex: 1, height: S.btnH, borderRadius: S.btnR, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>

@@ -642,15 +642,24 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
 
           {/* Card: Resumo */}
           {clientHasDebt ? (
-            <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: "rgba(239,68,68,0.35)", backgroundColor: theme.dangerSubtle, padding: S.cardPad, gap: 6 }}>
+            // Achado no teste manual do checklist (C6.1): o aviso não dizia o
+            // que era a pendência nem onde resolver — agora leva direto pra
+            // "Minhas pendências" (motivo, valor e pagamento).
+            <TouchableOpacity
+              onPress={() => navigation.navigate("MyDebts")}
+              accessibilityRole="button"
+              accessibilityLabel="Ver e regularizar pendência financeira"
+              style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: "rgba(239,68,68,0.35)", backgroundColor: theme.dangerSubtle, padding: S.cardPad, gap: 6 }}
+            >
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="alert-circle-outline" size={18} color={theme.danger} />
-                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.danger }}>Pendência financeira em aberto</Text>
+                <Text style={{ flex: 1, fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.danger }}>Pendência financeira em aberto</Text>
+                <Ionicons name="chevron-forward" size={16} color={theme.danger} />
               </View>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.danger, lineHeight: 18 }}>
-                Você tem uma pendência financeira em aberto. Regularize antes de assinar um novo pacote.
+                Regularize antes de assinar um novo pacote. Toque aqui para ver o que é e pagar.
               </Text>
-            </View>
+            </TouchableOpacity>
           ) : null}
 
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.cardBg, padding: S.cardPad, gap: 6 }}>
