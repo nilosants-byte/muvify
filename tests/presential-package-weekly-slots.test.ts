@@ -144,4 +144,23 @@ describe("Pacote de horário fixo: horários por semana coerentes com as sessõe
     expect(sessions).toBeGreaterThan(0);
     expect(sessions).toBeLessThanOrEqual(8);
   });
+
+  // Achado no teste manual do checklist (C6.3): o horário fixo vinha de uma
+  // roda livre e nunca era conferido com a grade de atendimento do profissional.
+  it("recusa horário fora da grade de atendimento do profissional", async () => {
+    await prisma.availability.createMany({
+      data: [1, 3].map((weekday) => ({ providerId, weekday, startTime: "08:00", endTime: "12:00", isActive: true }))
+    });
+    const offerId = await fixedOffer(8);
+    await expect(
+      packageService.purchasePackage(clientId, {
+        offerId,
+        categoryId,
+        paymentMethod: "CREDIT_CARD" as any,
+        weeklySchedule: [{ weekday: 1, time: "09:00" }, { weekday: 3, time: "03:00" }]
+      })
+    ).rejects.toThrow(/fora dos horários de atendimento/);
+    expect(await prisma.presentialPackage.count({ where: { clientId, offerId } })).toBe(0);
+    await prisma.availability.deleteMany({ where: { providerId } });
+  });
 });

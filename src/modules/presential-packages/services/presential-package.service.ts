@@ -143,6 +143,33 @@ function validateWeeklySchedule(schedule: WeeklyScheduleEntry[], requiredSlots: 
   }
 }
 
+const WEEKDAY_LABELS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+
+// Achado no teste manual do checklist (C6.3): o horário fixo era escolhido
+// numa roda livre (qualquer hora, inclusive madrugada) e o servidor nunca
+// conferia com a grade de atendimento do profissional — a aula avulsa sempre
+// conferiu. Mesma regra dela: o início precisa cair dentro de uma janela
+// ativa do dia da semana. Profissional sem nenhuma grade cadastrada fica de
+// fora (não há com o que comparar; dados antigos/de teste).
+async function assertWeeklyScheduleWithinAvailability(providerId: string, schedule: WeeklyScheduleEntry[]) {
+  const availabilities = await prisma.availability.findMany({
+    where: { providerId, isActive: true },
+    select: { weekday: true, startTime: true, endTime: true }
+  });
+  if (availabilities.length === 0) return;
+  for (const entry of schedule) {
+    const fits = availabilities.some(
+      (slot) => slot.weekday === entry.weekday && entry.time >= slot.startTime && entry.time < slot.endTime
+    );
+    if (!fits) {
+      throw new AppError(
+        `O horário de ${WEEKDAY_LABELS[entry.weekday]} às ${entry.time} está fora dos horários de atendimento do profissional.`,
+        StatusCodes.BAD_REQUEST
+      );
+    }
+  }
+}
+
 function zonedDateKeyAndWeekday(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -366,6 +393,7 @@ export class PresentialPackageService {
         throw new AppError("Informe o horário semanal fixo para este pacote.", StatusCodes.BAD_REQUEST);
       }
       validateWeeklySchedule(input.weeklySchedule, weeklySlotsForPackage(offer.billingCycle, offer.presentialSessionsPerCycle ?? 0));
+      await assertWeeklyScheduleWithinAvailability(offer.providerId, input.weeklySchedule);
       weeklySchedule = input.weeklySchedule;
     }
 
@@ -1740,6 +1768,7 @@ export class PresentialPackageService {
         );
       }
       validateWeeklySchedule(input.weeklySchedule, weeklySlotsForPackage(offer.billingCycle, offer.presentialSessionsPerCycle ?? 0));
+      await assertWeeklyScheduleWithinAvailability(offer.providerId, input.weeklySchedule);
       weeklySchedule = input.weeklySchedule;
     }
 
