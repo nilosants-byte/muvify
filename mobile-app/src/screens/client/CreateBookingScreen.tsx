@@ -1,7 +1,7 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
-import { ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -456,7 +456,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
     setHomeAddressResults([]);
   }
 
-  async function handleContinue() {
+  async function handleContinue(skipSameDayCheck = false) {
     if (!anamnesisCompleted) {
       showToast("Preencha sua ficha de saúde antes de agendar.", "error");
       return;
@@ -491,6 +491,38 @@ export function CreateBookingScreen({ navigation, route }: Props) {
     if (hasNearTermDate && !immediateExecutionAcknowledged) {
       showToast("Confirme a ciência sobre o início imediato do atendimento para agendar com menos de 7 dias de antecedência.", "error");
       return;
+    }
+
+    // Achado no teste manual do checklist (C6.3): marcar uma segunda aula no
+    // mesmo dia passava sem aviso nenhum — pode ser engano. Mesmo horário o
+    // servidor já recusa (conflito com o profissional); mesmo dia em outro
+    // horário é permitido, mas pede confirmação.
+    if (!skipSameDayCheck) {
+      try {
+        const myBookings = await runWithAuth((token) => bookingsApi.me(token));
+        const toLocalDateKey = (iso: string) =>
+          new Date(new Date(iso).getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const sameDay = myBookings
+          .filter((b) => (b.status === "PENDING" || b.status === "CONFIRMED") && selectedDateKeys.includes(toLocalDateKey(b.scheduledAt)))
+          .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+        if (sameDay.length > 0) {
+          const list = sameDay
+            .map((b) => `${formatSelectedDayLabel(toLocalDateKey(b.scheduledAt))} às ${new Date(b.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}`)
+            .join("\n");
+          Alert.alert(
+            "Você já tem aula nesse dia",
+            `Você já tem aula marcada em:\n${list}\n\nQuer marcar outra aula no mesmo dia mesmo assim?`,
+            [
+              { text: "Voltar", style: "cancel" },
+              { text: "Marcar mesmo assim", onPress: () => void handleContinue(true) },
+            ]
+          );
+          return;
+        }
+      } catch {
+        // Conferência de conveniência: se falhar, segue (o servidor ainda
+        // recusa o mesmo horário).
+      }
     }
 
     try {
@@ -563,7 +595,10 @@ export function CreateBookingScreen({ navigation, route }: Props) {
       // mesmo com agendamentos novos e ativos de verdade no servidor.
       await refreshActiveEngagement();
 
-      navigation.navigate("BookingConfirmation", {
+      // replace (não navigate): voltar da confirmação caía de novo nesta tela,
+      // como se o agendamento recém-criado ainda estivesse por fazer
+      // (achado no teste manual do checklist, C6.3).
+      navigation.replace("BookingConfirmation", {
         bookingId: createdBookingIds[0] ?? "",
         bookingCount: createdBookingIds.length,
         failedCount: failedDateKeys.length,

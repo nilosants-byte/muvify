@@ -124,7 +124,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   const [homeAddressCoords, setHomeAddressCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [searchingHomeAddress, setSearchingHomeAddress] = useState(false);
   const [newSlotWeekday, setNewSlotWeekday] = useState(1);
-  const [newSlotTime, setNewSlotTime] = useState("08:00");
+  const [newSlotTime, setNewSlotTime] = useState("");
   const [purchasing, setPurchasing] = useState(false);
   const [consentAcknowledged, setConsentAcknowledged] = useState(false);
   const [purchasedPackage, setPurchasedPackage] = useState<PresentialPackage | null>(null);
@@ -161,6 +161,34 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   );
 
   const provider = setupQuery.data?.provider ?? null;
+
+  // Grade de horários do profissional (mesma fonte da aula avulsa): só os
+  // dias em que ele atende, com horários de 30 em 30 min dentro de cada
+  // janela — o servidor confere com a mesma regra
+  // (assertWeeklyScheduleWithinAvailability).
+  const availabilities = useMemo(() => (provider?.availabilities ?? []).filter((a) => a.isActive !== false), [provider]);
+  const hasAvailability = availabilities.length > 0;
+  const weekdaysWithAvailability = useMemo(
+    () => (hasAvailability ? WEEKDAYS.filter((day) => availabilities.some((a) => a.weekday === day.id)) : [...WEEKDAYS]),
+    [availabilities, hasAvailability]
+  );
+  const slotsForSelectedWeekday = useMemo(() => {
+    const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+    const times = new Set<string>();
+    for (const window of availabilities.filter((a) => a.weekday === newSlotWeekday)) {
+      for (let m = toMinutes(window.startTime); m < toMinutes(window.endTime); m += 30) {
+        times.add(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+      }
+    }
+    return [...times].sort();
+  }, [availabilities, newSlotWeekday]);
+
+  useEffect(() => {
+    if (hasAvailability && !weekdaysWithAvailability.some((day) => day.id === newSlotWeekday)) {
+      setNewSlotWeekday(weekdaysWithAvailability[0].id);
+      setNewSlotTime("");
+    }
+  }, [hasAvailability, weekdaysWithAvailability, newSlotWeekday]);
   const paymentReady = setupQuery.data?.paymentReady ?? false;
   const clientHasDebt = setupQuery.data?.clientHasDebt ?? false;
 
@@ -199,6 +227,10 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   }, [pixPending, purchasedPackage, pixConfirmed, runWithAuth, showToast]);
 
   function addWeeklySlot() {
+    if (!newSlotTime) {
+      showToast("Escolha um horário desse dia.", "error");
+      return;
+    }
     if (weeklySchedule.some((slot) => slot.weekday === newSlotWeekday && slot.time === newSlotTime)) {
       showToast("Esse dia e horário já foi adicionado.", "error");
       return;
@@ -531,11 +563,35 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
                   : "Escolha os dias e horários da sua rotina (um por dia) - toda semana as sessões acontecem automaticamente nesses horários."}
               </Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                {WEEKDAYS.map((day) => (
-                  <Chip key={day.id} label={day.short} selected={newSlotWeekday === day.id} onPress={() => setNewSlotWeekday(day.id)} />
+                {weekdaysWithAvailability.map((day) => (
+                  <Chip key={day.id} label={day.short} selected={newSlotWeekday === day.id} onPress={() => { setNewSlotWeekday(day.id); if (hasAvailability) setNewSlotTime(""); }} />
                 ))}
               </View>
-              <TimeWheelPicker value={newSlotTime} onChange={setNewSlotTime} />
+              {/* Achado no teste manual do checklist (C6.3): aqui era uma roda
+                  livre (qualquer hora, inclusive fora do atendimento) e a aula
+                  avulsa usava a grade de horários do profissional — agora é a
+                  mesma grade. A roda só fica de reserva pra profissional sem
+                  nenhuma grade cadastrada. */}
+              {hasAvailability ? (
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  {slotsForSelectedWeekday.map((time) => {
+                    const selected = newSlotTime === time;
+                    return (
+                      <TouchableOpacity
+                        key={time}
+                        onPress={() => setNewSlotTime(time)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        style={{ width: "31%", height: 44, borderRadius: 12, borderWidth: 1, borderColor: selected ? theme.primary : theme.border, backgroundColor: selected ? theme.primary : theme.inputBg, alignItems: "center", justifyContent: "center" }}
+                      >
+                        <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: selected ? theme.textOnPrimary : theme.text1 }}>{time}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : (
+                <TimeWheelPicker value={newSlotTime || "08:00"} onChange={setNewSlotTime} />
+              )}
               <TouchableOpacity
                 onPress={addWeeklySlot}
                 style={{ height: 40, borderRadius: 10, borderWidth: 1, borderColor: theme.primarySubtleBorder, backgroundColor: theme.primarySubtle, alignItems: "center", justifyContent: "center" }}
