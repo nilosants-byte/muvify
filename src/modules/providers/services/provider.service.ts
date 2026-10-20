@@ -25,6 +25,7 @@ import { haversineKm } from "../../../shared/utils/geo";
 import { isOnboardingGatesBypassActive } from "../../../shared/utils/onboarding-gates-bypass";
 import { normalizeLoose } from "../../../shared/utils/normalize-text";
 import { sessionOverlapsRange } from "../../../shared/utils/time-range";
+import { findReservedPackageSlots, reservedSlotAppliesOn } from "../../../shared/utils/package-reserved-slots";
 import { toDateKeyInTimezone, toTimeInTimezone, toWeekdayInTimezone } from "../../../shared/utils/timezone";
 import {
   toProviderPhotoUrl,
@@ -1951,6 +1952,21 @@ export class ProviderService {
           existing.push({ startTime: slot.startTime, endTime: slot.endTime });
           offAppByDay.set(dayKey, existing);
         }
+      }
+    }
+
+    // Achado no teste manual do checklist (C6.3): horário fixo de pacote
+    // ativo fica reservado — some da grade pública igual ao aluno de fora do
+    // app acima (booking.service.ts recusa o mesmo horário no servidor).
+    const reservedPackageSlots = await findReservedPackageSlots(prisma, providerId, provider.sessionDurationMinutes, timezone);
+    for (const dayKey of validDayKeys) {
+      const [y, m, d] = dayKey.split("-").map(Number);
+      const dayWeekday = new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay();
+      for (const slot of reservedPackageSlots) {
+        if (!reservedSlotAppliesOn(slot, dayKey, dayWeekday)) continue;
+        const existing = offAppByDay.get(dayKey) ?? [];
+        existing.push({ startTime: slot.startTime, endTime: slot.endTime });
+        offAppByDay.set(dayKey, existing);
       }
     }
 

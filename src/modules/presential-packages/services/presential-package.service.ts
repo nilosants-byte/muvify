@@ -27,6 +27,10 @@ import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { resolveProviderMpAccessToken, requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
 import { weeklySlotsForPackage } from "../../../shared/utils/presential-package-schedule";
+import { findReservedPackageSlots } from "../../../shared/utils/package-reserved-slots";
+import { formatMinutesToTime, parseTimeToMinutes, sessionOverlapsRange } from "../../../shared/utils/time-range";
+import { toTimeInTimezone } from "../../../shared/utils/timezone";
+import { deleteByPattern } from "../../../shared/utils/cache";
 import { billingCycleDurationDays } from "../../../shared/utils/consultancy-validity";
 import { assertOfferAcceptsPaymentMethod } from "../../../shared/utils/offer-payment-method";
 import { assertOfferAllowsServiceLocation } from "../../../shared/utils/offer-service-mode";
@@ -165,6 +169,67 @@ async function assertWeeklyScheduleWithinAvailability(providerId: string, schedu
       throw new AppError(
         `O horário de ${WEEKDAY_LABELS[entry.weekday]} às ${entry.time} está fora dos horários de atendimento do profissional.`,
         StatusCodes.BAD_REQUEST
+      );
+    }
+  }
+}
+
+// Decisão do Danilo (C6.3): horário fixo de pacote fica reservado. Na compra,
+// o horário escolhido não pode cair em cima de outro horário fixo (outro
+// pacote ativo ou aluno de fora do app do profissional) nem de uma aula já
+// marcada no primeiro ciclo — senão a aula daquela semana seria pulada em
+// silêncio na geração.
+async function assertWeeklyScheduleFree(
+  provider: { id: string; sessionDurationMinutes: number },
+  schedule: WeeklyScheduleEntry[],
+  billingCycle: OfferBillingCycle
+) {
+  const duration = provider.sessionDurationMinutes;
+  const tz = env.APP_TIMEZONE;
+  const overlaps = (entry: WeeklyScheduleEntry, start: string, end: string) =>
+    sessionOverlapsRange(entry.time, duration, start, end);
+
+  const reserved = await findReservedPackageSlots(prisma, provider.id, duration, tz);
+  const offAppStudents = await prisma.financialStudent.findMany({
+    where: { providerId: provider.id, isActive: true, type: { in: ["PRESENTIAL", "BOTH"] } },
+    select: { weeklySchedule: true }
+  });
+  const now = new Date();
+  const upcoming = await prisma.booking.findMany({
+    where: {
+      providerId: provider.id,
+      status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+      scheduledAt: { gte: now, lt: addCycles(now, billingCycle, 1) }
+    },
+    select: { scheduledAt: true }
+  });
+
+  for (const entry of schedule) {
+    const label = `${WEEKDAY_LABELS[entry.weekday]} às ${entry.time}`;
+    if (reserved.some((slot) => slot.weekday === entry.weekday && overlaps(entry, slot.startTime, slot.endTime))) {
+      throw new AppError(`O horário de ${label} já é fixo de outro aluno do profissional — escolha outro.`, StatusCodes.CONFLICT);
+    }
+    const offAppTaken = offAppStudents.some((student) =>
+      (Array.isArray(student.weeklySchedule)
+        ? (student.weeklySchedule as unknown as Array<{ dayOfWeek: number; startTime: string; endTime: string }>)
+        : []
+      ).some((slot) => slot.dayOfWeek === entry.weekday && overlaps(entry, slot.startTime, slot.endTime))
+    );
+    if (offAppTaken) {
+      throw new AppError(`O horário de ${label} já é fixo de outro aluno do profissional — escolha outro.`, StatusCodes.CONFLICT);
+    }
+    const clash = upcoming.find((booking) => {
+      const { weekday } = zonedDateKeyAndWeekday(booking.scheduledAt, tz);
+      if (weekday !== entry.weekday) return false;
+      const time = toTimeInTimezone(booking.scheduledAt, tz);
+      return overlaps(entry, time, formatMinutesToTime(parseTimeToMinutes(time) + duration));
+    });
+    if (clash) {
+      const { dateKey } = zonedDateKeyAndWeekday(clash.scheduledAt, tz);
+      const [, month, day] = dateKey.split("-");
+      throw new AppError(
+        `Já existe uma aula marcada com o profissional em ${day}/${month} às ${toTimeInTimezone(clash.scheduledAt, tz)}, que bate com o horário de ${label} — escolha outro.`,
+        StatusCodes.CONFLICT
       );
     }
   }
@@ -394,6 +459,7 @@ export class PresentialPackageService {
       }
       validateWeeklySchedule(input.weeklySchedule, weeklySlotsForPackage(offer.billingCycle, offer.presentialSessionsPerCycle ?? 0));
       await assertWeeklyScheduleWithinAvailability(offer.providerId, input.weeklySchedule);
+      await assertWeeklyScheduleFree(offer.provider, input.weeklySchedule, offer.billingCycle);
       weeklySchedule = input.weeklySchedule;
     }
 
@@ -551,6 +617,8 @@ export class PresentialPackageService {
       })
       .catch((error) => console.error("Falha ao enfileirar e-mail de confirmação de pacote (profissional):", error));
 
+    // Horário fixo reservado (C6.3): a grade pública em cache precisa refletir já.
+    void deleteByPattern(`schedule:${offer.providerId}:*`).catch(() => undefined);
     return { package: updated, payment: chargeResult };
   }
 
@@ -1600,6 +1668,8 @@ export class PresentialPackageService {
       });
     }
 
+    // Libera o horário fixo reservado na grade pública em cache (C6.3).
+    void deleteByPattern(`schedule:${pkg.providerId}:*`).catch(() => undefined);
     const finalPkg = await prisma.presentialPackage.findUniqueOrThrow({ where: { id: pkg.id } });
     return hideClientBillingFieldsFromProvider(finalPkg, userId, pkg.clientId);
     } finally {
@@ -1769,6 +1839,7 @@ export class PresentialPackageService {
       }
       validateWeeklySchedule(input.weeklySchedule, weeklySlotsForPackage(offer.billingCycle, offer.presentialSessionsPerCycle ?? 0));
       await assertWeeklyScheduleWithinAvailability(offer.providerId, input.weeklySchedule);
+      await assertWeeklyScheduleFree(offer.provider, input.weeklySchedule, offer.billingCycle);
       weeklySchedule = input.weeklySchedule;
     }
 
@@ -1975,6 +2046,7 @@ export class PresentialPackageService {
     }
 
     const updatedContract = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: contract.id } });
+    void deleteByPattern(`schedule:${offer.providerId}:*`).catch(() => undefined);
     const updatedPackage = await prisma.presentialPackage.findUniqueOrThrow({ where: { id: pkg.id } });
 
     return {

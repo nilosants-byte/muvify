@@ -24,6 +24,7 @@ import { isOnboardingGatesBypassActive } from "../../../shared/utils/onboarding-
 import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/utils/encryption";
 import { haversineKm } from "../../../shared/utils/geo";
 import { sessionOverlapsRange } from "../../../shared/utils/time-range";
+import { findReservedPackageSlots, reservedSlotAppliesOn } from "../../../shared/utils/package-reserved-slots";
 import { assertOfferAllowsServiceLocation } from "../../../shared/utils/offer-service-mode";
 import { toDateKeyInTimezone, toTimeInTimezone, toWeekdayInTimezone } from "../../../shared/utils/timezone";
 import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-url";
@@ -483,6 +484,23 @@ export class BookingService {
       if (blockedByOffAppStudent) {
         throw new AppError(
           "Este horário está ocupado por outro aluno do profissional.",
+          StatusCodes.CONFLICT
+        );
+      }
+
+      // Achado no teste manual do checklist (C6.3): horário fixo de pacote
+      // ativo fica reservado (mesmo tratamento do aluno de fora do app acima)
+      // — antes uma aula avulsa podia ocupá-lo e a aula do pacote era pulada
+      // em silêncio quando o ciclo gerava as sessões.
+      const reservedSlots = await findReservedPackageSlots(tx, providerId, provider.sessionDurationMinutes, env.APP_TIMEZONE);
+      const blockedByFixedPackage = reservedSlots.some(
+        (slot) =>
+          reservedSlotAppliesOn(slot, scheduleDateKey, scheduleWeekday) &&
+          sessionOverlapsRange(scheduleTime, provider.sessionDurationMinutes, slot.startTime, slot.endTime)
+      );
+      if (blockedByFixedPackage) {
+        throw new AppError(
+          "Este horário é fixo de um pacote de aluno do profissional — escolha outro horário.",
           StatusCodes.CONFLICT
         );
       }
