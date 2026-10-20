@@ -115,7 +115,7 @@ export function MyPresentialPackagesScreen({ navigation }: Props) {
                 </Text>
                 {isSessionPack && pkg.status === "ACTIVE" ? (
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.primary }}>
-                    {pkg.creditsRemainingThisCycle} sessão{pkg.creditsRemainingThisCycle === 1 ? "" : "ões"} restante{pkg.creditsRemainingThisCycle === 1 ? "" : "s"}{pkg.validUntil ? ` · válido até ${formatBRDate(pkg.validUntil)}` : ""}
+                    {pkg.creditsRemainingThisCycle} {pkg.creditsRemainingThisCycle === 1 ? "sessão" : "sessões"} restante{pkg.creditsRemainingThisCycle === 1 ? "" : "s"}{pkg.validUntil ? ` · válido até ${formatBRDate(pkg.validUntil)}` : ""}
                   </Text>
                 ) : null}
                 {pkg.status === "ACTIVE" && pkg.nextBillingAt ? (

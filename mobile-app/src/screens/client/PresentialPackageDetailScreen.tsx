@@ -168,7 +168,7 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
           {pkg.mode === "FLEXIBLE_CREDITS" && pkg.status === "ACTIVE" ? (
             <>
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.primary }}>
-                {pkg.creditsRemainingThisCycle} sessão{pkg.creditsRemainingThisCycle === 1 ? "" : "ões"} restante{pkg.creditsRemainingThisCycle === 1 ? "" : "s"}
+                {pkg.creditsRemainingThisCycle} {pkg.creditsRemainingThisCycle === 1 ? "sessão" : "sessões"} restante{pkg.creditsRemainingThisCycle === 1 ? "" : "s"}
                 {pkg.validUntil ? ` · válido até ${formatBRDate(pkg.validUntil)}` : ""}
               </Text>
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>

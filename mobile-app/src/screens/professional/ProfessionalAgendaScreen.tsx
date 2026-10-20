@@ -655,7 +655,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
             <View style={{ paddingTop: 14, paddingBottom: 6, backgroundColor: theme.bg }}>
               <MvText variant="semi2" style={{ fontSize: 14 }}>{section.title}</MvText>
               <MvText variant="body4" color="secondary" style={{ fontSize: 11, marginTop: 1 }}>
-                {section.data.length} sessão{section.data.length > 1 ? "ões" : ""}
+                {section.data.length} {section.data.length === 1 ? "sessão" : "sessões"}
               </MvText>
             </View>
           )}

@@ -1017,7 +1017,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
                 <View style={{ flex: 1 }}>
                   <MvText variant="semi3">Agenda de hoje</MvText>
                   <MvText variant="body4" color="secondary">
-                    {todayBookings.length} sessão{todayBookings.length > 1 ? "s" : ""} no dia
+                    {todayBookings.length} {todayBookings.length === 1 ? "sessão" : "sessões"} no dia
                   </MvText>
                 </View>
               </View>
