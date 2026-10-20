@@ -42,7 +42,7 @@ import {
 import { postSelfieToFeed } from "../../utils/feedSelfieShare";
 import { useAppState } from "../../state/AppState";
 import { SelfieProofCapture } from "../../components/media/SelfieProofCapture";
-import { MvAvatar, MvInput } from "../../components/mv";
+import { MvAvatar, MvInput, MvProcessingModal } from "../../components/mv";
 import { formatBRDate, formatBRDateTime, formatCurrencyBRL } from "../../utils/formatters";
 import { extractApiMessage, handleScreenError } from "../shared/api-helpers";
 import { resolveMediaUrl } from "../../utils/media";
@@ -900,19 +900,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
           </TouchableOpacity>
         </View>
 
-        <Modal visible={submitting} transparent animationType="fade">
-          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: 32 }}>
-            <View style={{ backgroundColor: theme.cardBg, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: "center", gap: 14, width: "100%", maxWidth: 320 }}>
-              <ActivityIndicator size="large" color={theme.primary} />
-              <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, textAlign: "center" }}>
-                Confirmando conclusão...
-              </Text>
-              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center" }}>
-                Salvando sua selfie e avaliação. Aguarde um instante.
-              </Text>
-            </View>
-          </View>
-        </Modal>
+        <MvProcessingModal visible={submitting} title="Confirmando conclusão..." message="Salvando sua selfie e avaliação. Aguarde um instante." />
       </View>
     );
   }
@@ -1321,31 +1309,23 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
           bloqueante — "Reportar falta"/contestações mostravam só um texto
           tímido no próprio botão ("Reportando...", opacidade reduzida),
           fácil de não perceber que algo está acontecendo de verdade. */}
-      <Modal
+      <MvProcessingModal
         visible={cancelling || reportingNoShow || contestingNoShow || contestingAutoCapture || withdrawingNoShow}
-        transparent
-        animationType="fade"
-      >
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: 32 }}>
-          <View style={{ backgroundColor: theme.cardBg, borderRadius: S.cardR, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: "center", gap: 14, width: "100%", maxWidth: 320 }}>
-            <ActivityIndicator size="large" color={theme.primary} />
-            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, textAlign: "center" }}>
-              {cancelling
-                ? "Cancelando agendamento..."
-                : reportingNoShow
-                  ? "Registrando o relato de falta..."
-                  : withdrawingNoShow
-                    ? "Retirando o relato..."
-                    : "Enviando sua contestação..."}
-            </Text>
-            <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center" }}>
-              {cancelling
-                ? "Aguarde um instante enquanto processamos o cancelamento e o reembolso, se houver."
-                : "Aguarde um instante, isso não demora."}
-            </Text>
-          </View>
-        </View>
-      </Modal>
+        title={
+          cancelling
+            ? "Cancelando agendamento..."
+            : reportingNoShow
+              ? "Registrando o relato de falta..."
+              : withdrawingNoShow
+                ? "Retirando o relato..."
+                : "Enviando sua contestação..."
+        }
+        message={
+          cancelling
+            ? "Aguarde um instante enquanto processamos o cancelamento e o reembolso, se houver."
+            : "Aguarde um instante, isso não demora."
+        }
+      />
     </View>
   );
 }
