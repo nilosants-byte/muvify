@@ -706,7 +706,10 @@ export class PresentialPackageService {
         consecutiveFailedCycles: failedCount,
         lastBillingFailureReason: providerTokenMissing
           ? "Conexão do profissional com o Mercado Pago precisa ser reconectada."
-          : `Pagamento recusado (${mpStatus}).`,
+          : // Achado no teste manual do checklist (C6.3): esse texto aparece
+            // pro aluno no detalhe do pacote — o status cru do Mercado Pago
+            // ("rejected") era jargão em inglês.
+            "Pagamento recusado pela operadora do cartão. Confira o cartão salvo ou troque de cartão.",
         cancelledAt: shouldCancel ? new Date() : null,
         nextBillingAt: shouldCancel ? pkg.nextBillingAt : new Date(Date.now() + CARD_RETRY_THROTTLE_MS)
       }

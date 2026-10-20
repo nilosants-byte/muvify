@@ -610,7 +610,9 @@ export class ConsultancyService {
         return "CHARGED";
       }
 
-      const reason = failureReason ?? `Pagamento recusado (${mpPay?.status ?? "desconhecido"}).`;
+      // Mesmo ajuste do pacote presencial (C6.3): sem o status cru do Mercado
+      // Pago ("rejected") no texto que chega ao aluno.
+      const reason = failureReason ?? "Pagamento recusado pela operadora do cartão. Confira o cartão salvo ou troque de cartão.";
       const failedCount = contract.consecutiveFailedRenewalCycles + 1;
       const shouldCancel = failedCount >= MAX_CONSECUTIVE_FAILED_RENEWAL_CYCLES;
 

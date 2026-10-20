@@ -61,7 +61,11 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
     // (sem reembolso), que deixou de ser verdade.
     const cancelMessage =
       isCardFixedRecurringCancel || isFlexibleSessionPackCancel
-        ? "Nenhuma sessão futura já marcada será cobrada, mas ela será desmarcada imediatamente — inclusive se estiver bem próxima. Deseja cancelar?"
+        ? // Achado no teste manual do checklist (C6.3): o texto prometia que
+          // nenhuma sessão marcada seria cobrada, mas o servidor cobra a que
+          // estiver a menos de 2h (mesma regra da sessão avulsa —
+          // presential-package.service.ts::cancelPackage).
+          "As sessões já marcadas serão desmarcadas na hora, sem cobrança — exceto uma que esteja a menos de 2h de acontecer, que continua sendo cobrada (o profissional já reservou o horário). Deseja cancelar?"
         : "Isso para as próximas cobranças — você será reembolsado proporcionalmente pelas sessões deste ciclo que ainda não aconteceram. Deseja cancelar?";
     Alert.alert(
       "Cancelar pacote",
@@ -125,7 +129,14 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
         {pkg.status === "PAST_DUE" ? (
           <View style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: C.amberBorder, backgroundColor: C.amberDim, padding: S.cardPad, gap: 8 }}>
             <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: C.amber }}>
-              {pkg.pendingChargePixCopyPasteCode ? "Pague o Pix para renovar" : "Não conseguimos cobrar seu cartão"}
+              {/* Achado no teste manual do checklist (C6.3): pacote em Pix sem
+                  código gerado (ex.: falha ao gerar o Pix) caía no título de
+                  cartão. */}
+              {pkg.pendingChargePixCopyPasteCode
+                ? "Pague o Pix para renovar"
+                : pkg.paymentMethod === "PIX"
+                  ? "Não conseguimos gerar a cobrança da renovação"
+                  : "Não conseguimos cobrar seu cartão"}
             </Text>
             <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2, lineHeight: 18 }}>
               {pkg.pendingChargePixCopyPasteCode
