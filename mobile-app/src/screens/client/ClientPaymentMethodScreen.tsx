@@ -19,6 +19,7 @@ import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { hapticCta, hapticPaymentSuccess } from "../../utils/haptics";
+import { MvProcessingModal } from "../../components/mv";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ClientPaymentMethod">;
 
@@ -382,6 +383,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
           </Text>
         </TouchableOpacity>
       </View>
+      <MvProcessingModal visible={saving} title="Salvando seu cartão..." />
     </View>
   );
 }

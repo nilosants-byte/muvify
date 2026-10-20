@@ -15,7 +15,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar, MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText } from "../../components/mv";
+import { MvAvatar, MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText, MvProcessingModal } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { handleScreenError } from "../shared/api-helpers";
 import { useQueryClient } from "@tanstack/react-query";
@@ -930,6 +930,7 @@ export function ProfessionalStudentDetailScreen({ navigation, route }: Props) {
           </>
         ) : null}
       </ScrollView>
+      <MvProcessingModal visible={cancellingContractId !== null || cancellingPackageId !== null} title={cancellingPackageId !== null ? "Cancelando o pacote..." : "Cancelando a consultoria..."} />
     </View>
   );
 }

@@ -14,6 +14,7 @@ import { useMvTheme } from "../../theme/MvThemeContext";
 import { handleScreenError } from "../shared/api-helpers";
 import { formatCurrencyBRL, formatBRDate } from "../../utils/formatters";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
+import { MvProcessingModal } from "../../components/mv";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "PresentialPackageDetail">;
 
@@ -242,6 +243,7 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         ) : null}
       </ScrollView>
+      <MvProcessingModal visible={cancelling} title="Cancelando o pacote..." />
     </View>
   );
 }

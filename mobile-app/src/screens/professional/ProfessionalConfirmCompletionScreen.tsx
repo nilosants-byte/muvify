@@ -11,7 +11,7 @@ import { Booking, bookingsApi, CompletionProofInput } from "../../services/api/c
 import { SkeletonBookingCard } from "../../components/polish/SkeletonCard";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvBadge, MvButton, MvCard, MvInput, MvText, MvProcessingModal } from "../../components/mv";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
 import { formatBRDateTime } from "../../utils/formatters";
 import { handleScreenError } from "../shared/api-helpers";
@@ -374,6 +374,7 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
           <MvButton variant="outline" label="Voltar" onPress={handleBack} />
         </View>
       </ScrollView>
+      <MvProcessingModal visible={submitting} title="Confirmando a conclusão..." message="Salvando a selfie e confirmando a aula. Aguarde um instante, não feche o app." />
     </View>
   );
 }

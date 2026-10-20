@@ -41,7 +41,7 @@ import { useAppState, ToastType } from "../../state/AppState";
 import { hapticWorkoutStart, hapticWorkoutFinish, hapticCta } from "../../utils/haptics";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
-import { MvMediaPreviewModal, MvMuscleSilhouette } from "../../components/mv";
+import { MvMediaPreviewModal, MvMuscleSilhouette, MvProcessingModal } from "../../components/mv";
 import { getYouTubeThumbnailFromUrl } from "../../utils/youtube";
 import { formatDateLabel, formatCurrencyBRL } from "../../utils/formatters";
 import { nextPixPollDelayMs } from "../../utils/pixPolling";
@@ -1347,6 +1347,7 @@ export function MyTrainingScreen({ navigation, route }: Props) {
           />
         )}
       </Modal>
+      <MvProcessingModal visible={decidingRequestId !== null || cancellingContractId !== null} title={decidingRequestId !== null ? "Respondendo a proposta..." : "Cancelando a consultoria..."} />
     </View>
   );
 }

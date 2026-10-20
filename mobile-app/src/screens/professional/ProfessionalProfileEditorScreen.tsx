@@ -17,7 +17,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvButton, MvCard, MvInput, MvText, MvProcessingModal } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
@@ -690,6 +690,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
       </ScrollView>
       </ScreenEntrance>
       </KeyboardAvoidingView>
+      <MvProcessingModal visible={savingProfile} title="Salvando seu perfil..." message="Enviando fotos e vídeo, se houver. Aguarde um instante, não feche o app." />
     </View>
   );
 }

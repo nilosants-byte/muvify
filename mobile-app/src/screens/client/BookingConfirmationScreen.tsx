@@ -21,6 +21,7 @@ import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { hapticPaymentSuccess, hapticCta } from "../../utils/haptics";
 import { nextPixPollDelayMs } from "../../utils/pixPolling";
+import { MvProcessingModal } from "../../components/mv";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "BookingConfirmation">;
 
@@ -468,6 +469,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
           )}
         </View>
       </ScrollView>
+      <MvProcessingModal visible={confirming} title="Processando o pagamento..." />
     </View>
   );
 }

@@ -19,7 +19,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar } from "../../components/mv";
+import { MvAvatar, MvProcessingModal } from "../../components/mv";
 import { formatCurrencyBRL, getInitials } from "../../utils/formatters";
 import { extractApiMessage, formatPriceFromCents, handleScreenError } from "../shared/api-helpers";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
@@ -1123,6 +1123,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
 
       </ScrollView>
       </ScreenEntrance>
+      <MvProcessingModal visible={creating} title="Agendando sua aula..." />
     </View>
   );
 }

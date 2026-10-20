@@ -18,7 +18,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText, MvToggle } from "../../components/mv";
+import { MvBadge, MvButton, MvCard, MvInput, MvRefreshControl, MvText, MvToggle, MvProcessingModal } from "../../components/mv";
 import { StepProgressBar } from "../../components/professional/UXReformComponents";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { SkeletonCard } from "../../components/polish/SkeletonCard";
@@ -1223,6 +1223,7 @@ export function ProfessionalConsultancyOffersScreen({ navigation }: Props) {
         </>
         )}
       </ScrollView>
+      <MvProcessingModal visible={creatingOffer} title="Salvando a oferta..." />
     </View>
   );
 }

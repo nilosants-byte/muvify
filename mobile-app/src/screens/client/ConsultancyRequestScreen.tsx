@@ -29,6 +29,7 @@ import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { MvProcessingModal } from "../../components/mv";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ConsultancyRequest">;
 type QuestionKey = "need" | "limitations" | "extra";
@@ -280,6 +281,7 @@ export function ConsultancyRequestScreen({ route, navigation }: Props) {
         </TouchableOpacity>
       </ScrollView>
       </ScreenEntrance>
+      <MvProcessingModal visible={saving} title="Enviando sua solicitação..." />
     </View>
   );
 }

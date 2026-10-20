@@ -27,7 +27,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton, MvCard, MvInput, MvMediaPreviewModal, MvText } from "../../components/mv";
+import { MvButton, MvCard, MvInput, MvMediaPreviewModal, MvText, MvProcessingModal } from "../../components/mv";
 import { handleScreenError } from "../shared/api-helpers";
 import { StepProgressBar } from "../../components/professional/UXReformComponents";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
@@ -1616,6 +1616,7 @@ export function ProfessionalTrainingCreationScreen({ navigation, route }: Props)
         title={mediaPreview?.title}
         orientation="vertical"
       />
+      <MvProcessingModal visible={savingNewPlan || savingEditedPlan} title={savingEditedPlan ? "Salvando o treino..." : "Entregando o treino ao aluno..."} />
     </View>
   );
 }

@@ -11,7 +11,7 @@ import { ProfessionalStackParamList } from "../../navigation/route-types";
 import { providersApi, uploadsApi, ProviderCredentials, ProviderCredentialsDocument } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvBadge, MvButton, MvCard, MvInput, MvText } from "../../components/mv";
+import { MvBadge, MvButton, MvCard, MvInput, MvText, MvProcessingModal } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { ProfessionalScreenHeader } from "../../components/navigation/ProfessionalScreenHeader";
@@ -390,6 +390,7 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
         )}
       </ScrollView>
       </ScreenEntrance>
+      <MvProcessingModal visible={saving} title="Enviando seus documentos..." />
     </View>
   );
 }

@@ -20,7 +20,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvAvatar } from "../../components/mv";
+import { MvAvatar, MvProcessingModal } from "../../components/mv";
 import { TimeWheelPicker } from "../../components/mv/TimeWheelPicker";
 import { formatCurrencyBRL, getInitials } from "../../utils/formatters";
 import { cycleDurationLabel, weeklySlotsForPackage } from "../../utils/presentialPackageLabels";
@@ -767,6 +767,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
           </View>
         </ScrollView>
       </ScreenEntrance>
+      <MvProcessingModal visible={purchasing} title="Contratando o pacote..." />
     </View>
   );
 }

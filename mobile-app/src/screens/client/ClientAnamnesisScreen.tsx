@@ -16,6 +16,7 @@ import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { C, S } from "../../theme/v2tokens";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
+import { MvProcessingModal } from "../../components/mv";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ClientAnamnesis">;
 
@@ -1051,6 +1052,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
           </ScrollView>
         )}
       </ScreenEntrance>
+      <MvProcessingModal visible={savingFinal} title="Salvando sua ficha de saúde..." />
     </View>
   );
 }

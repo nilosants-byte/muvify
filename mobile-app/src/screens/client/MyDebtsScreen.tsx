@@ -10,7 +10,7 @@ import { queryKeys } from "../../lib/queryKeys";
 import { debtsApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
-import { MvButton } from "../../components/mv";
+import { MvButton, MvProcessingModal } from "../../components/mv";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { handleScreenError } from "../shared/api-helpers";
 import { formatCurrencyBRL, formatBRDate } from "../../utils/formatters";
@@ -118,6 +118,7 @@ export function MyDebtsScreen({ navigation }: Props) {
           ))}
         </ScrollView>
       </ScreenEntrance>
+      <MvProcessingModal visible={payingId !== null} title="Processando o pagamento..." />
     </View>
   );
 }

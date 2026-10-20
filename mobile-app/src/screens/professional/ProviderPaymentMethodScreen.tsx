@@ -19,6 +19,7 @@ import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { hapticCta, hapticPaymentSuccess } from "../../utils/haptics";
+import { MvProcessingModal } from "../../components/mv";
 
 // Raio-X de pagamentos, Rodada 4, Lote 6: cópia adaptada de
 // ClientPaymentMethodScreen — o profissional agora também pode ter uma
@@ -369,6 +370,7 @@ export function ProviderPaymentMethodScreen({ navigation }: Props) {
           </Text>
         </TouchableOpacity>
       </View>
+      <MvProcessingModal visible={saving} title="Salvando seu cartão..." />
     </View>
   );
 }
