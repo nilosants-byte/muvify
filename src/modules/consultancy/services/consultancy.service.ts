@@ -3322,13 +3322,25 @@ export class ConsultancyService {
       });
     } catch (error) {
       await prisma.$transaction(async (tx) => {
-        await tx.consultancyContract.update({
-          where: { id: contract.id },
-          data: {
-            paymentStatus: ConsultancyPaymentStatus.FAILED,
-            status: ConsultancyContractStatus.PENDING_PAYMENT
-          }
+        // Achado ao preparar o teste manual do checklist (C7.3, 20/10/2026): a
+        // cobrança nem chegou a ser criada no Mercado Pago (sem mpPaymentId —
+        // ex.: profissional desconectado, erro do MP), então o contrato não
+        // representa nada; antes ficava PENDING_PAYMENT/FAILED contando como
+        // vínculo ativo, prendendo o aluno ao profissional sem ter pago nada
+        // (mesmo achado do pacote presencial, C6.1). Apaga — a nova tentativa
+        // de aceite cria outro; com mpPaymentId, mantém o comportamento antigo.
+        const removed = await tx.consultancyContract.deleteMany({
+          where: { id: contract.id, mpPaymentId: null, status: ConsultancyContractStatus.PENDING_PAYMENT }
         });
+        if (removed.count === 0) {
+          await tx.consultancyContract.update({
+            where: { id: contract.id },
+            data: {
+              paymentStatus: ConsultancyPaymentStatus.FAILED,
+              status: ConsultancyContractStatus.PENDING_PAYMENT
+            }
+          });
+        }
 
         await tx.consultancyRequest.update({
           where: { id: request.id },
