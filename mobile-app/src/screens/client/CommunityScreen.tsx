@@ -1839,7 +1839,7 @@ export function CommunityScreen({ navigation }: Props) {
               ) : (
                 <View style={{ gap: 5, opacity: rankingTransitioning ? 0.45 : 1 }}>
                   {rankingItems.slice(0, 3).map((entry) => {
-                    const medalColor = entry.position === 1 ? C.amber : entry.position === 2 ? C.zinc300 : entry.position === 3 ? "#cd7f32" : null;
+                    const medalColor = entry.position === 1 ? C.amber : entry.position === 2 ? (theme.mode === "dark" ? C.zinc300 : "#71717A") : entry.position === 3 ? "#cd7f32" : null;
                     return (
                       <View key={entry.userId} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
                         <View style={{ width: 18, alignItems: "center" }}>
@@ -2457,7 +2457,7 @@ export function CommunityScreen({ navigation }: Props) {
                 <View style={{ opacity: rankingTransitioning ? 0.45 : 1 }} pointerEvents={rankingTransitioning ? "none" : "auto"}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
                     {rankingItems.map((entry) => {
-                      const medalColor = entry.position === 1 ? C.amber : entry.position === 2 ? C.zinc300 : entry.position === 3 ? "#cd7f32" : null;
+                      const medalColor = entry.position === 1 ? C.amber : entry.position === 2 ? (theme.mode === "dark" ? C.zinc300 : "#71717A") : entry.position === 3 ? "#cd7f32" : null;
                       const isTop3 = entry.position <= 3;
                       return (
                         <View

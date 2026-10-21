@@ -21,7 +21,13 @@ export const ACHIEVEMENT_CATEGORY_ORDER = ["PROGRESSION", "CONSISTENCY", "VOLUME
 
 export function achAccentColors(tier: Achievement["tier"], theme: MvTheme) {
   if (tier === "gold") return { color: C.amber, dim: C.amberDim, border: C.amberBorder };
-  if (tier === "silver") return { color: C.zinc300, dim: "rgba(212,212,216,0.12)" as const, border: "rgba(212,212,216,0.20)" as const };
+  // Teste manual C10.1 (21/10/2026): prata era cinza-claro fixo — no modo
+  // claro a conquista desbloqueada parecia bloqueada/apagada.
+  if (tier === "silver") {
+    return theme.mode === "dark"
+      ? { color: C.zinc300, dim: "rgba(212,212,216,0.12)" as const, border: "rgba(212,212,216,0.20)" as const }
+      : { color: "#52525B", dim: "rgba(82,82,91,0.10)" as const, border: "rgba(82,82,91,0.28)" as const };
+  }
   if (tier === "diamond") return { color: C.sky, dim: "rgba(56,189,248,0.12)" as const, border: "rgba(56,189,248,0.25)" as const };
   if (tier === "special") return { color: "#a855f7", dim: "rgba(168,85,247,0.12)" as const, border: "rgba(168,85,247,0.25)" as const };
   return { color: theme.primary, dim: theme.primarySubtle, border: theme.primarySubtleBorder };
@@ -82,8 +88,10 @@ export function AchievementsModal({ visible, onClose, achievements }: Props) {
           unlocked={ach.unlocked}
         />
         <View style={{ flex: 1, gap: 4 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: ach.unlocked ? theme.text1 : theme.labelColor }} numberOfLines={1}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            {/* flexShrink: título longo ("Comprometido com a Evolução")
+                empurrava o selo de XP pra fora do cartão. */}
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: ach.unlocked ? theme.text1 : theme.labelColor, flexShrink: 1 }} numberOfLines={2}>
               {ach.label}
             </Text>
             {ach.unlocked ? (
