@@ -251,9 +251,11 @@ export function ClientSettingsScreen({ navigation }: Props) {
           <ConfigRow
             icon="shield-checkmark-outline"
             title="Verificação em duas etapas"
-            subtitle="Em breve"
-            badge="Em breve"
-            onPress={() => showToast("Essa função ainda não está disponível para clientes.", "info")}
+            // Achado do mapeamento do checklist (C10.2): dizia "Em breve" pra
+            // clientes, mas o 2FA já funciona pra qualquer conta na tela de
+            // Segurança (o backend não distingue papel).
+            subtitle={user?.twoFactorEnabled ? "Ativada" : "Desativada — proteja sua conta"}
+            onPress={() => navigation.navigate("Security")}
           />
           <ConfigRow
             icon="lock-closed-outline"
