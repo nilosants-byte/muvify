@@ -256,7 +256,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
 
   // ── Data loading ────────────────────────────────────────────────────────────
   const chatsQuery = useAuthQuery(
-    queryKeys.chat.myChats(),
+    queryKeys.chat.myChatsView("provider"),
     async (token) => {
       const data = await chatApi.myChats(token);
       const unified = data.map(toUnifiedFromBooking);
@@ -265,7 +265,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
   );
 
   const consultancyChatsQuery = useAuthQuery(
-    queryKeys.consultancyChat.myChats(),
+    queryKeys.consultancyChat.myChatsView("provider"),
     async (token) => {
       const data = await consultancyChatApi.myChats(token);
       const unified = data.map(toUnifiedFromConsultancy);

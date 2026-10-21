@@ -91,6 +91,12 @@ export const queryKeys = {
   chat: {
     all: ["chat"] as const,
     myChats: () => ["chat", "myChats"] as const,
+    // Teste manual C9.1 (21/10/2026): a tela de conversas guarda a lista já
+    // TRANSFORMADA (com id/kind), e a Home travada guarda a lista crua da API
+    // — dividiam a mesma chave e a tela lia itens sem id do cache (aviso de
+    // key + toque podia abrir errado). Fica debaixo de myChats() pra que
+    // invalidar myChats() continue recarregando as duas.
+    myChatsView: (screen: "client" | "provider") => ["chat", "myChats", "view", screen] as const,
     messages: (bookingId: string) => ["chat", "messages", bookingId] as const,
     otherUser: (bookingId: string) => ["chat", "otherUser", bookingId] as const,
   },
@@ -99,6 +105,7 @@ export const queryKeys = {
   consultancyChat: {
     all: ["consultancyChat"] as const,
     myChats: () => ["consultancyChat", "myChats"] as const,
+    myChatsView: (screen: "client" | "provider") => ["consultancyChat", "myChats", "view", screen] as const,
   },
 
   // ── Favoritos ──────────────────────────────────────────────────────────────

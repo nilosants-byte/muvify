@@ -244,7 +244,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
   const autoOpenedIdRef = useRef<string | null>(null);
 
   const chatsQuery = useAuthQuery(
-    queryKeys.chat.myChats(),
+    queryKeys.chat.myChatsView("client"),
     async (token) => {
       const data = await chatApi.myChats(token);
       const unified = data.map(toUnifiedFromBooking);
@@ -255,7 +255,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
   );
 
   const consultancyChatsQuery = useAuthQuery(
-    queryKeys.consultancyChat.myChats(),
+    queryKeys.consultancyChat.myChatsView("client"),
     async (token) => {
       const data = await consultancyChatApi.myChats(token);
       const unified = data.map(toUnifiedFromConsultancy);
