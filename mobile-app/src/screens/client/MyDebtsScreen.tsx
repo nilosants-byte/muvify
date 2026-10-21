@@ -37,7 +37,7 @@ export function MyDebtsScreen({ navigation }: Props) {
     }
   }, [debtsQuery.error, showToast]);
 
-  const { payingId, confirmPay } = useDebtPayment({
+  const { payingId, confirmPay, switchToCard } = useDebtPayment({
     debts,
     refetch: debtsQuery.refetch,
     title: "Pagar pendência",
@@ -94,7 +94,7 @@ export function MyDebtsScreen({ navigation }: Props) {
                 Registrada em {formatBRDate(debt.createdAt)}
               </Text>
               {hasActivePix(debt) ? (
-                <DebtPixPanel debt={debt} />
+                <DebtPixPanel debt={debt} onPayWithCard={() => switchToCard(debt)} />
               ) : (
                 <MvButton
                   label="Pagar agora"

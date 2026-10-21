@@ -46,7 +46,7 @@ export function ProviderDebtsScreen({ navigation }: Props) {
   // passivo no próximo repasse, sem confirmação nenhuma de que de fato
   // aconteceu — o profissional pode agora regularizar ativamente (cartão
   // salvo ou Pix).
-  const { payingId, confirmPay } = useDebtPayment({
+  const { payingId, confirmPay, switchToCard } = useDebtPayment({
     debts,
     refetch: debtsQuery.refetch,
     title: "Regularizar pendência",
@@ -116,7 +116,7 @@ export function ProviderDebtsScreen({ navigation }: Props) {
                 </Text>
                 {debt.status !== "PAID" && debt.status !== "WRITTEN_OFF" ? (
                   hasActivePix(debt) ? (
-                    <DebtPixPanel debt={debt} />
+                    <DebtPixPanel debt={debt} onPayWithCard={() => switchToCard(debt)} />
                   ) : (
                     <MvButton
                       label="Pagar agora"

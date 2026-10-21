@@ -265,6 +265,17 @@ export class DebtService {
     const provider = isClientDebt ? debt.provider : null;
     const providerAccessToken = provider ? await requireProviderMpAccessToken(provider.id) : null;
 
+    // Pergunta do Danilo (teste manual C8.1, 21/10/2026): quem gerou um Pix e
+    // desistiu pode pagar no cartão. Antes de cobrar, cancela o Pix em aberto
+    // no Mercado Pago — senão o aluno poderia pagar os dois. Se o Pix já
+    // tiver sido pago, não cobra o cartão: só dá baixa pelo Pix.
+    if (debt.pendingPixMpPaymentId) {
+      const pixPaid = await this.cancelPendingDebtPix(debt.id, debt.pendingPixMpPaymentId, providerAccessToken);
+      if (pixPaid) {
+        return prisma.debtRecord.findUniqueOrThrow({ where: { id: debt.id } });
+      }
+    }
+
     const tokenResult = await mpCardToken.create({
       body: { customer_id: debtor.mpCustomerId, card_id: selectedCard.mpCardId }
     });
@@ -285,12 +296,17 @@ export class DebtService {
           : {})
       },
       requestOptions: {
-        idempotencyKey: `debt:${debt.id}:pay`,
+        // updatedAt na chave: toque duplo cai na mesma chave (MP não cobra 2x),
+        // mas depois de uma recusa (que mexe no updatedAt abaixo) a nova
+        // tentativa ganha chave nova — antes o MP devolvia a recusa antiga
+        // pra sempre, mesmo trocando de cartão.
+        idempotencyKey: `debt:${debt.id}:pay:${debt.updatedAt.getTime()}`,
         ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
       }
     });
 
     if (mpPay.status !== "approved") {
+      await prisma.debtRecord.update({ where: { id: debt.id }, data: { updatedAt: new Date() } });
       throw new AppError(
         `Não foi possível processar o pagamento (status: ${mpPay.status}/${mpPay.status_detail}). Tente novamente ou revise seu cartão.`,
         StatusCodes.BAD_REQUEST
@@ -370,6 +386,35 @@ export class DebtService {
         pendingPixExpiresAt: expiresAt
       }
     });
+  }
+
+  // Retorna true se o Pix já estava pago (pendência baixada por ele).
+  private async cancelPendingDebtPix(debtId: string, pixMpPaymentId: string, accessToken: string | null) {
+    let status: string | undefined;
+    try {
+      status = (await mpPayment.get({ id: pixMpPaymentId })).status ?? undefined;
+    } catch {
+      throw new AppError("Não foi possível conferir o Pix em aberto. Tente de novo em instantes.", StatusCodes.BAD_GATEWAY);
+    }
+    if (status === "approved") {
+      await this.confirmDebtPixPayment(pixMpPaymentId, status);
+      return true;
+    }
+    if (status === "pending" || status === "in_process") {
+      try {
+        await mpPayment.cancel({
+          id: pixMpPaymentId,
+          requestOptions: { idempotencyKey: `debt:${debtId}:pix-cancel:${pixMpPaymentId}`, ...(accessToken ? { accessToken } : {}) }
+        });
+      } catch {
+        throw new AppError("Não foi possível cancelar o Pix em aberto. Tente de novo em instantes.", StatusCodes.BAD_GATEWAY);
+      }
+    }
+    await prisma.debtRecord.update({
+      where: { id: debtId },
+      data: { pendingPixMpPaymentId: null, pendingPixQrCodeUrl: null, pendingPixCopyPasteCode: null, pendingPixExpiresAt: null }
+    });
+    return false;
   }
 
   // Chamado pelo webhook do Mercado Pago (payment.service.ts) quando o Pix de

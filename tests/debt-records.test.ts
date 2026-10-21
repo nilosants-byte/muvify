@@ -359,6 +359,81 @@ describe("DebtRecord — pendências financeiras entre disputa e cobrança (Fren
     await prisma.disputeCase.delete({ where: { id: disputeCase.id } });
   });
 
+  it("trocar de Pix pra cartão cancela o Pix em aberto antes de cobrar o cartão", async () => {
+    vi.spyOn(Payment.prototype, "get").mockResolvedValue({ id: 901, status: "pending" } as any);
+    const cancelSpy = vi.spyOn(Payment.prototype, "cancel").mockResolvedValue({ id: 901, status: "cancelled" } as any);
+    vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_switch" } as any);
+    const createSpy = vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: 902, status: "approved" } as any);
+
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 5000 }
+    });
+    const debt = await prisma.debtRecord.create({
+      data: {
+        disputeCaseId: disputeCase.id, debtorType: "CLIENT", clientId, amountCents: 3000, reason: "troca", status: "NOTIFIED",
+        pendingPixMpPaymentId: "901", pendingPixCopyPasteCode: "pix", pendingPixExpiresAt: new Date(Date.now() + 3600_000)
+      }
+    });
+
+    const paid = await debtService.payDebt(clientId, debt.id, "CARD");
+    expect(cancelSpy).toHaveBeenCalledWith(expect.objectContaining({ id: "901" }));
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    expect(paid.status).toBe("PAID");
+    expect(paid.mpPaymentId).toBe("902");
+    expect(paid.pendingPixMpPaymentId).toBeNull();
+
+    await prisma.debtRecord.delete({ where: { id: debt.id } });
+    await prisma.disputeCase.delete({ where: { id: disputeCase.id } });
+  });
+
+  it("trocar pra cartão quando o Pix já foi pago não cobra o cartão", async () => {
+    vi.spyOn(Payment.prototype, "get").mockResolvedValue({ id: 911, status: "approved" } as any);
+    const cancelSpy = vi.spyOn(Payment.prototype, "cancel");
+    const createSpy = vi.spyOn(Payment.prototype, "create");
+
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 5000 }
+    });
+    const debt = await prisma.debtRecord.create({
+      data: {
+        disputeCaseId: disputeCase.id, debtorType: "CLIENT", clientId, amountCents: 3000, reason: "troca paga", status: "NOTIFIED",
+        pendingPixMpPaymentId: "911", pendingPixCopyPasteCode: "pix", pendingPixExpiresAt: new Date(Date.now() + 3600_000)
+      }
+    });
+
+    const paid = await debtService.payDebt(clientId, debt.id, "CARD");
+    expect(paid.status).toBe("PAID");
+    expect(paid.mpPaymentId).toBe("911");
+    expect(cancelSpy).not.toHaveBeenCalled();
+    expect(createSpy).not.toHaveBeenCalled();
+
+    await prisma.debtRecord.delete({ where: { id: debt.id } });
+    await prisma.disputeCase.delete({ where: { id: disputeCase.id } });
+  });
+
+  it("cartão recusado pode ser tentado de novo (não reaproveita a recusa antiga)", async () => {
+    vi.spyOn(CardToken.prototype, "create").mockResolvedValue({ id: "tok_retry" } as any);
+    const createSpy = vi.spyOn(Payment.prototype, "create")
+      .mockResolvedValueOnce({ id: 921, status: "rejected", status_detail: "cc_rejected_other_reason" } as any)
+      .mockResolvedValueOnce({ id: 922, status: "approved" } as any);
+
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 5000 }
+    });
+    const debt = await prisma.debtRecord.create({
+      data: { disputeCaseId: disputeCase.id, debtorType: "CLIENT", clientId, amountCents: 3000, reason: "retry", status: "NOTIFIED" }
+    });
+
+    await expect(debtService.payDebt(clientId, debt.id, "CARD")).rejects.toThrow();
+    const paid = await debtService.payDebt(clientId, debt.id, "CARD");
+    expect(paid.status).toBe("PAID");
+    const keys = createSpy.mock.calls.map((c: any) => c[0].requestOptions.idempotencyKey);
+    expect(keys[0]).not.toBe(keys[1]);
+
+    await prisma.debtRecord.delete({ where: { id: debt.id } });
+    await prisma.disputeCase.delete({ where: { id: disputeCase.id } });
+  });
+
   it("rejeita pagar uma dívida que já foi paga", async () => {
     const disputeCase = await prisma.disputeCase.create({
       data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 5000 }

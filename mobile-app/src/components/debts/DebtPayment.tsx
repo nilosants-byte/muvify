@@ -90,10 +90,24 @@ export function useDebtPayment(options: {
     );
   }
 
-  return { payingId, confirmPay };
+  // Pix → cartão: o servidor cancela o Pix em aberto antes de cobrar o
+  // cartão (nunca paga os dois). Cartão → Pix já funcionava: o cartão é
+  // cobrado na hora, e se for recusado basta tocar em "Pagar agora" de novo.
+  function switchToCard(debt: DebtRecord) {
+    Alert.alert(
+      "Pagar com cartão",
+      `O Pix gerado será cancelado e ${formatCurrencyBRL(debt.amountCents / 100)} serão cobrados no seu cartão salvo. Se você já pagou o Pix, não pague de novo — aguarde a confirmação.`,
+      [
+        { text: "Voltar", style: "cancel" },
+        { text: "Pagar com cartão", onPress: () => void pay(debt.id, "CARD") }
+      ]
+    );
+  }
+
+  return { payingId, confirmPay, switchToCard };
 }
 
-export function DebtPixPanel({ debt }: { debt: DebtRecord }) {
+export function DebtPixPanel({ debt, onPayWithCard }: { debt: DebtRecord; onPayWithCard: () => void }) {
   const { theme } = useMvTheme();
   const { showToast } = useAppState();
   if (!hasActivePix(debt) || !debt.pendingPixCopyPasteCode) return null;
@@ -123,6 +137,7 @@ export function DebtPixPanel({ debt }: { debt: DebtRecord }) {
       <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>
         Válido até {expiresLabel}
       </Text>
+      <MvButton label="Pagar com cartão em vez disso" variant="ghost" onPress={onPayWithCard} />
     </View>
   );
 }
