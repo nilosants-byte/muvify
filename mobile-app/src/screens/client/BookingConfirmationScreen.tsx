@@ -393,7 +393,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
                 {pixCharge?.pix?.copyAndPasteCode && !pixExpired ? (
                   <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBg, padding: 12, gap: 6 }}>
                     <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Código PIX (cópia e cola)</Text>
-                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: C.zinc300 }} selectable>{pixCharge.pix.copyAndPasteCode}</Text>
+                    <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text1 }} selectable>{pixCharge.pix.copyAndPasteCode}</Text>
                   </View>
                 ) : null}
                 {pixCharge?.pix?.hostedInstructionsUrl && !pixExpired ? (

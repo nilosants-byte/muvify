@@ -1087,7 +1087,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                   onPress={() => void loadAttendance(booking)}
                   style={{ height: 44, paddingHorizontal: 20, borderRadius: S.chipR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center" }}
                 >
-                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: C.zinc300 }}>Atualizar código/QR</Text>
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Atualizar código/QR</Text>
                 </TouchableOpacity>
               </>
             ) : attendanceLoading ? (
@@ -1105,7 +1105,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                   onPress={() => void loadAttendance(booking)}
                   style={{ height: 44, paddingHorizontal: 20, borderRadius: S.chipR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center" }}
                 >
-                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: C.zinc300 }}>Tentar novamente</Text>
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Tentar novamente</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -1118,7 +1118,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
                   onPress={() => void loadAttendance(booking)}
                   style={{ height: 44, paddingHorizontal: 20, borderRadius: S.chipR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center" }}
                 >
-                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: C.zinc300 }}>Verificar agora</Text>
+                  <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Verificar agora</Text>
                 </TouchableOpacity>
               </>
             )}

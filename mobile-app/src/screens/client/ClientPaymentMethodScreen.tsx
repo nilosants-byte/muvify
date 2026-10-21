@@ -344,7 +344,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
         {/* Nota de segurança — destaque V2 */}
         <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start", padding: 14, backgroundColor: theme.primarySubtle, borderRadius: 16, borderWidth: 1, borderColor: theme.primarySubtleBorder }}>
           <Ionicons name="shield-checkmark" size={18} color={theme.primary} style={{ marginTop: 1 }} />
-          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: C.zinc300, lineHeight: 18, flex: 1 }}>
+          <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text1, lineHeight: 18, flex: 1 }}>
             Seus dados são tokenizados pelo <Text style={{ fontFamily: "DMSans_700Bold", color: theme.text1 }}>Mercado Pago</Text> e nunca ficam armazenados nos nossos servidores.
           </Text>
         </View>
@@ -355,7 +355,7 @@ export function ClientPaymentMethodScreen({ navigation }: Props) {
           onPress={() => void paymentQuery.refetch()}
           style={{ height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", opacity: loadingStatus ? 0.5 : 1 }}
         >
-          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: C.zinc300 }}>
+          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>
             {loadingStatus ? "Verificando..." : "Verificar status do cartão"}
           </Text>
         </TouchableOpacity>

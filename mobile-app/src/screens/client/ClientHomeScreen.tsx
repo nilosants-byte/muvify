@@ -1591,7 +1591,7 @@ export function ClientHomeScreen({ navigation }: Props) {
                 }}>
                   <Ionicons name={cat.icon} size={18} color={theme.primary} />
                 </View>
-                <Text style={{ fontFamily: "DMSans_500Medium", textAlign: "center", fontSize: 10, lineHeight: 13, color: C.zinc300 }} numberOfLines={2}>
+                <Text style={{ fontFamily: "DMSans_500Medium", textAlign: "center", fontSize: 10, lineHeight: 13, color: theme.text1 }} numberOfLines={2}>
                   {SPECIALTY_SHORT_NAMES[cat.name] ?? cat.name}
                 </Text>
               </TouchableOpacity>

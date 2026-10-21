@@ -2290,7 +2290,7 @@ export function CommunityScreen({ navigation }: Props) {
                   <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: theme.primarySubtle, borderWidth: 1, borderColor: theme.primarySubtleBorder, alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <Ionicons name={icon} size={16} color={theme.primary} />
                   </View>
-                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: C.zinc300, lineHeight: 20, flex: 1 }}>{text}</Text>
+                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text1, lineHeight: 20, flex: 1 }}>{text}</Text>
                 </View>
               ))}
             </View>

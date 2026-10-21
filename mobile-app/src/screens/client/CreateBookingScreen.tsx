@@ -861,7 +861,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
                     accessibilityLabel={`Dia ${cell.getDate()}`}
                     style={{ width: "86%", minHeight: S.touchMin - 4, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: selected ? theme.primary : selectable ? theme.border : "transparent", backgroundColor: selected ? theme.primary : selectable ? "rgba(255,255,255,0.03)" : "transparent", opacity: isPast || (!selectable && !isPast) ? 0.3 : 1 }}
                   >
-                    <Text style={{ fontFamily: selected ? "DMSans_700Bold" : "DMSans_400Regular", fontSize: 12, color: selected ? theme.textOnPrimary : selectable ? C.zinc300 : theme.labelColor, textDecorationLine: isPast && !selectable ? "line-through" : "none" }}>
+                    <Text style={{ fontFamily: selected ? "DMSans_700Bold" : "DMSans_400Regular", fontSize: 12, color: selected ? theme.textOnPrimary : selectable ? theme.text1 : theme.labelColor, textDecorationLine: isPast && !selectable ? "line-through" : "none" }}>
                       {cell.getDate()}
                     </Text>
                   </TouchableOpacity>
@@ -947,7 +947,7 @@ export function CreateBookingScreen({ navigation, route }: Props) {
                                   backgroundColor: active ? theme.primary : "rgba(255,255,255,0.04)",
                                 }}
                               >
-                                <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: active ? theme.textOnPrimary : C.zinc300, letterSpacing: -0.013 * 18 }}>
+                                <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 18, color: active ? theme.textOnPrimary : theme.text1, letterSpacing: -0.013 * 18 }}>
                                   {slot}
                                 </Text>
                               </TouchableOpacity>

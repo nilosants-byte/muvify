@@ -369,7 +369,7 @@ export function ProfessionalNotificationsDrawer({
                 onPress={onClose}
                 style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.backBtn, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}
               >
-                <Ionicons name="close" size={16} color={C.zinc300} />
+                <Ionicons name="close" size={16} color={theme.text2} />
               </TouchableOpacity>
             </View>
           </View>

@@ -569,7 +569,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
               </Text>
             </View>
           </View>
-          <Text style={{ fontFamily: hasUnread ? "DMSans_500Medium" : "DMSans_400Regular", fontSize: 12, color: hasUnread ? C.zinc300 : theme.text2, marginTop: 4 }} numberOfLines={1}>
+          <Text style={{ fontFamily: hasUnread ? "DMSans_500Medium" : "DMSans_400Regular", fontSize: 12, color: hasUnread ? theme.text1 : theme.text2, marginTop: 4 }} numberOfLines={1}>
             {item.lastMessage
               ? item.lastMessage.isSystem
                 ? "📌 " + item.lastMessage.content
@@ -616,7 +616,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
           borderWidth: 1, borderColor: theme.primarySubtleBorder,
         }}>
           <Ionicons name="information-circle-outline" size={15} color={theme.primary} />
-          <Text style={{ fontFamily: "DMSans_400Regular", flex: 1, color: C.zinc300, lineHeight: 17, fontSize: 12 }}>
+          <Text style={{ fontFamily: "DMSans_400Regular", flex: 1, color: theme.text1, lineHeight: 17, fontSize: 12 }}>
             {item.content}
           </Text>
         </View>
@@ -642,7 +642,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
           borderWidth: isMine ? 0 : 1,
           borderColor: theme.border,
         }}>
-          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 13, color: isMine ? (isOpen ? theme.textOnPrimary : theme.text1) : C.zinc300, lineHeight: 20 }}>
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 13, color: isMine ? (isOpen ? theme.textOnPrimary : theme.text1) : theme.text1, lineHeight: 20 }}>
             {item.content}
           </Text>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 3, marginTop: 5 }}>

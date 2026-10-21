@@ -261,7 +261,7 @@ export function ConsultancyRequestScreen({ route, navigation }: Props) {
                 <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: C.sky, alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 9, color: theme.textOnPrimary }}>{i + 1}</Text>
                 </View>
-                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: C.zinc300, lineHeight: 18, flex: 1 }}>{step}</Text>
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text1, lineHeight: 18, flex: 1 }}>{step}</Text>
               </View>
             ))}
           </View>

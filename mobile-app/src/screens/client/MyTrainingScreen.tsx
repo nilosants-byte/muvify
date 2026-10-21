@@ -1250,7 +1250,7 @@ export function MyTrainingScreen({ navigation, route }: Props) {
                           {item.pix.copyAndPasteCode && !pixExpired ? (
                             <View style={{ gap: 4 }}>
                               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 12, color: theme.text1 }}>Código Pix (copia e cola)</Text>
-                              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: C.zinc300 }} selectable>
+                              <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text1 }} selectable>
                                 {item.pix.copyAndPasteCode}
                               </Text>
                             </View>
@@ -1296,7 +1296,7 @@ export function MyTrainingScreen({ navigation, route }: Props) {
                 style={{ height: S.touchMin, borderRadius: S.btnR, borderWidth: 1, borderColor: theme.border, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }}
               >
                 <Ionicons name="archive-outline" size={16} color={theme.text2} />
-                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: C.zinc300 }}>Ver solicitações arquivadas</Text>
+                <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 13, color: theme.text1 }}>Ver solicitações arquivadas</Text>
               </TouchableOpacity>
             )}
           </View>
