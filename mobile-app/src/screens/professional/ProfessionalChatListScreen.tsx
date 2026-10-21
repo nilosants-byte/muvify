@@ -42,6 +42,15 @@ import { SkeletonChatItem } from "../../components/polish/SkeletonCard";
 import { ProfessionalBottomNav } from "../../components/navigation/ProfessionalBottomNav";
 import { formatBRTime } from "../../utils/formatters";
 import { captureException } from "../../observability/sentry";
+import {
+  applyRealtime,
+  confirmSent,
+  LocalChatMessage,
+  makeSendingMessage,
+  markFailed,
+  markSending,
+  mergeServerList,
+} from "../../utils/chatOptimistic";
 
 type Props = NativeStackScreenProps<ProfessionalStackParamList, "ProfessionalChatList">;
 type Tab = "active" | "inactive";
@@ -163,7 +172,7 @@ export const ProfessionalChatComposer = React.memo(function ProfessionalChatComp
   onSend,
   theme,
 }: {
-  onSend: (text: string) => Promise<boolean>;
+  onSend: (text: string) => void;
   theme: MvTheme;
 }) {
   const insets = useSafeAreaInsets();
@@ -175,27 +184,24 @@ export const ProfessionalChatComposer = React.memo(function ProfessionalChatComp
   const text3 = theme.text3;
   const inputBg = theme.inputBg;
   const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
 
-  const handlePress = useCallback(async () => {
+  // Teste manual C9.1: o campo nunca trava esperando o servidor — a mensagem
+  // aparece na hora como bolha "enviando" (ver utils/chatOptimistic.ts).
+  const handlePress = useCallback(() => {
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
-    setSending(true);
+    if (!trimmed) return;
     setText("");
-    const ok = await onSend(trimmed);
-    if (!ok) setText(trimmed);
-    setSending(false);
-  }, [text, sending, onSend]);
+    onSend(trimmed);
+  }, [text, onSend]);
 
   return (
     <View style={{ paddingHorizontal: 10, paddingVertical: 10, paddingBottom: Math.max(16, insets.bottom + 8), backgroundColor: bg, borderTopWidth: 1, borderTopColor: border }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: inputBg, borderWidth: 1, borderColor: sending ? "rgba(34,197,94,0.3)" : border, borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8, opacity: sending ? 0.75 : 1 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: inputBg, borderWidth: 1, borderColor: border, borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8 }}>
         <TextInput
           value={text}
           onChangeText={setText}
-          placeholder={sending ? "Enviando..." : "Mensagem para o aluno..."}
-          placeholderTextColor={sending ? green : text3}
-          editable={!sending}
+          placeholder="Mensagem para o aluno..."
+          placeholderTextColor={text3}
           multiline
           maxLength={1000}
           selectionColor={green}
@@ -204,15 +210,12 @@ export const ProfessionalChatComposer = React.memo(function ProfessionalChatComp
         <PressableScale
           scale={0.90}
           onPress={() => void handlePress()}
-          disabled={!text.trim() || sending}
+          disabled={!text.trim()}
           accessibilityRole="button"
           accessibilityLabel="Enviar mensagem"
           style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: text.trim() ? green : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), alignItems: "center", justifyContent: "center", flexShrink: 0 }}
         >
-          {sending
-            ? <ActivityIndicator size="small" color="#fff" />
-            : <Ionicons name="send" size={16} color={text.trim() ? "#fff" : text3} />
-          }
+          <Ionicons name="send" size={16} color={text.trim() ? "#fff" : text3} />
         </PressableScale>
       </View>
     </View>
@@ -230,7 +233,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
   const [tab, setTab] = useState<Tab>("active");
   const [chats, setChats] = useState<UnifiedChat[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [chatOpen, setChatOpen] = useState(true);
   const [panelLoading, setPanelLoading] = useState(false);
   const [panelError, setPanelError] = useState(false);
@@ -300,7 +303,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
       );
       if (!isMountedRef.current) return;
       const incoming = data.messages ?? [];
-      setMessages(incoming);
+      setMessages((prev) => mergeServerList(prev, incoming, myUserId));
       setChatOpen(data.isOpen ?? true);
       setPanelError(false);
       setChats((prev) => prev.map((c) =>
@@ -320,7 +323,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
     } finally {
       if (initial && isMountedRef.current) setPanelLoading(false);
     }
-  }, [runWithAuth]);
+  }, [runWithAuth, myUserId]);
 
   // Polling when a chat is open
   useEffect(() => {
@@ -345,10 +348,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
     else joinConsultancyRoom(rawId);
 
     const unsubscribe = onNewBookingMessage((incoming) => {
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === incoming.id)) return prev;
-        return [...prev, incoming];
-      });
+      setMessages((prev) => applyRealtime(prev, incoming, myUserId));
       setPanelError(false);
       setChats((prev) =>
         prev.map((c) =>
@@ -406,27 +406,46 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
   // permite que o composer (ChatComposer, abaixo) seja um componente à parte
   // com seu próprio estado de texto/envio, sem re-renderizar
   // ProfessionalChatListScreen (e a lista de mensagens) a cada tecla digitada.
-  const sendMessage = useCallback(
-    async (text: string): Promise<boolean> => {
-      if (!text || !selectedChat) return false;
+  const deliverMessage = useCallback(
+    async (chat: UnifiedChat, localId: string, text: string) => {
       try {
-        const chat = selectedChat;
-        await runWithAuth((t) =>
+        const msg = await runWithAuth((t) =>
           chat.kind === "booking"
             ? chatApi.sendMessage(t, chat.rawId, text)
             : consultancyChatApi.sendMessage(t, chat.rawId, text)
         );
-        await fetchMessages(chat, false);
-        return true;
+        if (!isMountedRef.current) return;
+        setMessages((prev) => confirmSent(prev, localId, msg));
       } catch (error) {
         // Frente 13 (segunda camada), Lote 11: mesmo achado do lado
         // cliente — envio de mensagem nunca capturava falha.
         captureException(error, { screen: "ProfessionalChatListScreen", action: "sendMessage" });
+        if (!isMountedRef.current) return;
+        setMessages((prev) => markFailed(prev, localId));
         showToast("Não foi possível enviar a mensagem.", "error");
-        return false;
       }
     },
-    [selectedChat, runWithAuth, fetchMessages, showToast]
+    [runWithAuth, showToast]
+  );
+
+  const sendMessage = useCallback(
+    (text: string) => {
+      if (!text || !selectedChat) return;
+      const local = makeSendingMessage(myUserId, text);
+      setMessages((prev) => [...prev, local]);
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
+      void deliverMessage(selectedChat, local.id, text);
+    },
+    [selectedChat, myUserId, deliverMessage]
+  );
+
+  const retryMessage = useCallback(
+    (item: LocalChatMessage) => {
+      if (!selectedChat) return;
+      setMessages((prev) => markSending(prev, item.id));
+      void deliverMessage(selectedChat, item.id, item.content);
+    },
+    [selectedChat, deliverMessage]
   );
 
   // Épico de Frentes, Frente 9, Lote 10: chat ganha ação de denunciar
@@ -598,13 +617,15 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
                   );
                 }
                 const isMe = item.senderId === myUserId;
+                const failed = item.localStatus === "failed";
                 return (
-                  <View style={{ flexDirection: "row", justifyContent: isMe ? "flex-end" : "flex-start", marginHorizontal: 12, marginVertical: 2 }}>
+                  <View style={{ alignItems: isMe ? "flex-end" : "flex-start", marginHorizontal: 12, marginVertical: 2 }}>
                     <TouchableOpacity
-                      activeOpacity={1}
+                      activeOpacity={failed ? 0.7 : 1}
+                      onPress={failed ? () => retryMessage(item) : undefined}
                       onLongPress={isMe ? undefined : () => handleReportMessage(item)}
-                      accessibilityRole={isMe ? undefined : "button"}
-                      accessibilityLabel={isMe ? undefined : "Denunciar mensagem"}
+                      accessibilityRole={isMe && !failed ? undefined : "button"}
+                      accessibilityLabel={failed ? "Mensagem não enviada. Toque para tentar de novo" : isMe ? undefined : "Denunciar mensagem"}
                       style={{
                       maxWidth: "80%",
                       backgroundColor: isMe ? (isDark ? "#0e7a3e" : "#15803d") : cardBg,
@@ -624,10 +645,19 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
                           {formatBRTime(item.createdAt)}
                         </MvText>
                         {isMe ? (
-                          <Ionicons name={item.readAt ? "checkmark-done" : "checkmark"} size={12} color={item.readAt ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.5)"} />
+                          <Ionicons
+                            name={failed ? "alert-circle" : item.localStatus === "sending" ? "time-outline" : item.readAt ? "checkmark-done" : "checkmark"}
+                            size={12}
+                            color={failed ? "#fecaca" : item.readAt ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.5)"}
+                          />
                         ) : null}
                       </View>
                     </TouchableOpacity>
+                    {failed ? (
+                      <MvText style={{ fontSize: 11, color: theme.danger, marginTop: 3 }}>
+                        Não enviada. Toque na mensagem para tentar de novo.
+                      </MvText>
+                    ) : null}
                   </View>
                 );
               }}

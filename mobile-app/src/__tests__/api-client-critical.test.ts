@@ -66,7 +66,10 @@ describe("api client - fluxos criticos", () => {
   });
 
   it("Frente 10 (segunda camada), Lote 3: sem mensagem amigável do backend, cai num texto em português (nunca 'HTTP 500' cru)", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({}, 500));
+    // GETs com erro 5xx são tentados de novo sozinhos (até 3x, ver
+    // NETWORK_RETRY_ATTEMPTS_GET em services/api/client.ts) — a falha precisa
+    // se repetir em todas as tentativas.
+    fetchMock.mockImplementation(async () => jsonResponse({}, 500));
     const err500 = (await apiRequest("/broken").catch((e) => e)) as ApiError;
     expect(err500.status).toBe(500);
     expect(err500.message).not.toMatch(/^HTTP \d+/);

@@ -41,6 +41,15 @@ import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { SkeletonChatItem } from "../../components/polish/SkeletonCard";
 import { hapticCta } from "../../utils/haptics";
 import { captureException } from "../../observability/sentry";
+import {
+  applyRealtime,
+  confirmSent,
+  LocalChatMessage,
+  makeSendingMessage,
+  markFailed,
+  markSending,
+  mergeServerList,
+} from "../../utils/chatOptimistic";
 
 type Props = NativeStackScreenProps<ClientStackParamList, "ClientChatList">;
 type Tab = "active" | "inactive";
@@ -167,35 +176,32 @@ export const ChatComposer = React.memo(function ChatComposer({
   onSend,
   theme,
 }: {
-  onSend: (text: string) => Promise<boolean>;
+  onSend: (text: string) => void;
   theme: MvTheme;
 }) {
   const insets = useSafeAreaInsets();
   const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
+  // Teste manual C9.1: o campo nunca trava esperando o servidor — a mensagem
+  // aparece na hora como bolha "enviando" (ver utils/chatOptimistic.ts).
 
-  const handlePress = useCallback(async () => {
+  const handlePress = useCallback(() => {
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
+    if (!trimmed) return;
     hapticCta();
-    setSending(true);
     setText("");
-    const ok = await onSend(trimmed);
-    if (!ok) setText(trimmed);
-    setSending(false);
-  }, [text, sending, onSend]);
+    onSend(trimmed);
+  }, [text, onSend]);
 
   return (
     <View style={{ paddingHorizontal: 10, paddingVertical: 10, paddingBottom: Math.max(16, insets.bottom + 8), backgroundColor: theme.bg, borderTopWidth: 1, borderTopColor: theme.border }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: theme.inputBg, borderWidth: 1, borderColor: sending ? theme.primarySubtleBorder : theme.borderMid, borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8, opacity: sending ? 0.75 : 1 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: theme.inputBg, borderWidth: 1, borderColor: theme.borderMid, borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8 }}>
         <TextInput
           testID="input.chat.message"
           style={{ flex: 1, fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text1, maxHeight: 100, lineHeight: 19 }}
-          placeholder={sending ? "Enviando..." : "Escreva para seu personal..."}
-          placeholderTextColor={sending ? theme.primary : theme.text3}
+          placeholder="Escreva para seu personal..."
+          placeholderTextColor={theme.text3}
           value={text}
           onChangeText={setText}
-          editable={!sending}
           multiline
           maxLength={1000}
           selectionColor={theme.primary}
@@ -203,14 +209,12 @@ export const ChatComposer = React.memo(function ChatComposer({
         <TouchableOpacity
           testID="button.chat.send"
           onPress={() => void handlePress()}
-          disabled={!text.trim() || sending}
+          disabled={!text.trim()}
           accessibilityRole="button"
           accessibilityLabel="Enviar mensagem"
-          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: text.trim() && !sending ? theme.primary : "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: text.trim() ? theme.primary : "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
         >
-          {sending
-            ? <ActivityIndicator color={theme.primary} size="small" />
-            : <Ionicons name="send" size={16} color={text.trim() ? theme.textOnPrimary : theme.text3} />}
+          <Ionicons name="send" size={16} color={text.trim() ? theme.textOnPrimary : theme.text3} />
         </TouchableOpacity>
       </View>
     </View>
@@ -228,7 +232,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
   const [chats, setChats] = useState<UnifiedChat[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [isOpen, setIsOpen] = useState(true);
   const [panelLoading, setPanelLoading] = useState(false);
   const [panelError, setPanelError] = useState(false);
@@ -303,7 +307,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
         );
         if (!isMountedRef.current) return;
         const incoming = data.messages ?? [];
-        setMessages(incoming);
+        setMessages((prev) => mergeServerList(prev, incoming, myUserId));
         setIsOpen(data.isOpen ?? true);
         setPanelError(false);
         setChats((prev) =>
@@ -328,7 +332,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
         if (initial && isMountedRef.current) setPanelLoading(false);
       }
     },
-    [runWithAuth]
+    [runWithAuth, myUserId]
   );
 
   // Se selectedChat sumir enquanto está na view de chat, volta para a lista
@@ -361,10 +365,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
     else joinConsultancyRoom(rawId);
 
     const unsubscribe = onNewBookingMessage((incoming) => {
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === incoming.id)) return prev;
-        return [...prev, incoming];
-      });
+      setMessages((prev) => applyRealtime(prev, incoming, myUserId));
       setPanelError(false);
       setChats((prev) =>
         prev.map((c) =>
@@ -432,37 +433,54 @@ export function ClientChatListScreen({ navigation, route }: Props) {
   // permite que o composer (ChatComposer, abaixo) seja um componente à parte
   // com seu próprio estado de texto/envio, sem re-renderizar
   // ClientChatListScreen (e a lista de mensagens) a cada tecla digitada.
-  const handleSendMessage = useCallback(
-    async (text: string): Promise<boolean> => {
-      if (!text || !selectedChat) return false;
-      hapticCta();
+  const deliverMessage = useCallback(
+    async (chat: UnifiedChat, localId: string, text: string) => {
       try {
-        const chat = selectedChat;
         const msg = await runWithAuth((token) =>
           chat.kind === "booking"
             ? chatApi.sendMessage(token, chat.rawId, text)
             : consultancyChatApi.sendMessage(token, chat.rawId, text)
         );
-        if (!isMountedRef.current) return true;
-        setMessages((prev) => {
-          const updated = [...prev, msg];
-          lastMsgCountRef.current = updated.length;
-          return updated;
-        });
+        if (!isMountedRef.current) return;
+        setMessages((prev) => confirmSent(prev, localId, msg));
         refetchAll();
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
-        return true;
       } catch (error) {
         // Frente 13 (segunda camada), Lote 11: envio de mensagem nunca
         // capturava falha — chat é um fluxo crítico, e uma falha
         // sistemática de envio (não só "sem internet" pontual) ficava
         // invisível além do toast individual de cada usuário.
         captureException(error, { screen: "ClientChatListScreen", action: "sendMessage" });
+        if (!isMountedRef.current) return;
+        setMessages((prev) => markFailed(prev, localId));
         showToast("Não foi possível enviar a mensagem.", "error");
-        return false;
       }
     },
-    [selectedChat, runWithAuth, showToast, refetchAll]
+    [runWithAuth, showToast, refetchAll]
+  );
+
+  const handleSendMessage = useCallback(
+    (text: string) => {
+      if (!text || !selectedChat) return;
+      const local = makeSendingMessage(myUserId, text);
+      setMessages((prev) => {
+        const updated = [...prev, local];
+        lastMsgCountRef.current = updated.length;
+        return updated;
+      });
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
+      void deliverMessage(selectedChat, local.id, text);
+    },
+    [selectedChat, myUserId, deliverMessage]
+  );
+
+  const retryMessage = useCallback(
+    (item: LocalChatMessage) => {
+      if (!selectedChat) return;
+      hapticCta();
+      setMessages((prev) => markSending(prev, item.id));
+      void deliverMessage(selectedChat, item.id, item.content);
+    },
+    [selectedChat, deliverMessage]
   );
 
   // Épico de Frentes, Frente 9, Lote 10: chat ganha ação de denunciar
@@ -588,7 +606,7 @@ export function ClientChatListScreen({ navigation, route }: Props) {
   // Frente 11 (engenharia mobile), Lote 7: useCallback — combinado com o
   // composer isolado (ChatComposer, abaixo), digitar uma mensagem não recria
   // mais esta função nem re-renderiza a lista de bolhas visíveis.
-  const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
+  const renderMessage = useCallback(({ item }: { item: LocalChatMessage }) => {
     if (item.isSystem) {
       return (
         <View style={{
@@ -606,13 +624,15 @@ export function ClientChatListScreen({ navigation, route }: Props) {
     }
 
     const isMine = item.senderId === myUserId;
+    const failed = item.localStatus === "failed";
     return (
-      <View style={{ flexDirection: "row", justifyContent: isMine ? "flex-end" : "flex-start", marginHorizontal: 12, marginVertical: 2 }}>
+      <View style={{ alignItems: isMine ? "flex-end" : "flex-start", marginHorizontal: 12, marginVertical: 2 }}>
         <TouchableOpacity
-          activeOpacity={1}
+          activeOpacity={failed ? 0.7 : 1}
+          onPress={failed ? () => retryMessage(item) : undefined}
           onLongPress={isMine ? undefined : () => handleReportMessage(item)}
-          accessibilityRole={isMine ? undefined : "button"}
-          accessibilityLabel={isMine ? undefined : "Denunciar mensagem"}
+          accessibilityRole={isMine && !failed ? undefined : "button"}
+          accessibilityLabel={failed ? "Mensagem não enviada. Toque para tentar de novo" : isMine ? undefined : "Denunciar mensagem"}
           style={{
           maxWidth: "80%", borderRadius: 20,
           borderBottomRightRadius: isMine ? 4 : 20,
@@ -631,16 +651,21 @@ export function ClientChatListScreen({ navigation, route }: Props) {
             </Text>
             {isMine ? (
               <Ionicons
-                name={item.readAt ? "checkmark-done" : "checkmark"}
+                name={failed ? "alert-circle" : item.localStatus === "sending" ? "time-outline" : item.readAt ? "checkmark-done" : "checkmark"}
                 size={12}
-                color={item.readAt ? (isOpen ? "rgba(0,0,0,0.7)" : theme.text2) : (isOpen ? "rgba(0,0,0,0.4)" : theme.labelColor)}
+                color={failed ? theme.danger : item.readAt ? (isOpen ? "rgba(0,0,0,0.7)" : theme.text2) : (isOpen ? "rgba(0,0,0,0.4)" : theme.labelColor)}
               />
             ) : null}
           </View>
         </TouchableOpacity>
+        {failed ? (
+          <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 11, color: theme.danger, marginTop: 3 }}>
+            Não enviada. Toque na mensagem para tentar de novo.
+          </Text>
+        ) : null}
       </View>
     );
-  }, [theme, myUserId, handleReportMessage, isOpen]);
+  }, [theme, myUserId, handleReportMessage, retryMessage, isOpen]);
 
   // ── Render principal V2 ──────────────────────────────────────────────────
   return (

@@ -107,9 +107,10 @@ describe("Erros 5xx — serviço indisponível", () => {
   it.each([502, 503, 504])(
     "status %i retorna mensagem de serviço temporariamente indisponível",
     async (statusCode) => {
-      mockFetch.mockReturnValueOnce(
-        jsonResponse({ message: "Service Unavailable" }, statusCode)
-      );
+      // GETs com erro 5xx são tentados de novo sozinhos (até 3x, ver
+    // NETWORK_RETRY_ATTEMPTS_GET em services/api/client.ts) — a falha precisa
+    // se repetir em todas as tentativas.
+    mockFetch.mockImplementation(() => jsonResponse({ message: "Service Unavailable" }, statusCode));
 
       try {
         await bookingsApi.me("any-token");
@@ -125,9 +126,10 @@ describe("Erros 5xx — serviço indisponível", () => {
   );
 
   it("503 com mensagem específica do backend usa a mensagem do backend", async () => {
-    mockFetch.mockReturnValueOnce(
-      jsonResponse({ message: "Manutenção programada até 23h." }, 503)
-    );
+    // GETs com erro 5xx são tentados de novo sozinhos (até 3x, ver
+    // NETWORK_RETRY_ATTEMPTS_GET em services/api/client.ts) — a falha precisa
+    // se repetir em todas as tentativas.
+    mockFetch.mockImplementation(() => jsonResponse({ message: "Manutenção programada até 23h." }, 503));
 
     try {
       await paymentsApi.customerStatus("any-token");
@@ -242,9 +244,10 @@ describe("Outros erros HTTP", () => {
   });
 
   it("500 Internal Server Error propaga mensagem do backend", async () => {
-    mockFetch.mockReturnValueOnce(
-      jsonResponse({ message: "Erro interno do servidor." }, 500)
-    );
+    // GETs com erro 5xx são tentados de novo sozinhos (até 3x, ver
+    // NETWORK_RETRY_ATTEMPTS_GET em services/api/client.ts) — a falha precisa
+    // se repetir em todas as tentativas.
+    mockFetch.mockImplementation(() => jsonResponse({ message: "Erro interno do servidor." }, 500));
 
     try {
       await userApi.me("any-token");
@@ -257,9 +260,10 @@ describe("Outros erros HTTP", () => {
   });
 
   it("resposta sem campo message usa fallback genérico", async () => {
-    mockFetch.mockReturnValueOnce(
-      jsonResponse({ code: "UNKNOWN_ERROR" }, 500)
-    );
+    // GETs com erro 5xx são tentados de novo sozinhos (até 3x, ver
+    // NETWORK_RETRY_ATTEMPTS_GET em services/api/client.ts) — a falha precisa
+    // se repetir em todas as tentativas.
+    mockFetch.mockImplementation(() => jsonResponse({ code: "UNKNOWN_ERROR" }, 500));
 
     try {
       await userApi.me("any-token");

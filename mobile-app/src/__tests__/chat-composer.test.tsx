@@ -1,5 +1,5 @@
 import React from "react";
-import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
+import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import { ChatComposer } from "../screens/client/ClientChatListScreen";
 import { ProfessionalChatComposer } from "../screens/professional/ProfessionalChatListScreen";
 import { darkTheme } from "../theme/MvColors";
@@ -25,16 +25,21 @@ describe("Frente 11, Lote 7 — ChatComposer (cliente)", () => {
     await waitFor(() => expect(input.props.value).toBe(""));
   });
 
-  it("em caso de falha, restaura o texto no campo em vez de perdê-lo", async () => {
-    const onSend = jest.fn().mockResolvedValue(false);
+  // Teste manual C9.1 (21/10/2026): o campo não trava mais esperando o
+  // servidor — a falha vira uma bolha "Não enviada. Toque para tentar de
+  // novo" na conversa (ver utils/chatOptimistic.ts), não texto devolvido.
+  it("continua editável logo depois de enviar, pra mandar a próxima", () => {
+    const onSend = jest.fn();
     const ui = render(<ChatComposer onSend={onSend} theme={darkTheme} />);
 
     const input = ui.getByPlaceholderText("Escreva para seu personal...");
-    fireEvent.changeText(input, "mensagem importante");
+    fireEvent.changeText(input, "primeira");
+    fireEvent.press(ui.getByLabelText("Enviar mensagem"));
+    fireEvent.changeText(ui.getByPlaceholderText("Escreva para seu personal..."), "segunda");
     fireEvent.press(ui.getByLabelText("Enviar mensagem"));
 
-    await waitFor(() => expect(onSend).toHaveBeenCalledWith("mensagem importante"));
-    await waitFor(() => expect(input.props.value).toBe("mensagem importante"));
+    expect(onSend.mock.calls).toEqual([["primeira"], ["segunda"]]);
+    expect(ui.getByPlaceholderText("Escreva para seu personal...").props.editable).not.toBe(false);
   });
 
   it("não envia texto vazio nem só com espaços", () => {
@@ -72,35 +77,16 @@ describe("Frente 11, Lote 7 — ProfessionalChatComposer", () => {
     await waitFor(() => expect(input.props.value).toBe(""));
   });
 
-  it("em caso de falha, restaura o texto no campo", async () => {
-    const onSend = jest.fn().mockResolvedValue(false);
+  it("continua editável logo depois de enviar, pra mandar a próxima", () => {
+    const onSend = jest.fn();
     const ui = render(<ProfessionalChatComposer onSend={onSend} theme={darkTheme} />);
 
-    const input = ui.getByPlaceholderText("Mensagem para o aluno...");
-    fireEvent.changeText(input, "não pode sumir");
+    fireEvent.changeText(ui.getByPlaceholderText("Mensagem para o aluno..."), "primeira");
+    fireEvent.press(ui.getByLabelText("Enviar mensagem"));
+    fireEvent.changeText(ui.getByPlaceholderText("Mensagem para o aluno..."), "segunda");
     fireEvent.press(ui.getByLabelText("Enviar mensagem"));
 
-    await waitFor(() => expect(onSend).toHaveBeenCalledWith("não pode sumir"));
-    await waitFor(() => expect(input.props.value).toBe("não pode sumir"));
-  });
-
-  it("desabilita o campo enquanto o envio está em andamento", async () => {
-    let resolveSend: (ok: boolean) => void = () => {};
-    const onSend = jest.fn(
-      () => new Promise<boolean>((resolve) => { resolveSend = resolve; })
-    );
-    const ui = render(<ProfessionalChatComposer onSend={onSend} theme={darkTheme} />);
-
-    const input = ui.getByPlaceholderText("Mensagem para o aluno...");
-    fireEvent.changeText(input, "aguardando resposta");
-    fireEvent.press(ui.getByLabelText("Enviar mensagem"));
-
-    await waitFor(() => expect(ui.getByPlaceholderText("Enviando...")).toBeTruthy());
-
-    await act(async () => {
-      resolveSend(true);
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(ui.getByPlaceholderText("Mensagem para o aluno...")).toBeTruthy());
+    expect(onSend.mock.calls).toEqual([["primeira"], ["segunda"]]);
+    expect(ui.getByPlaceholderText("Mensagem para o aluno...").props.editable).not.toBe(false);
   });
 });

@@ -235,7 +235,10 @@ describe("Cenários de erro de pagamento", () => {
 
   it("serviço indisponível (503) retorna mensagem amigável", async () => {
     // Sem body message → cliente usa fallback em português
-    mockFetch.mockReturnValueOnce(jsonResponse(null, 503));
+    // GETs com erro 5xx são tentados de novo sozinhos (até 3x, ver
+    // NETWORK_RETRY_ATTEMPTS_GET em services/api/client.ts) — a falha precisa
+    // se repetir em todas as tentativas.
+    mockFetch.mockImplementation(() => jsonResponse(null, 503));
 
     try {
       await paymentsApi.bookingPayment(TOKEN, "booking-503");
