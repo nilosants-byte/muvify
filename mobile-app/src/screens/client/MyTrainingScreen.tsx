@@ -414,7 +414,11 @@ function WorkoutDetailModal({
           <TouchableOpacity onPress={onClose} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
             <Ionicons name="close" size={18} color={theme.text1} />
           </TouchableOpacity>
-          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3, marginLeft: 10 }}>Tá pago!</Text>
+          <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 24, color: theme.text1, letterSpacing: -0.3, marginLeft: 10 }}>
+            {/* Achado no teste manual do checklist (C7.3): título repetia o
+                "Tá pago!" da comemoração logo abaixo. */}
+            Treino concluído
+          </Text>
         </View>
         {/* automaticallyAdjustKeyboardInsets: o teclado cobria o campo da
             legenda — no iOS sobe o campo focado pra cima do teclado. */}
