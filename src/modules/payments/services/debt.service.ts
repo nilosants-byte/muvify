@@ -143,6 +143,9 @@ export class DebtService {
         status: true,
         paidAt: true,
         createdAt: true,
+        pendingPixQrCodeUrl: true,
+        pendingPixCopyPasteCode: true,
+        pendingPixExpiresAt: true,
         disputeCase: { select: { id: true, type: true } }
       }
     });
@@ -162,6 +165,9 @@ export class DebtService {
         reason: true,
         status: true,
         createdAt: true,
+        pendingPixQrCodeUrl: true,
+        pendingPixCopyPasteCode: true,
+        pendingPixExpiresAt: true,
         disputeCase: { select: { id: true, type: true } }
       }
     });
@@ -215,7 +221,7 @@ export class DebtService {
   // profissional como collector (marketplace split, porque o dinheiro é
   // devido a ele); dívida do profissional vai direto pra conta da própria
   // plataforma — é dinheiro que ele recebeu indevidamente, não um repasse.
-  async payDebt(userId: string, debtId: string) {
+  async payDebt(userId: string, debtId: string, method: "CARD" | "PIX" = "CARD") {
     const debt = await prisma.debtRecord.findUnique({
       where: { id: debtId },
       include: { provider: true }
@@ -235,6 +241,10 @@ export class DebtService {
       throw new AppError("Esta pendência não está mais em aberto.", StatusCodes.BAD_REQUEST);
     }
 
+    if (method === "PIX") {
+      return this.createDebtPix(debt, isClientDebt, userId);
+    }
+
     const debtor = await prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -244,12 +254,12 @@ export class DebtService {
         }
       }
     });
-    if (!debtor?.mpCustomerId) {
-      throw new AppError("Cadastro de pagamento não configurado.", StatusCodes.BAD_REQUEST);
-    }
-    const selectedCard = debtor.customerPaymentMethods[0];
-    if (!selectedCard) {
-      throw new AppError("Nenhum cartão de crédito ativo encontrado para pagamento.", StatusCodes.BAD_REQUEST);
+    const selectedCard = debtor?.customerPaymentMethods[0];
+    if (!debtor?.mpCustomerId || !selectedCard) {
+      throw new AppError(
+        "Você não tem um cartão de crédito salvo. Pague por Pix ou cadastre um cartão em Perfil → Métodos de pagamento.",
+        StatusCodes.BAD_REQUEST
+      );
     }
 
     const provider = isClientDebt ? debt.provider : null;
@@ -293,16 +303,100 @@ export class DebtService {
     });
 
     if (isClientDebt && provider) {
-      void notificationService
-        .sendToUsers([provider.userId], {
-          preferenceType: "PAYMENTS",
-          title: "Pendência regularizada",
-          body: `Uma pendência de R$ ${formatCents(debt.amountCents)} foi paga pelo aluno.`,
-          data: { type: "DEBT_RECORD_PAID", debtRecordId: debt.id }
-        })
-        .catch((error) => console.error("Falha ao notificar profissional sobre pagamento de pendência:", error));
+      this.notifyProviderDebtPaid(provider.userId, debt.id, debt.amountCents);
     }
 
     return updated;
+  }
+
+  private notifyProviderDebtPaid(providerUserId: string, debtId: string, amountCents: number) {
+    void notificationService
+      .sendToUsers([providerUserId], {
+        preferenceType: "PAYMENTS",
+        title: "Pendência regularizada",
+        body: `Uma pendência de R$ ${formatCents(amountCents)} foi paga pelo aluno.`,
+        data: { type: "DEBT_RECORD_PAID", debtRecordId: debtId }
+      })
+      .catch((error) => console.error("Falha ao notificar profissional sobre pagamento de pendência:", error));
+  }
+
+  // Decisão do Danilo (teste manual C8.1, 20/10/2026): pendência também pode
+  // ser paga por Pix — antes só cartão salvo, e quem não tinha cartão ficava
+  // bloqueado pra sempre de agendar/contratar. Reaproveita o Pix ainda válido
+  // (não gera um novo a cada toque); a confirmação vem pelo webhook
+  // (confirmDebtPixPayment).
+  private async createDebtPix(
+    debt: { id: string; amountCents: number; disputeCaseId: string; pendingPixMpPaymentId: string | null; pendingPixExpiresAt: Date | null; provider: { id: string; mpAccountId: string | null } | null },
+    isClientDebt: boolean,
+    userId: string
+  ) {
+    if (debt.pendingPixMpPaymentId && debt.pendingPixExpiresAt && debt.pendingPixExpiresAt.getTime() > Date.now() + 5 * 60 * 1000) {
+      return prisma.debtRecord.findUniqueOrThrow({ where: { id: debt.id } });
+    }
+
+    const debtor = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true, name: true } });
+    const provider = isClientDebt ? debt.provider : null;
+    const providerAccessToken = provider ? await requireProviderMpAccessToken(provider.id) : null;
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const nameParts = debtor.name.split(" ");
+
+    const mpPay = await mpPayment.create({
+      body: {
+        transaction_amount: debt.amountCents / 100,
+        payment_method_id: "pix",
+        date_of_expiration: expiresAt.toISOString(),
+        payer: { email: debtor.email, first_name: nameParts[0], last_name: nameParts.slice(1).join(" ") || undefined },
+        description: `Regularização de pendência — caso ${debt.disputeCaseId}`,
+        metadata: { debtRecordId: debt.id, disputeCaseId: debt.disputeCaseId },
+        ...(providerAccessToken && provider?.mpAccountId
+          ? { collector: { id: Number(provider.mpAccountId) }, marketplace_fee: platformFeeAmount(debt.amountCents) / 100 }
+          : {})
+      },
+      requestOptions: {
+        // Um Pix por tentativa (o anterior pode ter expirado).
+        idempotencyKey: `debt:${debt.id}:pix:${expiresAt.getTime()}`,
+        ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+      }
+    });
+
+    const poi = mpPay.point_of_interaction as Record<string, unknown> | null | undefined;
+    const tx = (poi?.["transaction_data"] as Record<string, unknown> | null | undefined) ?? null;
+    return prisma.debtRecord.update({
+      where: { id: debt.id },
+      data: {
+        pendingPixMpPaymentId: String(mpPay.id),
+        pendingPixQrCodeUrl: (tx?.["qr_code_base64"] as string | null) ?? null,
+        pendingPixCopyPasteCode: (tx?.["qr_code"] as string | null) ?? null,
+        pendingPixExpiresAt: expiresAt
+      }
+    });
+  }
+
+  // Chamado pelo webhook do Mercado Pago (payment.service.ts) quando o Pix de
+  // uma pendência muda de status. Retorna true se o pagamento era de uma
+  // pendência (já tratado aqui).
+  async confirmDebtPixPayment(mpPaymentId: string, mpStatus: string | undefined): Promise<boolean> {
+    const debt = await prisma.debtRecord.findUnique({
+      where: { pendingPixMpPaymentId: mpPaymentId },
+      include: { provider: { select: { userId: true } } }
+    });
+    if (!debt) return false;
+    if (mpStatus !== "approved") return true;
+    const updated = await prisma.debtRecord.updateMany({
+      where: { id: debt.id, status: { in: ["PENDING", "NOTIFIED"] } },
+      data: {
+        status: "PAID",
+        mpPaymentId,
+        paidAt: new Date(),
+        pendingPixMpPaymentId: null,
+        pendingPixQrCodeUrl: null,
+        pendingPixCopyPasteCode: null,
+        pendingPixExpiresAt: null
+      }
+    });
+    if (updated.count > 0 && debt.debtorType === "CLIENT" && debt.provider) {
+      this.notifyProviderDebtPaid(debt.provider.userId, debt.id, debt.amountCents);
+    }
+    return true;
   }
 }

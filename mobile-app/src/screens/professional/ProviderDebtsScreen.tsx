@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Alert, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect } from "react";
+import { ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,6 +11,7 @@ import { debtsApi, DebtRecordStatus } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvProcessingModal } from "../../components/mv";
+import { DebtPixPanel, debtsPollInterval, hasActivePix, useDebtPayment } from "../../components/debts/DebtPayment";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { handleScreenError } from "../shared/api-helpers";
 import { formatCurrencyBRL, formatBRDate } from "../../utils/formatters";
@@ -24,12 +25,13 @@ function statusLabel(status: DebtRecordStatus) {
 }
 
 export function ProviderDebtsScreen({ navigation }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
-  const [payingId, setPayingId] = useState<string | null>(null);
 
-  const debtsQuery = useAuthQuery(queryKeys.debts.providerList(), (token) => debtsApi.providerDebts(token));
+  const debtsQuery = useAuthQuery(queryKeys.debts.providerList(), (token) => debtsApi.providerDebts(token), {
+    refetchInterval: (query) => debtsPollInterval(query.state.data)
+  });
   const debts = debtsQuery.data ?? [];
 
   useFocusEffectSkippingFirst(useCallback(() => { void debtsQuery.refetch(); return undefined; }, [debtsQuery.refetch]));
@@ -42,32 +44,14 @@ export function ProviderDebtsScreen({ navigation }: Props) {
 
   // Raio-X de pagamentos, Rodada 4, Lote 6: antes só existia o desconto
   // passivo no próximo repasse, sem confirmação nenhuma de que de fato
-  // aconteceu — o profissional pode agora regularizar ativamente, pagando
-  // com o cartão salvo na própria conta.
-  function confirmPay(debtId: string, amountCents: number) {
-    Alert.alert(
-      "Regularizar pendência",
-      `Confirma o pagamento de ${formatCurrencyBRL(amountCents / 100)} no seu cartão salvo?`,
-      [
-        { text: "Voltar", style: "cancel" },
-        {
-          text: "Pagar",
-          onPress: async () => {
-            try {
-              setPayingId(debtId);
-              await runWithAuth((token) => debtsApi.payDebt(token, debtId));
-              showToast("Pendência regularizada com sucesso.", "success");
-              void debtsQuery.refetch();
-            } catch (error) {
-              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível processar o pagamento." });
-            } finally {
-              setPayingId(null);
-            }
-          }
-        }
-      ]
-    );
-  }
+  // aconteceu — o profissional pode agora regularizar ativamente (cartão
+  // salvo ou Pix).
+  const { payingId, confirmPay } = useDebtPayment({
+    debts,
+    refetch: debtsQuery.refetch,
+    title: "Regularizar pendência",
+    successMessage: "Pendência regularizada com sucesso."
+  });
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -90,8 +74,8 @@ export function ProviderDebtsScreen({ navigation }: Props) {
         <ScrollView contentContainerStyle={{ padding: S.px, gap: 12, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3, lineHeight: 18 }}>
             Quando um caso de disputa é resolvido a favor de um aluno, o valor tende a ser descontado do seu próximo
-            repasse pelo Mercado Pago — mas você também pode regularizar agora mesmo com seu cartão salvo, sem
-            esperar.
+            repasse pelo Mercado Pago — mas você também pode regularizar agora mesmo com seu cartão salvo ou por
+            Pix, sem esperar.
           </Text>
 
           {debts.some((d) => d.status !== "PAID" && d.status !== "WRITTEN_OFF") ? (
@@ -131,11 +115,15 @@ export function ProviderDebtsScreen({ navigation }: Props) {
                   {status.label}
                 </Text>
                 {debt.status !== "PAID" && debt.status !== "WRITTEN_OFF" ? (
-                  <MvButton
-                    label="Pagar agora"
-                    loading={payingId === debt.id}
-                    onPress={() => confirmPay(debt.id, debt.amountCents)}
-                  />
+                  hasActivePix(debt) ? (
+                    <DebtPixPanel debt={debt} />
+                  ) : (
+                    <MvButton
+                      label="Pagar agora"
+                      loading={payingId === debt.id}
+                      onPress={() => confirmPay(debt)}
+                    />
+                  )
                 ) : null}
               </View>
             );

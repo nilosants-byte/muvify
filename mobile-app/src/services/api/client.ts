@@ -3230,6 +3230,9 @@ export type DebtRecord = {
   status: DebtRecordStatus;
   paidAt?: string | null;
   createdAt: string;
+  pendingPixQrCodeUrl?: string | null;
+  pendingPixCopyPasteCode?: string | null;
+  pendingPixExpiresAt?: string | null;
   disputeCase: { id: string; type: AdminDisputeCaseType };
 };
 
@@ -3237,8 +3240,8 @@ export const debtsApi = {
   myDebts(token: string) {
     return apiRequest<DebtRecord[]>("/debts/my", { token });
   },
-  payDebt(token: string, debtId: string) {
-    return apiRequest<DebtRecord>(`/debts/${debtId}/pay`, { method: "POST", token });
+  payDebt(token: string, debtId: string, method: "CARD" | "PIX" = "CARD") {
+    return apiRequest<DebtRecord>(`/debts/${debtId}/pay`, { method: "POST", token, body: { method } });
   },
   providerDebts(token: string) {
     return apiRequest<DebtRecord[]>("/debts/provider/my", { token });

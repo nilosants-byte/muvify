@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Alert, ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect } from "react";
+import { ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,6 +11,7 @@ import { debtsApi } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { MvButton, MvProcessingModal } from "../../components/mv";
+import { DebtPixPanel, debtsPollInterval, hasActivePix, useDebtPayment } from "../../components/debts/DebtPayment";
 import { ScreenEntrance } from "../../components/polish/ScreenEntrance";
 import { handleScreenError } from "../shared/api-helpers";
 import { formatCurrencyBRL, formatBRDate } from "../../utils/formatters";
@@ -19,12 +20,13 @@ import { S, DISPLAY, C } from "../../theme/v2tokens";
 type Props = NativeStackScreenProps<ClientStackParamList, "MyDebts">;
 
 export function MyDebtsScreen({ navigation }: Props) {
-  const { runWithAuth, showToast } = useAppState();
+  const { showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
-  const [payingId, setPayingId] = useState<string | null>(null);
 
-  const debtsQuery = useAuthQuery(queryKeys.debts.my(), (token) => debtsApi.myDebts(token));
+  const debtsQuery = useAuthQuery(queryKeys.debts.my(), (token) => debtsApi.myDebts(token), {
+    refetchInterval: (query) => debtsPollInterval(query.state.data)
+  });
   const debts = (debtsQuery.data ?? []).filter((debt) => debt.status !== "PAID" && debt.status !== "WRITTEN_OFF");
 
   useFocusEffectSkippingFirst(useCallback(() => { void debtsQuery.refetch(); return undefined; }, [debtsQuery.refetch]));
@@ -35,30 +37,12 @@ export function MyDebtsScreen({ navigation }: Props) {
     }
   }, [debtsQuery.error, showToast]);
 
-  function confirmPay(debtId: string, amountCents: number) {
-    Alert.alert(
-      "Pagar pendência",
-      `Confirma o pagamento de ${formatCurrencyBRL(amountCents / 100)} no seu cartão salvo?`,
-      [
-        { text: "Voltar", style: "cancel" },
-        {
-          text: "Pagar",
-          onPress: async () => {
-            try {
-              setPayingId(debtId);
-              await runWithAuth((token) => debtsApi.payDebt(token, debtId));
-              showToast("Pendência paga com sucesso.", "success");
-              void debtsQuery.refetch();
-            } catch (error) {
-              handleScreenError({ error, showToast, fallbackMessage: "Não foi possível processar o pagamento." });
-            } finally {
-              setPayingId(null);
-            }
-          }
-        }
-      ]
-    );
-  }
+  const { payingId, confirmPay } = useDebtPayment({
+    debts,
+    refetch: debtsQuery.refetch,
+    title: "Pagar pendência",
+    successMessage: "Pendência paga com sucesso."
+  });
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -109,11 +93,15 @@ export function MyDebtsScreen({ navigation }: Props) {
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3 }}>
                 Registrada em {formatBRDate(debt.createdAt)}
               </Text>
-              <MvButton
-                label="Pagar agora"
-                loading={payingId === debt.id}
-                onPress={() => confirmPay(debt.id, debt.amountCents)}
-              />
+              {hasActivePix(debt) ? (
+                <DebtPixPanel debt={debt} />
+              ) : (
+                <MvButton
+                  label="Pagar agora"
+                  loading={payingId === debt.id}
+                  onPress={() => confirmPay(debt)}
+                />
+              )}
             </View>
           ))}
         </ScrollView>

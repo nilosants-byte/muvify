@@ -25,6 +25,7 @@ import { recalculateProviderRatingAfterRefund } from "../../../shared/utils/prov
 import { assertOfferAcceptsPaymentMethod } from "../../../shared/utils/offer-payment-method";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { PresentialPackageService } from "../../presential-packages/services/presential-package.service";
+import { DebtService } from "./debt.service";
 
 type Tx = Prisma.TransactionClient | typeof prisma;
 
@@ -1868,6 +1869,10 @@ export class PaymentService {
       !trainingPlanRenewal &&
       !presentialPackageCycle
     ) {
+      // Pix de pendência financeira (debt.service.ts, createDebtPix).
+      if (await new DebtService().confirmDebtPixPayment(String(mpPay.id), mpStatus ?? undefined)) {
+        return;
+      }
       console.warn(`[webhook] mpPaymentId ${mpPaymentId} nao encontrado em payment ou contract. Status: ${mpStatus}`);
       return;
     }

@@ -15,7 +15,7 @@ export class DebtController {
   }
 
   async payDebt(request: Request, response: Response) {
-    const debt = await debtService.payDebt(request.user!.id, request.params.debtId);
+    const debt = await debtService.payDebt(request.user!.id, request.params.debtId, request.body?.method === "PIX" ? "PIX" : "CARD");
     return response.json(debt);
   }
 }

@@ -299,6 +299,66 @@ describe("DebtRecord — pendências financeiras entre disputa e cobrança (Fren
     await prisma.disputeCase.delete({ where: { id: disputeCase.id } });
   });
 
+  it("pagar por Pix gera QR code, reaproveita o mesmo Pix e o webhook marca como PAID", async () => {
+    const paymentCreateSpy = vi.spyOn(Payment.prototype, "create").mockResolvedValue({
+      id: 888,
+      status: "pending",
+      point_of_interaction: { transaction_data: { qr_code: "pix-copia-e-cola", qr_code_base64: "base64qr" } }
+    } as any);
+
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 5000 }
+    });
+    const debt = await prisma.debtRecord.create({
+      data: {
+        disputeCaseId: disputeCase.id,
+        debtorType: "CLIENT",
+        clientId,
+        amountCents: 3000,
+        reason: "teste de Pix",
+        status: "NOTIFIED"
+      }
+    });
+
+    const pending = await debtService.payDebt(clientId, debt.id, "PIX");
+    expect(pending.status).toBe("NOTIFIED");
+    expect(pending.pendingPixMpPaymentId).toBe("888");
+    expect(pending.pendingPixCopyPasteCode).toBe("pix-copia-e-cola");
+    expect(pending.pendingPixQrCodeUrl).toBe("base64qr");
+    expect(pending.pendingPixExpiresAt).not.toBeNull();
+    expect(paymentCreateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ transaction_amount: 30, payment_method_id: "pix" })
+      })
+    );
+
+    // Tocar de novo em "Pagar com Pix" não gera um segundo Pix.
+    const again = await debtService.payDebt(clientId, debt.id, "PIX");
+    expect(again.pendingPixMpPaymentId).toBe("888");
+    expect(paymentCreateSpy).toHaveBeenCalledTimes(1);
+
+    // Pix ainda não pago continua bloqueando novas compras.
+    await expect(debtService.assertNoOutstandingDebt(clientId)).rejects.toThrow();
+
+    expect(await debtService.confirmDebtPixPayment("888", "pending")).toBe(true);
+    expect((await prisma.debtRecord.findUniqueOrThrow({ where: { id: debt.id } })).status).toBe("NOTIFIED");
+
+    expect(await debtService.confirmDebtPixPayment("888", "approved")).toBe(true);
+    const paid = await prisma.debtRecord.findUniqueOrThrow({ where: { id: debt.id } });
+    expect(paid.status).toBe("PAID");
+    expect(paid.mpPaymentId).toBe("888");
+    expect(paid.paidAt).not.toBeNull();
+    expect(paid.pendingPixMpPaymentId).toBeNull();
+    expect(paid.pendingPixCopyPasteCode).toBeNull();
+    await expect(debtService.assertNoOutstandingDebt(clientId)).resolves.toBeUndefined();
+
+    // Pagamento que não é de pendência nenhuma segue pro aviso normal do webhook.
+    expect(await debtService.confirmDebtPixPayment("nao-existe", "approved")).toBe(false);
+
+    await prisma.debtRecord.delete({ where: { id: debt.id } });
+    await prisma.disputeCase.delete({ where: { id: disputeCase.id } });
+  });
+
   it("rejeita pagar uma dívida que já foi paga", async () => {
     const disputeCase = await prisma.disputeCase.create({
       data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 5000 }

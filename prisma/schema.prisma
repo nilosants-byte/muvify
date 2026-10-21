@@ -817,6 +817,13 @@ model DebtRecord {
   status        DebtRecordStatus @default(PENDING)
   mpPaymentId   String?
   paidAt        DateTime?
+  // Decisão do Danilo (teste manual C8.1, 20/10/2026): pendência também pode
+  // ser paga por Pix (antes só cartão salvo — quem não tinha cartão ficava
+  // bloqueado pra sempre). Pix gerado e ainda não pago; o webhook confirma.
+  pendingPixMpPaymentId  String?   @unique
+  pendingPixQrCodeUrl    String?
+  pendingPixCopyPasteCode String?
+  pendingPixExpiresAt    DateTime?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
