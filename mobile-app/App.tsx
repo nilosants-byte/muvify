@@ -9,7 +9,6 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./src/lib/queryClient";
 import { initSentry } from "./src/observability/sentry";
 import { RootNavigator } from "./src/navigation/root-stack";
-import { installKeyWarningDetector } from "./src/dev/keyWarningDetector";
 import { AppStateProvider } from "./src/state/AppState";
 import { ToastProvider } from "./src/state/ToastState";
 import { SubscriptionGateProvider } from "./src/state/SubscriptionGateState";
@@ -30,7 +29,6 @@ import { MvThemeProvider } from "./src/theme/MvThemeContext";
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
 
 initSentry();
-installKeyWarningDetector();
 
 function AppContent() {
   const { themeMode } = useTheme();

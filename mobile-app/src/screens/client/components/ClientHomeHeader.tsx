@@ -217,7 +217,9 @@ export function ClientHomeHeader() {
       {/* Faixa de progresso — sequência, nível, treinos do mês, próxima conquista */}
       <TouchableOpacity
         activeOpacity={0.8}
-        onPress={() => goToStack("Community")}
+        // Comunidade é aba (irmã da Home), não tela do stack — goToStack
+        // mandava pro navigator pai, que não conhece "Community".
+        onPress={() => navigation.navigate("Community" as never)}
         accessibilityRole="button"
         accessibilityLabel={`Nível ${displayLevel}, sequência de ${displayStreak} dias`}
         style={{
