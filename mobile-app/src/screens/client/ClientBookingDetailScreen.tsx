@@ -1150,7 +1150,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
           <View style={{ gap: 10 }}>
             <TouchableOpacity
               testID="button.booking-detail.open-chat"
-              onPress={() => navigation.navigate("ClientChatList")}
+              onPress={() => navigation.navigate("ClientChatList", { openBookingId: bookingId })}
               style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }}
             >
               <Ionicons name="chatbubbles-outline" size={18} color={theme.text1} />

@@ -13,6 +13,8 @@ import { NotificationService } from "../../notifications/services/notification.s
 // pra ConsultancyContract, com o mesmo desenho de autorização/desenho de
 // dados, mas usando um model próprio (ConsultancyMessage) em vez de
 // retrofitar BookingMessage.
+const NO_MESSAGES_PREVIEW = "Nenhuma mensagem ainda. Toque para conversar.";
+
 function isConsultancyChatOpen(contract: { status: string }): boolean {
   return ["ACTIVE", "DELIVERED"].includes(contract.status);
 }
@@ -114,9 +116,18 @@ export class ConsultancyChatController {
     const unreadByContractId = new Map(unreadRows.map((item) => [item.contractId, item._count._all]));
 
     const result = contracts
-      .filter((contract) => lastMessageByContractId.has(contract.id))
+      // Teste manual C9.1 (21/10/2026): conversa sem nenhuma mensagem
+      // ficava fora da lista — o botão "Chat com o personal"/"Conversar"
+      // abria a lista vazia e o aluno nunca conseguia mandar a primeira
+      // mensagem. Conversa ainda aberta entra mesmo sem mensagem.
+      .filter((contract) => lastMessageByContractId.has(contract.id) || isConsultancyChatOpen(contract))
       .map((contract) => {
-        const lastMsg = lastMessageByContractId.get(contract.id)!;
+        const lastMsg = lastMessageByContractId.get(contract.id) ?? {
+          content: NO_MESSAGES_PREVIEW,
+          createdAt: contract.createdAt,
+          senderId: null,
+          isSystem: false
+        };
         const unreadCount = unreadByContractId.get(contract.id) ?? 0;
         const isUserProvider = contract.provider.userId === userId;
         const rawPhotoUrl = isUserProvider ? contract.client.photoUrl : contract.provider.photoUrl;

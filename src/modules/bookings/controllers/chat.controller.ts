@@ -8,6 +8,8 @@ import { toProviderPhotoUrl, toUserPhotoUrl } from "../../../shared/utils/photo-
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { NotificationService } from "../../notifications/services/notification.service";
 
+const NO_MESSAGES_PREVIEW = "Nenhuma mensagem ainda. Toque para conversar.";
+
 function isChatOpen(booking: { status: string }): boolean {
   return ["PENDING", "CONFIRMED"].includes(booking.status);
 }
@@ -122,9 +124,18 @@ export class ChatController {
     const unreadByBookingId = new Map(unreadRows.map((item) => [item.bookingId, item._count._all]));
 
     const result = bookings
-      .filter((booking) => lastMessageByBookingId.has(booking.id))
+      // Teste manual C9.1 (21/10/2026): conversa sem nenhuma mensagem
+      // ficava fora da lista — o botão "Chat com o personal"/"Conversar"
+      // abria a lista vazia e o aluno nunca conseguia mandar a primeira
+      // mensagem. Conversa ainda aberta entra mesmo sem mensagem.
+      .filter((booking) => lastMessageByBookingId.has(booking.id) || isChatOpen(booking))
       .map((booking) => {
-        const lastMsg = lastMessageByBookingId.get(booking.id)!;
+        const lastMsg = lastMessageByBookingId.get(booking.id) ?? {
+          content: NO_MESSAGES_PREVIEW,
+          createdAt: booking.createdAt,
+          senderId: null,
+          isSystem: false
+        };
         const unreadCount = unreadByBookingId.get(booking.id) ?? 0;
         const isUserProvider = booking.provider.userId === userId;
         const rawPhotoUrl = isUserProvider ? booking.client.photoUrl : booking.provider.photoUrl;

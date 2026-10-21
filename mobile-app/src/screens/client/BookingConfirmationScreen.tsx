@@ -264,7 +264,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, textAlign: "center", lineHeight: 20 }}>{chatModalMessage}</Text>
             </View>
             <TouchableOpacity
-              onPress={() => { setShowChatModal(false); navigation.navigate("ClientChatList"); }}
+              onPress={() => { setShowChatModal(false); navigation.navigate("ClientChatList", { openBookingId: bookingId }); }}
               style={{ height: S.btnH, borderRadius: S.btnR, backgroundColor: theme.primary, alignItems: "center", justifyContent: "center", shadowColor: theme.primary, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 }}
             >
               <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.textOnPrimary }}>Ir para o chat</Text>
@@ -414,7 +414,7 @@ export function BookingConfirmationScreen({ navigation, route }: Props) {
         {/* Chat com o personal — sempre visível, não depende do modal */}
         <PressableScale
           testID="button.booking-confirmation.open-chat"
-          onPress={() => navigation.navigate("ClientChatList")}
+          onPress={() => navigation.navigate("ClientChatList", { openBookingId: bookingId })}
           style={{
             borderRadius: S.cardR, borderWidth: 1, borderColor: theme.primarySubtleBorder,
             backgroundColor: theme.primaryHighlight, padding: 14,
