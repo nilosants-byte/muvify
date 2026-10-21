@@ -346,7 +346,28 @@ function WorkoutDetailModal({
         .catch(() => undefined);
     } catch (error) {
       setShowFinishConfirm(false);
-      showToast(extractApiMessage(error, "Não foi possível registrar a conclusão do treino."), "error");
+      // Achado no teste manual do checklist (C5.5): o erro saía num toast
+      // disparado junto com o fechamento do modal de confirmação — no iOS
+      // passava despercebido — e o treino seguia "rodando" sem saída clara.
+      // Aviso no centro da tela (depois do modal fechar) e, se o servidor já
+      // tem a conclusão de hoje, encerra o treino de vez (não adianta repetir).
+      const message = extractApiMessage(error, "Não foi possível registrar a conclusão do treino.");
+      const alreadyCompletedToday = /já registrou a conclusão deste treino hoje/i.test(message);
+      if (alreadyCompletedToday) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        startTimestampRef.current = null;
+        setStarted(false);
+        setSeconds(0);
+        setDone(new Set());
+        if (TIMER_KEY) AsyncStorage.removeItem(TIMER_KEY).catch(() => {});
+      }
+      setTimeout(() => {
+        Alert.alert(
+          alreadyCompletedToday ? "Treino já registrado hoje" : "Não foi possível finalizar",
+          message,
+          [{ text: "Entendi", onPress: alreadyCompletedToday ? onClose : undefined }]
+        );
+      }, 400);
     } finally {
       setCompleting(false);
       completingRef.current = false;
