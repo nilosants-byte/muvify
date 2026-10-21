@@ -11,7 +11,7 @@
 import { StatusCodes } from "http-status-codes";
 import { createHmac, timingSafeEqual } from "crypto";
 import * as Sentry from "@sentry/node";
-import { Customer, CustomerCard, CardToken, Payment, PaymentRefund } from "mercadopago";
+import { Customer, CustomerCard, Payment } from "mercadopago";
 import { mp } from "../../../config/mercadopago";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
@@ -19,7 +19,8 @@ import { paymentOperationTotal } from "../../../observability/metrics";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { encryptSensitiveText, decryptSensitiveText } from "../../../shared/utils/encryption";
-import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { findProviderIdForMpPayment, mpTokenForProvider, requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { mpCardTokenFor, mpPaymentFor, mpRefundFor, splitFeeFields } from "../../../shared/utils/mp-clients";
 import { assertProviderSubscriptionActive } from "../../../shared/utils/provider-subscription-gate";
 import { recalculateProviderRatingAfterRefund } from "../../../shared/utils/provider-rating";
 import { assertOfferAcceptsPaymentMethod } from "../../../shared/utils/offer-payment-method";
@@ -148,11 +149,8 @@ function translateMpCardError(error: unknown): string {
 
 const notificationService = new NotificationService();
 const presentialPackageService = new PresentialPackageService();
-const mpPayment = new Payment(mp);
 const mpCustomer = new Customer(mp);
 const mpCustomerCard = new CustomerCard(mp);
-const mpCardToken = new CardToken(mp);
-const mpRefund = new PaymentRefund(mp);
 
 async function writeAuditLog(input: {
   paymentId?: string | null;
@@ -689,6 +687,13 @@ export class PaymentService {
     return requireProviderMpAccessToken(providerId);
   }
 
+  // Conta dona do pagamento de um agendamento (criado com o token do
+  // personal) — capturar/cancelar/estornar tem que sair dela.
+  private async ownerTokenForBooking(bookingId: string): Promise<string | null> {
+    const booking = await prisma.booking.findUnique({ where: { id: bookingId }, select: { providerId: true } });
+    return mpTokenForProvider(booking?.providerId);
+  }
+
   async createProviderOnboardingLink(userId: string, returnUrl?: string, refreshUrl?: string) {
     const connectUrls = this.resolveConnectUrls(returnUrl, refreshUrl);
     const provider = await prisma.providerProfile.findFirst({ where: { userId } });
@@ -957,7 +962,7 @@ export class PaymentService {
 
     let mpPay: Awaited<ReturnType<Payment["get"]>>;
     if (payment.mpPaymentId) {
-      mpPay = await mpPayment.get({ id: payment.mpPaymentId });
+      mpPay = await mpPaymentFor(await mpTokenForProvider(payment.booking.provider.id)).get({ id: payment.mpPaymentId });
     } else {
       await prisma.payment.update({
         where: { id: payment.id },
@@ -970,7 +975,7 @@ export class PaymentService {
         const providerNetCents  = providerSplitAmount(payment.amountCents);
         const platformFeeCents  = platformFeeAmount(payment.amountCents);
 
-        mpPay = await mpPayment.create({
+        mpPay = await mpPaymentFor(providerAccessToken).create({
           body: {
             transaction_amount: payment.amountCents / 100,
             payment_method_id: "pix",
@@ -986,16 +991,10 @@ export class PaymentService {
               paymentId: payment.id,
               paymentMethod: PaymentMethod.PIX
             },
-            ...(payment.booking.provider.mpAccountId
-              ? {
-                  collector: { id: Number(payment.booking.provider.mpAccountId) },
-                  marketplace_fee: platformFeeCents / 100,
-                }
-              : {})
+            ...splitFeeFields(providerAccessToken, platformFeeCents)
           },
           requestOptions: {
-            idempotencyKey: `booking:${payment.bookingId}:pix:${payment.attempts + 1}`,
-            ...{ accessToken: providerAccessToken }
+            idempotencyKey: `booking:${payment.bookingId}:pix:${payment.attempts + 1}`
           }
         });
 
@@ -1150,7 +1149,9 @@ export class PaymentService {
 
     try {
       // Create server-side token from saved card for off-session charge
-      const tokenResult = await mpCardToken.create({
+      // Cartão salvo vive no cliente (customer) da conta da plataforma —
+      // o token sai dela; a cobrança, da conta do personal (split).
+      const tokenResult = await mpCardTokenFor().create({
         body: { customer_id: customerId, card_id: selectedCardId }
       });
       const cardToken = String(tokenResult.id);
@@ -1159,32 +1160,24 @@ export class PaymentService {
       const providerNetCents    = providerSplitAmount(payment.amountCents);
       const platformFeeCents    = platformFeeAmount(payment.amountCents);
 
-      const mpPay = await mpPayment.create({
+      const mpPay = await mpPaymentFor(providerAccessToken).create({
         body: {
           transaction_amount: payment.amountCents / 100,
           token: cardToken,
           installments: 1,
-          payer: {
-            type: "customer",
-            id: customerId,
-            email: payment.booking.client.email
-          },
+          // payer.type "customer" referencia um cliente da conta da
+          // plataforma — na conta do personal esse id não existe.
+          payer: { email: payment.booking.client.email },
           description: `Agendamento #${payment.bookingId}`,
           capture: false,
           metadata: {
             bookingId: payment.bookingId,
             paymentId: payment.id
           },
-          ...(payment.booking.provider.mpAccountId
-            ? {
-                collector: { id: Number(payment.booking.provider.mpAccountId) },
-                marketplace_fee: platformFeeCents / 100,
-              }
-            : {})
+          ...splitFeeFields(providerAccessToken, platformFeeCents)
         },
         requestOptions: {
-          idempotencyKey: `booking:${payment.bookingId}:auth:${payment.attempts + 1}`,
-          ...{ accessToken: providerAccessToken }
+          idempotencyKey: `booking:${payment.bookingId}:auth:${payment.attempts + 1}`
         }
       });
 
@@ -1269,7 +1262,7 @@ export class PaymentService {
     try {
     if (payment.status === PaymentStatus.CAPTURED && payment.mpPaymentId) {
       try {
-        const refund = await mpRefund.create({
+        const refund = await mpRefundFor(await this.ownerTokenForBooking(bookingId)).create({
           payment_id: payment.mpPaymentId,
           body: {},
           // Frente 2 (segunda camada), Lote 4: sem isso, um timeout de rede
@@ -1364,7 +1357,7 @@ export class PaymentService {
     // Cancel authorized (not yet captured) payment
     if (payment.status === PaymentStatus.AUTHORIZED) {
       try {
-        await mpPayment.cancel({
+        await mpPaymentFor(await this.ownerTokenForBooking(bookingId)).cancel({
           id: payment.mpPaymentId,
           requestOptions: { idempotencyKey: `booking:${bookingId}:cancel` }
         });
@@ -1468,7 +1461,7 @@ export class PaymentService {
     }
 
     try {
-      const mpPay = await mpPayment.capture({
+      const mpPay = await mpPaymentFor(await this.ownerTokenForBooking(bookingId)).capture({
         id: payment.mpPaymentId,
         transaction_amount: payment.amountCents / 100,
         // Frente 2 (segunda camada), Lote 4: chave estável por pagamento —
@@ -1791,7 +1784,16 @@ export class PaymentService {
   private async handleMpPaymentNotification(mpPaymentId: string) {
     let mpPay: Awaited<ReturnType<Payment["get"]>>;
     try {
-      mpPay = await mpPayment.get({ id: mpPaymentId });
+      // Pagamento criado na conta do personal (split) só é visível com o
+      // token dele; os da plataforma (assinatura, dívida do personal), com o
+      // da plataforma. Tenta a conta dona primeiro e cai pra plataforma.
+      const ownerToken = await mpTokenForProvider(await findProviderIdForMpPayment(mpPaymentId));
+      try {
+        mpPay = await mpPaymentFor(ownerToken).get({ id: mpPaymentId });
+      } catch (ownerError) {
+        if (!ownerToken) throw ownerError;
+        mpPay = await mpPaymentFor().get({ id: mpPaymentId });
+      }
     } catch (error) {
       // Frente 2 (segunda camada), Lote 8: essa falha era engolida sem
       // nenhum log nem Sentry — se a MP ficasse instável por alguns

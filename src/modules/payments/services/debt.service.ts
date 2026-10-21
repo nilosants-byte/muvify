@@ -1,17 +1,14 @@
 import { DebtRecordStatus } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
-import { CardToken, Payment } from "mercadopago";
-import { mp } from "../../../config/mercadopago";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { assertAdminAccess } from "../../../shared/utils/admin-access";
 import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { mpCardTokenFor, mpPaymentFor, splitFeeFields } from "../../../shared/utils/mp-clients";
 import { platformFeeAmount } from "../../../shared/utils/platform-fee";
 import { NotificationService } from "../../notifications/services/notification.service";
 
-const mpPayment = new Payment(mp);
-const mpCardToken = new CardToken(mp);
 const notificationService = new NotificationService();
 
 const OUTSTANDING_STATUSES = ["PENDING", "NOTIFIED"] as const;
@@ -276,32 +273,30 @@ export class DebtService {
       }
     }
 
-    const tokenResult = await mpCardToken.create({
+    const tokenResult = await mpCardTokenFor().create({
       body: { customer_id: debtor.mpCustomerId, card_id: selectedCard.mpCardId }
     });
     const cardToken = String(tokenResult.id);
     const platformFeeCents = platformFeeAmount(debt.amountCents);
 
-    const mpPay = await mpPayment.create({
+    const mpPay = await mpPaymentFor(providerAccessToken).create({
       body: {
         transaction_amount: debt.amountCents / 100,
         token: cardToken,
         installments: 1,
-        payer: { type: "customer", id: debtor.mpCustomerId, email: debtor.email },
+        // Na conta do personal o customer da plataforma não existe.
+        payer: providerAccessToken ? { email: debtor.email } : { type: "customer", id: debtor.mpCustomerId, email: debtor.email },
         description: `Regularização de pendência — caso ${debt.disputeCaseId}`,
         capture: true,
         metadata: { debtRecordId: debt.id, disputeCaseId: debt.disputeCaseId },
-        ...(providerAccessToken && provider?.mpAccountId
-          ? { collector: { id: Number(provider.mpAccountId) }, marketplace_fee: platformFeeCents / 100 }
-          : {})
+        ...splitFeeFields(providerAccessToken, platformFeeCents)
       },
       requestOptions: {
         // updatedAt na chave: toque duplo cai na mesma chave (MP não cobra 2x),
         // mas depois de uma recusa (que mexe no updatedAt abaixo) a nova
         // tentativa ganha chave nova — antes o MP devolvia a recusa antiga
         // pra sempre, mesmo trocando de cartão.
-        idempotencyKey: `debt:${debt.id}:pay:${debt.updatedAt.getTime()}`,
-        ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+        idempotencyKey: `debt:${debt.id}:pay:${debt.updatedAt.getTime()}`
       }
     });
 
@@ -356,7 +351,7 @@ export class DebtService {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const nameParts = debtor.name.split(" ");
 
-    const mpPay = await mpPayment.create({
+    const mpPay = await mpPaymentFor(providerAccessToken).create({
       body: {
         transaction_amount: debt.amountCents / 100,
         payment_method_id: "pix",
@@ -364,14 +359,11 @@ export class DebtService {
         payer: { email: debtor.email, first_name: nameParts[0], last_name: nameParts.slice(1).join(" ") || undefined },
         description: `Regularização de pendência — caso ${debt.disputeCaseId}`,
         metadata: { debtRecordId: debt.id, disputeCaseId: debt.disputeCaseId },
-        ...(providerAccessToken && provider?.mpAccountId
-          ? { collector: { id: Number(provider.mpAccountId) }, marketplace_fee: platformFeeAmount(debt.amountCents) / 100 }
-          : {})
+        ...splitFeeFields(providerAccessToken, platformFeeAmount(debt.amountCents))
       },
       requestOptions: {
         // Um Pix por tentativa (o anterior pode ter expirado).
-        idempotencyKey: `debt:${debt.id}:pix:${expiresAt.getTime()}`,
-        ...(providerAccessToken ? { accessToken: providerAccessToken } : {})
+        idempotencyKey: `debt:${debt.id}:pix:${expiresAt.getTime()}`
       }
     });
 
@@ -392,7 +384,7 @@ export class DebtService {
   private async cancelPendingDebtPix(debtId: string, pixMpPaymentId: string, accessToken: string | null) {
     let status: string | undefined;
     try {
-      status = (await mpPayment.get({ id: pixMpPaymentId })).status ?? undefined;
+      status = (await mpPaymentFor(accessToken).get({ id: pixMpPaymentId })).status ?? undefined;
     } catch {
       throw new AppError("Não foi possível conferir o Pix em aberto. Tente de novo em instantes.", StatusCodes.BAD_GATEWAY);
     }
@@ -402,9 +394,9 @@ export class DebtService {
     }
     if (status === "pending" || status === "in_process") {
       try {
-        await mpPayment.cancel({
+        await mpPaymentFor(accessToken).cancel({
           id: pixMpPaymentId,
-          requestOptions: { idempotencyKey: `debt:${debtId}:pix-cancel:${pixMpPaymentId}`, ...(accessToken ? { accessToken } : {}) }
+          requestOptions: { idempotencyKey: `debt:${debtId}:pix-cancel:${pixMpPaymentId}` }
         });
       } catch {
         throw new AppError("Não foi possível cancelar o Pix em aberto. Tente de novo em instantes.", StatusCodes.BAD_GATEWAY);

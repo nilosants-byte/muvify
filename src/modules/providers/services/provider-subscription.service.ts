@@ -1,14 +1,12 @@
 import { Prisma, ProviderSubscriptionStatus, WaitlistAudience } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import * as Sentry from "@sentry/node";
-import { CardToken, Payment } from "mercadopago";
-import { mp } from "../../../config/mercadopago";
+import { Payment } from "mercadopago";
+import { mpCardTokenFor, mpPaymentFor } from "../../../shared/utils/mp-clients";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { NotificationService } from "../../notifications/services/notification.service";
 
-const mpPaymentClient = new Payment(mp);
-const mpCardTokenClient = new CardToken(mp);
 const notificationService = new NotificationService();
 
 // Bloco 5 (assinatura do profissional). Realinhamento com o Will (sócio),
@@ -145,7 +143,7 @@ type ChargeableUser = {
   mpCustomerId: string | null;
 };
 
-// Raio-X pós-épico (achado alto): se `mpPaymentClient.create` lança por erro
+// Raio-X pós-épico (achado alto): se `mpPaymentFor().create` lança por erro
 // de rede/timeout, não dá pra saber se a MP chegou a processar a cobrança
 // antes da resposta se perder — assumir "falhou" direto e tentar de novo
 // amanhã (com idempotencyKey nova, já que consecutiveFailedCharges muda)
@@ -174,7 +172,7 @@ async function verifyChargeAfterUncertainError(
   subscriptionId: string
 ): Promise<VerifyChargeResult> {
   try {
-    const result = await mpPaymentClient.search({
+    const result = await mpPaymentFor().search({
       options: { external_reference: externalReference, sort: "date_created", criteria: "desc" }
     });
     const found = result.results?.[0];
@@ -254,10 +252,10 @@ async function attemptCharge(
 
   if (card && user.mpCustomerId) {
     try {
-      const tokenResult = await mpCardTokenClient.create({
+      const tokenResult = await mpCardTokenFor().create({
         body: { customer_id: user.mpCustomerId, card_id: card.mpCardId }
       });
-      mpPay = await mpPaymentClient.create({
+      mpPay = await mpPaymentFor().create({
         body: {
           transaction_amount: effectivePriceCents / 100,
           token: String(tokenResult.id),

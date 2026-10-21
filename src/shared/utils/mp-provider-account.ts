@@ -30,3 +30,36 @@ export async function requireProviderMpAccessToken(providerId: string): Promise<
   }
   return token;
 }
+
+// Token da conta dona de um pagamento já criado (pra consultar, capturar,
+// cancelar ou estornar). Sem personal, ou personal desconectado → null
+// (conta da plataforma). Ver mpConfigFor em config/mercadopago.ts.
+export async function mpTokenForProvider(providerId: string | null | undefined): Promise<string | null> {
+  if (!providerId) return null;
+  return resolveProviderMpAccessToken(providerId);
+}
+
+// Webhook: o aviso do Mercado Pago só traz o id do pagamento — descobre de
+// qual personal ele é (se for) pra consultar com a conta certa.
+export async function findProviderIdForMpPayment(mpPaymentId: string): Promise<string | null> {
+  const [payment, contract, pkgPending, plan, cycle, debt] = await Promise.all([
+    prisma.payment.findFirst({ where: { mpPaymentId }, select: { booking: { select: { providerId: true } } } }),
+    prisma.consultancyContract.findFirst({ where: { mpPaymentId }, select: { providerId: true } }),
+    prisma.presentialPackage.findFirst({ where: { pendingChargeMpPaymentId: mpPaymentId }, select: { providerId: true } }),
+    prisma.trainingPlan.findFirst({ where: { renewalMpPaymentId: mpPaymentId }, select: { contract: { select: { providerId: true } } } }),
+    prisma.presentialPackageCycle.findFirst({ where: { mpPaymentId }, select: { package: { select: { providerId: true } } } }),
+    prisma.debtRecord.findFirst({
+      where: { OR: [{ pendingPixMpPaymentId: mpPaymentId }, { mpPaymentId }], debtorType: "CLIENT" },
+      select: { providerId: true }
+    })
+  ]);
+  return (
+    payment?.booking?.providerId ??
+    contract?.providerId ??
+    pkgPending?.providerId ??
+    plan?.contract?.providerId ??
+    cycle?.package?.providerId ??
+    debt?.providerId ??
+    null
+  );
+}

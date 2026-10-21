@@ -1,7 +1,7 @@
 import { DisputeCaseResolution, DisputeCaseStatus, PaymentStatus, ConsultancyPaymentStatus } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
-import { PaymentRefund } from "mercadopago";
-import { mp } from "../../../config/mercadopago";
+import { findProviderIdForMpPayment, mpTokenForProvider } from "../../../shared/utils/mp-provider-account";
+import { mpRefundFor } from "../../../shared/utils/mp-clients";
 import { prisma } from "../../../config/prisma";
 import { AppError } from "../../../shared/errors/app-error";
 import { assertAdminAccess } from "../../../shared/utils/admin-access";
@@ -12,7 +12,6 @@ import { providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { restoreFlexibleCreditForBooking } from "../../../shared/utils/presential-package-credit";
 import { recalculateProviderRatingAfterRefund } from "../../../shared/utils/provider-rating";
 
-const mpRefund = new PaymentRefund(mp);
 
 type ResolveDisputeCaseInput = {
   // Raio-X de pagamentos, Rodada 2, Lote 2: RETRY_CAPTURE só se aplica a
@@ -378,7 +377,9 @@ export class DisputeCaseService {
         }
 
         const isFullRefund = amountCents === disputeCase.amountCents;
-        await mpRefund.create({
+        // Pagamento do personal (split) só é estornável pela conta dele.
+        const ownerToken = await mpTokenForProvider(await findProviderIdForMpPayment(disputeCase.mpPaymentId));
+        await mpRefundFor(ownerToken).create({
           payment_id: disputeCase.mpPaymentId,
           body: isFullRefund ? {} : { amount: amountCents / 100 },
           // Frente 2 (segunda camada), Lote 4: chave estável por caso — a

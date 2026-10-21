@@ -24,18 +24,18 @@ import { prisma } from "../../../config/prisma";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
 import { assertAnamnesisCompleted } from "../../../shared/utils/anamnesis-required";
 import { isOnboardingGatesBypassActive } from "../../../shared/utils/onboarding-gates-bypass";
-import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
 import { toProviderPhotoUrl } from "../../../shared/utils/photo-url";
 import { hashRefreshToken } from "../../../shared/utils/refresh-token";
 import { assertNoActiveEngagementWithOtherProvider, getActiveEngagementSummary } from "../../../shared/utils/client-engagement";
-import { requireProviderMpAccessToken, resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { mpTokenForProvider, requireProviderMpAccessToken, resolveProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { mpCardTokenFor, mpPaymentFor, mpRefundFor, splitFeeFields } from "../../../shared/utils/mp-clients";
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
 import { weeklySlotsForPackage, weeksPerCycle } from "../../../shared/utils/presential-package-schedule";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
-import { Payment, CardToken, PaymentRefund } from "mercadopago";
+import { Payment } from "mercadopago";
 import { PUBLIC_PROVIDER_SELECT, sanitizePublicProviderRef } from "../../providers/services/provider.service";
 import { isProviderSubscriptionActive, normalizePhoneDigits } from "../../providers/services/provider-subscription.service";
 import { EmailQueueService } from "../../../shared/services/email-queue.service";
@@ -192,9 +192,6 @@ function mapConsultancyMethodToFunding(method: ConsultancyPaymentMethod) {
   return null;
 }
 
-const mpPaymentClient = new Payment(mp);
-const mpCardTokenClient = new CardToken(mp);
-const mpRefundClient = new PaymentRefund(mp);
 
 const MP_STATUS_APPROVED = "approved";
 const MP_STATUS_PENDING = "pending";
@@ -372,17 +369,8 @@ export class ConsultancyService {
     const paymentData = await this.resolveClientPaymentData(input.clientId, input.paymentMethod);
     const nameParts = paymentData.clientName.split(" ");
 
-    const provider = await prisma.providerProfile.findUnique({
-      where: { id: input.providerId },
-      select: { mpAccountId: true }
-    });
     const providerAccessToken = await requireProviderMpAccessToken(input.providerId);
-    const split = provider?.mpAccountId
-      ? {
-          collector: { id: Number(provider.mpAccountId) },
-          marketplace_fee: platformFeeAmount(input.amountCents) / 100
-        }
-      : {};
+    const split = splitFeeFields(providerAccessToken, platformFeeAmount(input.amountCents));
 
     const metadata = {
       domain: "CONSULTANCY",
@@ -394,7 +382,7 @@ export class ConsultancyService {
 
     if (input.paymentMethod === ConsultancyPaymentMethod.PIX) {
       const pixExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      return mpPaymentClient.create({
+      return mpPaymentFor(providerAccessToken).create({
         body: {
           transaction_amount: input.amountCents / 100,
           payment_method_id: "pix",
@@ -409,8 +397,7 @@ export class ConsultancyService {
           ...split
         },
         requestOptions: {
-          idempotencyKey: `consultancy:${input.requestId}:pix`,
-          ...{ accessToken: providerAccessToken }
+          idempotencyKey: `consultancy:${input.requestId}:pix`
         }
       });
     }
@@ -420,7 +407,7 @@ export class ConsultancyService {
     }
 
     // Server-side tokenize saved card for off-session charge
-    const tokenResult = await mpCardTokenClient.create({
+    const tokenResult = await mpCardTokenFor().create({
       body: { customer_id: paymentData.mpCustomerId, card_id: paymentData.mpCardId }
     });
 
@@ -431,24 +418,20 @@ export class ConsultancyService {
     // Raio-X de pagamentos, Rodada 2, Lote 3: cobrança sempre em 1x — cobrar
     // por unidade entregue (ficha por ficha) já divide o valor no tempo com
     // mais segurança que parcelamento em cartão; ver decisão no plano.
-    return mpPaymentClient.create({
+    return mpPaymentFor(providerAccessToken).create({
       body: {
         transaction_amount: input.amountCents / 100,
         token: String(tokenResult.id),
         installments: 1,
-        payer: {
-          type: "customer",
-          id: paymentData.mpCustomerId,
-          email: paymentData.clientEmail
-        },
+        // Na conta do personal o customer da plataforma não existe.
+        payer: { email: paymentData.clientEmail },
         description: `Consultoria #${input.requestId}`,
         capture: false,
         metadata,
         ...split
       },
       requestOptions: {
-        idempotencyKey: `consultancy:${input.requestId}:card`,
-        ...{ accessToken: providerAccessToken }
+        idempotencyKey: `consultancy:${input.requestId}:card`
       }
     });
   }
@@ -524,28 +507,22 @@ export class ConsultancyService {
           if (!paymentData.mpCardId || !paymentData.mpCustomerId) {
             failureReason = "Cliente sem método de pagamento configurado.";
           } else {
-            const split = contract.provider.mpAccountId
-              ? {
-                  collector: { id: Number(contract.provider.mpAccountId) },
-                  marketplace_fee: platformFeeAmount(contract.paymentAmountCents) / 100
-                }
-              : {};
-            const tokenResult = await mpCardTokenClient.create({
+            const split = splitFeeFields(providerAccessToken, platformFeeAmount(contract.paymentAmountCents));
+            const tokenResult = await mpCardTokenFor().create({
               body: { customer_id: paymentData.mpCustomerId, card_id: paymentData.mpCardId }
             });
-            mpPay = await mpPaymentClient.create({
+            mpPay = await mpPaymentFor(providerAccessToken).create({
               body: {
                 transaction_amount: contract.paymentAmountCents / 100,
                 token: String(tokenResult.id),
                 installments: 1,
-                payer: { type: "customer", id: paymentData.mpCustomerId, email: paymentData.clientEmail },
+                payer: { email: paymentData.clientEmail },
                 description: `Consultoria #${contract.id} - renovação de ficha`,
                 metadata: { domain: "CONSULTANCY_FICHA_RENEWAL", contractId: contract.id },
                 ...split
               },
               requestOptions: {
-                idempotencyKey: `consultancy:${contract.id}:ficha-renewal:cycle:${contract.nextRenewalCycleIndex}:attempt:${contract.consecutiveFailedRenewalCycles}`,
-                ...{ accessToken: providerAccessToken }
+                idempotencyKey: `consultancy:${contract.id}:ficha-renewal:cycle:${contract.nextRenewalCycleIndex}:attempt:${contract.consecutiveFailedRenewalCycles}`
               }
             });
           }
@@ -3812,7 +3789,7 @@ export class ConsultancyService {
         Boolean(contract.mpPaymentId);
       if (shouldCaptureNow) {
         try {
-          const mpPay = await mpPaymentClient.capture({
+          const mpPay = await mpPaymentFor(await mpTokenForProvider(contract.providerId)).capture({
             id: contract.mpPaymentId!,
             transaction_amount: contract.paymentAmountCents / 100,
             // Frente 2 (segunda camada), Lote 4: chave estável por
@@ -4408,12 +4385,12 @@ export class ConsultancyService {
       if (contract.mpPaymentId) {
         try {
           if (isHoldOnly) {
-            await mpPaymentClient.cancel({
+            await mpPaymentFor(await mpTokenForProvider(contract.providerId)).cancel({
               id: contract.mpPaymentId,
               requestOptions: { idempotencyKey: `consultancy:${contract.id}:cancel` }
             });
           } else {
-            const refund = await mpRefundClient.create({
+            const refund = await mpRefundFor(await mpTokenForProvider(contract.providerId)).create({
               payment_id: contract.mpPaymentId,
               body: {},
               requestOptions: { idempotencyKey: `consultancy:${contract.id}:refund` }
@@ -5149,7 +5126,7 @@ export class ConsultancyService {
       if (contract.mpPaymentId) {
         try {
           if (isHoldOnly) {
-            await mpPaymentClient.cancel({
+            await mpPaymentFor(await mpTokenForProvider(contract.providerId)).cancel({
               id: contract.mpPaymentId,
               // Frente 2 (segunda camada), Lote 4: chave estável por
               // contrato — se o job rodar de novo pro mesmo contrato antes
@@ -5158,7 +5135,7 @@ export class ConsultancyService {
               requestOptions: { idempotencyKey: `consultancy:${contract.id}:cancel` }
             });
           } else {
-            const refund = await mpRefundClient.create({
+            const refund = await mpRefundFor(await mpTokenForProvider(contract.providerId)).create({
               payment_id: contract.mpPaymentId,
               body: {},
               requestOptions: { idempotencyKey: `consultancy:${contract.id}:refund` }

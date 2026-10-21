@@ -5,6 +5,7 @@ import { prisma } from "../src/config/prisma";
 import { env } from "../src/config/env";
 import { DisputeCaseService } from "../src/modules/admin/services/dispute-case.service";
 import { DebtService } from "../src/modules/payments/services/debt.service";
+import { encryptSensitiveText } from "../src/shared/utils/encryption";
 import { BookingService } from "../src/modules/bookings/services/booking.service";
 import { PresentialPackageService } from "../src/modules/presential-packages/services/presential-package.service";
 
@@ -432,6 +433,55 @@ describe("DebtRecord — pendências financeiras entre disputa e cobrança (Fren
 
     await prisma.debtRecord.delete({ where: { id: debt.id } });
     await prisma.disputeCase.delete({ where: { id: disputeCase.id } });
+  });
+
+  it("pendência do aluno com personal conectado é cobrada NA CONTA DO PERSONAL, com application_fee (split real)", async () => {
+    // Achado de 21/10/2026: a biblioteca do MP ignorava `accessToken` dentro
+    // de requestOptions — a cobrança saía sempre com a conta da plataforma.
+    await prisma.providerProfile.update({
+      where: { id: providerId },
+      data: { mpAccessToken: encryptSensitiveText("APP_USR-token-do-personal"), mpTokenInvalidatedAt: null }
+    });
+    const seen: Array<{ token: string; body: any }> = [];
+    vi.spyOn(CardToken.prototype, "create").mockImplementation(async function (this: any) {
+      seen.push({ token: this.config.accessToken, body: "cardToken" });
+      return { id: "tok_split" } as any;
+    });
+    vi.spyOn(Payment.prototype, "create").mockImplementation(async function (this: any, args: any) {
+      seen.push({ token: this.config.accessToken, body: args.body });
+      return { id: 931, status: "approved", point_of_interaction: { transaction_data: { qr_code: "pix" } } } as any;
+    });
+
+    const disputeCase = await prisma.disputeCase.create({
+      data: { type: "REFUND_FAILED", clientId, providerId, amountCents: 5000 }
+    });
+    const cardDebt = await prisma.debtRecord.create({
+      data: { disputeCaseId: disputeCase.id, debtorType: "CLIENT", clientId, providerId, amountCents: 3000, reason: "split cartão", status: "NOTIFIED" }
+    });
+    const pixDebt = await prisma.debtRecord.create({
+      data: { disputeCaseId: disputeCase.id, debtorType: "CLIENT", clientId, providerId, amountCents: 3000, reason: "split pix", status: "NOTIFIED" }
+    });
+
+    try {
+      await debtService.payDebt(clientId, cardDebt.id, "CARD");
+      await debtService.payDebt(clientId, pixDebt.id, "PIX");
+
+      const [tokenCall, cardCall, pixCall] = seen;
+      // Cartão salvo vive na conta da plataforma; a cobrança, na do personal.
+      expect(tokenCall.token).toBe(env.MP_ACCESS_TOKEN);
+      expect(cardCall.token).toBe("APP_USR-token-do-personal");
+      expect(pixCall.token).toBe("APP_USR-token-do-personal");
+      for (const call of [cardCall, pixCall]) {
+        expect(call.body.application_fee).toBeCloseTo(3);
+        expect(call.body.collector).toBeUndefined();
+        expect(call.body.marketplace_fee).toBeUndefined();
+      }
+      expect(cardCall.body.payer.type).toBeUndefined();
+    } finally {
+      await prisma.providerProfile.update({ where: { id: providerId }, data: { mpAccessToken: null } });
+      await prisma.debtRecord.deleteMany({ where: { id: { in: [cardDebt.id, pixDebt.id] } } });
+      await prisma.disputeCase.delete({ where: { id: disputeCase.id } });
+    }
   });
 
   it("rejeita pagar uma dívida que já foi paga", async () => {

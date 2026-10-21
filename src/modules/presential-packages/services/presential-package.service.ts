@@ -14,7 +14,7 @@ import {
 } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import * as Sentry from "@sentry/node";
-import { Payment, CardToken, PaymentRefund } from "mercadopago";
+import { Payment } from "mercadopago";
 import { env } from "../../../config/env";
 import { prisma } from "../../../config/prisma";
 import { assertEmailVerified } from "../../../shared/utils/email-verification";
@@ -22,10 +22,10 @@ import { assertAnamnesisCompleted } from "../../../shared/utils/anamnesis-requir
 import { assertNoActiveEngagementWithOtherProvider } from "../../../shared/utils/client-engagement";
 import { assertProviderSubscriptionActive } from "../../../shared/utils/provider-subscription-gate";
 import { isOnboardingGatesBypassActive } from "../../../shared/utils/onboarding-gates-bypass";
-import { mp } from "../../../config/mercadopago";
 import { AppError } from "../../../shared/errors/app-error";
 import { platformFeeAmount, providerSplitAmount } from "../../../shared/utils/platform-fee";
-import { resolveProviderMpAccessToken, requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { mpTokenForProvider, resolveProviderMpAccessToken, requireProviderMpAccessToken } from "../../../shared/utils/mp-provider-account";
+import { mpCardTokenFor, mpPaymentFor, mpRefundFor, splitFeeFields } from "../../../shared/utils/mp-clients";
 import { weeklySlotsForPackage } from "../../../shared/utils/presential-package-schedule";
 import { findReservedPackageSlots } from "../../../shared/utils/package-reserved-slots";
 import { formatMinutesToTime, parseTimeToMinutes, sessionOverlapsRange } from "../../../shared/utils/time-range";
@@ -46,9 +46,6 @@ import { EmailQueueService } from "../../../shared/services/email-queue.service"
 const notificationService = new NotificationService();
 const debtService = new DebtService();
 const emailQueueService = new EmailQueueService();
-const mpPaymentClient = new Payment(mp);
-const mpCardTokenClient = new CardToken(mp);
-const mpRefundClient = new PaymentRefund(mp);
 
 // Épico de Frentes, Frente 6 (Ofertas do profissional), Lote 1: cartão
 // salvo e código Pix pendente do CLIENTE vazavam pro profissional em
@@ -682,13 +679,7 @@ export class PresentialPackageService {
       : await resolveProviderMpAccessToken(pkg.providerId);
     const providerTokenMissing = !providerAccessToken;
 
-    const split =
-      providerAccessToken && pkg.provider.mpAccountId
-        ? {
-            collector: { id: Number(pkg.provider.mpAccountId) },
-            marketplace_fee: platformFeeAmount(pkg.cycleAmountCents) / 100
-          }
-        : {};
+    const split = splitFeeFields(providerAccessToken, platformFeeAmount(pkg.cycleAmountCents));
 
     const metadata = {
       domain: "PRESENTIAL_PACKAGE",
@@ -701,7 +692,7 @@ export class PresentialPackageService {
     if (!providerTokenMissing && pkg.paymentMethod === ConsultancyPaymentMethod.PIX) {
       const pixExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       const nameParts = pkg.client.name.split(" ");
-      mpPay = await mpPaymentClient.create({
+      mpPay = await mpPaymentFor(providerAccessToken).create({
         body: {
           transaction_amount: pkg.cycleAmountCents / 100,
           payment_method_id: "pix",
@@ -716,28 +707,27 @@ export class PresentialPackageService {
           ...split
         },
         requestOptions: {
-          idempotencyKey: `presential-package:${pkg.id}:cycle:${cycleIndex}:attempt:${pkg.consecutiveFailedCycles}`,
-          ...{ accessToken: providerAccessToken as string }
+          idempotencyKey: `presential-package:${pkg.id}:cycle:${cycleIndex}:attempt:${pkg.consecutiveFailedCycles}`
         }
       });
     } else if (!providerTokenMissing) {
       const cardData = await resolveClientCardForBilling(pkg.clientId);
-      const tokenResult = await mpCardTokenClient.create({
+      const tokenResult = await mpCardTokenFor().create({
         body: { customer_id: cardData.mpCustomerId, card_id: cardData.mpCardId }
       });
-      mpPay = await mpPaymentClient.create({
+      mpPay = await mpPaymentFor(providerAccessToken).create({
         body: {
           transaction_amount: pkg.cycleAmountCents / 100,
           token: String(tokenResult.id),
           installments: 1,
-          payer: { type: "customer", id: cardData.mpCustomerId, email: cardData.clientEmail },
+          // Na conta do personal o customer da plataforma não existe.
+          payer: { email: cardData.clientEmail },
           description: `Pacote presencial - ciclo ${cycleIndex}`,
           metadata,
           ...split
         },
         requestOptions: {
-          idempotencyKey: `presential-package:${pkg.id}:cycle:${cycleIndex}:attempt:${pkg.consecutiveFailedCycles}`,
-          ...{ accessToken: providerAccessToken as string }
+          idempotencyKey: `presential-package:${pkg.id}:cycle:${cycleIndex}:attempt:${pkg.consecutiveFailedCycles}`
         }
       });
       if (!pkg.billingCardId) {
@@ -1594,7 +1584,7 @@ export class PresentialPackageService {
         if (refundAmountCents > 0) {
           refundAttempted = true;
           try {
-            await mpRefundClient.create({
+            await mpRefundFor(await mpTokenForProvider(pkg.providerId)).create({
               payment_id: lastCycle.mpPaymentId,
               body: isFullRefund ? {} : { amount: refundAmountCents / 100 },
               // Frente 2 (segunda camada), Lote 4: chave estável por ciclo —
@@ -2065,16 +2055,7 @@ export class PresentialPackageService {
     amountCents: number
   ) {
     const providerAccessToken = await requireProviderMpAccessToken(providerId);
-    const provider = await prisma.providerProfile.findUniqueOrThrow({
-      where: { id: providerId },
-      select: { mpAccountId: true }
-    });
-    const split = provider.mpAccountId
-      ? {
-          collector: { id: Number(provider.mpAccountId) },
-          marketplace_fee: platformFeeAmount(amountCents) / 100
-        }
-      : {};
+    const split = splitFeeFields(providerAccessToken, platformFeeAmount(amountCents));
     const metadata = { domain: "COMBO_CONSULTANCY", contractId };
 
     let mpPay: Awaited<ReturnType<Payment["create"]>>;
@@ -2086,7 +2067,7 @@ export class PresentialPackageService {
       });
       const nameParts = client.name.split(" ");
       const pixExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      mpPay = await mpPaymentClient.create({
+      mpPay = await mpPaymentFor(providerAccessToken).create({
         body: {
           transaction_amount: amountCents / 100,
           payment_method_id: "pix",
@@ -2101,31 +2082,29 @@ export class PresentialPackageService {
           ...split
         },
         requestOptions: {
-          idempotencyKey: `combo:${contractId}:consultancy:pix`,
-          ...{ accessToken: providerAccessToken }
+          idempotencyKey: `combo:${contractId}:consultancy:pix`
         }
       });
     } else {
       const cardData = await resolveClientCardForBilling(clientId);
-      const tokenResult = await mpCardTokenClient.create({
+      const tokenResult = await mpCardTokenFor().create({
         body: { customer_id: cardData.mpCustomerId, card_id: cardData.mpCardId }
       });
       // capture:false — mesma lógica da consultoria avulsa: reserva o valor,
       // só cobra de verdade quando a primeira ficha for entregue.
-      mpPay = await mpPaymentClient.create({
+      mpPay = await mpPaymentFor(providerAccessToken).create({
         body: {
           transaction_amount: amountCents / 100,
           token: String(tokenResult.id),
           installments: 1,
-          payer: { type: "customer", id: cardData.mpCustomerId, email: cardData.clientEmail },
+          payer: { email: cardData.clientEmail },
           description: "Combo - consultoria online",
           capture: false,
           metadata,
           ...split
         },
         requestOptions: {
-          idempotencyKey: `combo:${contractId}:consultancy:card`,
-          ...{ accessToken: providerAccessToken }
+          idempotencyKey: `combo:${contractId}:consultancy:card`
         }
       });
     }
