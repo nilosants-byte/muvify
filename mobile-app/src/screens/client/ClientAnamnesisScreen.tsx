@@ -259,31 +259,37 @@ const sectionToStep: Record<SectionKey, number> = {
   parq: 6,
 };
 
-function missingRequired(answers: AnamnesisAnswers): { count: number; steps: Set<number> } {
+function missingRequired(answers: AnamnesisAnswers): { count: number; steps: Set<number>; perStep: Map<number, number> } {
   let missing = 0;
   const steps = new Set<number>();
+  const perStep = new Map<number, number>();
+  const bump = (step: number) => perStep.set(step, (perStep.get(step) ?? 0) + 1);
   requiredPaths.forEach((path) => {
     const value = getValue(answers, path);
     if (typeof value !== "string" || !value.trim()) {
       missing += 1;
       steps.add(sectionToStep[path[0] as SectionKey]);
+      bump(sectionToStep[path[0] as SectionKey]);
     }
   });
   requiredBooleans.forEach((path) => {
     if (typeof getValue(answers, path) !== "boolean") {
       missing += 1;
       steps.add(sectionToStep[path[0] as SectionKey]);
+      bump(sectionToStep[path[0] as SectionKey]);
     }
   });
   if (!answers.objectives?.selected?.length && !(answers.objectives?.other ?? "").trim()) {
     missing += 1;
     steps.add(1);
+    bump(1);
   }
   if (answers.responsibilityTermAccepted !== true) {
     missing += 1;
     steps.add(6);
+    bump(6);
   }
-  return { count: missing, steps };
+  return { count: missing, steps, perStep };
 }
 
 const lifestyleKeyLabel: Record<string, string> = {
@@ -961,6 +967,20 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
               {status === "COMPLETED" ? "Concluída" : "Rascunho"}
             </MvText>
           </View>
+
+          {/* Teste manual C10.3 (22/10/2026): a seta volta UMA etapa — sem
+              isso, sair do meio da ficha exigia voltar etapa por etapa. O
+              aviso de "sair sem salvar" (beforeRemove) continua valendo. */}
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel="Sair da ficha de saúde"
+            hitSlop={6}
+            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.inputBg, alignItems: "center", justifyContent: "center" }}
+          >
+            <Ionicons name="close" size={18} color={theme.text1} />
+          </TouchableOpacity>
         </View>
 
         {/* Segmentos de progresso por etapa - Frente 8 (segunda camada),
@@ -975,6 +995,9 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
           {STEPS.map((_, i) => {
             const isComplete = !missingInfo.steps.has(i);
             const isCurrent = i === currentStep;
+            // Teste manual C10.3: etapa já passada com resposta faltando
+            // fica âmbar — o aluno vê na hora o que deixou pra trás.
+            const isSkippedIncomplete = !isComplete && i < currentStep;
             return (
               <View
                 key={i}
@@ -982,7 +1005,9 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
                   flex: 1, height: 3, borderRadius: 99,
                   backgroundColor: isComplete
                     ? theme.primary
-                    : isCurrent
+                    : isSkippedIncomplete
+                      ? C.amber
+                      : isCurrent
                       ? (theme.mode === "dark" ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.25)")
                       : (theme.mode === "dark" ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)"),
                 }}
@@ -1018,6 +1043,23 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
             ) : null}
 
             {renderCurrentStep()}
+
+            {/* Teste manual C10.3 (22/10/2026): continua deixando avançar
+                (ninguém fica preso numa pergunta que não sabe responder),
+                mas avisa o que falta nesta etapa e nas que ficaram pra trás. */}
+            {!loading && (missingInfo.perStep.get(currentStep) ?? 0) > 0 && currentStep < TOTAL_STEPS - 1 ? (
+              <MvText variant="body4" style={{ color: C.amber, textAlign: "center" }}>
+                {(() => {
+                  const n = missingInfo.perStep.get(currentStep) ?? 0;
+                  return `Faltam ${n} ${n === 1 ? "resposta" : "respostas"} nesta etapa. Você pode seguir e completar depois.`;
+                })()}
+              </MvText>
+            ) : null}
+            {!loading && Array.from(missingInfo.steps).some((i) => i < currentStep) ? (
+              <MvText variant="body4" color="tertiary" style={{ textAlign: "center" }}>
+                {`Etapas com respostas faltando: ${Array.from(missingInfo.steps).filter((i) => i < currentStep).sort((a, b) => a - b).map((i) => STEPS[i].title).join(", ")}.`}
+              </MvText>
+            ) : null}
 
             {/* Navegação */}
             <View style={{ gap: 8, paddingTop: 4 }}>
