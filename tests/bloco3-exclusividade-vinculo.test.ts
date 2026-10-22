@@ -335,4 +335,83 @@ describe("Bloco 3 — exclusividade de marketplace", () => {
       expect(summary.providerId).toBe(provider.providerId);
     }
   });
+
+  // Teste manual C12.1 (22/10/2026): troca paga por Pix só cancela o plano
+  // antigo quando o Pix cai; até lá o antigo continua sendo "o plano atual".
+  async function makeActiveOldContract(provider: { providerId: string }, client: string) {
+    const oldOffer = await makeOffer(provider.providerId, { title: "Consultoria antiga pix" });
+    const oldRequest = await prisma.consultancyRequest.create({
+      data: { providerId: provider.providerId, clientId: client, status: "ACCEPTED", quotedOfferId: oldOffer.id, responseDeadlineAt: new Date(), respondedAt: new Date(), clientDecisionAt: new Date() }
+    });
+    return prisma.consultancyContract.create({
+      data: {
+        requestId: oldRequest.id, providerId: provider.providerId, clientId: client, offerId: oldOffer.id,
+        status: ConsultancyContractStatus.ACTIVE, paymentMethod: "CREDIT_CARD", paymentStatus: "CAPTURED",
+        paymentAmountCents: 20000, providerAmountCents: 18000, platformAmountCents: 2000, billingCycle: oldOffer.billingCycle,
+        kind: oldOffer.kind, fichaValidityDays: oldOffer.fichaValidityDays,
+        deliveryDeadlineAt: new Date(Date.now() + 48 * 60 * 60 * 1000), immediateExecutionAcknowledgedAt: new Date()
+      }
+    });
+  }
+
+  it("troca por Pix: mantém o plano antigo até o Pix ser pago e só então cancela", async () => {
+    vi.spyOn(await import("mercadopago").then((m) => m.Payment.prototype), "create").mockResolvedValue({
+      id: 9101, status: "pending", point_of_interaction: { transaction_data: { qr_code: "pix-troca", qr_code_base64: "b64" } }
+    } as any);
+    const provider = await makeProvider("swpix");
+    const client = await makeClient("swpix");
+    userIdsToCleanup.add(client);
+    providerProfileIdsToCleanup.add(provider.providerId);
+    const oldContract = await makeActiveOldContract(provider, client);
+    const newOffer = await makeOffer(provider.providerId, { title: "Consultoria nova pix", acceptsPix: true });
+
+    const result = await userService.switchOrAddOffer(client, { newOfferId: newOffer.id, paymentMethod: "PIX", acknowledgedImmediateExecution: true });
+    expect(result.status).toBe("PENDING_PAYMENT");
+
+    expect((await prisma.consultancyContract.findUniqueOrThrow({ where: { id: oldContract.id } })).status).toBe(ConsultancyContractStatus.ACTIVE);
+    const pending = await prisma.consultancyContract.findUniqueOrThrow({ where: { id: result.id } });
+    expect(pending.replacesEngagement).toMatchObject({ contractId: oldContract.id });
+    const summaryBefore = await getActiveEngagementSummary(client);
+    expect(summaryBefore.hasActive && summaryBefore.contractId).toBe(oldContract.id);
+
+    // Pix pago (o webhook marca o contrato novo como ACTIVE e chama isto).
+    await prisma.consultancyContract.update({ where: { id: result.id }, data: { status: "ACTIVE", paymentStatus: "CAPTURED" } });
+    expect(await userService.completePendingSwitch("contract", result.id)).toBe(true);
+    expect(await userService.completePendingSwitch("contract", result.id)).toBe(false); // webhook repetido
+    expect((await prisma.consultancyContract.findUniqueOrThrow({ where: { id: oldContract.id } })).status).toBe(ConsultancyContractStatus.CANCELLED);
+    const summaryAfter = await getActiveEngagementSummary(client);
+    expect(summaryAfter.hasActive && summaryAfter.contractId).toBe(result.id);
+  });
+
+  it("Pix de consultoria funciona pra quem nunca salvou cartão", async () => {
+    vi.spyOn(await import("mercadopago").then((m) => m.Payment.prototype), "create").mockResolvedValue({
+      id: 9102, status: "pending", point_of_interaction: { transaction_data: { qr_code: "pix-sem-cartao" } }
+    } as any);
+    const provider = await makeProvider("pixnocard");
+    const client = await makeClient("pixnocard");
+    userIdsToCleanup.add(client);
+    providerProfileIdsToCleanup.add(provider.providerId);
+    await prisma.user.update({ where: { id: client }, data: { mpCustomerId: null } });
+    const offer = await makeOffer(provider.providerId, { acceptsPix: true });
+
+    const contract = await consultancyService.purchaseConsultancyDirect(client, { offerId: offer.id, paymentMethod: "PIX", acknowledgedImmediateExecution: true });
+    expect(contract.status).toBe("PENDING_PAYMENT");
+    expect(contract.pixCopyPasteCode).toBe("pix-sem-cartao");
+  });
+
+  it("cartão recusado na compra direta não deixa contrato pendurado travando o aluno", async () => {
+    vi.spyOn(await import("mercadopago").then((m) => m.Payment.prototype), "create").mockResolvedValue({
+      id: 9103, status: "rejected", status_detail: "cc_rejected_other_reason"
+    } as any);
+    const provider = await makeProvider("cardfail");
+    const client = await makeClient("cardfail");
+    userIdsToCleanup.add(client);
+    providerProfileIdsToCleanup.add(provider.providerId);
+    const offer = await makeOffer(provider.providerId);
+
+    await expect(consultancyService.purchaseConsultancyDirect(client, { offerId: offer.id, paymentMethod: "CREDIT_CARD", acknowledgedImmediateExecution: true })).rejects.toThrow();
+    const left = await prisma.consultancyContract.findFirstOrThrow({ where: { clientId: client, offerId: offer.id } });
+    expect(left.status).toBe(ConsultancyContractStatus.CANCELLED);
+    expect((await getActiveEngagementSummary(client)).hasActive).toBe(false);
+  });
 });

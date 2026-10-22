@@ -786,6 +786,12 @@ export function MyTrainingScreen({ navigation, route }: Props) {
   const [paymentByRequestId, setPaymentByRequestId] = useState<Record<string, ConsultancyPaymentMethod>>({});
   const [consentByRequestId, setConsentByRequestId] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<TrainingTab>(route.params?.initialTab ?? "active");
+  // A aba fica montada por trás: sem isso, navegar de novo pra cá com outra
+  // initialTab (ex.: troca de plano por Pix → "Pendentes", onde o QR aparece)
+  // era ignorado.
+  useEffect(() => {
+    if (route.params?.initialTab) setActiveTab(route.params.initialTab);
+  }, [route.params?.initialTab]);
   const [selectedPlan, setSelectedPlan] = useState<FlatPlan | null>(null);
 
   const trainingQuery = useAuthQuery(

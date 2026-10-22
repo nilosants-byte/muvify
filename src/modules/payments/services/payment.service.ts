@@ -1781,6 +1781,21 @@ export class PaymentService {
     }
   }
 
+  // Teste manual C12.1 (22/10/2026): troca de plano paga por Pix — o plano
+  // antigo só é cancelado quando o Pix do novo cai. Import dinâmico: o
+  // UserService orquestra consultoria/pacotes e não pode virar dependência
+  // circular deste módulo. Falha aqui não pode derrubar o webhook (o
+  // pagamento em si já foi registrado acima).
+  private async completePendingSwitchSafely(recordType: "contract" | "package", recordId: string) {
+    try {
+      const { UserService } = await import("../../users/services/user.service");
+      await new UserService().completePendingSwitch(recordType, recordId);
+    } catch (error) {
+      console.error("Falha ao concluir troca de plano paga por Pix:", { recordType, recordId, error });
+      Sentry.captureException(error, { tags: { area: "payments" }, extra: { recordType, recordId, phase: "complete_pending_switch" } });
+    }
+  }
+
   private async handleMpPaymentNotification(mpPaymentId: string) {
     let mpPay: Awaited<ReturnType<Payment["get"]>>;
     try {
@@ -1940,11 +1955,16 @@ export class PaymentService {
               data: { type: "CONSULTANCY_PAYMENT_CAPTURED", contractId: consultancyContract.id }
             }
           );
+          await this.completePendingSwitchSafely("contract", consultancyContract.id);
         }
       }
 
       if (presentialPackagePending) {
         await presentialPackageService.confirmPendingPixCycle(String(mpPay.id));
+        const pkgNow = await prisma.presentialPackage.findUnique({ where: { id: presentialPackagePending.id }, select: { status: true } });
+        if (pkgNow?.status === "ACTIVE") {
+          await this.completePendingSwitchSafely("package", presentialPackagePending.id);
+        }
       }
     }
 

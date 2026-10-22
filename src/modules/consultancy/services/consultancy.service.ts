@@ -327,12 +327,19 @@ export class ConsultancyService {
       }
     });
 
-    if (!client || !client.mpCustomerId) {
-      throw new AppError("Cliente sem cadastro de pagamento configurado.", StatusCodes.BAD_REQUEST);
+    if (!client) {
+      throw new AppError("Cliente não encontrado.", StatusCodes.NOT_FOUND);
     }
 
+    // Teste manual C12.1 (22/10/2026): Pix não usa cartão nem cadastro de
+    // cliente no Mercado Pago — antes exigia mpCustomerId mesmo assim, e
+    // quem nunca salvou cartão não conseguia pagar consultoria nem por Pix.
     if (paymentMethod === ConsultancyPaymentMethod.PIX) {
       return { mpCustomerId: client.mpCustomerId, mpCardId: null as string | null, clientEmail: client.email, clientName: client.name };
+    }
+
+    if (!client.mpCustomerId) {
+      throw new AppError("Você não tem um cartão salvo. Cadastre um em Perfil → Métodos de pagamento ou pague com Pix.", StatusCodes.BAD_REQUEST);
     }
 
     const requiredFunding = mapConsultancyMethodToFunding(paymentMethod);
@@ -3588,9 +3595,12 @@ export class ConsultancyService {
         amountCents: paymentAmountCents
       });
     } catch (error) {
+      // Teste manual C12.1: o contrato ficava PENDING_PAYMENT pra sempre —
+      // contava como vínculo ativo (travava o aluno) e virava "o plano atual"
+      // na tela, mesmo sem nada cobrado. Falhou → cancelado.
       await prisma.consultancyContract.update({
         where: { id: contract.id },
-        data: { paymentStatus: ConsultancyPaymentStatus.FAILED }
+        data: { paymentStatus: ConsultancyPaymentStatus.FAILED, status: ConsultancyContractStatus.CANCELLED }
       });
       const message = error instanceof Error ? error.message : "Falha ao processar pagamento da consultoria.";
       throw new AppError(message, StatusCodes.BAD_REQUEST);
@@ -3630,7 +3640,7 @@ export class ConsultancyService {
     } else {
       await prisma.consultancyContract.update({
         where: { id: contract.id },
-        data: { mpPaymentId: mpPayId, paymentStatus: ConsultancyPaymentStatus.FAILED, status: ConsultancyContractStatus.PENDING_PAYMENT }
+        data: { mpPaymentId: mpPayId, paymentStatus: ConsultancyPaymentStatus.FAILED, status: ConsultancyContractStatus.CANCELLED }
       });
       throw new AppError("Pagamento não foi confirmado. Tente novamente.", StatusCodes.BAD_REQUEST);
     }

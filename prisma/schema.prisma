@@ -1269,6 +1269,8 @@ enum PresentialPackageStatus {
 // sincronizacao nova.
 model PresentialPackage {
   id                    String                    @id @default(uuid())
+  // Ver ConsultancyContract.replacesEngagement (troca de plano por Pix).
+  replacesEngagement    Json?
   providerId            String
   clientId              String
   offerId               String
@@ -1497,6 +1499,10 @@ model ConsultancyRequest {
 
 model ConsultancyContract {
   id                      String                    @id @default(uuid())
+  // Teste manual C12.1 (22/10/2026): troca de plano paga por Pix — o
+  // vínculo antigo ({ contractId?, packageId?, bookingId? }) só é cancelado
+  // quando o Pix deste registro for pago (webhook). Null fora de troca.
+  replacesEngagement      Json?
   requestId               String                    @unique
   providerId              String
   clientId                String

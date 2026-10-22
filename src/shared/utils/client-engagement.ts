@@ -1,4 +1,4 @@
-import { BookingStatus, ConsultancyContractStatus, PresentialPackageStatus } from "@prisma/client";
+import { BookingStatus, ConsultancyContractStatus, PresentialPackageStatus, Prisma } from "@prisma/client";
 import { StatusCodes } from "http-status-codes";
 import { prisma } from "../../config/prisma";
 import { AppError } from "../errors/app-error";
@@ -123,13 +123,23 @@ const PROVIDER_SUMMARY_SELECT = {
 
 export async function getActiveEngagementSummary(clientId: string): Promise<ActiveEngagementSummary> {
   const [contract, pkg] = await Promise.all([
+    // Teste manual C12.1: serviço novo de uma troca paga por Pix (ainda não
+    // pago) não substitui o plano atual na tela — só quando o Pix cair.
     prisma.consultancyContract.findFirst({
-      where: { clientId, status: { in: ACTIVE_CONSULTANCY_STATUSES } },
+      where: {
+        clientId,
+        status: { in: ACTIVE_CONSULTANCY_STATUSES },
+        NOT: { status: ConsultancyContractStatus.PENDING_PAYMENT, replacesEngagement: { not: Prisma.DbNull } }
+      },
       orderBy: { createdAt: "desc" },
       include: { provider: { select: PROVIDER_SUMMARY_SELECT } }
     }),
     prisma.presentialPackage.findFirst({
-      where: { clientId, status: { in: ACTIVE_PACKAGE_STATUSES } },
+      where: {
+        clientId,
+        status: { in: ACTIVE_PACKAGE_STATUSES },
+        NOT: { status: PresentialPackageStatus.PENDING_PAYMENT, replacesEngagement: { not: Prisma.DbNull } }
+      },
       orderBy: { createdAt: "desc" },
       include: { provider: { select: PROVIDER_SUMMARY_SELECT } }
     })

@@ -9,7 +9,7 @@ import { consultancyApi, ProviderServiceOffer, userApi } from "../../services/ap
 import { useAppState } from "../../state/AppState";
 import { useAuthMutation, useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
-import { MvText } from "../../components/mv";
+import { MvProcessingModal, MvText } from "../../components/mv";
 import { PressableScale } from "../../components/polish/PressableScale";
 import { useMvTheme } from "../../theme/MvThemeContext";
 import { formatCurrencyBRL } from "../../utils/formatters";
@@ -45,11 +45,22 @@ export function ProviderServicesUpgradeScreen({ navigation, route }: Props) {
     consultancyApi.providerCatalog(providerId)
   );
 
+  // Teste manual C12.1 (22/10/2026): a troca sempre cobrava no cartão
+  // salvo, sem perguntar — oferta só-Pix nunca dava pra trocar e quem não
+  // tinha cartão travava. Agora escolhe entre as formas que a oferta aceita.
   const switchMutation = useAuthMutation(
-    (token, newOfferId: string) =>
-      userApi.switchOrAddOffer(token, { newOfferId, paymentMethod: "CREDIT_CARD", acknowledgedImmediateExecution: true }),
+    (token, vars: { offerId: string; method: "CREDIT_CARD" | "PIX" }) =>
+      userApi.switchOrAddOffer(token, { newOfferId: vars.offerId, paymentMethod: vars.method, acknowledgedImmediateExecution: true }),
     {
-      onSuccess: async () => {
+      onSuccess: async (_result, vars) => {
+        if (vars.method === "PIX") {
+          // Plano atual continua valendo até o Pix cair (o servidor só
+          // cancela o antigo no webhook). O QR aparece em Treinos → Pendentes.
+          showToast("Pix gerado! Pague em até 24h para concluir a troca. Seu plano atual continua valendo até lá.", "success");
+          void queryClient.invalidateQueries({ queryKey: queryKeys.consultancy.myTraining() });
+          (navigation as any).navigate("ClientTabs", { screen: "MyTraining", params: { initialTab: "pending" } });
+          return;
+        }
         showToast("Serviço atualizado!", "success");
         await refreshActiveEngagement();
         void queryClient.invalidateQueries({ queryKey: queryKeys.bookings.me() });
@@ -65,16 +76,35 @@ export function ProviderServicesUpgradeScreen({ navigation, route }: Props) {
     }
   );
 
+  function confirmSwitch(offer: ProviderServiceOffer, method: "CREDIT_CARD" | "PIX") {
+    const price = `${formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}/${cycleLabel(offer.billingCycle)}`;
+    const message =
+      method === "PIX"
+        ? `Trocar seu plano por "${offer.title}" — ${price}? Vamos gerar um Pix. Seu plano atual continua valendo até o Pix ser pago; depois ele é cancelado.`
+        : `Trocar seu plano por "${offer.title}" — ${price}? Isso cobra o novo serviço no seu cartão salvo agora e cancela o atual.`;
+    Alert.alert("Confirmar troca", message, [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Confirmar troca", onPress: () => switchMutation.mutate({ offerId: offer.id, method }) }
+    ]);
+  }
+
   function handlePickOnlineOffer(offer: ProviderServiceOffer) {
     hapticCta();
-    Alert.alert(
-      "Confirmar troca",
-      `Trocar seu plano por "${offer.title}" — ${formatCurrencyBRL((offer.effectivePriceCents ?? offer.priceCents) / 100)}/${cycleLabel(offer.billingCycle)}? Isso cobra o novo serviço agora e cancela o atual.`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Confirmar troca", onPress: () => switchMutation.mutate(offer.id) }
-      ]
-    );
+    const acceptsCard = offer.acceptsCreditCard !== false;
+    const acceptsPix = offer.acceptsPix === true;
+    if (!acceptsCard && !acceptsPix) {
+      showToast("Este serviço não aceita pagamento pelo app. Combine com seu personal pelo chat.", "info");
+      return;
+    }
+    if (acceptsCard && acceptsPix) {
+      Alert.alert("Como você quer pagar?", undefined, [
+        { text: "Cartão salvo", onPress: () => confirmSwitch(offer, "CREDIT_CARD") },
+        { text: "Pix", onPress: () => confirmSwitch(offer, "PIX") },
+        { text: "Voltar", style: "cancel" }
+      ]);
+      return;
+    }
+    confirmSwitch(offer, acceptsPix ? "PIX" : "CREDIT_CARD");
   }
 
   // Raio-X pós-épico (achado alto): antes adivinhava a oferta atual só por
@@ -241,6 +271,7 @@ export function ProviderServicesUpgradeScreen({ navigation, route }: Props) {
           </View>
         ) : null}
       </ScrollView>
+      <MvProcessingModal visible={switchMutation.isPending} title="Trocando seu plano..." />
     </View>
   );
 }

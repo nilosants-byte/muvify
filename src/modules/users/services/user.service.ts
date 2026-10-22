@@ -1947,8 +1947,10 @@ export class UserService {
       );
     }
 
-    let newResult: { id: string };
+    let newResult: { id: string; status?: string };
+    let newRecordType: "contract" | "package";
     if (newOffer.kind === ServiceOfferKind.PRESENTIAL || newOffer.kind === ServiceOfferKind.COMBO) {
+      newRecordType = "package";
       if (!input.categoryId) {
         throw new AppError("Selecione a categoria do serviço.", StatusCodes.BAD_REQUEST);
       }
@@ -1967,6 +1969,7 @@ export class UserService {
           ? (await presentialPackageService.purchaseCombo(clientId, purchaseInput)).package
           : (await presentialPackageService.purchasePackage(clientId, purchaseInput)).package;
     } else {
+      newRecordType = "contract";
       newResult = await consultancyService.purchaseConsultancyDirect(clientId, {
         offerId: newOffer.id,
         paymentMethod: input.paymentMethod,
@@ -1974,7 +1977,49 @@ export class UserService {
       });
     }
 
+    const replaced = { contractId: current.contractId ?? null, packageId: current.packageId ?? null, bookingId: current.bookingId ?? null };
+
+    // Teste manual C12.1 (22/10/2026): com Pix o serviço novo nasce
+    // PENDING_PAYMENT — cancelar o antigo agora deixava o aluno sem plano
+    // nenhum se ele não pagasse. Guarda o que trocar e conclui no webhook
+    // (completePendingSwitch) quando o Pix cair.
+    if (newResult.status === "PENDING_PAYMENT") {
+      if (newRecordType === "contract") {
+        await prisma.consultancyContract.update({ where: { id: newResult.id }, data: { replacesEngagement: replaced } });
+      } else {
+        await prisma.presentialPackage.update({ where: { id: newResult.id }, data: { replacesEngagement: replaced } });
+      }
+      return newResult;
+    }
+
     // Só chega aqui se o novo serviço foi criado/cobrado com sucesso acima.
+    await this.cancelReplacedEngagement(clientId, replaced);
+    return newResult;
+  }
+
+  // Conclui uma troca paga por Pix: chamado pelo webhook do Mercado Pago
+  // quando o Pix do serviço novo é aprovado. Idempotente (o webhook pode
+  // chegar mais de uma vez): só quem "pega" o replacesEngagement cancela.
+  async completePendingSwitch(recordType: "contract" | "package", recordId: string) {
+    const record =
+      recordType === "contract"
+        ? await prisma.consultancyContract.findUnique({ where: { id: recordId }, select: { clientId: true, replacesEngagement: true } })
+        : await prisma.presentialPackage.findUnique({ where: { id: recordId }, select: { clientId: true, replacesEngagement: true } });
+    if (!record?.replacesEngagement) return false;
+    const claimed =
+      recordType === "contract"
+        ? await prisma.consultancyContract.updateMany({ where: { id: recordId, replacesEngagement: { not: Prisma.DbNull } }, data: { replacesEngagement: Prisma.DbNull } })
+        : await prisma.presentialPackage.updateMany({ where: { id: recordId, replacesEngagement: { not: Prisma.DbNull } }, data: { replacesEngagement: Prisma.DbNull } });
+    if (claimed.count === 0) return false;
+    const ref = record.replacesEngagement as { contractId?: string | null; packageId?: string | null; bookingId?: string | null };
+    await this.cancelReplacedEngagement(record.clientId, ref);
+    return true;
+  }
+
+  private async cancelReplacedEngagement(
+    clientId: string,
+    current: { contractId?: string | null; packageId?: string | null; bookingId?: string | null }
+  ) {
     if (current.contractId) {
       await consultancyService.cancelContract(clientId, current.contractId).catch((error) =>
         console.error(`Falha ao cancelar contrato antigo ${current.contractId} ao trocar de serviço:`, error)
@@ -1996,7 +2041,5 @@ export class UserService {
         console.error(`Falha ao cancelar agendamento avulso antigo ${current.bookingId} ao trocar de serviço:`, error)
       );
     }
-
-    return newResult;
   }
 }

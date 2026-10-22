@@ -309,12 +309,9 @@ async function resolveClientCardForBilling(clientId: string) {
       }
     }
   });
-  if (!client?.mpCustomerId) {
-    throw new AppError("Cliente sem cadastro de pagamento configurado.", StatusCodes.BAD_REQUEST);
-  }
-  const selected = client.customerPaymentMethods[0];
-  if (!selected) {
-    throw new AppError("Nenhum cartão de crédito ativo encontrado para pagamento.", StatusCodes.BAD_REQUEST);
+  const selected = client?.customerPaymentMethods[0];
+  if (!client?.mpCustomerId || !selected) {
+    throw new AppError("Você não tem um cartão salvo. Cadastre um em Perfil → Métodos de pagamento ou pague com Pix.", StatusCodes.BAD_REQUEST);
   }
   return {
     mpCustomerId: client.mpCustomerId,
