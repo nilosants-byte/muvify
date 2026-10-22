@@ -405,7 +405,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
         visible={showExportPasswordModal}
         title="Confirme sua senha"
         message="Seus dados incluem informações sensíveis (como anamnese e conta bancária). Digite sua senha para confirmar a exportação."
-        confirmLabel="Baixar meus dados"
+        confirmLabel="Baixar dados"
         confirmVariant="primary"
         loading={exporting}
         onCancel={() => setShowExportPasswordModal(false)}

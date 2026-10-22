@@ -1177,7 +1177,17 @@ export class UserService {
   // já ativo). Fica opcional porque admin.service.ts reaproveita este mesmo
   // método pra exportar dados de OUTRO usuário (autorizado por papel de
   // admin + audit log próprios, não pela senha do titular).
-  async exportMyData(userId: string, password?: string) {
+  // Teste manual C10.2 (21/10/2026): a planilha falhou no app, mas o e-mail
+  // "seus dados foram exportados" já tinha saído (era enviado aqui, antes
+  // de a planilha ficar pronta) — e ela baixava/decifrava todas as fotos de
+  // comprovação do R2 só pra usar a quantidade. `options` deixa a planilha
+  // pular as fotos e avisar o titular só depois de gerar o arquivo.
+  async exportMyData(
+    userId: string,
+    password?: string,
+    options: { includeEvidencePhotos?: boolean; notify?: boolean } = {}
+  ) {
+    const { includeEvidencePhotos = true, notify = true } = options;
     const LIST_LIMIT = 500;
     const take = LIST_LIMIT + 1;
 
@@ -1609,11 +1619,13 @@ export class UserService {
     const completionEvidencePhotos = await Promise.all(
       completionEvidences.items.map(async (evidence) => {
         let imageBase64: string | null = null;
-        try {
-          const encrypted = evidence.storageKey ? await getPrivateObject(evidence.storageKey) : evidence.imageBase64;
-          imageBase64 = encrypted ? decryptSensitiveText(encrypted) : null;
-        } catch (error) {
-          console.error(`Falha ao decifrar CompletionEvidence ${evidence.id} para exportação:`, error);
+        if (includeEvidencePhotos) {
+          try {
+            const encrypted = evidence.storageKey ? await getPrivateObject(evidence.storageKey) : evidence.imageBase64;
+            imageBase64 = encrypted ? decryptSensitiveText(encrypted) : null;
+          } catch (error) {
+            console.error(`Falha ao decifrar CompletionEvidence ${evidence.id} para exportação:`, error);
+          }
         }
         return {
           id: evidence.id,
@@ -1630,15 +1642,8 @@ export class UserService {
     // Épico de Frentes, Frente 11, Lote 5: exportação self-service não
     // deixava trilha nem avisava o titular por nenhum canal além do
     // download em si.
-    await prisma.dataExportLog.create({ data: { userId: user.id } }).catch((error) => {
-      console.error("Falha ao registrar DataExportLog:", error);
-    });
-    if (emailService.canSendEmail()) {
-      await emailQueueService
-        .enqueueDataExportConfirmation({ to: user.email, name: user.name })
-        .catch((error) => {
-          console.error("Falha ao enfileirar e-mail de confirmação de exportação:", error);
-        });
+    if (notify) {
+      await this.recordDataExport(user.id, user.email, user.name);
     }
 
     return {
@@ -1817,9 +1822,23 @@ export class UserService {
   // pedido, independente do formato escolhido), só que entregue como
   // planilha legível pra quem não é técnico. Devolve em base64 pra trafegar
   // no mesmo JSON que o resto da API, sem tratar binário no cliente.
+  private async recordDataExport(userId: string, email: string, name: string) {
+    await prisma.dataExportLog.create({ data: { userId } }).catch((error) => {
+      console.error("Falha ao registrar DataExportLog:", error);
+    });
+    if (emailService.canSendEmail()) {
+      await emailQueueService
+        .enqueueDataExportConfirmation({ to: email, name })
+        .catch((error) => {
+          console.error("Falha ao enfileirar e-mail de confirmação de exportação:", error);
+        });
+    }
+  }
+
   async exportMyDataSpreadsheet(userId: string, password?: string) {
-    const data = await this.exportMyData(userId, password);
+    const data = await this.exportMyData(userId, password, { includeEvidencePhotos: false, notify: false });
     const buffer = await buildDataExportWorkbook(data);
+    await this.recordDataExport(userId, data.profile.email, data.profile.name);
     const day = new Date().toISOString().slice(0, 10);
     return {
       filename: `muvify-meus-dados-${day}.xlsx`,
