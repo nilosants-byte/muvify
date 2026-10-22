@@ -69,6 +69,8 @@ type NotificationItem = {
   rawId?: string;
 };
 
+const EMPTY_NOTIFICATIONS: NotificationItem[] = [];
+
 type ScreenCategory = "Todas" | "Agenda" | "Mercado" | "Aviso";
 const SCREEN_CATEGORIES: ScreenCategory[] = ["Todas", "Agenda", "Mercado", "Aviso"];
 
@@ -550,7 +552,12 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
   const [hasMoreInbox, setHasMoreInbox] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const { data: baseNotifications = [], isLoading: loading, refetch, error } = useQuery<NotificationItem[]>({
+  // Teste manual C13.1 (22/10/2026): "= []" criava uma lista NOVA a cada
+  // render enquanto carregava — o efeito abaixo (deps [baseNotifications])
+  // rodava de novo a cada render e chamava setState: loop infinito
+  // ("Maximum update depth exceeded") ao abrir a central rápido. Antes não
+  // aparecia porque a central lia o cache da Home e nunca começava vazia.
+  const { data: baseNotificationsData, isLoading: loading, refetch, error } = useQuery<NotificationItem[]>({
     queryKey: notifQueryKey,
     queryFn: async () => {
       const { bookings, inbox } = await runWithAuth(async (token) => {
@@ -582,6 +589,8 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
       ]).sort((a, b) => b.createdAtMs - a.createdAtMs).slice(0, 80);
     },
   });
+
+  const baseNotifications = baseNotificationsData ?? EMPTY_NOTIFICATIONS;
 
   useEffect(() => {
     if (error) handleScreenError({ error, showToast, fallbackMessage: "Falha ao carregar notificações." });
