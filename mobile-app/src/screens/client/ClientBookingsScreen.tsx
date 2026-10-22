@@ -1,4 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ViewProviderProfileButton } from "../../components/ViewProviderProfileButton";
 import { Alert, FlatList, RefreshControl, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
@@ -118,6 +119,7 @@ function ActivePlanCard({
           </Text>
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11.5, color: theme.text2, marginTop: 2 }}>{kindLabel}</Text>
         </View>
+        <ViewProviderProfileButton providerId={engagement.providerId} />
       </View>
       {engagement.origin === "EXTERNAL" ? (
         // Raio-X pós-épico (achado baixo): sem isso, aluno externo (Bloco 1)
@@ -359,9 +361,12 @@ export function ClientBookingsScreen({ navigation }: Props) {
         />
 
         <View style={{ flex: 1, gap: 4 }}>
-          <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }} numberOfLines={1}>
-            {item.provider?.displayName ?? "Personal"}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1, flexShrink: 1 }} numberOfLines={1}>
+              {item.provider?.displayName ?? "Personal"}
+            </Text>
+            <ViewProviderProfileButton providerId={item.providerId} />
+          </View>
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>
             {formatBRDateTime(item.scheduledAt)}
           </Text>

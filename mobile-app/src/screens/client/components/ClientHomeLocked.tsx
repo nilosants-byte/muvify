@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from "react";
+import { ViewProviderProfileButton } from "../../../components/ViewProviderProfileButton";
 import { RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -152,6 +153,7 @@ export function ClientHomeLocked() {
             <MvText variant="semi3">{activeEngagement.providerName}</MvText>
             <MvText variant="caption" color="secondary" style={{ marginTop: 1 }}>{kindLabel}</MvText>
           </View>
+          <ViewProviderProfileButton providerId={activeEngagement.providerId} />
           <Ionicons name="chevron-forward" size={16} color={theme.text3} />
         </TouchableOpacity>
 

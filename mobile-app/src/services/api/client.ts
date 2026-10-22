@@ -512,6 +512,7 @@ export type MyTrainingResponse = {
   locked: boolean;
   waitingDelivery: Array<{
     contractId: string;
+    providerId?: string;
     providerName: string;
     deliveryDeadlineAt: string;
     status: "PENDING_PAYMENT" | "ACTIVE" | "DELIVERED" | "CANCELLED" | "REFUNDED_EXPIRED" | "ARCHIVED";

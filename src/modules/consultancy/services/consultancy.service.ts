@@ -4116,6 +4116,8 @@ export class ConsultancyService {
         )
         .map((contract) => ({
           contractId: contract.id,
+          // Teste manual C11.2: botão "Ver perfil" no card do personal.
+          providerId: contract.providerId,
           providerName: contract.provider.displayName,
           deliveryDeadlineAt: contract.deliveryDeadlineAt,
           status: contract.status,

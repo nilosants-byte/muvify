@@ -1,4 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ViewProviderProfileButton } from "../../components/ViewProviderProfileButton";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import {
@@ -1123,7 +1124,10 @@ export function MyTrainingScreen({ navigation, route }: Props) {
                 <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 15, color: theme.text1 }}>Propostas aguardando decisão</Text>
                 {respondedRequests.map((req) => (
                   <View key={req.id} style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: C.amberBorder, backgroundColor: C.amberDim, padding: 14, gap: 10 }}>
-                    <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{req.provider?.displayName ?? "Profissional"}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1, flex: 1 }}>{req.provider?.displayName ?? "Profissional"}</Text>
+                      <ViewProviderProfileButton providerId={req.provider?.id ?? req.providerId} />
+                    </View>
                     <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>{req.providerResponseText ?? "Sem resposta detalhada."}</Text>
                     {req.quotedOffer && (
                       <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: C.amber }}>
@@ -1238,6 +1242,7 @@ export function MyTrainingScreen({ navigation, route }: Props) {
                     <View key={item.contractId} style={{ borderRadius: S.cardR, borderWidth: 1, borderColor: item.pix ? C.amberBorder : C.skyBorder, backgroundColor: item.pix ? C.amberDim : C.skyDim, padding: 14, gap: 8 }}>
                       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
                         <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1, flex: 1, marginRight: 10 }}>{item.providerName}</Text>
+                        <View style={{ marginRight: 8 }}><ViewProviderProfileButton providerId={item.providerId} /></View>
                         <View style={{ backgroundColor: statusBadge.bg, borderWidth: 1, borderColor: statusBadge.border, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3, flexShrink: 0 }}>
                           <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: statusBadge.color }}>{statusBadge.label}</Text>
                         </View>

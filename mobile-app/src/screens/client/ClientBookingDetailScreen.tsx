@@ -1,4 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ViewProviderProfileButton } from "../../components/ViewProviderProfileButton";
 import { useAuthQuery } from "../../hooks/useAuthQuery";
 import { queryKeys } from "../../lib/queryKeys";
 import Animated, {
@@ -947,7 +948,8 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
               <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 13, color: theme.text2, marginTop: 4 }}>
                 {booking.provider?.displayName ?? "Personal"} te espera em {formatBRDateTime(booking.scheduledAt)}.
               </Text>
-              <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                <ViewProviderProfileButton providerId={booking.provider?.id ?? booking.providerId} />
                 <View style={{ backgroundColor: bs.bg, borderWidth: 1, borderColor: bs.border, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 3 }}>
                   <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: bs.color }}>{bs.label}</Text>
                 </View>

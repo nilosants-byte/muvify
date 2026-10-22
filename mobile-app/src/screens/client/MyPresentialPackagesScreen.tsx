@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect } from "react";
+import { ViewProviderProfileButton } from "../../components/ViewProviderProfileButton";
 import { ScrollView, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffectSkippingFirst } from "../../hooks/useFocusEffectSkippingFirst";
@@ -104,6 +105,7 @@ export function MyPresentialPackagesScreen({ navigation }: Props) {
                     <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 14, color: theme.text1 }}>{pkg.provider?.displayName ?? "Profissional"}</Text>
                     <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text3 }}>{pkg.offer?.title ?? "Pacote presencial"}</Text>
                   </View>
+                  <ViewProviderProfileButton providerId={pkg.providerId} />
                   <View style={{ backgroundColor: badge.bg, borderWidth: 1, borderColor: badge.border, borderRadius: S.chipR, paddingHorizontal: 8, paddingVertical: 3 }}>
                     <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 10, color: badge.color }}>{badge.label}</Text>
                   </View>
