@@ -16,4 +16,18 @@ describe("chaves de cache das conversas", () => {
     const cprefix = queryKeys.consultancyChat.myChats();
     expect(queryKeys.consultancyChat.myChatsView("provider").slice(0, cprefix.length)).toEqual([...cprefix]);
   });
+
+  // Teste manual C13.1 (22/10/2026): mesmo problema na central de
+  // notificações (tocar antes de carregar quebrava o app) e na tela Treinos
+  // x Home travada.
+  it("central de notificações e tela Treinos têm chave própria, debaixo da compartilhada", () => {
+    const inbox = queryKeys.notifications.inbox(120);
+    const screen = queryKeys.notifications.inboxScreen(120);
+    expect(screen).not.toEqual(inbox);
+    expect(screen.slice(0, inbox.length)).toEqual([...inbox]);
+    const mt = queryKeys.consultancy.myTraining();
+    const mts = queryKeys.consultancy.myTrainingScreen();
+    expect(mts).not.toEqual(mt);
+    expect(mts.slice(0, mt.length)).toEqual([...mt]);
+  });
 });

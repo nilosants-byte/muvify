@@ -795,7 +795,7 @@ export function MyTrainingScreen({ navigation, route }: Props) {
   const [selectedPlan, setSelectedPlan] = useState<FlatPlan | null>(null);
 
   const trainingQuery = useAuthQuery(
-    queryKeys.consultancy.myTraining(),
+    queryKeys.consultancy.myTrainingScreen(),
     async (token) => {
       const [trainingResult, requestsResult, customerStatus] = await Promise.all([
         consultancyApi.myTraining(token),

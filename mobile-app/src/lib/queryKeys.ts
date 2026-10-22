@@ -28,6 +28,12 @@ export const queryKeys = {
   notifications: {
     all: ["notifications"] as const,
     inbox: (take?: number) => ["notifications", "inbox", take] as const,
+    // Teste manual C13.1 (22/10/2026): a central de notificações guarda a
+    // lista JÁ PREPARADA (com destino de cada item); a Home guarda a lista
+    // crua da API. Dividiam a mesma chave — tocar num item antes de a
+    // central terminar de carregar quebrava o app (item sem "action"). Fica
+    // debaixo de inbox() pra que invalidar inbox() recarregue as duas.
+    inboxScreen: (take?: number) => ["notifications", "inbox", take, "screen"] as const,
     unreadCount: () => ["notifications", "unreadCount"] as const,
     devices: () => ["notifications", "devices"] as const,
   },
@@ -183,6 +189,11 @@ export const queryKeys = {
     promotions: () => ["consultancy", "promotions"] as const,
     catalog: (providerId: string) => ["consultancy", "catalog", providerId] as const,
     myTraining: () => ["consultancy", "myTraining"] as const,
+    // Teste manual C13.1 (varredura, 22/10/2026): a tela Treinos guarda
+    // { training, requests, clientHasDebt } e a Home travada guarda a
+    // resposta crua de myTraining — mesma chave, formatos diferentes. Fica
+    // debaixo de myTraining() pra que invalidar myTraining() recarregue as duas.
+    myTrainingScreen: () => ["consultancy", "myTraining", "screen"] as const,
     myRequests: () => ["consultancy", "myRequests"] as const,
     myArchivedRequests: (params?: object) => ["consultancy", "myArchivedRequests", params] as const,
     providerCenter: () => ["consultancy", "providerCenter"] as const,

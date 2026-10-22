@@ -395,7 +395,13 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
   // queryKeys.notifications.inbox — antes essa tela usava uma chave local
   // divergente, então nenhuma invalidação feita em outro lugar do app
   // (ex: badge da Home, listener de push em primeiro plano) chegava aqui.
-  const notifQueryKey = queryKeys.notifications.inbox(120);
+  const notifQueryKey = queryKeys.notifications.inboxScreen(120);
+  // Contador do sininho da Home lê a lista crua (inbox) — atualiza depois
+  // de marcar como lido aqui.
+  const refreshHomeBadge = useCallback(
+    () => void queryClient.invalidateQueries({ queryKey: queryKeys.notifications.inbox(120), exact: true }),
+    [queryClient]
+  );
   const [activeCategory, setActiveCategory] = useState<ScreenCategory>("Todas");
 
   const loadNearbyMarketNotifications = useCallback(async (): Promise<NotificationItem[]> => {
@@ -624,7 +630,8 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
     queryClient.setQueryData(notifQueryKey, []);
     setExtraInboxItems([]);
     setHasMoreInbox(false);
-  }, [notifQueryKey, queryClient, runWithAuth]);
+    refreshHomeBadge();
+  }, [notifQueryKey, queryClient, runWithAuth, refreshHomeBadge]);
 
   const openBookingDetail = useCallback(
     (bookingId: string) => {
@@ -662,10 +669,12 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
           prev.map((entry) => entry.id === item.id ? { ...entry, unread: false } : entry)
         );
         if (item.source === "inbox" && item.rawId) {
-          runWithAuth((token) => notificationsApi.markAsRead(token, item.rawId!)).catch(() => {});
+          runWithAuth((token) => notificationsApi.markAsRead(token, item.rawId!))
+            .then(refreshHomeBadge)
+            .catch(() => {});
         }
       }
-      if (!navigation) return;
+      if (!navigation || !item.action) return;
       switch (item.action.type) {
         case "BOOKING_DETAIL": openBookingDetail(item.action.bookingId); return;
         case "BOOKING_CHAT": openBookingChat(item.action.bookingId, item.action.contractId); return;
@@ -700,7 +709,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
         default: return;
       }
     },
-    [navigation, notifQueryKey, openBookingChat, openBookingDetail, queryClient, role, runWithAuth]
+    [navigation, notifQueryKey, openBookingChat, openBookingDetail, queryClient, role, runWithAuth, refreshHomeBadge]
   );
 
   const filteredNotifications = useMemo(() => {
