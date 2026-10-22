@@ -42,6 +42,7 @@ import type { MvTheme } from "../../theme/MvColors";
 import { C, S, DISPLAY } from "../../theme/v2tokens";
 import { hapticAchievement, hapticLike, hapticComment } from "../../utils/haptics";
 import { PressableScale } from "../../components/polish/PressableScale";
+import { queryClient } from "../../lib/queryClient";
 import { captureException } from "../../observability/sentry";
 import { AnimatedNumber } from "../../components/polish/AnimatedNumber";
 import { ClientBottomNavV2 } from "../../components/navigation/ClientBottomNavV2";
@@ -459,6 +460,9 @@ const FeedPostCard = React.memo(function FeedPostCard({
   viewerId: string;
 }) {
   const { theme, isDark } = useMvTheme();
+  const { user: viewerUser } = useAppState();
+  const viewerName = viewerUser?.name;
+  const viewerPhotoUrl = viewerUser?.photoUrl;
   const meta = (post.metadata ?? {}) as FeedPostMetadata & Record<string, unknown>;
   const hasProvider = post.type === "WORKOUT_COMPLETED" && Boolean(meta.providerId);
   const postUser = post.user;
@@ -493,30 +497,41 @@ const FeedPostCard = React.memo(function FeedPostCard({
     if (singleTapTimer.current) clearTimeout(singleTapTimer.current);
   }, []);
 
-  async function handleLike() {
+  // Teste manual C11.1 (22/10/2026): curtir e descurtir logo em seguida
+  // era ignorado enquanto a 1ª chamada não voltava (likeInFlight). Agora
+  // cada toque muda a tela NA HORA; o servidor (que só tem "alternar") é
+  // sincronizado em série até bater com o último estado que o usuário quis.
+  const desiredLikedRef = useRef<boolean>(post.likedByViewer ?? false);
+  const serverLikedRef = useRef<boolean>(post.likedByViewer ?? false);
+
+  async function syncLikeWithServer() {
     if (likeInFlight.current) return;
     likeInFlight.current = true;
-    const wasLiked = liked;
-    setLiked(!wasLiked);
-    setLikesCount((c) => wasLiked ? Math.max(0, c - 1) : c + 1);
-    if (!wasLiked) hapticLike();
     try {
-      const result = await runWithAuth((token) => communityApi.likePost(token, post.id));
-      if (result && typeof result.liked === "boolean") {
-        setLiked(result.liked);
-        // If server disagreed with the toggle, also rollback count
-        if (result.liked !== !wasLiked) {
-          setLikesCount((c) => wasLiked ? c + 1 : Math.max(0, c - 1));
-        }
+      while (serverLikedRef.current !== desiredLikedRef.current) {
+        const result = await runWithAuth((token) => communityApi.likePost(token, post.id));
+        serverLikedRef.current = typeof result?.liked === "boolean" ? result.liked : !serverLikedRef.current;
       }
     } catch (error) {
       captureException(error, { screen: "CommunityScreen", action: "likePost" });
-      setLiked(wasLiked);
-      setLikesCount((c) => wasLiked ? c + 1 : Math.max(0, c - 1));
+      // Volta a tela pro que o servidor tem de verdade.
+      const delta = (serverLikedRef.current ? 1 : 0) - (desiredLikedRef.current ? 1 : 0);
+      desiredLikedRef.current = serverLikedRef.current;
+      setLiked(serverLikedRef.current);
+      setLikesCount((c) => Math.max(0, c + delta));
       showToast("Não foi possível curtir. Tente novamente.", "error");
     } finally {
       likeInFlight.current = false;
     }
+  }
+
+  function handleLike() {
+    const next = !desiredLikedRef.current;
+    desiredLikedRef.current = next;
+    setLiked(next);
+    setLikesCount((c) => (next ? c + 1 : Math.max(0, c - 1)));
+    if (next) hapticLike();
+    void syncLikeWithServer();
   }
 
   function triggerHeartAnimation() {
@@ -538,7 +553,7 @@ const FeedPostCard = React.memo(function FeedPostCard({
         clearTimeout(singleTapTimer.current);
         singleTapTimer.current = null;
       }
-      if (!liked) triggerHeartAnimation();
+      if (!desiredLikedRef.current) triggerHeartAnimation();
       handleLike();
       lastTapRef.current = 0;
     } else {
@@ -566,29 +581,52 @@ const FeedPostCard = React.memo(function FeedPostCard({
     finally { setCommentsLoading(false); }
   }
 
+  // Teste manual C11.1: começa a buscar os comentários já no "encostar o
+  // dedo" (onPressIn), ~100-200ms antes do toque terminar.
+  const commentsRequestedRef = useRef(false);
+  function prefetchComments() {
+    if (commentsRequestedRef.current || commentsPage !== 0) return;
+    commentsRequestedRef.current = true;
+    void loadComments(1);
+  }
+
   function toggleComments() {
     if (commentsOpen) { setCommentsOpen(false); return; }
     setCommentsOpen(true);
-    if (commentsPage === 0) loadComments(1);
+    prefetchComments();
   }
 
+  // Teste manual C11.1: o comentário aparece na hora (estilo WhatsApp) e o
+  // campo já fica livre; se o servidor recusar, some e o texto volta.
   async function submitComment() {
     const text = commentText.trim();
-    if (!text || commentSubmitting) return;
-    setCommentSubmitting(true);
+    if (!text) return;
+    const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const optimistic = {
+      id: localId,
+      content: text,
+      createdAt: new Date().toISOString(),
+      user: { id: viewerId, name: viewerName ?? "Você", photoUrl: viewerPhotoUrl ?? null },
+    } as unknown as FeedComment;
+    setComments((prev) => [...prev, optimistic]);
+    setCommentsCount((c) => c + 1);
+    setCommentText("");
+    hapticComment();
     try {
       const newComment = await runWithAuth((token) => communityApi.addComment(token, post.id, text));
-      setComments((prev) => [...prev, newComment]);
-      setCommentsCount((c) => c + 1);
-      setCommentText("");
-      hapticComment();
+      setComments((prev) => prev.map((c) => (c.id === localId ? newComment : c)));
     } catch (error) {
       captureException(error, { screen: "CommunityScreen", action: "addComment" });
+      setComments((prev) => prev.filter((c) => c.id !== localId));
+      setCommentsCount((c) => Math.max(0, c - 1));
+      setCommentText((current) => current || text);
       showToast("Não foi possível enviar o comentário. Tente novamente.", "error");
-    } finally { setCommentSubmitting(false); }
+    }
   }
 
   function toggleCommentActions(commentId: string) {
+    // Comentário ainda sendo enviado (bolha local) não tem id no servidor.
+    if (commentId.startsWith("local-")) return;
     setActiveComment(prev => prev?.id === commentId ? null : { id: commentId, mode: "actions" });
   }
 
@@ -739,7 +777,7 @@ const FeedPostCard = React.memo(function FeedPostCard({
               {likesCount}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={toggleComments} activeOpacity={0.7} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+          <TouchableOpacity onPressIn={prefetchComments} onPress={toggleComments} activeOpacity={0.7} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
             <Ionicons name={commentsOpen ? "chatbubble" : "chatbubble-outline"} size={16} color={commentsOpen ? theme.primary : theme.text3} />
             <Text style={{ fontFamily: "DMSans_500Medium", fontSize: 12, color: commentsOpen ? theme.primary : theme.text3 }}>
               {commentsCount}
@@ -1131,12 +1169,20 @@ export function CommunityScreen({ navigation }: Props) {
     } else {
       setFollowingIds((prev) => new Set([...prev, targetId]));
     }
+    // Teste manual C11.1 (22/10/2026): seguir não atualizava o feed nem o
+    // ranking — precisava puxar a tela. Deixar de seguir tira os posts da
+    // pessoa na hora; seguir recarrega o feed em segundo plano.
+    if (wasFollowing) {
+      setFeedItems((prev) => prev.filter((p) => p.user?.id !== targetId));
+    }
     try {
       if (wasFollowing) {
         await runWithAuth((token) => communityApi.unfollow(token, targetId));
       } else {
         await runWithAuth((token) => communityApi.follow(token, targetId));
       }
+      void refreshFeedSilently();
+      void queryClient.invalidateQueries({ queryKey: ["community", "ranking"] });
     } catch (error) {
       captureException(error, { screen: "CommunityScreen", action: "followUnfollow" });
       if (wasFollowing) {
@@ -1254,7 +1300,13 @@ export function CommunityScreen({ navigation }: Props) {
         gamificationApi.getMyProfile(token),
         communityApi.getSuggestions(token, 10).catch(() => [] as CommunityUser[]),
         gamificationApi.getAchievements(token).catch(() => [] as BackendAchievement[]),
-        communityApi.getFollowing(token, 1, 200).catch(() => ({ items: [] as CommunityUser[], total: 0 })),
+        // Teste manual C11.1 (22/10/2026): pedia 200 com o servidor aceitando
+        // no máximo 50 — a chamada era recusada, o erro engolido e o app
+        // concluía "não segue ninguém" (perfil do amigo mostrava "Seguir").
+        communityApi.getFollowing(token, 1, 200).catch((error) => {
+          captureException(error, { screen: "CommunityScreen", action: "getFollowing" });
+          return { items: [] as CommunityUser[], total: 0 };
+        }),
         // Frente 4 (Criação/entrega/evolução do treino), Lote 5: "Meu progresso"
         // só contava sessões presenciais (bookings) — treinos de consultoria
         // online concluídos nunca entravam na meta semanal/mensal/anual.
@@ -1337,6 +1389,17 @@ export function CommunityScreen({ navigation }: Props) {
   }, [runWithAuth]);
 
   useEffect(() => { void loadFeed(); }, [loadFeed]);
+
+  const refreshFeedSilently = useCallback(async () => {
+    try {
+      const feedRes = await runWithAuth((token) => communityApi.getFeed(token, 1, 20));
+      setFeedItems(feedRes.items);
+      setFeedPage(1);
+      setFeedHasMore(feedRes.items.length === 20);
+    } catch (error) {
+      captureException(error, { screen: "CommunityScreen", action: "refreshFeedSilently" });
+    }
+  }, [runWithAuth]);
 
   // Pull-to-refresh: atualiza feed + dados principais silenciosamente
   const handleRefresh = useCallback(async () => {
@@ -1685,10 +1748,7 @@ export function CommunityScreen({ navigation }: Props) {
                 activeOpacity={0.75}
                 style={{ flex: 1, borderRadius: 20, padding: 12, backgroundColor: theme.cardBg, borderWidth: 1, borderColor: theme.primarySubtleBorder }}
               >
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text2 }}>Meta</Text>
-                  <Ionicons name="create-outline" size={13} color={theme.primary} />
-                </View>
+                <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text2 }}>Meta</Text>
                 <AnimatedNumber value={parseFloat(d.meta.split("/")[0] ?? d.meta)} duration={600} style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.05 * 22, marginTop: 5 }} suffix={d.meta.includes("/") ? `/${d.meta.split("/")[1]}` : ""} />
                 <Text style={{ fontSize: 10, color: theme.text3, marginTop: 2 }}>{d.metaLabel}</Text>
                 {/* Indicadores visuais: tiles (semanal), dots (mensal) ou barra (geral) */}
@@ -2419,19 +2479,21 @@ export function CommunityScreen({ navigation }: Props) {
             maxHeight: "85%",
           }}>
             <View style={{ width: 36, height: 4, borderRadius: 99, backgroundColor: theme.border, alignSelf: "center", marginTop: 12, marginBottom: 8 }} />
-            <View style={{ paddingHorizontal: 24, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            {/* Teste manual C11.1: título e abas na mesma linha não cabiam —
+                "Geral" ficava fora da tela. Abas agora vão embaixo do título. */}
+            <View style={{ paddingHorizontal: 24, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.border, gap: 10 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="trophy" size={18} color={C.amber} />
                 <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1, letterSpacing: -0.3 }}>Ranking dos Amigos</Text>
               </View>
-              <View style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: S.chipR, padding: 3, gap: 2 }}>
+              <View style={{ flexDirection: "row", backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)", borderRadius: S.chipR, padding: 3, gap: 2 }}>
                 {([["WEEKLY", "Semana"], ["MONTHLY", "Mês"], ["ALLTIME", "Geral"]] as [RankingPeriod, string][]).map(([key, label]) => {
                   const active = rankingPeriod === key;
                   return (
                     <TouchableOpacity
                       key={key}
                       onPress={() => setRankingPeriod(key)}
-                      style={{ paddingHorizontal: 10, height: 26, borderRadius: S.chipR, backgroundColor: active ? theme.primarySubtle : "transparent", borderWidth: active ? 1 : 0, borderColor: theme.primarySubtleBorder, justifyContent: "center" }}
+                      style={{ flex: 1, alignItems: "center", height: 30, borderRadius: S.chipR, backgroundColor: active ? theme.primarySubtle : "transparent", borderWidth: active ? 1 : 0, borderColor: theme.primarySubtleBorder, justifyContent: "center" }}
                     >
                       <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: active ? theme.primary : theme.text3 }}>{label}</Text>
                     </TouchableOpacity>

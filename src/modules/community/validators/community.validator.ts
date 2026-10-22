@@ -34,6 +34,17 @@ export const paginationSchema = z.object({
   query: z.object(pagination),
 });
 
+// Teste manual C11.1 (22/10/2026): o app pede a lista inteira de quem o
+// usuário segue (até 200) pra saber o estado do botão Seguir/Seguindo em
+// qualquer lugar da Comunidade. Com o teto de 50 a chamada era recusada e o
+// app achava que o usuário não seguia ninguém.
+export const followingListSchema = z.object({
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(200).default(20),
+  }),
+});
+
 export const searchUsersSchema = z.object({
   query: z.object({
     ...pagination,

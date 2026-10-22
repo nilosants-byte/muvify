@@ -10,6 +10,7 @@ import {
   commentIdParamSchema,
   createPhotoPostSchema,
   paginationSchema,
+  followingListSchema,
   postIdParamSchema,
   rankingQuerySchema,
   reportPostSchema,
@@ -26,7 +27,7 @@ communityRoutes.use(ensureAuthenticated);
 communityRoutes.post("/follow/:userId", socialInteractionRateLimiter, validate(userIdParamSchema), follow);
 communityRoutes.delete("/follow/:userId", socialInteractionRateLimiter, validate(userIdParamSchema), unfollow);
 communityRoutes.get("/followers", validate(paginationSchema), listFollowers);
-communityRoutes.get("/following", validate(paginationSchema), listFollowing);
+communityRoutes.get("/following", validate(followingListSchema), listFollowing);
 communityRoutes.get("/suggestions", validate(suggestionsQuerySchema), suggestions);
 communityRoutes.get("/users/search", validate(searchUsersSchema), search);
 communityRoutes.get("/users/:userId", validate(userIdParamSchema), publicProfile);

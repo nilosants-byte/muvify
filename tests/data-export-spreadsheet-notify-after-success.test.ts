@@ -23,7 +23,7 @@ vi.mock("../src/shared/services/storage.service", async (importOriginal) => {
   return { ...original, getPrivateObject: getPrivateObjectMock };
 });
 
-const { UserService } = await import("../src/modules/users/services/user.service");
+import { UserService } from "../src/modules/users/services/user.service";
 
 function uid(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;

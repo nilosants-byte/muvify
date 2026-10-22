@@ -49,6 +49,8 @@ describe("Frente 15, Lote 8 — excluir horário de disponibilidade expõe acces
       <AvailabilityManagerScreen navigation={navigation as any} route={{} as any} />
     );
 
-    await waitFor(() => expect(getByLabelText("Excluir horário 08:00 às 18:00")).toBeTruthy());
+    // Tela pesada: rodando junto com a bateria inteira (--runInBand), montar
+    // e carregar passava do 1s padrão do waitFor e o teste falhava à toa.
+    await waitFor(() => expect(getByLabelText("Excluir horário 08:00 às 18:00")).toBeTruthy(), { timeout: 15000 });
   });
 });
