@@ -39,6 +39,22 @@ function resolveTrustProxy(value: string) {
 export const app = express();
 app.set("trust proxy", resolveTrustProxy(env.TRUST_PROXY));
 app.disable("x-powered-by");
+
+// Teste manual C11.1 (22/10/2026): medição de latência. Cada resposta diz
+// quanto tempo o PRÓPRIO servidor gastou (cabeçalho padrão Server-Timing,
+// "app;dur=ms") — comparando com o tempo total medido no aparelho dá pra
+// separar rede de processamento. Não muda nada pro usuário.
+app.use((_request, response, next) => {
+  const startedAt = process.hrtime.bigint();
+  const writeHead = response.writeHead;
+  response.writeHead = function (this: typeof response, ...args: Parameters<typeof writeHead>) {
+    const ms = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    const previous = this.getHeader("Server-Timing");
+    this.setHeader("Server-Timing", `${previous ? `${previous}, ` : ""}app;dur=${ms.toFixed(1)}`);
+    return writeHead.apply(this, args);
+  } as typeof writeHead;
+  next();
+});
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -154,13 +170,17 @@ app.get("/health", async (_request, response) => {
     redis: env.AUTH_REQUIRE_REDIS_FOR_BLACKLIST
   };
 
+  const timings: string[] = [];
+  let t0 = process.hrtime.bigint();
   try {
     await prisma.$queryRaw`SELECT 1`;
     checks.database = "ok";
   } catch {
     checks.database = "error";
   }
+  timings.push(`db;dur=${(Number(process.hrtime.bigint() - t0) / 1e6).toFixed(1)}`);
 
+  t0 = process.hrtime.bigint();
   try {
     if (redis.status === "ready") {
       await redis.ping();
@@ -171,6 +191,8 @@ app.get("/health", async (_request, response) => {
   } catch {
     checks.redis = "error";
   }
+  timings.push(`redis;dur=${(Number(process.hrtime.bigint() - t0) / 1e6).toFixed(1)}`);
+  response.setHeader("Server-Timing", timings.join(", "));
 
   const readinessOk =
     checks.database === "ok" &&
