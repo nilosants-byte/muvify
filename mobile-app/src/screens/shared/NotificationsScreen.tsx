@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { FlatList, RefreshControl, StatusBar, View } from "react-native";
+import { Alert, FlatList, RefreshControl, StatusBar, View } from "react-native";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,6 +17,7 @@ import {
 } from "../../services/api/client";
 import { useAppState } from "../../state/AppState";
 import { queryKeys } from "../../lib/queryKeys";
+import { loadDismissedNotificationIds, saveDismissedNotificationIds } from "../../utils/notificationsReadState";
 import { handleScreenError } from "./api-helpers";
 import { formatCurrencyBRL } from "../../utils/formatters";
 import { MvButton } from "../../components/mv/MvButton";
@@ -390,7 +391,7 @@ function uniqueById(items: NotificationItem[]) {
 
 export function NotificationsScreen({ navigation }: { navigation?: any }) {
   const { theme } = useMvTheme();
-  const { runWithAuth, showToast, role } = useAppState();
+  const { runWithAuth, showToast, role, user } = useAppState();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   // Épico de Frentes, Frente 9, Lote 2: usa a chave canônica de
@@ -605,9 +606,18 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
     setHasMoreInbox(lastInboxRawLengthRef.current === INITIAL_INBOX_TAKE);
   }, [baseNotifications]);
 
+  // Avisos gerados pelo app (não vêm do servidor) que o usuário apagou.
+  const [locallyDismissed, setLocallyDismissed] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    void loadDismissedNotificationIds(user?.id).then(setLocallyDismissed).catch(() => {});
+  }, [user?.id]);
+
   const notifications = useMemo(
-    () => uniqueById([...baseNotifications, ...extraInboxItems]).sort((a, b) => b.createdAtMs - a.createdAtMs),
-    [baseNotifications, extraInboxItems]
+    () =>
+      uniqueById([...baseNotifications, ...extraInboxItems])
+        .filter((item) => item.source === "inbox" || !locallyDismissed.has(item.id))
+        .sort((a, b) => b.createdAtMs - a.createdAtMs),
+    [baseNotifications, extraInboxItems, locallyDismissed]
   );
 
   const loadMoreInbox = useCallback(async () => {
@@ -632,15 +642,36 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
     [notifications]
   );
 
-  const clearAll = useCallback(async () => {
-    try {
-      await runWithAuth((token) => notificationsApi.markAllRead(token));
-    } catch { /* best effort */ }
+  // Teste manual C13.1 (22/10/2026): a lixeira só marcava como lida — tudo
+  // voltava ao atualizar. Agora apaga no servidor (todo aparelho) e guarda
+  // os avisos gerados pelo próprio app (agendamento/mercado) como
+  // dispensados, pra também não voltarem.
+  const doClearAll = useCallback(async () => {
+    const localIds = notifications.filter((item) => item.source !== "inbox").map((item) => item.id);
     queryClient.setQueryData(notifQueryKey, []);
     setExtraInboxItems([]);
     setHasMoreInbox(false);
+    try {
+      const dismissed = await loadDismissedNotificationIds(user?.id);
+      localIds.forEach((id) => dismissed.add(id));
+      await saveDismissedNotificationIds(user?.id, dismissed);
+      setLocallyDismissed(dismissed);
+    } catch { /* best effort */ }
+    try {
+      await runWithAuth((token) => notificationsApi.dismissAll(token));
+    } catch {
+      showToast("Não foi possível apagar as notificações. Tente novamente.", "error");
+      void refetch();
+    }
     refreshHomeBadge();
-  }, [notifQueryKey, queryClient, runWithAuth, refreshHomeBadge]);
+  }, [notifications, notifQueryKey, queryClient, runWithAuth, refreshHomeBadge, user?.id, showToast, refetch]);
+
+  const clearAll = useCallback(() => {
+    Alert.alert("Apagar notificações?", "Todas as notificações serão apagadas e não voltarão a aparecer.", [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Apagar", style: "destructive", onPress: () => void doClearAll() }
+    ]);
+  }, [doClearAll]);
 
   const openBookingDetail = useCallback(
     (bookingId: string) => {

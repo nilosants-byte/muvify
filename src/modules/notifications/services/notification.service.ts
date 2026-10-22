@@ -99,7 +99,7 @@ export class NotificationService {
   // dos itens mais recentes até o limite. skip habilita "carregar mais".
   async listInbox(userId: string, take = 100, skip = 0) {
     return prisma.userNotification.findMany({
-      where: { userId },
+      where: { userId, dismissedAt: null },
       orderBy: { createdAt: "desc" },
       take: Math.min(Math.max(take, 1), 200),
       skip: Math.max(skip, 0),
@@ -111,6 +111,27 @@ export class NotificationService {
         readAt: true,
         createdAt: true
       }
+    });
+  }
+
+  // Apagar (esconder de vez, em todo aparelho). Também conta como lida.
+  async dismiss(userId: string, notificationId: string) {
+    const now = new Date();
+    await prisma.userNotification.updateMany({
+      where: { id: notificationId, userId, dismissedAt: null },
+      data: { dismissedAt: now, readAt: now }
+    });
+  }
+
+  async dismissAll(userId: string) {
+    const now = new Date();
+    await prisma.userNotification.updateMany({
+      where: { userId, dismissedAt: null },
+      data: { dismissedAt: now }
+    });
+    await prisma.userNotification.updateMany({
+      where: { userId, readAt: null },
+      data: { readAt: now }
     });
   }
 
@@ -149,7 +170,8 @@ export class NotificationService {
     return prisma.userNotification.count({
       where: {
         userId,
-        readAt: null
+        readAt: null,
+        dismissedAt: null
       }
     });
   }

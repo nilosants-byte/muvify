@@ -14,6 +14,16 @@ export class NotificationController {
     return response.json(items);
   }
 
+  async dismiss(request: Request, response: Response) {
+    await notificationService.dismiss(request.user!.id, request.params.id);
+    return response.status(StatusCodes.NO_CONTENT).send();
+  }
+
+  async dismissAll(request: Request, response: Response) {
+    await notificationService.dismissAll(request.user!.id);
+    return response.status(StatusCodes.NO_CONTENT).send();
+  }
+
   async markAllAsRead(request: Request, response: Response) {
     await notificationService.markAllAsRead(request.user!.id);
     return response.status(StatusCodes.NO_CONTENT).send();

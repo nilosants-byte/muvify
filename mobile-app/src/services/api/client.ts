@@ -3327,6 +3327,15 @@ export const notificationsApi = {
   unreadCount(token: string) {
     return apiRequest<{ unread: number }>("/notifications/inbox/unread-count", { token });
   },
+  // Teste manual C13.1 (22/10/2026): apagar de verdade (some em todo
+  // aparelho e não volta ao atualizar) — antes "apagar" só marcava como lida
+  // (central) ou escondia no próprio aparelho (sino).
+  dismiss(token: string, id: string) {
+    return apiRequest<void>(`/notifications/inbox/${id}`, { method: "DELETE", token });
+  },
+  dismissAll(token: string) {
+    return apiRequest<void>("/notifications/inbox", { method: "DELETE", token });
+  },
   markAllRead(token: string) {
     return apiRequest<void>("/notifications/inbox/read-all", {
       method: "PATCH",

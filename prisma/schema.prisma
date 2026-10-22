@@ -1096,6 +1096,11 @@ model UserNotification {
   body      String
   data      Json?
   readAt    DateTime?
+  // Teste manual C13.1 (22/10/2026): "apagar" notificação só marcava como
+  // lida (central) ou escondia no próprio aparelho (sino) — voltava ao
+  // atualizar/em outro aparelho. Apagar agora esconde de verdade, mas a
+  // linha fica (histórico/exportação de dados).
+  dismissedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)

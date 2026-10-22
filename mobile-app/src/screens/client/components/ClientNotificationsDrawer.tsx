@@ -230,8 +230,9 @@ export function ClientNotificationsDrawer({
       nextDismissed.add(id);
       const nextItems = notifications.filter((item) => item.id !== id);
       void persistDismissed(nextDismissed, nextItems);
+      void runWithAuth((token) => notificationsApi.dismiss(token, id)).catch(() => {});
     },
-    [dismissedIds, notifications, persistDismissed]
+    [dismissedIds, notifications, persistDismissed, runWithAuth]
   );
 
   const markAllRead = useCallback(() => {
@@ -246,7 +247,9 @@ export function ClientNotificationsDrawer({
     const nextDismissed = new Set(dismissedIds);
     notifications.forEach((item) => nextDismissed.add(item.id));
     void persistDismissed(nextDismissed, []);
-  }, [dismissedIds, notifications, persistDismissed]);
+    // Apaga no servidor também (antes só escondia neste aparelho).
+    void runWithAuth((token) => notificationsApi.dismissAll(token)).catch(() => {});
+  }, [dismissedIds, notifications, persistDismissed, runWithAuth]);
 
   const openNotificationTarget = useCallback(
     (item: DrawerNotification) => {

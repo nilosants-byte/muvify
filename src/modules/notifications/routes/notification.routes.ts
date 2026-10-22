@@ -19,6 +19,8 @@ notificationRoutes.get("/inbox", notificationController.listInbox);
 notificationRoutes.get("/inbox/unread-count", notificationController.unreadCount);
 notificationRoutes.patch("/inbox/read-all", notificationController.markAllAsRead);
 notificationRoutes.patch("/inbox/:id/read", validate(notificationIdParamSchema), notificationController.markAsRead);
+notificationRoutes.delete("/inbox", notificationController.dismissAll);
+notificationRoutes.delete("/inbox/:id", validate(notificationIdParamSchema), notificationController.dismiss);
 notificationRoutes.get("/devices", notificationController.listDevices);
 notificationRoutes.post(
   "/devices",

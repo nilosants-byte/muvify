@@ -230,7 +230,9 @@ export function ProfessionalNotificationsDrawer({
     const nextDismissed = new Set(dismissedIds);
     notifications.forEach((item) => nextDismissed.add(item.id));
     void persistDismissed(nextDismissed, []);
-  }, [dismissedIds, notifications, persistDismissed]);
+    // Apaga no servidor também (antes só escondia neste aparelho).
+    void runWithAuth((token) => notificationsApi.dismissAll(token)).catch(() => {});
+  }, [dismissedIds, notifications, persistDismissed, runWithAuth]);
 
   const openNotificationTarget = useCallback(
     (item: DrawerNotification) => {
