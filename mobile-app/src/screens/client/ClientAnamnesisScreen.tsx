@@ -901,8 +901,8 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
                   setAnswers((current) => ({ ...current, responsibilityTermAccepted: value }));
                 }}
               />
-              <MvText variant="body4" style={{ fontSize: 12, color: theme.danger, marginTop: 4 }}>
-                O botão confirmar valida termo + campos obrigatórios de todas as etapas.
+              <MvText variant="body4" style={{ fontSize: 12, color: theme.text3, marginTop: 4 }}>
+                Para confirmar, aceite o termo e responda todas as perguntas obrigatórias das etapas anteriores.
               </MvText>
             </MvCard>
           </View>
