@@ -28,6 +28,15 @@ function buildDatabaseUrl(): string {
       // automática de que o plano de hosting real suporta esse total. Ao
       // introduzir múltiplas réplicas, revisar este número (e o
       // max_connections do Postgres) antes, não depois.
+      // Medição de 22/10/2026 (teste manual C11.1): no pooler do Supabase
+      // em modo TRANSAÇÃO (porta 6543 + pgbouncer=true) o Prisma não
+      // reaproveita prepared statements e cada consulta custa ~5 idas e
+      // voltas (SELECT 1 = ~880ms no Render, longe do banco). Em modo
+      // SESSÃO (porta 5432, sem pgbouncer=true) é 1 ida e volta (~5x mais
+      // rápido). Sessão segura uma vaga do pooler por conexão aberta: com
+      // UM servidor sempre ligado está ótimo; ao escalar pra várias réplicas,
+      // somar connection_limit × réplicas e conferir o pool_size do Supabase
+      // antes (ou voltar ao modo transação pra parte do tráfego).
       const fallback = process.env.NODE_ENV === "test" ? "12" : "20";
       url.searchParams.set("connection_limit", fallback);
     }
