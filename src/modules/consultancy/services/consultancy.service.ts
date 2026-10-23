@@ -72,6 +72,7 @@ const EXTERNAL_CHECK_IN_REMINDER_THROTTLE_MS = 24 * 60 * 60 * 1000;
 // Frente 5 Lote 1, mas que passou batida aqui.
 const CLIENT_SAFE_CONTRACT_SELECT = {
   id: true,
+  origin: true,
   requestId: true,
   providerId: true,
   clientId: true,
@@ -207,6 +208,19 @@ const SUBSCRIPTION_REQUIRED_MESSAGE =
 // confundem fácil quando lidos numa tela pequena ou ditados por telefone.
 const EXTERNAL_STUDENT_INVITE_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const EXTERNAL_STUDENT_INVITE_CODE_LENGTH = 6;
+
+// Decisão do Danilo (teste manual C13.6, 22/10/2026): ficha de consultoria
+// encerrada (cancelada pelo aluno, troca de personal, fim sem renovação)
+// continua USÁVEL até o fim da vigência já paga — mas não se o aluno
+// recebeu o dinheiro de volta (reembolso), nem em contrato expirado sem
+// entrega/arquivado. Antes a tela mostrava a ficha como usável e o
+// servidor recusava registrar o treino só no final.
+function contractKeepsFichaAccess(contract: { status: ConsultancyContractStatus; refundedAt?: Date | null }) {
+  if (contract.status === ConsultancyContractStatus.ACTIVE || contract.status === ConsultancyContractStatus.DELIVERED) {
+    return true;
+  }
+  return contract.status === ConsultancyContractStatus.CANCELLED && !contract.refundedAt;
+}
 
 function generateExternalStudentInviteCode() {
   let code = "";
@@ -4091,7 +4105,7 @@ export class ConsultancyService {
       trainingPlans: contract.trainingPlans.map((plan) => {
         const effectiveValidUntil =
           plan.validUntil ?? consultancyValidUntil(contract);
-        const isVigente = effectiveValidUntil >= now;
+        const isVigente = effectiveValidUntil >= now && contractKeepsFichaAccess(contract);
         return {
           ...plan,
           validUntil: effectiveValidUntil,
@@ -4128,6 +4142,9 @@ export class ConsultancyService {
           contractId: contract.id,
           // Teste manual C11.2: botão "Ver perfil" no card do personal.
           providerId: contract.providerId,
+          // Teste manual C13.6: vínculo por convite (EXTERNAL) não tem prazo
+          // de entrega — o card mostra "aguardando a primeira ficha".
+          origin: contract.origin,
           providerName: contract.provider.displayName,
           deliveryDeadlineAt: contract.deliveryDeadlineAt,
           status: contract.status,
@@ -4160,7 +4177,8 @@ export class ConsultancyService {
             status: true,
             paymentCapturedAt: true,
             createdAt: true,
-            billingCycle: true
+            billingCycle: true,
+            refundedAt: true
           }
         },
         provider: {
@@ -4189,10 +4207,7 @@ export class ConsultancyService {
       // Frente 4 (Criação/entrega/evolução do treino), Lote 3: getMyTraining
       // agora mantém fichas de contratos cancelados/expirados visíveis
       // (histórico), mas nenhuma ação nova é permitida sobre elas.
-      if (
-        trainingPlan.contract.status !== ConsultancyContractStatus.ACTIVE &&
-        trainingPlan.contract.status !== ConsultancyContractStatus.DELIVERED
-      ) {
+      if (!contractKeepsFichaAccess(trainingPlan.contract)) {
         throw new AppError(
           "Este contrato não está mais ativo — não é possível registrar novos treinos.",
           StatusCodes.BAD_REQUEST

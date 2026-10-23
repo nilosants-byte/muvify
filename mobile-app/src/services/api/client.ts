@@ -513,6 +513,7 @@ export type MyTrainingResponse = {
   waitingDelivery: Array<{
     contractId: string;
     providerId?: string;
+    origin?: "MARKETPLACE" | "EXTERNAL";
     providerName: string;
     deliveryDeadlineAt: string;
     status: "PENDING_PAYMENT" | "ACTIVE" | "DELIVERED" | "CANCELLED" | "REFUNDED_EXPIRED" | "ARCHIVED";

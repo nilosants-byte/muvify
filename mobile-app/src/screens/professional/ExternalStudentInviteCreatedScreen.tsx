@@ -61,7 +61,7 @@ export function ExternalStudentInviteCreatedScreen({ navigation, route }: Props)
         </View>
         <MvText variant="display" style={{ textAlign: "center" }}>Convite criado!</MvText>
         <MvText variant="body3" color="secondary" style={{ textAlign: "center", lineHeight: 20, maxWidth: 280 }}>
-          Envie o link pra {studentName}. Assim que ela confirmar, a ficha de treino já fica liberada pra você entregar.
+          Envie o link pra {studentName}. Assim que o convite for confirmado, você já pode montar e entregar a ficha de treino.
         </MvText>
 
         <View

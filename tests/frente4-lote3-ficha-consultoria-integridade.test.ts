@@ -173,7 +173,26 @@ describe("Frente 4, Lote 3 — integridade da ficha de consultoria", () => {
     return contract;
   }
 
-  it("contrato cancelado mantém as fichas visíveis (histórico), mas bloqueia nova conclusão", async () => {
+  // Decisão do Danilo (teste manual C13.6, 22/10/2026): ficha de contrato
+  // encerrado continua usável até o fim da vigência já paga — só bloqueia
+  // se o aluno recebeu reembolso. (Antes bloqueava sempre, enquanto a tela
+  // mostrava a ficha como usável.)
+  it("contrato cancelado sem reembolso: ficha continua usável até o fim da vigência paga", async () => {
+    const offer = await makeOffer();
+    const contract = await makeContract(offer.id);
+    const { plan } = await consultancyService.deliverContract(providerUserId, contract.id, {
+      title: "Ficha Encerrada Paga",
+      exercises: []
+    });
+    await prisma.consultancyContract.update({ where: { id: contract.id }, data: { status: ConsultancyContractStatus.CANCELLED } });
+
+    const myTraining = await consultancyService.getMyTraining(clientId);
+    const found = myTraining.contracts.find((c: any) => c.id === contract.id)!;
+    expect(found.trainingPlans.find((p: any) => p.id === plan.id)!.isVigente).toBe(true);
+    await expect(consultancyService.completeTrainingPlan(clientId, plan.id)).resolves.toBeTruthy();
+  });
+
+  it("contrato cancelado COM reembolso mantém as fichas visíveis (histórico), mas bloqueia nova conclusão", async () => {
     const offer = await makeOffer();
     const contract = await makeContract(offer.id);
     const { plan } = await consultancyService.deliverContract(providerUserId, contract.id, {
@@ -183,13 +202,14 @@ describe("Frente 4, Lote 3 — integridade da ficha de consultoria", () => {
 
     await prisma.consultancyContract.update({
       where: { id: contract.id },
-      data: { status: ConsultancyContractStatus.CANCELLED }
+      data: { status: ConsultancyContractStatus.CANCELLED, refundedAt: new Date() }
     });
 
     const myTraining = await consultancyService.getMyTraining(clientId);
     const foundContract = myTraining.contracts.find((c: any) => c.id === contract.id);
     expect(foundContract).toBeTruthy();
     expect(foundContract!.trainingPlans.some((p: any) => p.id === plan.id)).toBe(true);
+    expect(foundContract!.trainingPlans.find((p: any) => p.id === plan.id)!.isVigente).toBe(false);
 
     await expect(consultancyService.completeTrainingPlan(clientId, plan.id)).rejects.toThrow(/não está mais ativo/i);
   });

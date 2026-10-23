@@ -1042,7 +1042,17 @@ export function MyTrainingScreen({ navigation, route }: Props) {
             ? hasExercises ? `${item.exercises!.length} exercício${item.exercises!.length !== 1 ? "s" : ""}` : "Sem exercícios cadastrados"
             : "Sem acesso — vigência encerrada"}
         </Text>
-        {validUntilLabel ? (
+        {/* Decisão do Danilo (teste manual C13.6, 22/10/2026): ficha de
+            consultoria encerrada continua usável até o fim da vigência já
+            paga — mas precisa ficar claro que o vínculo acabou. */}
+        {isVigente && item.contractStatus !== "ACTIVE" && item.contractStatus !== "DELIVERED" ? (
+          <View style={{ alignSelf: "flex-start", marginTop: 8, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.amberDim, borderWidth: 1, borderColor: C.amberBorder, borderRadius: S.chipR, paddingHorizontal: 10, paddingVertical: 4 }}>
+            <Ionicons name="time-outline" size={12} color={C.amber} />
+            <Text style={{ fontFamily: "DMSans_700Bold", fontSize: 11, color: C.amber }}>
+              {validUntilLabel ? `Consultoria encerrada · disponível até ${validUntilLabel}` : "Consultoria encerrada"}
+            </Text>
+          </View>
+        ) : validUntilLabel ? (
           <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 11, color: theme.text3, marginTop: 2 }}>
             {isVigente ? `Válido até ${validUntilLabel}` : `Venceu em ${validUntilLabel}`}
           </Text>
@@ -1267,6 +1277,11 @@ export function MyTrainingScreen({ navigation, route }: Props) {
                             </View>
                           ) : null}
                         </>
+                      ) : item.origin === "EXTERNAL" ? (
+                        // Teste manual C13.6: vínculo por convite não tem
+                        // prazo de entrega (o contrato nasce com prazo =
+                        // agora) — "Entrega até [hoje]" parecia atraso.
+                        <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>Aguardando {item.providerName} enviar sua primeira ficha.</Text>
                       ) : (
                         <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 12, color: theme.text2 }}>Entrega até {formatDateLabel(item.deliveryDeadlineAt)}</Text>
                       )}

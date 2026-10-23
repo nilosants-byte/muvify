@@ -69,7 +69,10 @@ export function ClaimInviteScreen({ navigation, route }: Props) {
     {
       onSuccess: async () => {
         hapticCta();
-        showToast("Vínculo confirmado! Sua ficha de treino já aparece em Meu Treino.", "success");
+        // Teste manual C13.6 (22/10/2026): aceitar o convite só cria o
+        // vínculo — a ficha vem depois, quando o personal envia. A mensagem
+        // antiga ("já aparece em Meu Treino") nunca era verdade nesse momento.
+        showToast(`Vínculo confirmado! Assim que ${preview?.provider.displayName ?? "seu personal"} enviar sua ficha, ela aparece em Treinos.`, "success");
         // Realinhamento com o Will (2026-08-25, Bloco 2): aceitar o convite
         // agora pode trocar de profissional — precisa atualizar o resumo de
         // vínculo ativo pra Home/navegação refletirem o profissional novo.
@@ -208,7 +211,7 @@ export function ClaimInviteScreen({ navigation, route }: Props) {
             </MvText>
             {!isAuthenticated ? (
               <MvText variant="body3" color="secondary" style={{ textAlign: "center", lineHeight: 20 }}>
-                Sua ficha de treino já fica liberada assim que você confirmar.
+                Depois que você confirmar, {preview.provider.displayName} poderá montar e enviar sua ficha de treino por aqui.
               </MvText>
             ) : null}
 
