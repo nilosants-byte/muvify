@@ -356,7 +356,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
   if (loading && !cachedProfile) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 12 }}>
           <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.backBtn, borderWidth: 1, borderColor: theme.border }} />
           <View style={{ flex: 1 }}>
@@ -374,7 +374,7 @@ export function ProfessionalProfileEditorScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? undefined : "height"}>
 
       {/* Header */}

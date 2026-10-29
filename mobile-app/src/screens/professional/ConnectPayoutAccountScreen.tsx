@@ -68,7 +68,7 @@ export function ConnectPayoutAccountScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       <ProfessionalScreenHeader title="Pagamentos" onBack={() => navigation.goBack()} />
 

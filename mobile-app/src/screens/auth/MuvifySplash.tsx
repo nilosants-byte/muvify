@@ -60,7 +60,7 @@ export default function MuvifySplash({ colorScheme = "dark", onFinish }: Props) 
 
   return (
     <View style={[styles.container, { backgroundColor: bg }]}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={bg} />
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
 
       <Animated.View
         style={[styles.logoGroup, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}

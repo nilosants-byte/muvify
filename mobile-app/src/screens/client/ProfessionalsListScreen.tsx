@@ -156,7 +156,7 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.professionals-list">
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       {/* Header V2 */}
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
         <TouchableOpacity
@@ -330,14 +330,14 @@ export function ProfessionalsListScreen({ navigation, route }: Props) {
                   : "Nenhum profissional encontrado."
               }
             />
-          ) : null
+          ) : undefined
         }
         ListFooterComponent={
           loadingMore
             ? <MvText variant="caption" color="tertiary" style={{ textAlign: "center", paddingVertical: 12 }}>Carregando mais...</MvText>
             : !hasMore && items.length > 0
             ? <MvText variant="caption" color="tertiary" style={{ textAlign: "center", paddingVertical: 16 }}>Você viu todos os profissionais disponíveis.</MvText>
-            : null
+            : undefined
         }
         showsVerticalScrollIndicator={false}
       />

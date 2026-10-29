@@ -115,7 +115,7 @@ export function ProviderServicesUpgradeScreen({ navigation, route }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.provider-services-upgrade">
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 20, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 12 }}>
         <PressableScale
           onPress={() => navigation.goBack()}

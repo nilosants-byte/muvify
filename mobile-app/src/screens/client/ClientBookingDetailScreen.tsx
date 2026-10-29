@@ -713,7 +713,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
           <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border }} />
           <View style={{ flex: 1, gap: 6 }}>
@@ -728,7 +728,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   if (!booking) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 14, color: theme.text2 }}>Agendamento não encontrado.</Text>
       </View>
     );
@@ -738,7 +738,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   if (stage === "started") {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         {/* Header */}
         <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
           <TouchableOpacity onPress={confirmExitStartedStage} accessibilityRole="button" accessibilityLabel="Voltar" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
@@ -787,7 +787,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
   if (stage === "post") {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
           <TouchableOpacity
             disabled={submitting}
@@ -911,7 +911,7 @@ export function ClientBookingDetailScreen({ route, navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.booking-detail">
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       {/* Header */}
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>

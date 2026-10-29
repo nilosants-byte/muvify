@@ -330,7 +330,7 @@ export function AvailabilityManagerScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <ProfessionalScreenHeader title="Horários e Locais" onBack={() => navigation.goBack()} />
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>

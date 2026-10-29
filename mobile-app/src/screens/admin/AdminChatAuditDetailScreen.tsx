@@ -205,7 +205,7 @@ export function AdminChatAuditDetailScreen({ navigation, route }: Props) {
                 Nenhuma mensagem encontrada para este chat.
               </MvText>
             </MvCard>
-          ) : null
+          ) : undefined
         }
       />
     </AdminScaffold>

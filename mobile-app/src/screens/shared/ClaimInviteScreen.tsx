@@ -115,7 +115,7 @@ export function ClaimInviteScreen({ navigation, route }: Props) {
       style={{ flex: 1, backgroundColor: theme.bg }}
       testID="screen.shared.claim-invite"
     >
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       <View
         style={{

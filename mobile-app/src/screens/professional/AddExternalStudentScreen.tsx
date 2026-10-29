@@ -65,7 +65,7 @@ export function AddExternalStudentScreen({ navigation }: Props) {
       style={{ flex: 1, backgroundColor: theme.bg }}
       testID="screen.professional.add-external-student"
     >
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <ProfessionalScreenHeader
         title="Adicionar aluno"
         subtitle="Já é seu aluno fora do Muvify? Cadastre aqui."

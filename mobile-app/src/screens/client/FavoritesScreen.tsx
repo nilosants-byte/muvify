@@ -80,7 +80,7 @@ export function FavoritesScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       {/* Header V2 */}
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
         <TouchableOpacity
@@ -157,7 +157,7 @@ export function FavoritesScreen({ navigation }: Props) {
               style={{ paddingTop: 60 }}
               description={"Você ainda não favoritou nenhum profissional.\nExplore o mapa para encontrar um!"}
             />
-          ) : null
+          ) : undefined
         }
         showsVerticalScrollIndicator={false}
       />

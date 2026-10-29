@@ -7,15 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/splash/splash-light.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FAFCFA",
-      "dark": {
-        "image": "./assets/splash/splash-dark.png",
-        "backgroundColor": "#080C09"
-      }
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.muvify.app",
@@ -87,7 +78,18 @@
       "@react-native-community/datetimepicker",
       "expo-image",
       "expo-sharing",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash/splash-light.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#FAFCFA",
+          "dark": {
+            "image": "./assets/splash/splash-dark.png",
+            "backgroundColor": "#080C09"
+          }
+        }
+      ],
       "expo-status-bar"
     ],
     "owner": "dancsan",

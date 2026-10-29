@@ -414,7 +414,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   if (setupQuery.isLoading) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 14, color: theme.text2 }}>Preparando compra...</Text>
       </View>
     );
@@ -423,7 +423,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
   if (pixPending && purchasedPackage) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
           <Text style={{ fontFamily: DISPLAY, fontWeight: "800", fontSize: 22, color: theme.text1 }}>Pague o Pix para ativar</Text>
         </View>
@@ -457,7 +457,7 @@ export function BuyPresentialPackageScreen({ navigation, route }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}

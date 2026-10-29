@@ -96,7 +96,7 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
   if (detailQuery.isLoading || !pkg) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 14, color: theme.text2 }}>Carregando pacote...</Text>
       </View>
     );
@@ -111,7 +111,7 @@ export function PresentialPackageDetailScreen({ navigation, route }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}

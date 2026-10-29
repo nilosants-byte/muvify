@@ -619,7 +619,7 @@ export function ProfessionalHomeScreen({ navigation }: Props) {
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <View style={{ flex: 1, backgroundColor: bg }} testID="screen.professional.home">
-      <StatusBar barStyle={isLight ? "dark-content" : "light-content"} backgroundColor={bg} />
+      <StatusBar barStyle={isLight ? "dark-content" : "light-content"} />
 
       {/* ── HEADER ── */}
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 10 }}>

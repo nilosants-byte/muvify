@@ -759,7 +759,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       {/* Header */}
       <View style={{
@@ -1074,7 +1074,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
               <Ionicons name="notifications-off-outline" size={38} color={theme.text3} />
               <MvText variant="body4" color="tertiary">Nenhuma notificação encontrada.</MvText>
             </View>
-          ) : null
+          ) : undefined
         }
         // Épico de Frentes, Frente 9, Lote 19: scroll infinito - chegar
         // perto do fim da lista carrega mais itens de inbox (skip real),
@@ -1090,7 +1090,7 @@ export function NotificationsScreen({ navigation }: { navigation?: any }) {
             <View style={{ paddingVertical: 20, alignItems: "center" }}>
               <MvText variant="body4" color="tertiary">Carregando mais...</MvText>
             </View>
-          ) : null
+          ) : undefined
         }
       />
 

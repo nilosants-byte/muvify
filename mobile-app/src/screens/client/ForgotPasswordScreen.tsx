@@ -44,7 +44,7 @@ export function ForgotPasswordScreen({ navigation }: Props) {
       style={{ flex: 1, backgroundColor: theme.bg }}
       testID="screen.auth.forgot-password"
     >
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       {/* Header */}
       <View style={{

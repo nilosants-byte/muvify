@@ -273,7 +273,7 @@ export function ProfessionalSettingsScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: bg }} testID="screen.professional.settings">
-      <StatusBar barStyle={isLight ? "dark-content" : "light-content"} backgroundColor={bg} />
+      <StatusBar barStyle={isLight ? "dark-content" : "light-content"} />
 
       <ProfessionalScreenHeader title="Mais" onBack={() => navigation.goBack()} />
 

@@ -23,7 +23,7 @@ export function OfflineRequiredScreen({ onRetry }: OfflineRequiredScreenProps) {
       paddingBottom: Math.max(insets.bottom + 16, 24),
       gap: 14,
     }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       <View style={{
         width: 80, height: 80, borderRadius: 22,

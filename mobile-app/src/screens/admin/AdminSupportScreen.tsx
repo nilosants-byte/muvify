@@ -284,7 +284,7 @@ export function AdminSupportScreen({ navigation }: Props) {
             <MvCard>
               <MvText variant="body3">Nenhum chamado encontrado nessa fila.</MvText>
             </MvCard>
-          ) : null
+          ) : undefined
         }
         ListFooterComponent={
           hasMore ? (
@@ -294,7 +294,7 @@ export function AdminSupportScreen({ navigation }: Props) {
               loading={loadingMore}
               onPress={() => void loadMore()}
             />
-          ) : null
+          ) : undefined
         }
       />
     </AdminScaffold>

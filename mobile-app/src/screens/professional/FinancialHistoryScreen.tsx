@@ -547,7 +547,7 @@ export function FinancialHistoryScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       <ProfessionalScreenHeader
         title="Extrato"
         onBack={() => navigation.goBack()}

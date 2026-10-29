@@ -16,6 +16,7 @@ import {
   StatusBar,
   Text,
   TextInput,
+  TextInputInstance,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -1117,7 +1118,7 @@ export function CommunityScreen({ navigation }: Props) {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Previne chamadas duplicadas de follow/unfollow enquanto uma está em andamento
   const followInFlightRef = useRef<Set<string>>(new Set());
-  const searchInputRef = useRef<TextInput>(null);
+  const searchInputRef = useRef<TextInputInstance>(null);
 
   // Perfil público de usuário
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
@@ -1609,7 +1610,7 @@ export function CommunityScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.community">
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       {/* Header V2 */}
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: theme.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -1680,7 +1681,7 @@ export function CommunityScreen({ navigation }: Props) {
             <View style={{ paddingHorizontal: S.px, paddingVertical: 20, alignItems: "center" }}>
               <ActivityIndicator size="small" color={theme.primary} />
             </View>
-          ) : null
+          ) : undefined
         }
         ListEmptyComponent={
           <View style={{ paddingHorizontal: S.px }}>

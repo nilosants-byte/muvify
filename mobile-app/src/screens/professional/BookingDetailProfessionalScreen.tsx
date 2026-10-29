@@ -346,7 +346,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <ProfessionalScreenHeader title="Detalhe do atendimento" onBack={() => navigation.goBack()} />
         <SkeletonBookingDetail />
       </View>
@@ -356,7 +356,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   if (!booking) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <MvText variant="body3" color="secondary">Agendamento não encontrado.</MvText>
         <MvButton variant="outline" label="Voltar" style={{ marginTop: 16 }} onPress={() => navigation.goBack()} />
       </View>
@@ -370,7 +370,7 @@ export function BookingDetailProfessionalScreen({ route, navigation }: Props) {
   return (
     <>
       <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.booking-detail">
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <ProfessionalScreenHeader title="Detalhe do atendimento" onBack={() => navigation.goBack()} />
 
         <ScreenEntrance>

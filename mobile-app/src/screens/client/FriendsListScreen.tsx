@@ -273,7 +273,7 @@ export function FriendsListScreen({ navigation }: Props) {
                   </Text>
                 )}
               </TouchableOpacity>
-            ) : null
+            ) : undefined
           }
         />
       )}

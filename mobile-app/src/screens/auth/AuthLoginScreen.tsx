@@ -97,7 +97,7 @@ export function AuthLoginScreen({ navigation }: Props) {
       style={{ flex: 1, backgroundColor: theme.bg }}
       testID="screen.auth.login"
     >
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <ScrollView
         automaticallyAdjustKeyboardInsets
         contentContainerStyle={{

@@ -85,7 +85,7 @@ export function AuthProfileSelectionScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1 }}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} translucent backgroundColor="transparent" />
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
 
       {/* Botão voltar sobreposto */}
       <Pressable

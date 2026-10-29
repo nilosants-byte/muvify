@@ -285,7 +285,7 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, height: 70, borderBottomWidth: 1, borderBottomColor: theme.border }} />
         <View style={{ paddingHorizontal: S.px, paddingTop: 16, gap: 12 }}>
           <SkeletonCard />
@@ -299,7 +299,7 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
   if (!provider) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <Text style={{ fontFamily: "DMSans_400Regular", fontSize: 14, color: theme.text2 }}>Profissional não encontrado.</Text>
       </View>
     );
@@ -311,7 +311,7 @@ export function ProfessionalDetailScreen({ route, navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       {/* Header V2 — sticky */}
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: S.px, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>

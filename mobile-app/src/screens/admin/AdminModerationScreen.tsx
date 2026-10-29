@@ -248,7 +248,7 @@ export function AdminModerationScreen({ navigation }: Props) {
                 {status === "PENDING" ? "Nenhuma denúncia pendente." : "Nenhuma denúncia já tratada ainda."}
               </MvText>
             </MvCard>
-          ) : null
+          ) : undefined
         }
         ListFooterComponent={
           page > 0 || hasMore ? (
@@ -266,7 +266,7 @@ export function AdminModerationScreen({ navigation }: Props) {
                 onPress={() => setPage((p) => p + 1)}
               />
             </View>
-          ) : null
+          ) : undefined
         }
       />
     </AdminScaffold>

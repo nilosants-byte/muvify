@@ -65,7 +65,7 @@ export function ConnectedDevicesScreen({ navigation }: { navigation?: any }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <ProfessionalScreenHeader title="Aparelhos conectados" onBack={navigation?.canGoBack?.() ? () => navigation.goBack() : undefined} />
 
       <ScreenEntrance>
@@ -86,7 +86,7 @@ export function ConnectedDevicesScreen({ navigation }: { navigation?: any }) {
               <MvText variant="body3" color="secondary" style={{ textAlign: "center", marginTop: 24 }}>
                 Carregando...
               </MvText>
-            ) : null
+            ) : undefined
           }
           renderItem={({ item }) => (
             <MvCard>

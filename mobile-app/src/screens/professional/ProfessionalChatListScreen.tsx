@@ -496,7 +496,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
   if (selectedId && selectedChat) {
     return (
       <View style={{ flex: 1, backgroundColor: bg }} testID="screen.professional.chat.detail">
-        <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={bg} />
+        <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
 
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -675,7 +675,7 @@ export function ProfessionalChatListScreen({ navigation, route }: Props) {
   // ── CHAT LIST VIEW (full screen) ─────────────────────────────────────────────
   return (
     <View style={{ flex: 1, backgroundColor: bg }} testID="screen.professional.chat">
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={bg} />
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
 
       {/* Header */}
       <View style={{

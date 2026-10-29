@@ -169,7 +169,7 @@ export function AdminWaitlistScreen({ navigation }: Props) {
             <MvCard>
               <MvText variant="body3">Nenhum cadastro encontrado para este filtro.</MvText>
             </MvCard>
-          ) : null
+          ) : undefined
         }
         ListFooterComponent={
           page > 0 || hasMore ? (
@@ -187,7 +187,7 @@ export function AdminWaitlistScreen({ navigation }: Props) {
                 onPress={() => setPage((p) => p + 1)}
               />
             </View>
-          ) : null
+          ) : undefined
         }
       />
     </AdminScaffold>

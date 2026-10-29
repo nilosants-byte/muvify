@@ -412,7 +412,7 @@ export function PayoutStatusScreen({ navigation, route }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.finance">
-      <StatusBar barStyle={isLight ? "dark-content" : "light-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={isLight ? "dark-content" : "light-content"} />
 
       <ProfessionalScreenHeader
         title="Financeiro"

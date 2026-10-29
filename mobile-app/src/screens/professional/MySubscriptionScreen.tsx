@@ -155,7 +155,7 @@ export function MySubscriptionScreen({ navigation }: Props) {
   if (subscriptionQuery.isLoading && !sub) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.my-subscription">
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.headerBg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <ProfessionalScreenHeader title="Minha assinatura" onBack={() => navigation.goBack()} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator color={theme.primary} />
@@ -166,7 +166,7 @@ export function MySubscriptionScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.my-subscription">
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.headerBg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <ProfessionalScreenHeader title="Minha assinatura" onBack={() => navigation.goBack()} />
 
       <ScrollView contentContainerStyle={{ padding: 20, gap: 14, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>

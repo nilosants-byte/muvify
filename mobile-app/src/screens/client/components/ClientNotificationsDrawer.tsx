@@ -7,7 +7,7 @@ import {
   Text,
   TouchableOpacity,
   View,
-  ViewToken,
+  ListViewToken,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
@@ -211,7 +211,7 @@ export function ClientNotificationsDrawer({
   useEffect(() => { markVisibleAsReadRef.current = markIdsAsRead; }, [markIdsAsRead]);
 
   const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    ({ viewableItems }: { viewableItems: ListViewToken[] }) => {
       const ids = viewableItems
         .map((item) => String(item.item?.id ?? ""))
         .filter((id) => id.length > 0);

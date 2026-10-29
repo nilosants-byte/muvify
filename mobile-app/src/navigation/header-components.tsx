@@ -34,7 +34,7 @@ export function HeaderBackButton({ canGoBack }: NativeStackHeaderLeftProps) {
       accessibilityRole="button"
       hitSlop={8}
       onPress={() => navigation.goBack()}
-      style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.button, pressed ? styles.pressed : undefined]}
     >
       <MaterialIcons
         accessibilityElementsHidden

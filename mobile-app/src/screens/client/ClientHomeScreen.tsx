@@ -1088,7 +1088,6 @@ export function ClientHomeScreen({ navigation }: Props) {
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.client.home">
       <StatusBar
         barStyle={theme.mode === "dark" ? "light-content" : "dark-content"}
-        backgroundColor={theme.bg}
       />
 
       {/* Header — 3 colunas: avatar | logo centralizada | ícones */}

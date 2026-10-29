@@ -2,6 +2,7 @@ import React, { forwardRef, useState } from "react";
 import {
   StyleProp,
   TextInput,
+  TextInputInstance,
   TextInputProps,
   TouchableOpacity,
   View,
@@ -18,7 +19,7 @@ interface MvInputProps extends Omit<TextInputProps, "style"> {
   secureTextEntry?: boolean;
 }
 
-export const MvInput = forwardRef<TextInput, MvInputProps>(
+export const MvInput = forwardRef<TextInputInstance, MvInputProps>(
   function MvInput({ label, style, secureTextEntry, ...rest }, ref) {
     const { theme } = useMvTheme();
     const [focused, setFocused] = useState(false);

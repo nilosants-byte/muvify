@@ -414,7 +414,7 @@ export function FinancialStudentsScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       <ProfessionalScreenHeader
         title="Cobranças"
         onBack={() => navigation.goBack()}

@@ -6,7 +6,10 @@ module.exports = {
   // initializers reais, que tentam carregar o módulo nativo de worklets sob
   // Jest. O resolver oficial do worklets evita resolver os arquivos *.native.ts
   // nesse caminho, sem precisar mockar módulo por módulo.
-  resolver: "react-native-worklets/jest/resolver.js",
+  // SDK 58 (reanimated 4.7): o mock passou a importar os initializers do
+  // próprio reanimated, então o resolver do reanimated (que já embute o do
+  // worklets) é necessário para cobrir os dois pacotes.
+  resolver: "react-native-reanimated/jest/resolver.js",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
   testMatch: ["**/?(*.)+(spec|test).[tj]s?(x)"],
   testPathIgnorePatterns: ["/node_modules/", "/android/", "/ios/"],

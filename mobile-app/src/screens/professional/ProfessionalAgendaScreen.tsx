@@ -609,7 +609,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
         keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 10 : 0}
       >
         <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.agenda">
-          <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+          <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
         {/* Header */}
         <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -1138,7 +1138,7 @@ export function ProfessionalAgendaScreen({ navigation }: Props) {
             // No modo "Dia", o cabeçalho da lista já cobre sozinho todo estado
             // vazio/cheio do dia (card "Dia livre" etc.) — mostrar isso de novo
             // aqui embaixo duplicava o mesmo aviso duas vezes na tela.
-            activeTab === "day" ? null : loading ? (
+            activeTab === "day" ? undefined : loading ? (
               <SkeletonAgendaList />
             ) : (
               <View style={{ paddingVertical: 32, alignItems: "center", gap: 10 }}>

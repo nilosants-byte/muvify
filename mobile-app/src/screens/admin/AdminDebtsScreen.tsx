@@ -207,7 +207,7 @@ export function AdminDebtsScreen({ navigation }: Props) {
             <MvCard>
               <MvText variant="body3">Nenhuma pendência encontrada para este filtro.</MvText>
             </MvCard>
-          ) : null
+          ) : undefined
         }
         ListFooterComponent={
           page > 0 || hasMore ? (
@@ -225,7 +225,7 @@ export function AdminDebtsScreen({ navigation }: Props) {
                 onPress={() => setPage((p) => p + 1)}
               />
             </View>
-          ) : null
+          ) : undefined
         }
       />
     </AdminScaffold>

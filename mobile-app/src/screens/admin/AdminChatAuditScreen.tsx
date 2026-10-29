@@ -270,7 +270,7 @@ export function AdminChatAuditScreen({ navigation }: Props) {
                 Nenhum chat encontrado para os filtros informados.
               </MvText>
             </MvCard>
-          ) : null
+          ) : undefined
         }
         ListFooterComponent={
           nextCursor ? (
@@ -282,7 +282,7 @@ export function AdminChatAuditScreen({ navigation }: Props) {
                 onPress={() => void load(true)}
               />
             </View>
-          ) : null
+          ) : undefined
         }
       />
     </AdminScaffold>

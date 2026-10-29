@@ -42,7 +42,7 @@ export function MvScreen({ children, scrollable = false, style, padded = true, n
         keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
         style={containerStyle}
       >
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <ScrollView
           contentContainerStyle={[{ paddingHorizontal: padded ? 16 : 0, paddingBottom: 32 }, style]}
           keyboardShouldPersistTaps="handled"
@@ -60,7 +60,7 @@ export function MvScreen({ children, scrollable = false, style, padded = true, n
 
   return (
     <View style={[containerStyle, style]}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       {inner}
     </View>
   );

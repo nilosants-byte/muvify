@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, ScrollView, StatusBar, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, ScrollViewInstance, StatusBar, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -323,7 +323,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
   const { runWithAuth, showToast } = useAppState();
   const { theme } = useMvTheme();
   const insets = useSafeAreaInsets();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   const [answers, setAnswers] = useState<AnamnesisAnswers>(buildInitialAnswers());
   const [status, setStatus] = useState<"DRAFT" | "COMPLETED">("DRAFT");
@@ -923,7 +923,7 @@ export function ClientAnamnesisScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       {/* Header */}
       <View style={{

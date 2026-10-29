@@ -71,7 +71,7 @@ function DocViewerModal({
 
   return (
     <Modal visible={visible} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <StatusBar barStyle="light-content" backgroundColor="#000" />
+      <StatusBar barStyle="light-content" />
       <View style={{ flex: 1, backgroundColor: "#000" }}>
         {/* Header */}
         <View style={{
@@ -539,7 +539,7 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
             <MvCard>
               <MvText variant="body3">Nenhum CREF encontrado nessa fila.</MvText>
             </MvCard>
-          ) : null
+          ) : undefined
         }
         ListFooterComponent={
           hasMore ? (
@@ -549,7 +549,7 @@ export function AdminCrefValidationScreen({ navigation }: Props) {
               loading={loadingMore}
               onPress={loadMore}
             />
-          ) : null
+          ) : undefined
         }
       />
     </AdminScaffold>

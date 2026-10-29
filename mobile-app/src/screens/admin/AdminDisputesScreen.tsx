@@ -167,7 +167,7 @@ export function AdminDisputesScreen({ navigation }: Props) {
             <MvCard>
               <MvText variant="body3">Nenhum caso {status === "OPEN" ? "em aberto" : "resolvido"} no momento.</MvText>
             </MvCard>
-          ) : null
+          ) : undefined
         }
         ListFooterComponent={
           page > 0 || hasMore ? (
@@ -185,7 +185,7 @@ export function AdminDisputesScreen({ navigation }: Props) {
                 onPress={() => setPage((p) => p + 1)}
               />
             </View>
-          ) : null
+          ) : undefined
         }
       />
     </AdminScaffold>

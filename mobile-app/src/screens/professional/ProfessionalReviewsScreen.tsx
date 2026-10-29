@@ -93,7 +93,7 @@ export function ProfessionalReviewsScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <ProfessionalScreenHeader title="Minhas avaliações" onBack={() => navigation.goBack()} />
       <ScreenEntrance>
         {/* automaticallyAdjustKeyboardInsets: o campo de resposta a uma

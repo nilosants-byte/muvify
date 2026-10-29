@@ -140,7 +140,7 @@ export function ProfessionalAnnualReportScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       <ProfessionalScreenHeader title="Relatório Anual" onBack={() => navigation.goBack()} />
 
       {loading ? (

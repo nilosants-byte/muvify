@@ -53,7 +53,7 @@ export function AuthTwoFactorScreen({ route, navigation }: Props) {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={{ flex: 1, backgroundColor: theme.bg }}
     >
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: insets.top + 48, gap: 24 }}>
         <View style={{ gap: 8 }}>
           <MvText variant="h2">

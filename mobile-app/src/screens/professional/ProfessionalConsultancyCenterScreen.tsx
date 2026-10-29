@@ -146,7 +146,7 @@ export function ProfessionalConsultancyCenterScreen({ navigation, route }: Props
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.consultancy">
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       <ProfessionalScreenHeader
         title="Consultoria"

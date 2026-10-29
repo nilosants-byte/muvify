@@ -223,7 +223,7 @@ export function SecurityScreen({ navigation }: { navigation?: any }) {
   return (
     <>
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+        <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
         <ProfessionalScreenHeader title="Segurança" onBack={navigation?.canGoBack?.() ? () => navigation.goBack() : undefined} />
 
         <ScreenEntrance>

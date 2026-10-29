@@ -328,7 +328,7 @@ export function ProfessionalCredentialsScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <ProfessionalScreenHeader title="CREF e Documentos" onBack={() => navigation.goBack()} />
 
       <ScreenEntrance>

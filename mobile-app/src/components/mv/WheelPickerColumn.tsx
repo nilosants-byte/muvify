@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { NativeScrollEvent, NativeSyntheticEvent, ScrollView, Text, View } from "react-native";
+import { NativeScrollEvent, NativeSyntheticEvent, ScrollView, ScrollViewInstance, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useMvTheme } from "../../theme/MvThemeContext";
 
@@ -22,7 +22,7 @@ interface Props {
 
 export function WheelPickerColumn({ items, selectedValue, onChange, width = 72 }: Props) {
   const { theme } = useMvTheme();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const isReadyRef = useRef(false);
   const lastScrolledValueRef = useRef(selectedValue);
 

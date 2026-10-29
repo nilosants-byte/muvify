@@ -240,7 +240,7 @@ export function AuthRegisterScreen({ navigation }: Props) {
       style={{ flex: 1, backgroundColor: theme.bg }}
       testID="screen.auth.register"
     >
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <ScrollView
         automaticallyAdjustKeyboardInsets
         contentContainerStyle={{

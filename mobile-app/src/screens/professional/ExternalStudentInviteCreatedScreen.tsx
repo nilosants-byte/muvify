@@ -42,7 +42,7 @@ export function ExternalStudentInviteCreatedScreen({ navigation, route }: Props)
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.external-student-invite-created">
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       <View style={{ paddingTop: 64, paddingHorizontal: 20, alignItems: "center", gap: 16 }}>
         <View

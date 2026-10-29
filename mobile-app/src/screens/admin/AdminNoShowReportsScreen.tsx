@@ -135,7 +135,7 @@ export function AdminNoShowReportsScreen({ navigation }: Props) {
             <MvCard>
               <MvText variant="body3">Nenhum relato encontrado para este filtro.</MvText>
             </MvCard>
-          ) : null
+          ) : undefined
         }
       />
     </AdminScaffold>

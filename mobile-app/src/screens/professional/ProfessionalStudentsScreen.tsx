@@ -226,7 +226,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
 
   const renderProfileSetupState = () => (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.students">
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       <View
         style={{
@@ -299,7 +299,7 @@ export function ProfessionalStudentsScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.students">
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       {/* ── Header ── */}
       <View

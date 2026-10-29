@@ -214,7 +214,7 @@ export function ProfessionalConfirmCompletionScreen({ navigation, route }: Props
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }} testID="screen.professional.confirm-completion">
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <ProfessionalScreenHeader title="Conclusão do atendimento" onBack={handleBack} />
 
       <ScrollView

@@ -45,7 +45,7 @@ export function ReconsentGateScreen() {
         gap: 14
       }}
     >
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <View
         style={{
           width: 80,

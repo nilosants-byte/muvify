@@ -60,7 +60,7 @@ export function ProfessionalArchivedRequestsScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
       <ProfessionalScreenHeader title="Arquivados" onBack={() => navigation.goBack()} />
 
       <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
@@ -116,7 +116,7 @@ export function ProfessionalArchivedRequestsScreen({ navigation }: Props) {
                 <MvText variant="semi3" style={{ color: "#24E66D" }}>Ver central de consultoria</MvText>
               </TouchableOpacity>
             </View>
-          ) : null
+          ) : undefined
         }
         showsVerticalScrollIndicator={false}
       />

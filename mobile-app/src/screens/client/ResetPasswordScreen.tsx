@@ -54,7 +54,7 @@ export function ResetPasswordScreen({ navigation, route }: Props) {
       style={{ flex: 1, backgroundColor: theme.bg }}
       testID="screen.auth.reset-password"
     >
-      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      <StatusBar barStyle={theme.mode === "dark" ? "light-content" : "dark-content"} />
 
       {/* Header */}
       <View style={{
