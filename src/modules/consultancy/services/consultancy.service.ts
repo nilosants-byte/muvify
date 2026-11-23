@@ -4781,10 +4781,12 @@ export class ConsultancyService {
     });
 
     for (const contract of approaching) {
-      await prisma.consultancyContract.update({
+      // updateMany: um contrato apagado entre a busca e aqui não derruba os avisos dos demais.
+      const stamped = await prisma.consultancyContract.updateMany({
         where: { id: contract.id },
         data: { fichaReminderSentAt: referenceDate }
       });
+      if (stamped.count === 0) continue;
 
       void notificationService
         .sendToUsers([contract.provider.userId], {
@@ -4825,10 +4827,11 @@ export class ConsultancyService {
     });
 
     for (const contract of expired) {
-      await prisma.consultancyContract.update({
+      const stamped = await prisma.consultancyContract.updateMany({
         where: { id: contract.id },
         data: { fichaExpiredNoticeSentAt: referenceDate }
       });
+      if (stamped.count === 0) continue;
 
       void notificationService
         .sendToUsers([contract.provider.userId], {
