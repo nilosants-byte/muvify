@@ -53,30 +53,32 @@ describe("Frente 8, Lote 6 — reverter XP de post também desconta do ranking",
       orderBy: { createdAt: "desc" }
     });
 
-    const xpBefore = await prisma.userXpTransaction.aggregate({ where: { userId }, _sum: { amount: true } });
-    expect(xpBefore._sum.amount ?? 0).toBe(10);
+    // Mede a diferença, não o total: uma conquista temporária de outro arquivo rodando
+    // em paralelo (frente8-lote1) pode dar XP extra a este usuário pela mesma foto.
+    const postXp = await prisma.userXpTransaction.aggregate({
+      where: { userId, reason: "POST_WORKOUT_PHOTO", referenceId: post.id },
+      _sum: { amount: true }
+    });
+    expect(postXp._sum.amount ?? 0).toBe(10);
 
-    const [weekBefore, monthBefore, alltimeBefore] = await Promise.all([
-      prisma.rankingSnapshot.findUnique({ where: { userId_periodType_periodKey: { userId, periodType: "WEEKLY", periodKey: weekKey } } }),
-      prisma.rankingSnapshot.findUnique({ where: { userId_periodType_periodKey: { userId, periodType: "MONTHLY", periodKey: monthKey } } }),
-      prisma.rankingSnapshot.findUnique({ where: { userId_periodType_periodKey: { userId, periodType: "ALLTIME", periodKey: "alltime" } } }),
-    ]);
-    expect(weekBefore?.xpEarned).toBe(10);
-    expect(monthBefore?.xpEarned).toBe(10);
-    expect(alltimeBefore?.xpEarned).toBe(10);
+    const totalXp = async () =>
+      (await prisma.userXpTransaction.aggregate({ where: { userId }, _sum: { amount: true } }))._sum.amount ?? 0;
+    const rankingXp = async () => {
+      const rows = await Promise.all([
+        prisma.rankingSnapshot.findUnique({ where: { userId_periodType_periodKey: { userId, periodType: "WEEKLY", periodKey: weekKey } } }),
+        prisma.rankingSnapshot.findUnique({ where: { userId_periodType_periodKey: { userId, periodType: "MONTHLY", periodKey: monthKey } } }),
+        prisma.rankingSnapshot.findUnique({ where: { userId_periodType_periodKey: { userId, periodType: "ALLTIME", periodKey: "alltime" } } }),
+      ]);
+      return rows.map((row) => row?.xpEarned ?? 0);
+    };
+
+    const xpBefore = await totalXp();
+    const rankingBefore = await rankingXp();
+    for (const xp of rankingBefore) expect(xp).toBeGreaterThanOrEqual(10);
 
     await deletePost(post.id, userId);
 
-    const xpAfter = await prisma.userXpTransaction.aggregate({ where: { userId }, _sum: { amount: true } });
-    expect(xpAfter._sum.amount ?? 0).toBe(0);
-
-    const [weekAfter, monthAfter, alltimeAfter] = await Promise.all([
-      prisma.rankingSnapshot.findUnique({ where: { userId_periodType_periodKey: { userId, periodType: "WEEKLY", periodKey: weekKey } } }),
-      prisma.rankingSnapshot.findUnique({ where: { userId_periodType_periodKey: { userId, periodType: "MONTHLY", periodKey: monthKey } } }),
-      prisma.rankingSnapshot.findUnique({ where: { userId_periodType_periodKey: { userId, periodType: "ALLTIME", periodKey: "alltime" } } }),
-    ]);
-    expect(weekAfter?.xpEarned).toBe(0);
-    expect(monthAfter?.xpEarned).toBe(0);
-    expect(alltimeAfter?.xpEarned).toBe(0);
+    expect(await totalXp()).toBe(xpBefore - 10);
+    expect(await rankingXp()).toEqual(rankingBefore.map((xp) => xp - 10));
   });
 });

@@ -6,6 +6,9 @@ import { app } from "../src/app";
 import { prisma } from "../src/config/prisma";
 import { AvailabilityService } from "../src/modules/availability/services/availability.service";
 import { createManualBlockSchema } from "../src/modules/providers/manual-blocks/validators/manual-block.validator";
+import { env } from "../src/config/env";
+import { toWeekdayInTimezone } from "../src/shared/utils/timezone";
+import { atAppTime } from "./helpers/app-time";
 
 // Épico de Frentes, Frente 5 (Descoberta, agendamento e agenda), Lote 6:
 // (1) excluir disponibilidade recorrente com agendamento futuro marcado
@@ -105,10 +108,9 @@ describe("Frente 5, Lote 6 — disponibilidade e bloqueios do profissional", () 
     });
 
     // Próxima quarta-feira (weekday 3) às 09:00 — dentro da faixa 08:00-12:00.
-    const nextWednesday = new Date();
-    const daysUntilWednesday = (3 - nextWednesday.getDay() + 7) % 7 || 7;
-    nextWednesday.setDate(nextWednesday.getDate() + daysUntilWednesday);
-    nextWednesday.setHours(9, 0, 0, 0);
+    const now = new Date();
+    const daysUntilWednesday = (3 - toWeekdayInTimezone(now, env.APP_TIMEZONE) + 7) % 7 || 7;
+    const nextWednesday = atAppTime(new Date(now.getTime() + daysUntilWednesday * 24 * 60 * 60 * 1000), 9);
 
     const booking = await prisma.booking.create({
       data: {

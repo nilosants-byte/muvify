@@ -9,6 +9,7 @@ import { env } from "../src/config/env";
 import { toWeekdayInTimezone, toDateKeyInTimezone } from "../src/shared/utils/timezone";
 import { redis } from "../src/config/redis";
 import { ManualBlockService } from "../src/modules/providers/manual-blocks/services/manual-block.service";
+import { atAppTime } from "./helpers/app-time";
 
 // Frente 6 (segunda camada) — agenda e execução.
 
@@ -627,8 +628,7 @@ describe("Frente 6 (segunda camada), Lote 4 — conflito com aluno financeiro ma
   });
 
   it("agendar por cima do horário de um aluno financeiro manual (fora do app) é rejeitado", async () => {
-    const scheduled = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000);
-    scheduled.setHours(10, 0, 0, 0);
+    const scheduled = atAppTime(new Date(Date.now() + 25 * 24 * 60 * 60 * 1000), 10);
     const weekday = toWeekdayInTimezone(scheduled, env.APP_TIMEZONE);
 
     const student = await prisma.financialStudent.create({
@@ -974,8 +974,7 @@ describe("Frente 6 (segunda camada), Lote 14 — bloqueio manual cruzando a meia
   });
 
   it("bloqueio manual no início do dia seguinte é rejeitado se colide com sessão que atravessou a meia-noite", async () => {
-    const day = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    day.setHours(23, 30, 0, 0); // sessão de 60min: 23:30 → 00:30 do dia seguinte
+    const day = atAppTime(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), 23, 30); // sessão de 60min: 23:30 → 00:30 do dia seguinte
     const booking = await bookingService.create(
       l14ClientId, l14ProviderId, l14CategoryId, day.toISOString(), undefined, "CREDIT_CARD" as any
     );

@@ -29,6 +29,16 @@ process.env.R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "test-sec
 process.env.R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "test-bucket";
 process.env.R2_ENDPOINT = process.env.R2_ENDPOINT || "https://fake-r2.test";
 process.env.R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://fake-r2-public.test";
+// Mesma ideia pro e-mail: os testes que ligam SMTP_ENABLED_IN_TEST simulam o fetch,
+// mas precisam da configuração presente (sem .env, no CI, ela não existia).
+process.env.SMTP_HOST = process.env.SMTP_HOST || "smtp.fake-email.test";
+process.env.SMTP_PORT = process.env.SMTP_PORT || "465";
+process.env.SMTP_USER = process.env.SMTP_USER || "fake-user";
+process.env.SMTP_PASS = process.env.SMTP_PASS || "fake-email-api-key";
+process.env.SMTP_FROM = process.env.SMTP_FROM || "Muvify <no-reply@fake-email.test>";
+// Idem pra renovação do token OAuth do Mercado Pago (os testes simulam o fetch).
+process.env.MP_APP_ID = process.env.MP_APP_ID || "fake-mp-app-id";
+process.env.MP_CLIENT_SECRET = process.env.MP_CLIENT_SECRET || "fake-mp-client-secret";
 // Frente 2 (Segurança do código), Lote 4: precisa estar setada pra dar pra
 // testar a regressão funcional do compare timing-safe do Basic Auth do
 // Swagger (ver tests/frente2-lote4-upload-binding-and-swagger.test.ts).

@@ -7,6 +7,7 @@ import { BookingService } from "../src/modules/bookings/services/booking.service
 import { ManualBlockService } from "../src/modules/providers/manual-blocks/services/manual-block.service";
 import { ProviderService } from "../src/modules/providers/services/provider.service";
 import { sessionOverlapsRange } from "../src/shared/utils/time-range";
+import { atAppTime } from "./helpers/app-time";
 
 // Mesmo padrão de manual-block.service.ts (toDateKeyInTimezone): usar
 // .toISOString().slice(0,10) pra achar "a data" de um Date é UTC puro e
@@ -138,8 +139,7 @@ describe("Frente 4 (segunda camada) — gestão de alunos (backend)", () => {
   });
 
   it("Lote 3: criar bloqueio manual é rejeitado se invade uma sessão de 60min já confirmada", async () => {
-    const scheduled = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000);
-    scheduled.setHours(10, 15, 0, 0);
+    const scheduled = atAppTime(new Date(Date.now() + 20 * 24 * 60 * 60 * 1000), 10, 15);
     const booking = await bookingService.create(
       clientId, providerId, categoryId, scheduled.toISOString(), undefined, PaymentMethod.CREDIT_CARD
     );
@@ -161,8 +161,7 @@ describe("Frente 4 (segunda camada) — gestão de alunos (backend)", () => {
     manualBlockIds.push(block.id);
 
     // Sessão de 60min às 10:30 termina 11:30 — invade os primeiros 30min do bloqueio.
-    const scheduled = new Date(day);
-    scheduled.setHours(10, 30, 0, 0);
+    const scheduled = atAppTime(day, 10, 30);
     await expect(
       bookingService.create(clientId, providerId, categoryId, scheduled.toISOString(), undefined, PaymentMethod.CREDIT_CARD)
     ).rejects.toThrow(/bloqueado/i);

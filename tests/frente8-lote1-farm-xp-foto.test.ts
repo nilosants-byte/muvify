@@ -53,7 +53,8 @@ describe("Frente 8, Lote 1 — post sem foto não ganha XP de foto de treino", (
   });
 
   afterAll(async () => {
-    await prisma.userAchievement.deleteMany({ where: { userId } });
+    // A conquista é global: usuários de outros arquivos rodando em paralelo também podem tê-la recebido.
+    await prisma.userAchievement.deleteMany({ where: { OR: [{ userId }, { achievementId }] } });
     await prisma.achievement.deleteMany({ where: { id: achievementId } });
     await prisma.feedPostLike.deleteMany({ where: { userId } });
     await prisma.feedPostComment.deleteMany({ where: { userId } });

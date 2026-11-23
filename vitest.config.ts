@@ -26,7 +26,8 @@ const CROSS_CONTAMINATION_RISK_FILES = [
   "tests/data-retention-disputes.test.ts",
   "tests/frente11-lote7-retention-gaps.test.ts",
   "tests/frente10-lote5-audit-log-retention-noshow.test.ts",
-  "tests/admin-legal-hold-and-export.test.ts"
+  "tests/admin-legal-hold-and-export.test.ts",
+  "tests/frente12-lote1-reembolso-parcial-consultoria-renovacao.test.ts"
 ];
 
 export default defineConfig({
