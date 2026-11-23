@@ -154,7 +154,7 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
     return contract;
   }
 
-  it("duas entregas de renovação disparadas ao mesmo tempo pro mesmo contrato: só uma vence, a outra é rejeitada (sem duplicar ficha nem cobrança)", async () => {
+  it("duas entregas de renovação disparadas ao mesmo tempo pro mesmo contrato: só uma vence, a outra é rejeitada (sem duplicar ficha)", async () => {
     vi.spyOn(Payment.prototype, "create").mockResolvedValue({ id: 1001, status: "approved" } as any);
 
     const offer = await makeOfferWithFichaValidity(30);
@@ -169,12 +169,23 @@ describe("Renovação de ficha justa e transparente (Lote 4 do raio-x)", () => {
       data: { createdAt: new Date(Date.now() - 15_000) }
     });
 
+    // Segura cada entrega dentro da trava por um instante: sem isso, a primeira podia
+    // terminar antes de a segunda chegar na trava, e as duas passavam (CI, 23/11/2026).
+    const original = (consultancyService as any).normalizePlanExercises.bind(consultancyService);
+    const hold = vi
+      .spyOn(consultancyService as any, "normalizePlanExercises")
+      .mockImplementation(async (...args: unknown[]) => {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return original(...args);
+      });
+
     // Duas requisições de renovação disparadas sem esperar uma pela outra —
     // simula duplo clique / retry de rede quase simultâneo.
     const [r1, r2] = await Promise.allSettled([
       consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 2a", exercises: [] }),
       consultancyService.deliverContract(providerUserId, contract.id, { title: "Ficha 2b", exercises: [] })
     ]);
+    hold.mockRestore();
 
     const statuses = [r1.status, r2.status];
     expect(statuses.filter((s) => s === "fulfilled")).toHaveLength(1);

@@ -12,6 +12,9 @@ process.env.DATABASE_URL =
   normalizeDbUrl(process.env.TEST_DATABASE_URL) ||
   SAFE_TEST_DB_FALLBACK;
 
+// Sem .env (CI) vinha vazio, e os testes de admin quebravam.
+process.env.ADMIN_ALLOWED_EMAILS = process.env.ADMIN_ALLOWED_EMAILS || "ci-admin@test.com";
+
 // Estes arquivos chamam DataRetentionService.run() (varredura de tabela
 // inteira, sem escopo por teste) ou leem contagens globais de audit log —
 // rodando em paralelo com outros arquivos que tocam as mesmas tabelas, uma
@@ -29,6 +32,7 @@ const CROSS_CONTAMINATION_RISK_FILES = [
 export default defineConfig({
   test: {
     environment: "node",
+    globalSetup: ["./tests/global-setup.ts"],
     setupFiles: ["./tests/setup.ts"],
     testTimeout: 120000,
     hookTimeout: 120000,
