@@ -4,11 +4,34 @@ import { redis } from "../config/redis";
 import { env } from "../config/env";
 import { Request } from "express";
 import jwt from "jsonwebtoken";
+import { ResilientRateLimitStore } from "./resilient-rate-limit-store";
 
 const sendRedisCommand: SendCommandFn = (...args) =>
   (redis.call as unknown as (...command: string[]) => Promise<RedisReply>)(...args);
 
 const useRedisStore = env.NODE_ENV !== "test";
+
+// O RedisStore prepara seus scripts no Redis já no construtor, na hora em que
+// este arquivo é importado. Com o Redis fora do ar nesse momento, essa
+// preparação falhava sem ninguém tratando, e o handler de unhandledRejection
+// do server.ts desligava o processo: o "modo degradado" sem Redis
+// (AUTH_REQUIRE_REDIS_FOR_BLACKLIST=false) nunca chegava a subir. O erro
+// continua chegando a quem usa o script de fato (increment/get carregam de
+// novo quando falham).
+export class BootSafeRedisStore extends RedisStore {
+  override loadIncrementScript(key?: string) {
+    return markHandled(super.loadIncrementScript(key));
+  }
+
+  override loadGetScript(key?: string) {
+    return markHandled(super.loadGetScript(key));
+  }
+}
+
+function markHandled<T>(promise: Promise<T>) {
+  promise.catch(() => undefined);
+  return promise;
+}
 
 // Extract the authenticated user id from a verified JWT when available.
 // We never trust unverified token payloads for rate-limit identity.
@@ -33,14 +56,18 @@ function userOrIpKey(req: Request): string {
   return req.ip ?? "unknown";
 }
 
-// Frente 2 (Segurança do código), Lote 4: sem Redis (fora de ambiente de
-// teste), o RedisStore fica sem instância compartilhada entre processos —
-// cada instância da API passa a contar localmente. Isso não é uma falha
-// permissiva: o pior caso é o limite ficar mais restritivo (dividido por
-// instância), nunca mais permissivo. Não exige mudança de código.
+// Redis como balde principal; se ele cair, a contagem continua na memória do
+// processo (ver resilient-rate-limit-store.ts). O comentário antigo daqui
+// dizia que isso já acontecia sozinho, mas não: com passOnStoreError: true e
+// o RedisStore puro, o limite era desligado durante a queda.
+// passOnStoreError continua true só como última barreira: a contagem em
+// memória não falha, então na prática ele não é mais usado.
 function makeStore(prefix: string) {
   if (!useRedisStore) return undefined;
-  return new RedisStore({ prefix, sendCommand: sendRedisCommand });
+  return new ResilientRateLimitStore(
+    new BootSafeRedisStore({ prefix, sendCommand: sendRedisCommand }),
+    () => redis.status === "ready"
+  );
 }
 
 // General API limit: 600 req / 15 min per authenticated user.
