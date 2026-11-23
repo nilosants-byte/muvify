@@ -357,7 +357,10 @@ export function jitterPublicCoordinates<T extends { id: string; latitude?: numbe
     return provider;
   }
   const seed = hashSeed(provider.id);
-  const angleRad = (seed % 360) * (Math.PI / 180);
+  // Direção sempre entre 20° e 70° dentro de um dos 4 quadrantes: em cima de um eixo
+  // (0°/90°/180°/270°) um dos deslocamentos dava ~0 e uma coordenada real saía exata.
+  const angleDeg = 20 + (seed % 51) + 90 * (Math.floor(seed / 51) % 4);
+  const angleRad = angleDeg * (Math.PI / 180);
   const distanceMeters = 300 + (seed % 201);
   const latRad = (provider.latitude * Math.PI) / 180;
   const deltaLat = (distanceMeters * Math.cos(angleRad)) / 111_320;
