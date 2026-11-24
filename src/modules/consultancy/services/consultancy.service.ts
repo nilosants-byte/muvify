@@ -4555,23 +4555,30 @@ export class ConsultancyService {
     });
 
     for (const request of staleRequests) {
-      await prisma.consultancyRequest.update({
-        where: { id: request.id },
-        data: { status: ConsultancyRequestStatus.EXPIRED }
-      });
+      try {
+        await prisma.consultancyRequest.update({
+          where: { id: request.id },
+          data: { status: ConsultancyRequestStatus.EXPIRED }
+        });
 
-      void notificationService.sendToUsers([request.clientId], {
-        preferenceType: "CONSULTANCY",
-        title: "Solicitação de consultoria expirou",
-        body: "O profissional não respondeu dentro do prazo. Você já pode procurar outro profissional.",
-        data: { type: "CONSULTANCY_REQUEST_EXPIRED", requestId: request.id }
-      });
-      void notificationService.sendToUsers([request.provider.userId], {
-        preferenceType: "CONSULTANCY",
-        title: "Solicitação de consultoria expirou",
-        body: "Você não respondeu a uma solicitação de consultoria dentro do prazo e ela foi encerrada automaticamente.",
-        data: { type: "CONSULTANCY_REQUEST_EXPIRED", requestId: request.id }
-      });
+        void notificationService.sendToUsers([request.clientId], {
+          preferenceType: "CONSULTANCY",
+          title: "Solicitação de consultoria expirou",
+          body: "O profissional não respondeu dentro do prazo. Você já pode procurar outro profissional.",
+          data: { type: "CONSULTANCY_REQUEST_EXPIRED", requestId: request.id }
+        });
+        void notificationService.sendToUsers([request.provider.userId], {
+          preferenceType: "CONSULTANCY",
+          title: "Solicitação de consultoria expirou",
+          body: "Você não respondeu a uma solicitação de consultoria dentro do prazo e ela foi encerrada automaticamente.",
+          data: { type: "CONSULTANCY_REQUEST_EXPIRED", requestId: request.id }
+        });
+      } catch (error) {
+        // Um item com problema não pode impedir os outros: sem isso, ele
+        // continuava "vencido" e travava a mesma fila a cada rodada.
+        console.error(`[consultancy-jobs] expireStaleConsultancyRequests falhou para ${request.id}:`, error);
+        Sentry.captureException(error, { tags: { area: "consultancy-jobs" }, extra: { id: request.id, phase: "expireStaleConsultancyRequests" } });
+      }
     }
   }
 
@@ -4597,29 +4604,36 @@ export class ConsultancyService {
     });
 
     for (const contract of stale) {
-      await prisma.$transaction([
-        prisma.consultancyContract.update({
-          where: { id: contract.id },
-          data: { paymentStatus: ConsultancyPaymentStatus.FAILED }
-        }),
-        prisma.consultancyRequest.updateMany({
-          where: { id: contract.requestId, status: ConsultancyRequestStatus.ACCEPTED },
-          data: { status: ConsultancyRequestStatus.RESPONDED }
-        })
-      ]);
+      try {
+        await prisma.$transaction([
+          prisma.consultancyContract.update({
+            where: { id: contract.id },
+            data: { paymentStatus: ConsultancyPaymentStatus.FAILED }
+          }),
+          prisma.consultancyRequest.updateMany({
+            where: { id: contract.requestId, status: ConsultancyRequestStatus.ACCEPTED },
+            data: { status: ConsultancyRequestStatus.RESPONDED }
+          })
+        ]);
 
-      void notificationService.sendToUsers([contract.clientId], {
-        preferenceType: "CONSULTANCY",
-        title: "Pix da consultoria expirou",
-        body: "O Pix expirou sem confirmação de pagamento. Aceite a proposta novamente para gerar um novo Pix.",
-        data: { type: "CONSULTANCY_PIX_EXPIRED", contractId: contract.id }
-      });
-      void notificationService.sendToUsers([contract.provider.userId], {
-        preferenceType: "CONSULTANCY",
-        title: "Pix do aluno expirou",
-        body: "O Pix de uma consultoria expirou sem confirmação de pagamento.",
-        data: { type: "CONSULTANCY_PIX_EXPIRED", contractId: contract.id }
-      });
+        void notificationService.sendToUsers([contract.clientId], {
+          preferenceType: "CONSULTANCY",
+          title: "Pix da consultoria expirou",
+          body: "O Pix expirou sem confirmação de pagamento. Aceite a proposta novamente para gerar um novo Pix.",
+          data: { type: "CONSULTANCY_PIX_EXPIRED", contractId: contract.id }
+        });
+        void notificationService.sendToUsers([contract.provider.userId], {
+          preferenceType: "CONSULTANCY",
+          title: "Pix do aluno expirou",
+          body: "O Pix de uma consultoria expirou sem confirmação de pagamento.",
+          data: { type: "CONSULTANCY_PIX_EXPIRED", contractId: contract.id }
+        });
+      } catch (error) {
+        // Um item com problema não pode impedir os outros: sem isso, ele
+        // continuava "vencido" e travava a mesma fila a cada rodada.
+        console.error(`[consultancy-jobs] expireStalePendingPixConsultancyContracts falhou para ${contract.id}:`, error);
+        Sentry.captureException(error, { tags: { area: "consultancy-jobs" }, extra: { id: contract.id, phase: "expireStalePendingPixConsultancyContracts" } });
+      }
     }
   }
 
@@ -4781,34 +4795,41 @@ export class ConsultancyService {
     });
 
     for (const contract of approaching) {
-      // updateMany: um contrato apagado entre a busca e aqui não derruba os avisos dos demais.
-      const stamped = await prisma.consultancyContract.updateMany({
-        where: { id: contract.id },
-        data: { fichaReminderSentAt: referenceDate }
-      });
-      if (stamped.count === 0) continue;
+      try {
+        // updateMany: um contrato apagado entre a busca e aqui não derruba os avisos dos demais.
+        const stamped = await prisma.consultancyContract.updateMany({
+          where: { id: contract.id },
+          data: { fichaReminderSentAt: referenceDate }
+        });
+        if (stamped.count === 0) continue;
 
-      void notificationService
-        .sendToUsers([contract.provider.userId], {
-          preferenceType: "CONSULTANCY",
-          title: "Ficha de aluno vencendo em breve",
-          body: "A ficha de um dos seus alunos está perto de vencer — prepare a atualização.",
-          data: { type: "CONSULTANCY_FICHA_EXPIRING_SOON", contractId: contract.id }
-        })
-        .catch((e) => console.error("Ficha expiry-soon reminder (provider) failed:", e));
+        void notificationService
+          .sendToUsers([contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: "Ficha de aluno vencendo em breve",
+            body: "A ficha de um dos seus alunos está perto de vencer — prepare a atualização.",
+            data: { type: "CONSULTANCY_FICHA_EXPIRING_SOON", contractId: contract.id }
+          })
+          .catch((e) => console.error("Ficha expiry-soon reminder (provider) failed:", e));
 
-      // Raio-X de pagamentos, Lote 4: o aluno precisa saber, com
-      // antecedência, que a renovação vai cobrar de novo — não só "vai
-      // receber uma ficha nova".
-      const renewalAmountLabel = (contract.paymentAmountCents / 100).toFixed(2).replace(".", ",");
-      void notificationService
-        .sendToUsers([contract.clientId], {
-          preferenceType: "CONSULTANCY",
-          title: "Sua ficha está perto de vencer",
-          body: `Seu personal vai te enviar uma ficha atualizada em breve — a renovação cobra R$ ${renewalAmountLabel} no seu cartão salvo.`,
-          data: { type: "CONSULTANCY_FICHA_EXPIRING_SOON", contractId: contract.id }
-        })
-        .catch((e) => console.error("Ficha expiry-soon reminder (client) failed:", e));
+        // Raio-X de pagamentos, Lote 4: o aluno precisa saber, com
+        // antecedência, que a renovação vai cobrar de novo — não só "vai
+        // receber uma ficha nova".
+        const renewalAmountLabel = (contract.paymentAmountCents / 100).toFixed(2).replace(".", ",");
+        void notificationService
+          .sendToUsers([contract.clientId], {
+            preferenceType: "CONSULTANCY",
+            title: "Sua ficha está perto de vencer",
+            body: `Seu personal vai te enviar uma ficha atualizada em breve — a renovação cobra R$ ${renewalAmountLabel} no seu cartão salvo.`,
+            data: { type: "CONSULTANCY_FICHA_EXPIRING_SOON", contractId: contract.id }
+          })
+          .catch((e) => console.error("Ficha expiry-soon reminder (client) failed:", e));
+      } catch (error) {
+        // Um item com problema não pode impedir os outros: sem isso, ele
+        // continuava "vencido" e travava a mesma fila a cada rodada.
+        console.error(`[consultancy-jobs] sendFichaExpiryReminders falhou para ${contract.id}:`, error);
+        Sentry.captureException(error, { tags: { area: "consultancy-jobs" }, extra: { id: contract.id, phase: "sendFichaExpiryReminders" } });
+      }
     }
 
     const expired = await prisma.consultancyContract.findMany({
@@ -4827,29 +4848,36 @@ export class ConsultancyService {
     });
 
     for (const contract of expired) {
-      const stamped = await prisma.consultancyContract.updateMany({
-        where: { id: contract.id },
-        data: { fichaExpiredNoticeSentAt: referenceDate }
-      });
-      if (stamped.count === 0) continue;
+      try {
+        const stamped = await prisma.consultancyContract.updateMany({
+          where: { id: contract.id },
+          data: { fichaExpiredNoticeSentAt: referenceDate }
+        });
+        if (stamped.count === 0) continue;
 
-      void notificationService
-        .sendToUsers([contract.provider.userId], {
-          preferenceType: "CONSULTANCY",
-          title: "Ficha de aluno vencida",
-          body: "A ficha de um dos seus alunos venceu — entregue uma atualização para continuar recebendo por essa consultoria.",
-          data: { type: "CONSULTANCY_FICHA_EXPIRED", contractId: contract.id }
-        })
-        .catch((e) => console.error("Ficha expired notice (provider) failed:", e));
+        void notificationService
+          .sendToUsers([contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: "Ficha de aluno vencida",
+            body: "A ficha de um dos seus alunos venceu — entregue uma atualização para continuar recebendo por essa consultoria.",
+            data: { type: "CONSULTANCY_FICHA_EXPIRED", contractId: contract.id }
+          })
+          .catch((e) => console.error("Ficha expired notice (provider) failed:", e));
 
-      void notificationService
-        .sendToUsers([contract.clientId], {
-          preferenceType: "CONSULTANCY",
-          title: "Sua ficha venceu",
-          body: "Sua ficha de treino venceu. Você pode encerrar a consultoria a qualquer momento se preferir.",
-          data: { type: "CONSULTANCY_FICHA_EXPIRED", contractId: contract.id }
-        })
-        .catch((e) => console.error("Ficha expired notice (client) failed:", e));
+        void notificationService
+          .sendToUsers([contract.clientId], {
+            preferenceType: "CONSULTANCY",
+            title: "Sua ficha venceu",
+            body: "Sua ficha de treino venceu. Você pode encerrar a consultoria a qualquer momento se preferir.",
+            data: { type: "CONSULTANCY_FICHA_EXPIRED", contractId: contract.id }
+          })
+          .catch((e) => console.error("Ficha expired notice (client) failed:", e));
+      } catch (error) {
+        // Um item com problema não pode impedir os outros: sem isso, ele
+        // continuava "vencido" e travava a mesma fila a cada rodada.
+        console.error(`[consultancy-jobs] sendFichaExpiryReminders falhou para ${contract.id}:`, error);
+        Sentry.captureException(error, { tags: { area: "consultancy-jobs" }, extra: { id: contract.id, phase: "sendFichaExpiryReminders" } });
+      }
     }
   }
 
@@ -4893,69 +4921,76 @@ export class ConsultancyService {
     });
 
     for (const contract of stale) {
-      const autoCancelDeadline = new Date(contract.nextBillingAt!.getTime() + GRACE_PERIOD_MS);
-      if (referenceDate >= autoCancelDeadline) {
+      try {
+        const autoCancelDeadline = new Date(contract.nextBillingAt!.getTime() + GRACE_PERIOD_MS);
+        if (referenceDate >= autoCancelDeadline) {
+          await prisma.consultancyContract.update({
+            where: { id: contract.id },
+            data: { status: ConsultancyContractStatus.CANCELLED }
+          });
+
+          // Raio-X de pagamentos, Rodada 2, Lote 5: mesmo padrão já usado em
+          // autoRefundExpiredContracts — se este contrato é a metade de
+          // consultoria de um combo, a metade presencial continua ativa e
+          // sendo cobrada normalmente; o aluno precisa saber disso, em vez de
+          // uma notificação genérica que soa como "tudo acabou".
+          const linkedPackage = await prisma.presentialPackage.findFirst({
+            where: { consultancyContractId: contract.id },
+            select: { id: true, status: true }
+          });
+          const isComboHalf =
+            linkedPackage !== null && linkedPackage.status !== "CANCELLED" && linkedPackage.status !== "EXPIRED";
+
+          void notificationService.sendToUsers([contract.clientId, contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: isComboHalf ? "Consultoria do seu combo foi encerrada" : "Consultoria encerrada automaticamente",
+            body: isComboHalf
+              ? "A ficha venceu há 7 dias e nenhuma renovação foi entregue — a consultoria foi encerrada automaticamente. Isso afeta só a parte de consultoria do combo — a parte presencial continua normalmente, sendo cobrada como sempre."
+              : "A ficha venceu há 7 dias e nenhuma renovação foi entregue — a consultoria foi encerrada automaticamente.",
+            data: isComboHalf
+              ? { type: "COMBO_CONSULTANCY_AUTO_CANCELLED", contractId: contract.id, packageId: linkedPackage!.id }
+              : { type: "CONSULTANCY_AUTO_CANCELLED", contractId: contract.id }
+          });
+          continue;
+        }
+
+        const daysOverdueMs = referenceDate.getTime() - contract.nextBillingAt!.getTime();
+        const escalationThrottleMs =
+          daysOverdueMs > ESCALATION_INITIAL_PHASE_MS ? ESCALATION_THROTTLE_MS_EXTENDED : ESCALATION_THROTTLE_MS_INITIAL;
+        if (
+          contract.fichaEscalationSentAt &&
+          referenceDate.getTime() - contract.fichaEscalationSentAt.getTime() < escalationThrottleMs
+        ) {
+          continue;
+        }
         await prisma.consultancyContract.update({
           where: { id: contract.id },
-          data: { status: ConsultancyContractStatus.CANCELLED }
+          data: { fichaEscalationSentAt: referenceDate }
         });
 
-        // Raio-X de pagamentos, Rodada 2, Lote 5: mesmo padrão já usado em
-        // autoRefundExpiredContracts — se este contrato é a metade de
-        // consultoria de um combo, a metade presencial continua ativa e
-        // sendo cobrada normalmente; o aluno precisa saber disso, em vez de
-        // uma notificação genérica que soa como "tudo acabou".
-        const linkedPackage = await prisma.presentialPackage.findFirst({
-          where: { consultancyContractId: contract.id },
-          select: { id: true, status: true }
-        });
-        const isComboHalf =
-          linkedPackage !== null && linkedPackage.status !== "CANCELLED" && linkedPackage.status !== "EXPIRED";
+        void notificationService
+          .sendToUsers([contract.provider.userId], {
+            preferenceType: "CONSULTANCY",
+            title: "Pendência: ficha de aluno vencida",
+            body: "A ficha de um dos seus alunos está vencida — entregue uma renovação para continuar recebendo por essa consultoria. Sem ação em 7 dias, ela é encerrada automaticamente.",
+            data: { type: "CONSULTANCY_FICHA_EXPIRED_ESCALATION", contractId: contract.id }
+          })
+          .catch((e) => console.error("Ficha escalation (provider) failed:", e));
 
-        void notificationService.sendToUsers([contract.clientId, contract.provider.userId], {
-          preferenceType: "CONSULTANCY",
-          title: isComboHalf ? "Consultoria do seu combo foi encerrada" : "Consultoria encerrada automaticamente",
-          body: isComboHalf
-            ? "A ficha venceu há 7 dias e nenhuma renovação foi entregue — a consultoria foi encerrada automaticamente. Isso afeta só a parte de consultoria do combo — a parte presencial continua normalmente, sendo cobrada como sempre."
-            : "A ficha venceu há 7 dias e nenhuma renovação foi entregue — a consultoria foi encerrada automaticamente.",
-          data: isComboHalf
-            ? { type: "COMBO_CONSULTANCY_AUTO_CANCELLED", contractId: contract.id, packageId: linkedPackage!.id }
-            : { type: "CONSULTANCY_AUTO_CANCELLED", contractId: contract.id }
-        });
-        continue;
+        void notificationService
+          .sendToUsers([contract.clientId], {
+            preferenceType: "CONSULTANCY",
+            title: "Sua ficha continua vencida",
+            body: "Peça ao seu personal para renovar sua ficha de treino, ou encerre a consultoria quando preferir.",
+            data: { type: "CONSULTANCY_FICHA_EXPIRED_ESCALATION", contractId: contract.id }
+          })
+          .catch((e) => console.error("Ficha escalation (client) failed:", e));
+      } catch (error) {
+        // Um item com problema não pode impedir os outros: sem isso, ele
+        // continuava "vencido" e travava a mesma fila a cada rodada.
+        console.error(`[consultancy-jobs] escalateExpiredFichaContracts falhou para ${contract.id}:`, error);
+        Sentry.captureException(error, { tags: { area: "consultancy-jobs" }, extra: { id: contract.id, phase: "escalateExpiredFichaContracts" } });
       }
-
-      const daysOverdueMs = referenceDate.getTime() - contract.nextBillingAt!.getTime();
-      const escalationThrottleMs =
-        daysOverdueMs > ESCALATION_INITIAL_PHASE_MS ? ESCALATION_THROTTLE_MS_EXTENDED : ESCALATION_THROTTLE_MS_INITIAL;
-      if (
-        contract.fichaEscalationSentAt &&
-        referenceDate.getTime() - contract.fichaEscalationSentAt.getTime() < escalationThrottleMs
-      ) {
-        continue;
-      }
-      await prisma.consultancyContract.update({
-        where: { id: contract.id },
-        data: { fichaEscalationSentAt: referenceDate }
-      });
-
-      void notificationService
-        .sendToUsers([contract.provider.userId], {
-          preferenceType: "CONSULTANCY",
-          title: "Pendência: ficha de aluno vencida",
-          body: "A ficha de um dos seus alunos está vencida — entregue uma renovação para continuar recebendo por essa consultoria. Sem ação em 7 dias, ela é encerrada automaticamente.",
-          data: { type: "CONSULTANCY_FICHA_EXPIRED_ESCALATION", contractId: contract.id }
-        })
-        .catch((e) => console.error("Ficha escalation (provider) failed:", e));
-
-      void notificationService
-        .sendToUsers([contract.clientId], {
-          preferenceType: "CONSULTANCY",
-          title: "Sua ficha continua vencida",
-          body: "Peça ao seu personal para renovar sua ficha de treino, ou encerre a consultoria quando preferir.",
-          data: { type: "CONSULTANCY_FICHA_EXPIRED_ESCALATION", contractId: contract.id }
-        })
-        .catch((e) => console.error("Ficha escalation (client) failed:", e));
     }
   }
 
@@ -4984,54 +5019,61 @@ export class ConsultancyService {
     });
 
     for (const contract of dueContracts) {
-      const autoCancelDeadline = new Date(contract.externalCheckInDueAt!.getTime() + EXTERNAL_CHECK_IN_GRACE_MS);
-      if (referenceDate >= autoCancelDeadline) {
+      try {
+        const autoCancelDeadline = new Date(contract.externalCheckInDueAt!.getTime() + EXTERNAL_CHECK_IN_GRACE_MS);
+        if (referenceDate >= autoCancelDeadline) {
+          await prisma.consultancyContract.update({
+            where: { id: contract.id },
+            data: { status: ConsultancyContractStatus.CANCELLED }
+          });
+          void notificationService
+            .sendToUsers([contract.provider.userId], {
+              preferenceType: "CONSULTANCY",
+              title: "Vínculo com aluno externo encerrado",
+              body: "Você não confirmou o check-in periódico a tempo — o vínculo foi encerrado automaticamente. Você pode cadastrar o aluno de novo quando quiser.",
+              data: { type: "EXTERNAL_STUDENT_CHECK_IN_AUTO_CANCELLED", contractId: contract.id }
+            })
+            .catch((e) => console.error("External check-in auto-cancel notice (provider) failed:", e));
+          // Raio-X pós-épico (achado médio): só o profissional era avisado —
+          // o aluno externo (que pode ter conta de verdade no app, ver Bloco
+          // 2) perdia acesso à ficha/relação sem nenhum aviso, só percebia ao
+          // tentar abrir o treino. cancelContract (cancelamento manual normal)
+          // sempre notifica os dois lados; esse desfecho automático também deve.
+          void notificationService
+            .sendToUsers([contract.clientId], {
+              preferenceType: "CONSULTANCY",
+              title: "Vínculo com seu personal foi encerrado",
+              body: "Seu profissional não confirmou a continuidade do acompanhamento e o vínculo foi encerrado automaticamente.",
+              data: { type: "EXTERNAL_STUDENT_CHECK_IN_AUTO_CANCELLED", contractId: contract.id }
+            })
+            .catch((e) => console.error("External check-in auto-cancel notice (client) failed:", e));
+          continue;
+        }
+
+        if (
+          contract.externalCheckInReminderSentAt &&
+          referenceDate.getTime() - contract.externalCheckInReminderSentAt.getTime() < EXTERNAL_CHECK_IN_REMINDER_THROTTLE_MS
+        ) {
+          continue;
+        }
         await prisma.consultancyContract.update({
           where: { id: contract.id },
-          data: { status: ConsultancyContractStatus.CANCELLED }
+          data: { externalCheckInReminderSentAt: referenceDate }
         });
         void notificationService
           .sendToUsers([contract.provider.userId], {
             preferenceType: "CONSULTANCY",
-            title: "Vínculo com aluno externo encerrado",
-            body: "Você não confirmou o check-in periódico a tempo — o vínculo foi encerrado automaticamente. Você pode cadastrar o aluno de novo quando quiser.",
-            data: { type: "EXTERNAL_STUDENT_CHECK_IN_AUTO_CANCELLED", contractId: contract.id }
+            title: "Confirme seu vínculo com um aluno externo",
+            body: "Faz 90 dias desde o último check-in — confirme se o vínculo continua ativo antes que ele seja encerrado automaticamente.",
+            data: { type: "EXTERNAL_STUDENT_CHECK_IN_DUE", contractId: contract.id }
           })
-          .catch((e) => console.error("External check-in auto-cancel notice (provider) failed:", e));
-        // Raio-X pós-épico (achado médio): só o profissional era avisado —
-        // o aluno externo (que pode ter conta de verdade no app, ver Bloco
-        // 2) perdia acesso à ficha/relação sem nenhum aviso, só percebia ao
-        // tentar abrir o treino. cancelContract (cancelamento manual normal)
-        // sempre notifica os dois lados; esse desfecho automático também deve.
-        void notificationService
-          .sendToUsers([contract.clientId], {
-            preferenceType: "CONSULTANCY",
-            title: "Vínculo com seu personal foi encerrado",
-            body: "Seu profissional não confirmou a continuidade do acompanhamento e o vínculo foi encerrado automaticamente.",
-            data: { type: "EXTERNAL_STUDENT_CHECK_IN_AUTO_CANCELLED", contractId: contract.id }
-          })
-          .catch((e) => console.error("External check-in auto-cancel notice (client) failed:", e));
-        continue;
+          .catch((e) => console.error("External check-in reminder (provider) failed:", e));
+      } catch (error) {
+        // Um item com problema não pode impedir os outros: sem isso, ele
+        // continuava "vencido" e travava a mesma fila a cada rodada.
+        console.error(`[consultancy-jobs] sendExternalCheckInReminders falhou para ${contract.id}:`, error);
+        Sentry.captureException(error, { tags: { area: "consultancy-jobs" }, extra: { id: contract.id, phase: "sendExternalCheckInReminders" } });
       }
-
-      if (
-        contract.externalCheckInReminderSentAt &&
-        referenceDate.getTime() - contract.externalCheckInReminderSentAt.getTime() < EXTERNAL_CHECK_IN_REMINDER_THROTTLE_MS
-      ) {
-        continue;
-      }
-      await prisma.consultancyContract.update({
-        where: { id: contract.id },
-        data: { externalCheckInReminderSentAt: referenceDate }
-      });
-      void notificationService
-        .sendToUsers([contract.provider.userId], {
-          preferenceType: "CONSULTANCY",
-          title: "Confirme seu vínculo com um aluno externo",
-          body: "Faz 90 dias desde o último check-in — confirme se o vínculo continua ativo antes que ele seja encerrado automaticamente.",
-          data: { type: "EXTERNAL_STUDENT_CHECK_IN_DUE", contractId: contract.id }
-        })
-        .catch((e) => console.error("External check-in reminder (provider) failed:", e));
     }
   }
 

@@ -28,6 +28,28 @@ function calculateBackoffMs(failures: number) {
   return Math.min(JOB_INTERVAL_MS * 2 ** Math.max(0, failures - 1), MAX_DATABASE_BACKOFF_MS);
 }
 
+// Prêmios de ranking: um colocado com problema não pode deixar os outros sem
+// prêmio. Cada um é tentado; se algum falhar, lança no fim, então o período
+// não é marcado como processado e a próxima rodada tenta de novo (quem já
+// recebeu não recebe em dobro: awardXp e createAutoPost são idempotentes por
+// referenceId). Banco fora do ar interrompe na hora, como antes, pra rodada
+// entrar no backoff em vez de insistir item a item.
+async function rewardEach<T>(items: T[], phase: string, reward: (item: T) => Promise<void>) {
+  const failures: unknown[] = [];
+  for (const item of items) {
+    try {
+      await reward(item);
+    } catch (error) {
+      if (isPrismaDatabaseUnavailableError(error)) throw error;
+      console.error(`[community-jobs] ${phase}: prêmio falhou, seguindo com os próximos:`, error);
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `${phase}: ${failures.length} prêmio(s) falharam`);
+  }
+}
+
 // Épico de Frentes, Frente 8, Lote 4: getWeekKey/getMonthKey (xp.service.ts)
 // já calculam a chave do período corretamente em APP_TIMEZONE - mas o job
 // que fecha o período (getPreviousWeekKey/getPreviousMonthKey + o próprio
@@ -107,7 +129,8 @@ async function runCommunityJobs() {
   }
 }
 
-async function processWeeklyReset(weekKey: string) {
+// Exportada só pra teste direto do isolamento por colocado (rewardEach).
+export async function processWeeklyReset(weekKey: string) {
   const snapshots = await prisma.rankingSnapshot.findMany({
     where: { periodType: "WEEKLY", periodKey: weekKey },
     orderBy: { xpEarned: "desc" },
@@ -126,10 +149,7 @@ async function processWeeklyReset(weekKey: string) {
     3: "RANKING_WEEK_ENDED_TOP3",
   };
 
-  for (let i = 0; i < snapshots.length; i++) {
-    const position = i + 1;
-    const snap = snapshots[i];
-
+  await rewardEach(snapshots.map((snap, i) => ({ snap, position: i + 1 })), `weekly:${weekKey}`, async ({ snap, position }) => {
     await awardXp(snap.userId, xpByPosition[position], reasonByPosition[position], `weekly:${weekKey}`);
 
     await createAutoPost(snap.userId, postTypeByPosition[position], {
@@ -168,7 +188,7 @@ async function processWeeklyReset(weekKey: string) {
         }
       }
     }
-  }
+  });
 }
 
 async function processMonthlyReset(monthKey: string) {
@@ -185,18 +205,6 @@ async function processMonthlyReset(monthKey: string) {
     3: "MONTHLY_RANKING_3RD",
   };
 
-  for (let i = 0; i < snapshots.length; i++) {
-    const position = i + 1;
-    const snap = snapshots[i];
-
-    await awardXp(snap.userId, xpByPosition[position], reasonByPosition[position], `monthly:${monthKey}`);
-
-    await createAutoPost(snap.userId, "RANKING_MONTH_ENDED_TOP3", {
-      referenceId: `monthly:${monthKey}:pos${position}`,
-      metadata: { position, monthKey, xpEarned: snap.xpEarned },
-    });
-  }
-
   // Check top 5 for monthly feed posts (positions 4 and 5 get a post too)
   const top5 = await prisma.rankingSnapshot.findMany({
     where: { periodType: "MONTHLY", periodKey: monthKey },
@@ -204,12 +212,25 @@ async function processMonthlyReset(monthKey: string) {
     take: 5,
   });
 
-  for (let i = 3; i < top5.length; i++) {
-    await createAutoPost(top5[i].userId, "RANKING_ENTERED_MONTHLY_TOP5", {
-      referenceId: `monthly:${monthKey}:top5:${i + 1}`,
-      metadata: { position: i + 1, monthKey },
-    });
-  }
+  const rewards = [
+    ...snapshots.map((snap, i) => async () => {
+      const position = i + 1;
+      await awardXp(snap.userId, xpByPosition[position], reasonByPosition[position], `monthly:${monthKey}`);
+
+      await createAutoPost(snap.userId, "RANKING_MONTH_ENDED_TOP3", {
+        referenceId: `monthly:${monthKey}:pos${position}`,
+        metadata: { position, monthKey, xpEarned: snap.xpEarned },
+      });
+    }),
+    ...top5.slice(3).map((snap, i) => async () => {
+      const position = i + 4;
+      await createAutoPost(snap.userId, "RANKING_ENTERED_MONTHLY_TOP5", {
+        referenceId: `monthly:${monthKey}:top5:${position}`,
+        metadata: { position, monthKey },
+      });
+    }),
+  ];
+  await rewardEach(rewards, `monthly:${monthKey}`, (reward) => reward());
 }
 
 // Exportada só pra permitir teste direto do lote de concorrência (Frente 14,

@@ -597,33 +597,40 @@ export class ProviderSubscriptionService {
     });
 
     for (const subscription of due) {
-      if (subscription.cancelAtPeriodEnd) {
-        await prisma.providerSubscription.update({
-          where: { id: subscription.id },
-          // Raio-X pós-épico (achado médio): `cancelAtPeriodEnd` continuava
-          // true depois do job finalizar — a tela de assinatura mostrava
-          // "CANCELADA" no topo E "Cancelamento agendado para [data já
-          // passada]" com botão "Desfazer" logo abaixo, duas narrativas
-          // contraditórias na mesma tela financeira.
-          data: { status: ProviderSubscriptionStatus.CANCELED, cancelAtPeriodEnd: false }
-        });
-        void notificationService
-          .sendToUsers([subscription.provider.userId], {
-            preferenceType: "PAYMENTS",
-            title: "Assinatura cancelada",
-            body: "Sua assinatura Muvify foi encerrada, como você pediu.",
-            data: { type: "PROVIDER_SUBSCRIPTION_CANCELED", subscriptionId: subscription.id }
-          })
-          .catch((e) => console.error("Provider subscription canceled notice failed:", e));
-        continue;
-      }
+      try {
+        if (subscription.cancelAtPeriodEnd) {
+          await prisma.providerSubscription.update({
+            where: { id: subscription.id },
+            // Raio-X pós-épico (achado médio): `cancelAtPeriodEnd` continuava
+            // true depois do job finalizar — a tela de assinatura mostrava
+            // "CANCELADA" no topo E "Cancelamento agendado para [data já
+            // passada]" com botão "Desfazer" logo abaixo, duas narrativas
+            // contraditórias na mesma tela financeira.
+            data: { status: ProviderSubscriptionStatus.CANCELED, cancelAtPeriodEnd: false }
+          });
+          void notificationService
+            .sendToUsers([subscription.provider.userId], {
+              preferenceType: "PAYMENTS",
+              title: "Assinatura cancelada",
+              body: "Sua assinatura Muvify foi encerrada, como você pediu.",
+              data: { type: "PROVIDER_SUBSCRIPTION_CANCELED", subscriptionId: subscription.id }
+            })
+            .catch((e) => console.error("Provider subscription canceled notice failed:", e));
+          continue;
+        }
 
-      const user = await prisma.user.findUnique({
-        where: { id: subscription.provider.userId },
-        select: { id: true, email: true, mpCustomerId: true }
-      });
-      if (!user) continue;
-      await attemptCharge(subscription, user, referenceDate);
+        const user = await prisma.user.findUnique({
+          where: { id: subscription.provider.userId },
+          select: { id: true, email: true, mpCustomerId: true }
+        });
+        if (!user) continue;
+        await attemptCharge(subscription, user, referenceDate);
+      } catch (error) {
+        // Um item com problema não pode impedir os outros: sem isso, ele
+        // continuava "vencido" e travava a mesma fila a cada rodada.
+        console.error(`[provider-subscription] runSubscriptionBilling falhou para ${subscription.id}:`, error);
+        Sentry.captureException(error, { tags: { area: "provider-subscription" }, extra: { id: subscription.id, phase: "runSubscriptionBilling" } });
+      }
     }
   }
 }
