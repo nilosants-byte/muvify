@@ -12,8 +12,10 @@ import { haversineKm } from "../src/shared/utils/geo";
 //     mpRefreshToken/crefDocumentUrl/credentialDocuments do profissional.
 // (2) busca e detalhe público de profissional não devolvem mais a
 //     latitude/longitude exata (o mapa da home usa isso como pino real) —
-//     agora vem deslocada (jitter 300-500m, determinístico por profissional),
-//     mas distanceKm continua calculado a partir da coordenada real.
+//     agora vem deslocada (jitter 300-500m, determinístico por profissional).
+//     distanceKm também é calculado a partir desse pino público (24/11/2026):
+//     calculado da coordenada real, cruzar buscas de pontos diferentes
+//     revelava o endereço mesmo assim (ver provider-public-location-oracles).
 
 const SENSITIVE_FIELDS = [
   "mpAccessToken",
@@ -118,7 +120,7 @@ describe("Frente 5, Lote 1 — favoritos não vazam dados sensíveis; localizaç
     }
   });
 
-  it("busca pública de profissionais não devolve a latitude/longitude exata, mas distanceKm continua correto", async () => {
+  it("busca pública de profissionais não devolve a latitude/longitude exata, e distanceKm é até o pino público", async () => {
     const res = await request(app).get("/api/providers").query({
       q: marker,
       lat: clientLat,
@@ -137,7 +139,7 @@ describe("Frente 5, Lote 1 — favoritos não vazam dados sensíveis; localizaç
     expect(jitterDistanceMeters).toBeGreaterThan(250);
     expect(jitterDistanceMeters).toBeLessThan(600);
 
-    const expectedDistanceKm = haversineKm(clientLat, clientLng, providerLat, providerLng);
+    const expectedDistanceKm = haversineKm(clientLat, clientLng, found.latitude, found.longitude);
     expect(found.distanceKm).toBeCloseTo(expectedDistanceKm, 1);
   });
 

@@ -22,7 +22,7 @@ import { ACTIVE_BOOKING_STATUSES, assertNoActiveEngagementWithOtherProvider } fr
 import { assertProviderSubscriptionActive } from "../../../shared/utils/provider-subscription-gate";
 import { isOnboardingGatesBypassActive } from "../../../shared/utils/onboarding-gates-bypass";
 import { decryptSensitiveText, encryptSensitiveText } from "../../../shared/utils/encryption";
-import { haversineKm } from "../../../shared/utils/geo";
+import { distanceFromPublicBaseKm } from "../../../shared/utils/public-location";
 import { sessionOverlapsRange } from "../../../shared/utils/time-range";
 import { findReservedPackageSlots, reservedSlotAppliesOn } from "../../../shared/utils/package-reserved-slots";
 import { assertOfferAllowsServiceLocation } from "../../../shared/utils/offer-service-mode";
@@ -390,7 +390,11 @@ export class BookingService {
               StatusCodes.BAD_REQUEST
             );
           }
-          const distanceKm = haversineKm(provider.latitude, provider.longitude, clientLatitude, clientLongitude);
+          // Raio medido a partir do ponto PÚBLICO da base do profissional: com o
+          // ponto real, tentar vários endereços e ver qual dá "fora do raio"
+          // desenhava o círculo e revelava o centro (a casa dele). Ver
+          // shared/utils/public-location.ts.
+          const distanceKm = distanceFromPublicBaseKm(provider, clientLatitude, clientLongitude) ?? 0;
           if (distanceKm > provider.serviceRadiusKm) {
             throw new AppError(
               `Este endereço está fora do raio de atendimento do profissional (${provider.serviceRadiusKm} km).`,

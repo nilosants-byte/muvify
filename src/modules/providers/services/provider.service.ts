@@ -22,6 +22,10 @@ import { writeAdminAuditLog } from "../../../shared/utils/admin-audit";
 import { deleteByPattern, getCache, setCache } from "../../../shared/utils/cache";
 import { consultancyValidUntil } from "../../../shared/utils/consultancy-validity";
 import { haversineKm } from "../../../shared/utils/geo";
+import { distanceFromPublicBaseKm, jitterPublicCoordinates } from "../../../shared/utils/public-location";
+
+// Mantido aqui pra quem já importava daqui (favoritos, testes).
+export { jitterPublicCoordinates };
 import { isOnboardingGatesBypassActive } from "../../../shared/utils/onboarding-gates-bypass";
 import { normalizeLoose } from "../../../shared/utils/normalize-text";
 import { sessionOverlapsRange } from "../../../shared/utils/time-range";
@@ -333,45 +337,6 @@ function parseRange(range: ProviderCalendarRangeInput) {
 // tokens (mpAccessToken/mpRefreshToken/mpTokenExpiresAt) and CREF review
 // internals (crefDocumentUrl/credentialDocuments/crefRejectionReason/
 // crefReviewedAt/crefReviewedByUserId) — those must never leave the server.
-function hashSeed(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  }
-  return hash;
-}
-
-// Frente 5 (Descoberta, agendamento e agenda), Lote 1: a localização base do
-// profissional (usada internamente pro raio de atendimento a domicílio) era
-// devolvida publicamente sem autenticação e plotada como pino real no mapa da
-// home do cliente — pra quem atende de casa sem endereço comercial cadastrado
-// (fixedLocations, que são intencionalmente públicos), isso podia revelar o
-// endereço residencial exato. Aplica um deslocamento fixo e determinístico
-// (300-500m, estável por profissional) só na resposta pública; o cálculo de
-// distância/raio de atendimento em search() continua usando a coordenada real
-// via query própria, nunca exposta ao cliente.
-export function jitterPublicCoordinates<T extends { id: string; latitude?: number | null; longitude?: number | null }>(
-  provider: T
-): T {
-  if (typeof provider.latitude !== "number" || typeof provider.longitude !== "number") {
-    return provider;
-  }
-  const seed = hashSeed(provider.id);
-  // Direção sempre entre 20° e 70° dentro de um dos 4 quadrantes: em cima de um eixo
-  // (0°/90°/180°/270°) um dos deslocamentos dava ~0 e uma coordenada real saía exata.
-  const angleDeg = 20 + (seed % 51) + 90 * (Math.floor(seed / 51) % 4);
-  const angleRad = angleDeg * (Math.PI / 180);
-  const distanceMeters = 300 + (seed % 201);
-  const latRad = (provider.latitude * Math.PI) / 180;
-  const deltaLat = (distanceMeters * Math.cos(angleRad)) / 111_320;
-  const deltaLng = (distanceMeters * Math.sin(angleRad)) / (111_320 * Math.cos(latRad));
-  return {
-    ...provider,
-    latitude: provider.latitude + deltaLat,
-    longitude: provider.longitude + deltaLng
-  };
-}
-
 export const PUBLIC_PROVIDER_SELECT = {
   id: true,
   userId: true,
@@ -410,10 +375,19 @@ export const PUBLIC_PROVIDER_SELECT = {
 // consultancy.service.ts que reaproveitam este mesmo select devolviam o
 // resultado do Prisma cru, com `provider.subscription.status` incluso.
 // Único ponto de limpeza agora, reaproveitado nos 4 lugares.
-export function sanitizePublicProviderRef<T extends { subscription?: { isFounder: boolean } | null }>(
-  provider: T
-): Omit<T, "subscription"> & { isFounder: boolean } {
-  const { subscription, ...rest } = provider;
+// Mesmo ponto de limpeza também desloca a localização base: esses 4 endpoints
+// devolviam a latitude/longitude REAL do profissional pro aluno (bastava
+// mandar um pedido de consultoria), enquanto busca, detalhe e favoritos já
+// mostravam só o pino deslocado.
+export function sanitizePublicProviderRef<
+  T extends {
+    id: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    subscription?: { isFounder: boolean } | null;
+  }
+>(provider: T): Omit<T, "subscription"> & { isFounder: boolean } {
+  const { subscription, ...rest } = jitterPublicCoordinates(provider);
   return { ...rest, isFounder: subscription?.isFounder ?? false };
 }
 
@@ -1577,10 +1551,12 @@ export class ProviderService {
               }>)
             : [];
 
-          const mainDistance =
-            provider.latitude == null || provider.longitude == null
-              ? undefined
-              : haversineKm(clientLat, clientLng, provider.latitude, provider.longitude);
+          // Até o pino público, não até a localização real: essa distância,
+          // o filtro de raio e a ordenação respondem a qualquer um sem login
+          // e, cruzando buscas de pontos diferentes, revelavam o endereço
+          // real (ver shared/utils/public-location.ts). Os locais fixos
+          // (academia, estúdio) são públicos de propósito e seguem exatos.
+          const mainDistance = distanceFromPublicBaseKm(provider, clientLat, clientLng);
           const fixedDistances = fixedLocations
             .filter(
               (loc) =>

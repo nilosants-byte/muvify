@@ -36,7 +36,7 @@ import { assertOfferAcceptsPaymentMethod } from "../../../shared/utils/offer-pay
 import { assertOfferAllowsServiceLocation } from "../../../shared/utils/offer-service-mode";
 import { NotificationService } from "../../notifications/services/notification.service";
 import { DebtService } from "../../payments/services/debt.service";
-import { haversineKm } from "../../../shared/utils/geo";
+import { distanceFromPublicBaseKm } from "../../../shared/utils/public-location";
 import { EmailQueueService } from "../../../shared/services/email-queue.service";
 // PaymentService é importado dinamicamente onde é usado (não no topo do
 // arquivo) porque payment.service.ts também importa PresentialPackageService
@@ -328,6 +328,7 @@ async function resolveClientCardForBilling(clientId: string) {
 // a cada sessao gerada dali pra frente.
 async function resolveSessionLocationForPackage(
   provider: {
+    id: string;
     fixedLocations: unknown;
     serviceRadiusKm: number | null;
     latitude: number | null;
@@ -359,7 +360,9 @@ async function resolveSessionLocationForPackage(
         StatusCodes.BAD_REQUEST
       );
     }
-    const distanceKm = haversineKm(provider.latitude, provider.longitude, clientLatitude, clientLongitude);
+    // Ponto PÚBLICO da base, mesmo motivo do agendamento avulso
+    // (booking.service.ts): o ponto real viraria um detector do endereço.
+    const distanceKm = distanceFromPublicBaseKm(provider, clientLatitude, clientLongitude) ?? 0;
     if (distanceKm > provider.serviceRadiusKm) {
       throw new AppError(
         `Este endereço está fora do raio de atendimento do profissional (${provider.serviceRadiusKm} km).`,
